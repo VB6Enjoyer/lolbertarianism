@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Libertarian Lobster Showdown</title>
+    <style>
+        :root {
+            --floor-color: #dcbfa6;
+            --floor-accent: #c4a488;
+            --ui-bg: #2c3e50;
+            --ui-text: #ecf0f1;
+            --accent: #e74c3c;
+            --win: #27ae60;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 800px;
+            height: 90vh;
+            background: var(--ui-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Header / HUD */
+        header {
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            color: var(--ui-text);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+        }
+
+        .stat-box {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+
+        /* The Arena (Floor) */
+        #arena {
+            flex-grow: 1;
+            background-color: var(--floor-color);
+            background-image: 
+                repeating-linear-gradient(45deg, var(--floor-accent) 25%, transparent 25%, transparent 75%, var(--floor-accent) 75%, var(--floor-accent)),
+                repeating-linear-gradient(45deg, var(--floor-accent) 25%, var(--floor-color) 25%, var(--floor-color) 75%, var(--floor-accent) 75%, var(--floor-accent));
+            background-position: 0 0, 10px 10px;
+            background-size: 20px 20px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            perspective: 1000px;
+            overflow: hidden;
+        }
+
+        /* Spectators */
+        .spectator {
+            position: absolute;
+            font-size: 4rem;
+            z-index: 10;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .spectator:hover { transform: scale(1.1); }
+        .spectator.cheer { animation: bounce 0.5s infinite; }
+
+        /* Money on floor */
+        .floor-money {
+            position: absolute;
+            font-size: 1.5rem;
+            opacity: 0.8;
+            transform: rotate(var(--rot));
+            pointer-events: none;
+        }
+
+        /* Fighters */
+        .fighter-container {
+            position: absolute;
+            bottom: 20%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.3s ease;
+            width: 150px;
+        }
+
+        .fighter {
+            font-size: 6rem;
+            filter: drop-shadow(0 10px 5px rgba(0,0,0,0.3));
+            transition: transform 0.1s;
+            position: relative;
+        }
+
+        .fighter-name {
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+
+        .hp-bar-bg {
+            width: 100%;
+            height: 10px;
+            background: #555;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid #000;
+        }
+
+        .hp-bar-fill {
+            height: 100%;
+            background: var(--win);
+            width: 100%;
+            transition: width 0.2s;
+        }
+
+        #left-fighter { left: 15%; }
+        #right-fighter { right: 15%; }
+        #right-fighter .fighter { transform: scaleX(-1); } /* Face left */
+
+        /* Controls */
+        #controls {
+            padding: 20px;
+            background: #34495e;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 20;
+        }
+
+        .bet-row {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+        }
+
+        input[type="number"] {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            width: 100px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-family: inherit;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            text-transform: uppercase;
+        }
+
+        button:active { transform: scale(0.95); }
+
+        .btn-left { background: #3498db; color: white; }
+        .btn-right { background: #e67e22; color: white; }
+        .btn-left:hover { background: #2980b9; }
+        .btn-right:hover { background: #d35400; }
+        
+        button:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        /* Commentary Log */
+        #log {
+            height: 60px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 6px;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            color: #bdc3c7;
+            text-align: center;
+            display: flex;
+            flex-direction: column-reverse; /* Newest at bottom visually, but we prepend */
+        }
+
+        .log-entry { margin-bottom: 4px; }
+        .log-entry.damage { color: #e74c3c; }
+        .log-entry.win { color: #2ecc71; font-weight: bold; }
+
+        /* Animations */
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        @keyframes attack-right {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(50px) rotate(10deg); }
+            100% { transform: translateX(0); }
+        }
+
+        @keyframes attack-left {
+            0% { transform: scaleX(-1) translateX(0); }
+            50% { transform: scaleX(-1) translateX(50px) rotate(10deg); }
+            100% { transform: scaleX(-1) translateX(0); }
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .hit-effect {
+            position: absolute;
+            font-size: 2rem;
+            color: red;
+            font-weight: bold;
+            animation: floatUp 1s forwards;
+            pointer-events: none;
+            z-index: 100;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-50px) scale(1.5); }
+        }
+
+        /* Overlay for Game Over / Start */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        #overlay.active { display: flex; }
+        #overlay h1 { color: white; font-size: 3rem; text-align: center; margin-bottom: 10px; }
+        #overlay p { color: #ccc; font-size: 1.2rem; max-width: 600px; text-align: center; margin-bottom: 30px; }
+        #start-btn { font-size: 1.5rem; padding: 15px 40px; background: #27ae60; color: white; }
+
+        /* Speech bubbles */
+        .bubble {
+            position: absolute;
+            background: white;
+            color: black;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        }
+        .bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: white transparent transparent transparent;
+        }
+        .spectator:hover .bubble { opacity: 1; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <header>
+        <div style="font-weight:bold; font-size:1.2rem;">🦞 LIBERTARIAN FIGHT CLUB</div>
+        <div class="stat-box">
+            <div class="stat-label">Bankroll</div>
+            <div class="stat-value" id="bankroll">$500</div>
+        </div>
+    </header>
+
+    <div id="arena">
+        <!-- Decor Money -->
+        <div class="floor-money" style="top: 60%; left: 40%; --rot: 12deg;">💵</div>
+        <div class="floor-money" style="top: 70%; left: 55%; --rot: -45deg;">💵</div>
+        <div class="floor-money" style="top: 50%; left: 48%; --rot: 80deg;">💵</div>
+        <div class="floor-money" style="top: 80%; left: 30%; --rot: 10deg;">💵</div>
+
+        <!-- Spectators -->
+        <div class="spectator" style="top: 10%; left: 10%;">
+            👩
+            <div class="bubble">Taxation is theft!</div>
+        </div>
+        <div class="spectator" style="top: 15%; right: 15%;">
+            👱‍♂️
+            <div class="bubble">What about roads?</div>
+        </div>
+        <div class="spectator" style="top: 5%; left: 50%;">
+            🧔
+            <div class="bubble">End the Fed!</div>
+        </div>
+
+        <!-- Fighters -->
+        <div class="fighter-container" id="left-fighter">
+            <div class="hp-bar-bg"><div class="hp-bar-fill" id="hp-left"></div></div>
+            <div class="fighter-name">Austrian School</div>
+            <div class="fighter">🦞</div>
+        </div>
+
+        <div class="fighter-container" id="right-fighter">
+            <div class="hp-bar-bg"><div class="hp-bar-fill" id="hp-right"></div></div>
+            <div class="fighter-name">Chicago School</div>
+            <div class="fighter">🦞</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div id="log">
+            <div class="log-entry">Welcome to the Free Market of Violence. Place your bets.</div>
+        </div>
+        <div class="bet-row">
+            <input type="number" id="bet-amount" value="50" min="10" step="10">
+            <button class="btn-left" onclick="placeBet('left')">Bet Left</button>
+            <div style="color: #95a5a6; font-weight: bold;">VS</div>
+            <button class="btn-right" onclick="placeBet('right')">Bet Right</button>
+        </div>
+    </div>
+
+    <div id="overlay" class="active">
+        <h1>THE INVISIBLE CLAW</h1>
+        <p>Libertarians are fighting over who is the most libertarian. <br>Bet your fiat currency on the winner.</p>
+        <button id="start-btn" onclick="startGame()">ENTER THE MARKET</button>
+    </div>
+</div>
+
+<script>
+    // Game State
+    let bankroll = 500;
+    let isFighting = false;
+    let leftHP = 100;
+    let rightHP = 100;
+    let currentBetAmount = 0;
+    let currentBetSide = null; // 'left' or 'right'
+
+    // DOM Elements
+    const elBankroll = document.getElementById('bankroll');
+    const elLeftHP = document.getElementById('hp-left');
+    const elRightHP = document.getElementById('hp-right');
+    const elLog = document.getElementById('log');
+    const elLeftFighter = document.getElementById('left-fighter');
+    const elRightFighter = document.getElementById('right-fighter');
+    const elLeftEmoji = elLeftFighter.querySelector('.fighter');
+    const elRightEmoji = elRightFighter.querySelector('.fighter');
+    const btnLeft = document.querySelector('.btn-left');
+    const btnRight = document.querySelector('.btn-right');
+    const inputBet = document.getElementById('bet-amount');
+
+    // Audio Context (Synthesized sounds)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        if (type === 'hit') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        } else if (type === 'win') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+            osc.frequency.linearRampToValueAtTime(1000, audioCtx.currentTime + 0.3);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        }
+    }
+
+    function startGame() {
+        document.getElementById('overlay').classList.remove('active');
+    }
+
+    function log(msg, type = '') {
+        const div = document.createElement('div');
+        div.className = `log-entry ${type}`;
+        div.innerText = `> ${msg}`;
+        elLog.prepend(div);
+    }
+
+    function updateUI() {
+        elBankroll.innerText = `$${bankroll}`;
+        elLeftHP.style.width = `${leftHP}%`;
+        elRightHP.style.width = `${rightHP}%`;
+        
+        // Color change on low health
+        elLeftHP.style.background = leftHP < 30 ? '#e74c3c' : '#27ae60';
+        elRightHP.style.background = rightHP < 30 ? '#e74c3c' : '#27ae60';
+    }
+
+    function placeBet(side) {
+        if (isFighting) return;
+        
+        const amount = parseInt(inputBet.value);
+        if (isNaN(amount) || amount <= 0) {
+            log("Invalid bet amount. That's bad economics.");
+            return;
+        }
+        if (amount > bankroll) {
+            log("You don't have the capital for that!");
+            return;
+        }
+
+        currentBetAmount = amount;
+        currentBetSide = side;
+        bankroll -= amount;
+        updateUI();
+        
+        // Disable controls
+        btnLeft.disabled = true;
+        btnRight.disabled = true;
+        inputBet.disabled = true;
+
+        log(`Bet $${amount} on ${side === 'left' ? 'Austrian School' : 'Chicago School'}. FIGHT!`);
+        startFight();
+    }
+
+    async function startFight() {
+        isFighting = true;
+        leftHP = 100;
+        rightHP = 100;
+        updateUI();
+
+        // Cheer animation
+        document.querySelectorAll('.spectator').forEach(s => s.classList.add('cheer'));
+
+        while (leftHP > 0 && rightHP > 0) {
+            await new Promise(r => setTimeout(r, 800 + Math.random() * 1000));
+            
+            // Randomly decide who attacks
+            const attacker = Math.random() > 0.5 ? 'left' : 'right';
+            performAttack(attacker);
+            
+            if (leftHP <= 0 || rightHP <= 0) break;
+        }
+
+        endFight();
+    }
+
+    function performAttack(attacker) {
+        const damage = Math.floor(Math.random() * 15) + 5;
+        const crit = Math.random() > 0.8;
+        const finalDamage = crit ? damage * 2 : damage;
+
+        // Visuals
+        if (attacker === 'left') {
+            elLeftEmoji.style.animation = 'attack-right 0.3s';
+            setTimeout(() => {
+                elLeftEmoji.style.animation = '';
+                elRightEmoji.style.animation = 'shake 0.3s';
+                showHitEffect(elRightFighter, finalDamage, crit);
+            }, 150);
+            rightHP = Math.max(0, rightHP - finalDamage);
+            logAttack('Austrian', 'Chicago', finalDamage, crit);
+        } else {
+            elRightEmoji.style.animation = 'attack-left 0.3s';
+            setTimeout(() => {
+                elRightEmoji.style.animation = '';
+                elLeftEmoji.style.animation = 'shake 0.3s';
+                showHitEffect(elLeftFighter, finalDamage, crit);
+            }, 150);
+            leftHP = Math.max(0, leftHP - finalDamage);
+            logAttack('Chicago', 'Austrian', finalDamage, crit);
+        }
+        
+        playSound('hit');
+        updateUI();
+    }
+
+    function showHitEffect(targetEl, amount, isCrit) {
+        const el = document.createElement('div');
+        el.className = 'hit-effect';
+        el.innerText = `-${amount}${isCrit ? '!' : ''}`;
+        el.style.left = '50%';
+        el.style.top = '0';
+        if (isCrit) {
+            el.style.fontSize = '3rem';
+            el.style.color = '#f1c40f';
+        }
+        targetEl.appendChild(el);
+        setTimeout(() => el.remove(), 1000);
+    }
+
+    const flavorTexts = [
+        "violates the NAP of",
+        "deregulates the face of",
+        "privatizes the pain of",
+        "uses the invisible hand on",
+        "debates the gold standard with"
+    ];
+
+    function logAttack(attackerName, defenderName, dmg, crit) {
+        const action = flavorTexts[Math.floor(Math.random() * flavorTexts.length)];
+        const msg = `${attackerName} ${action} ${defenderName} for ${dmg} dmg!${crit ? ' CRITICAL MARKET CORRECTION!' : ''}`;
+        log(msg, 'damage');
+    }
+
+    function endFight() {
+        isFighting = false;
+        document.querySelectorAll('.spectator').forEach(s => s.classList.remove('cheer'));
+        
+        const winner = leftHP > 0 ? 'left' : 'right';
+        const winnerName = winner === 'left' ? 'Austrian School' : 'Chicago School';
+        
+        log(`${winnerName} WINS THE FREE MARKET!`, 'win');
+        playSound('win');
+
+        if (winner === currentBetSide) {
+            const winnings = currentBetAmount * 2;
+            bankroll += winnings;
+            log(`You won $${winnings}! The market provides.`, 'win');
+            spawnMoneyRain();
+        } else {
+            log(`You lost your investment. No bailouts here.`);
+        }
+
+        updateUI();
+
+        // Reset controls
+        btnLeft.disabled = false;
+        btnRight.disabled = false;
+        inputBet.disabled = false;
+        
+        if (bankroll <= 0) {
+            log("You are bankrupt. The system works.");
+            setTimeout(() => {
+                alert("You went bust! Resetting the economy...");
+                bankroll = 500;
+                updateUI();
+            }, 2000);
+        }
+    }
+
+    function spawnMoneyRain() {
+        for(let i=0; i<20; i++) {
+            const money = document.createElement('div');
+            money.innerText = '💵';
+            money.style.position = 'absolute';
+            money.style.left = Math.random() * 100 + '%';
+            money.style.top = '-50px';
+            money.style.fontSize = '2rem';
+            money.style.transition = 'top 2s ease-in, opacity 2s ease-in';
+            money.style.zIndex = '100';
+            document.getElementById('arena').appendChild(money);
+            
+            setTimeout(() => {
+                money.style.top = '100%';
+                money.style.opacity = '0';
+            }, 50);
+
+            setTimeout(() => money.remove(), 2050);
+        }
+    }
+
+</script>
+</body>
+</html>
