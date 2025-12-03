@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUST GETTING STARTED 😈</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Impact&display=swap');
+
+        :root {
+            --primary-red: #ff0000;
+            --deep-fry-contrast: 100%;
+            --deep-fry-saturate: 100%;
+            --shake-intensity: 0px;
+        }
+
+        body {
+            background-color: #000;
+            color: white;
+            font-family: 'Impact', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            user-select: none;
+            transition: filter 0.5s;
+        }
+
+        /* The Deep Fried Vibe */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle, transparent 50%, rgba(255, 0, 0, 0.2));
+            z-index: 10;
+            mix-blend-mode: overlay;
+        }
+
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 11;
+        }
+
+        header {
+            text-align: center;
+            margin-top: 20px;
+            z-index: 20;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            color: var(--primary-red);
+            text-shadow: 0 0 10px red;
+        }
+
+        /* The Boss Avatar */
+        .boss-container {
+            position: relative;
+            margin: 20px auto;
+            cursor: pointer;
+            transition: transform 0.1s;
+            z-index: 20;
+        }
+
+        .boss-container:active {
+            transform: scale(0.95);
+        }
+
+        .boss-emoji {
+            font-size: 150px;
+            filter: contrast(1.2);
+        }
+
+        .laser {
+            position: absolute;
+            top: 45px;
+            width: 800px; /* Long lasers */
+            height: 5px;
+            background: red;
+            box-shadow: 0 0 10px red, 0 0 20px red, 0 0 40px white;
+            opacity: 0;
+            pointer-events: none;
+            transform-origin: left center;
+        }
+
+        .laser.left {
+            left: 55px;
+            transform: rotate(-10deg);
+        }
+
+        .laser.right {
+            left: 95px;
+            transform: rotate(10deg);
+        }
+
+        .eye-glow {
+            position: absolute;
+            top: 45px;
+            width: 15px;
+            height: 15px;
+            background: red;
+            border-radius: 50%;
+            box-shadow: 0 0 15px red, 0 0 30px red;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        
+        .eye-glow.left { left: 52px; }
+        .eye-glow.right { left: 92px; }
+
+        /* Stats */
+        .stats {
+            text-align: center;
+            margin-bottom: 20px;
+            z-index: 20;
+        }
+
+        .money-display {
+            font-size: 3rem;
+            color: #2ecc71;
+            text-shadow: 0 0 10px #2ecc71;
+        }
+
+        .cps-display {
+            font-size: 1.2rem;
+            color: #aaa;
+        }
+
+        /* Shop */
+        .shop-container {
+            flex: 1;
+            width: 90%;
+            max-width: 600px;
+            background: rgba(20, 0, 0, 0.8);
+            border: 2px solid var(--primary-red);
+            overflow-y: auto;
+            padding: 10px;
+            margin-bottom: 20px;
+            z-index: 20;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.3);
+        }
+
+        .shop-title {
+            text-align: center;
+            color: var(--primary-red);
+            border-bottom: 1px solid var(--primary-red);
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+
+        .upgrade-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #111;
+            border: 1px solid #333;
+            padding: 10px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .upgrade-item:hover {
+            background: #220000;
+            border-color: red;
+        }
+
+        .upgrade-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(1);
+        }
+
+        .upgrade-info h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .upgrade-info p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .upgrade-cost {
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        /* Floating Text Animation */
+        .floater {
+            position: absolute;
+            color: #2ecc71;
+            font-weight: bold;
+            font-size: 1.5rem;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            z-index: 100;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-100px) scale(1.5); opacity: 0; }
+        }
+
+        /* Shake Animation for Intensity */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .shaking {
+            animation: shake 0.5s;
+            animation-iteration-count: infinite;
+        }
+
+        /* Deep Fry Intensity Classes */
+        .stage-1 { filter: contrast(1.1) saturate(1.2); }
+        .stage-2 { filter: contrast(1.3) saturate(1.5) sepia(0.3); }
+        .stage-3 { filter: contrast(1.6) saturate(2.0) sepia(0.6) hue-rotate(-10deg); }
+        .stage-4 { filter: contrast(2.0) saturate(4.0) sepia(1) hue-rotate(-30deg); background: #100; }
+
+        .meme-text-bottom {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 10px;
+            z-index: 20;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="scanlines"></div>
+    <div class="overlay"></div>
+
+    <header>
+        <h1>LATE STAGE CAPITALISM 😔?</h1>
+    </header>
+
+    <div class="stats">
+        <div class="money-display">$<span id="money">0</span></div>
+        <div class="cps-display">PROFIT/SEC: $<span id="cps">0</span></div>
+    </div>
+
+    <!-- The Boss / Click Target -->
+    <div class="boss-container" id="boss" onclick="grind()">
+        <div class="laser left" id="laser-l"></div>
+        <div class="laser right" id="laser-r"></div>
+        <div class="eye-glow left" id="eye-l"></div>
+        <div class="eye-glow right" id="eye-r"></div>
+        <div class="boss-emoji">🕴️</div>
+    </div>
+
+    <div class="meme-text-bottom">
+        NAH, WE'RE JUST <br><span style="color:red; font-size:2.5rem">GETTING STARTED 😈😤</span>
+    </div>
+
+    <div class="shop-container">
+        <div class="shop-title">ACQUISITIONS & EXPLOITS</div>
+        <div id="shop-list">
+            <!-- Upgrades injected here -->
+        </div>
+    </div>
+
+    <script>
+        // Game State
+        let state = {
+            money: 0,
+            cps: 0,
+            clickPower: 1,
+            totalClicks: 0
+        };
+
+        // Configuration
+        const upgrades = [
+            { id: 1, name: "Unpaid Interns", cost: 15, cps: 1, emoji: "📧" },
+            { id: 2, name: "Rent Hike", cost: 100, cps: 5, emoji: "🏠" },
+            { id: 3, name: "Drop Shipping Course", cost: 500, cps: 20, emoji: "📦" },
+            { id: 4, name: "Offshore Accounts", cost: 2000, cps: 50, emoji: "🏝️" },
+            { id: 5, name: "AI Replacement", cost: 10000, cps: 150, emoji: "🤖" },
+            { id: 6, name: "Lobbying Firm", cost: 50000, cps: 500, emoji: "🤝" },
+            { id: 7, name: "Monetize Oxygen", cost: 200000, cps: 1500, emoji: "💨" },
+            { id: 8, name: "Mars Colony", cost: 1000000, cps: 5000, emoji: "🚀" }
+        ];
+
+        // DOM Elements
+        const moneyEl = document.getElementById('money');
+        const cpsEl = document.getElementById('cps');
+        const shopList = document.getElementById('shop-list');
+        const bossEl = document.getElementById('boss');
+        const bodyEl = document.body;
+        const laserL = document.getElementById('laser-l');
+        const laserR = document.getElementById('laser-r');
+        const eyeL = document.getElementById('eye-l');
+        const eyeR = document.getElementById('eye-r');
+
+        // Initialize Shop
+        function renderShop() {
+            shopList.innerHTML = '';
+            upgrades.forEach(upg => {
+                const item = document.createElement('div');
+                item.className = 'upgrade-item';
+                item.id = `upg-${upg.id}`;
+                item.onclick = () => buyUpgrade(upg);
+                
+                item.innerHTML = `
+                    <div class="upgrade-info">
+                        <h3>${upg.emoji} ${upg.name}</h3>
+                        <p>+${upg.cps} CPS</p>
+                    </div>
+                    <div class="upgrade-cost">$${formatNumber(upg.cost)}</div>
+                `;
+                shopList.appendChild(item);
+            });
+            checkAffordability();
+        }
+
+        // Core Mechanics
+        function grind(e) {
+            // Add money
+            state.money += state.clickPower;
+            state.totalClicks++;
+            updateUI();
+
+            // Visual FX
+            createFloater(state.clickPower);
+            triggerLasers();
+            
+            // Shake effect based on progress
+            if (state.money > 1000) {
+                const intensity = Math.min(10, Math.floor(state.money / 1000));
+                bodyEl.style.transform = `translate(${Math.random()*intensity - intensity/2}px, ${Math.random()*intensity - intensity/2}px)`;
+                setTimeout(() => bodyEl.style.transform = 'none', 50);
+            }
+        }
+
+        function buyUpgrade(upg) {
+            if (state.money >= upg.cost) {
+                state.money -= upg.cost;
+                state.cps += upg.cps;
+                
+                // Price inflation
+                upg.cost = Math.floor(upg.cost * 1.3);
+                
+                renderShop();
+                updateUI();
+                
+                // Sound effect placeholder (visual flash)
+                document.body.style.backgroundColor = '#300';
+                setTimeout(() => document.body.style.backgroundColor = '#000', 50);
+            }
+        }
+
+        // Passive Income Loop
+        setInterval(() => {
+            if (state.cps > 0) {
+                state.money += state.cps;
+                updateUI();
+                checkAffordability();
+                updateVisualIntensity();
+            }
+        }, 1000);
+
+        // Helper Functions
+        function updateUI() {
+            moneyEl.innerText = formatNumber(Math.floor(state.money));
+            cpsEl.innerText = formatNumber(state.cps);
+            checkAffordability();
+        }
+
+        function checkAffordability() {
+            upgrades.forEach(upg => {
+                const el = document.getElementById(`upg-${upg.id}`);
+                if (state.money >= upg.cost) {
+                    el.classList.remove('disabled');
+                } else {
+                    el.classList.add('disabled');
+                }
+                // Update cost text
+                el.querySelector('.upgrade-cost').innerText = '$' + formatNumber(upg.cost);
+            });
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+            return num;
+        }
+
+        function createFloater(amount) {
+            const floater = document.createElement('div');
+            floater.className = 'floater';
+            floater.innerText = `+$${amount}`;
+            
+            // Random position around center
+            const rect = bossEl.getBoundingClientRect();
+            const x = rect.left + rect.width / 2 + (Math.random() * 100 - 50);
+            const y = rect.top + (Math.random() * 50);
+            
+            floater.style.left = `${x}px`;
+            floater.style.top = `${y}px`;
+            
+            document.body.appendChild(floater);
+            setTimeout(() => floater.remove(), 1000);
+        }
+
+        function triggerLasers() {
+            // Flash eyes
+            eyeL.style.opacity = 1;
+            eyeR.style.opacity = 1;
+            eyeL.style.boxShadow = "0 0 20px red, 0 0 50px red";
+            eyeR.style.boxShadow = "0 0 20px red, 0 0 50px red";
+
+            // Show lasers briefly
+            laserL.style.opacity = 0.8;
+            laserR.style.opacity = 0.8;
+            
+            setTimeout(() => {
+                eyeL.style.opacity = 0.5;
+                eyeR.style.opacity = 0.5;
+                eyeL.style.boxShadow = "0 0 15px red, 0 0 30px red";
+                eyeR.style.boxShadow = "0 0 15px red, 0 0 30px red";
+                laserL.style.opacity = 0;
+                laserR.style.opacity = 0;
+            }, 100);
+        }
+
+        function updateVisualIntensity() {
+            // As money goes up, the screen gets more "Deep Fried"
+            if (state.money > 1000000) {
+                bodyEl.className = 'stage-4 shaking';
+            } else if (state.money > 100000) {
+                bodyEl.className = 'stage-3';
+            } else if (state.money > 10000) {
+                bodyEl.className = 'stage-2';
+            } else if (state.money > 1000) {
+                bodyEl.className = 'stage-1';
+            }
+        }
+
+        // Initial Render
+        renderShop();
+        updateUI();
+
+    </script>
+</body>
+</html>

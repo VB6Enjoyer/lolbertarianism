@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Economics Trainer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@400;600&display=swap');
+
+        body {
+            background-color: #f3e5d0; /* Creamy background from image */
+            font-family: 'Poppins', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- CSS ART: THE CHARACTER --- */
+        .character-container {
+            position: relative;
+            width: 300px;
+            height: 350px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            transition: transform 0.3s ease;
+        }
+
+        .head {
+            width: 180px;
+            height: 160px;
+            background: #ffe0d0;
+            border-radius: 50% 50% 45% 45%;
+            position: absolute;
+            top: 40px;
+            z-index: 10;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .hair-back {
+            width: 210px;
+            height: 200px;
+            background: #ffcce0; /* Pinkish hair */
+            position: absolute;
+            top: 20px;
+            border-radius: 50% 50% 20% 20%;
+            z-index: 5;
+        }
+
+        .hair-bangs {
+            width: 190px;
+            height: 80px;
+            background: #ffcce0;
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 50% 50% 0 0;
+            z-index: 12;
+            clip-path: polygon(0 0, 100% 0, 100% 60%, 90% 100%, 80% 60%, 70% 100%, 60% 50%, 50% 90%, 40% 50%, 30% 100%, 20% 60%, 10% 100%, 0 60%);
+        }
+
+        .horn-left, .horn-right {
+            width: 0; 
+            height: 0; 
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-bottom: 50px solid #1a1a1a;
+            position: absolute;
+            top: 10px;
+            z-index: 6;
+        }
+        .horn-left { left: 30px; transform: rotate(-20deg); }
+        .horn-right { right: 30px; transform: rotate(20deg); }
+
+        .eye {
+            width: 45px;
+            height: 50px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 90px;
+            z-index: 15;
+            overflow: hidden;
+            border-top: 3px solid #333;
+        }
+        .eye-left { left: 35px; }
+        .eye-right { right: 35px; }
+
+        .iris {
+            width: 30px;
+            height: 35px;
+            background: #2d6a4f; /* Green eyes */
+            border-radius: 50%;
+            position: absolute;
+            bottom: 5px;
+            left: 7px;
+        }
+        .pupil {
+            width: 10px;
+            height: 15px;
+            background: #000;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .highlight {
+            width: 10px;
+            height: 10px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 5px;
+            left: 5px;
+        }
+
+        .mouth {
+            width: 20px;
+            height: 10px;
+            border-radius: 50%;
+            background: #dba897;
+            border: 2px solid #a67c6d;
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 15;
+            transition: all 0.2s;
+        }
+
+        /* Expressions */
+        .mouth.smug {
+            width: 30px;
+            height: 15px;
+            border-radius: 0 0 50% 50%;
+            border-top: 0;
+            background: transparent;
+            border-bottom: 3px solid #333;
+            transform: translateX(-50%) rotate(-5deg);
+        }
+        .mouth.shock {
+            width: 20px;
+            height: 20px;
+            background: #333;
+            border: none;
+        }
+        .mouth.happy {
+            width: 30px;
+            height: 15px;
+            border-radius: 0 0 50% 50%;
+            background: #a34054;
+            border: none;
+        }
+
+        .body {
+            width: 140px;
+            height: 120px;
+            background: #1a1a1a; /* Black dress */
+            position: absolute;
+            bottom: 0;
+            border-radius: 40% 40% 0 0;
+            z-index: 8;
+        }
+        .collar {
+            width: 60px;
+            height: 20px;
+            background: #fff;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 0 0 10px 10px;
+        }
+        .gold-trim {
+            width: 100%;
+            height: 5px;
+            background: #d4af37;
+            position: absolute;
+            bottom: 20px;
+        }
+
+        /* --- THE BOOK --- */
+        .book-container {
+            width: 160px;
+            height: 220px;
+            perspective: 1000px;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .book-inner {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transform: rotateY(-15deg) rotateX(10deg);
+            transition: transform 0.5s;
+            box-shadow: 10px 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .book-container:hover .book-inner {
+            transform: rotateY(0deg) rotateX(0deg) scale(1.1);
+        }
+
+        .book-front {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #000 0%, #000 55%, #c0392b 55%, #c0392b 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+            text-align: center;
+            border: 2px solid #ddd;
+            border-left: 8px solid #ddd; /* Spine hint */
+        }
+
+        .book-title {
+            font-family: 'Playfair Display', serif;
+            color: white;
+            font-size: 22px;
+            line-height: 1.1;
+            margin-bottom: 5px;
+            margin-top: -30px;
+        }
+        .book-subtitle {
+            font-size: 8px;
+            color: #ccc;
+            margin-bottom: 40px;
+        }
+        .book-author {
+            font-family: 'Playfair Display', serif;
+            color: #1a1a1a;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        /* --- UI ELEMENTS --- */
+        .dialog-box {
+            width: 90%;
+            max-width: 600px;
+            background: white;
+            border: 4px solid #1a1a1a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 5px 5px 0px #1a1a1a;
+            position: relative;
+            min-height: 120px;
+        }
+        
+        .name-tag {
+            position: absolute;
+            top: -15px;
+            left: 20px;
+            background: #c0392b;
+            color: white;
+            padding: 5px 15px;
+            font-weight: bold;
+            border: 2px solid #1a1a1a;
+            transform: rotate(-2deg);
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+            display: none; /* Hidden initially */
+        }
+
+        .option-btn {
+            background: #f0f0f0;
+            border: 2px solid #1a1a1a;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        .option-btn:hover {
+            background: #c0392b;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        .floating { animation: float 3s ease-in-out infinite; }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shake { animation: shake 0.5s; }
+
+        .hidden { display: none !important; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Header Text -->
+    <h1 class="text-2xl md:text-3xl font-bold text-center mb-4 text-gray-800" style="max-width: 600px; line-height: 1.4;">
+        "Here, take this—maybe it'll help you stop being dumb"
+    </h1>
+
+    <!-- The Scene -->
+    <div class="character-container floating" id="character">
+        <!-- Hair Back -->
+        <div class="hair-back"></div>
+        
+        <!-- Horns -->
+        <div class="horn-left"></div>
+        <div class="horn-right"></div>
+
+        <!-- Head -->
+        <div class="head">
+            <!-- Bangs -->
+            <div class="hair-bangs"></div>
+            
+            <!-- Eyes -->
+            <div class="eye eye-left">
+                <div class="iris"><div class="pupil"></div><div class="highlight"></div></div>
+            </div>
+            <div class="eye eye-right">
+                <div class="iris"><div class="pupil"></div><div class="highlight"></div></div>
+            </div>
+
+            <!-- Mouth -->
+            <div class="mouth" id="mouth"></div>
+        </div>
+
+        <!-- Body -->
+        <div class="body">
+            <div class="collar"></div>
+            <div class="gold-trim"></div>
+        </div>
+
+        <!-- The Book -->
+        <div class="book-container" id="book" onclick="startGame()">
+            <div class="book-inner">
+                <div class="book-front">
+                    <div class="book-title">BASIC<br>ECONOMICS</div>
+                    <div class="book-subtitle">A Common Sense Guide to the Economy</div>
+                    <div class="book-author">Thomas Sowell</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dialog / UI -->
+    <div class="dialog-box">
+        <div class="name-tag">ANYA</div>
+        <p id="dialog-text" class="text-gray-800 text-lg">...</p>
+        
+        <div class="options-grid" id="options-grid">
+            <!-- Options injected by JS -->
+        </div>
+        
+        <button id="next-btn" class="hidden absolute bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded hover:bg-black">
+            Next &rarr;
+        </button>
+    </div>
+
+    <!-- End Screen Overlay -->
+    <div class="overlay" id="end-screen">
+        <h2 class="text-4xl font-bold mb-4" id="final-verdict">VERDICT</h2>
+        <p class="text-xl mb-8" id="final-score">Score: 0/5</p>
+        <button onclick="location.reload()" class="bg-white text-black px-6 py-3 rounded font-bold hover:bg-gray-200">
+            Try Again
+        </button>
+    </div>
+
+    <script>
+        // --- Game State & Data ---
+        const questions = [
+            {
+                q: "If the government prints a trillion dollars and gives it to everyone, what happens?",
+                options: ["Everyone gets rich!", "Inflation (Money loses value)", "The economy doubles", "Nothing changes"],
+                correct: 1,
+                reaction: "smug", // Anya looks smug if you get it right
+                wrongReaction: "shock", // Anya looks shocked at your stupidity
+                comment: "Correct. More money chasing the same goods equals higher prices."
+            },
+            {
+                q: "Why does a diamond cost more than water, even though water is essential for life?",
+                options: ["Diamonds are shiny", "Corporate greed", "Scarcity", "Water is heavy"],
+                correct: 2,
+                reaction: "happy",
+                wrongReaction: "smug",
+                comment: "Exactly. It's the law of Scarcity. Water is abundant; diamonds are rare."
+            },
+            {
+                q: "Rent control (setting a maximum price for rent) usually leads to...",
+                options: ["Cheaper housing for everyone", "Housing Shortages", "Better quality apartments", "Landlords becoming generous"],
+                correct: 1,
+                reaction: "smug",
+                wrongReaction: "shock",
+                comment: "Basic supply and demand. Price ceilings create shortages."
+            },
+            {
+                q: "What is 'Opportunity Cost'?",
+                options: ["The price tag on an item", "The value of the next best alternative you give up", "The cost of starting a business", "A discount coupon"],
+                correct: 1,
+                reaction: "happy",
+                wrongReaction: "smug",
+                comment: "Yes. There are no solutions, only trade-offs."
+            },
+            {
+                q: "Free trade between two countries generally...",
+                options: ["Makes both countries poorer", "Only helps the rich country", "Benefits both sides", "Causes war"],
+                correct: 2,
+                reaction: "happy",
+                wrongReaction: "shock",
+                comment: "Correct. Comparative advantage means both sides win."
+            }
+        ];
+
+        let currentQ = 0;
+        let score = 0;
+        let isTyping = false;
+
+        // --- DOM Elements ---
+        const dialogText = document.getElementById('dialog-text');
+        const optionsGrid = document.getElementById('options-grid');
+        const nextBtn = document.getElementById('next-btn');
+        const mouth = document.getElementById('mouth');
+        const book = document.getElementById('book');
+        const character = document.getElementById('character');
+
+        // --- Typewriter Effect ---
+        function typeText(text, callback) {
+            isTyping = true;
+            dialogText.innerHTML = "";
+            let i = 0;
+            const speed = 30;
+            
+            function type() {
+                if (i < text.length) {
+                    dialogText.innerHTML += text.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                } else {
+                    isTyping = false;
+                    if (callback) callback();
+                }
+            }
+            type();
+        }
+
+        // --- Game Logic ---
+        function startGame() {
+            // Animation: Book moves to user
+            book.style.transform = "scale(1.5) translateY(-50px) rotateY(0)";
+            book.style.zIndex = "100";
+            
+            // Remove click handler
+            book.onclick = null;
+
+            typeText("Finally. Open it. Let's see if you can understand the basics.", () => {
+                setTimeout(showQuestion, 1000);
+            });
+        }
+
+        function showQuestion() {
+            if (currentQ >= questions.length) {
+                endGame();
+                return;
+            }
+
+            const q = questions[currentQ];
+            optionsGrid.innerHTML = "";
+            optionsGrid.style.display = "grid";
+            nextBtn.classList.add("hidden");
+            
+            // Reset face
+            mouth.className = "mouth"; 
+
+            typeText(q.q, () => {
+                q.options.forEach((opt, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = "option-btn";
+                    btn.innerText = opt;
+                    btn.onclick = () => handleAnswer(index);
+                    optionsGrid.appendChild(btn);
+                });
+            });
+        }
+
+        function handleAnswer(index) {
+            const q = questions[currentQ];
+            const isCorrect = index === q.correct;
+            
+            optionsGrid.style.display = "none";
+            
+            if (isCorrect) {
+                score++;
+                mouth.className = `mouth ${q.reaction}`; // Happy or Smug
+                typeText(`Heh. ${q.comment}`, () => {
+                    nextBtn.classList.remove("hidden");
+                });
+            } else {
+                mouth.className = `mouth ${q.wrongReaction}`; // Shock or Smug
+                character.classList.add("shake");
+                setTimeout(() => character.classList.remove("shake"), 500);
+                typeText(`Wrong. ${q.comment} Try to keep up.`, () => {
+                    nextBtn.classList.remove("hidden");
+                });
+            }
+        }
+
+        nextBtn.onclick = () => {
+            currentQ++;
+            showQuestion();
+        };
+
+        function endGame() {
+            const overlay = document.getElementById('end-screen');
+            const verdict = document.getElementById('final-verdict');
+            const scoreText = document.getElementById('final-score');
+            
+            overlay.style.display = "flex";
+            scoreText.innerText = `Score: ${score}/${questions.length}`;
+            
+            if (score === 5) {
+                verdict.innerText = "NOT DUMB";
+                verdict.style.color = "#27ae60";
+            } else if (score >= 3) {
+                verdict.innerText = "MEDIOCRE";
+                verdict.style.color = "#f39c12";
+            } else {
+                verdict.innerText = "STILL DUMB";
+                verdict.style.color = "#c0392b";
+            }
+        }
+
+        // --- Init ---
+        window.onload = () => {
+            typeText("Take the book. I don't have all day.");
+        };
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kindergarten Property Defender</title>
+    <style>
+        :root {
+            --bg-color: #fcfcfc;
+            --ink-color: #111;
+            --block-color: #e6cfa1;
+            --block-border: #bfa376;
+            --accent: #ff4444;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            background-color: var(--bg-color);
+            overflow: hidden;
+            user-select: none;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 100;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .stat-box {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px; /* Sketchy border */
+            box-shadow: 2px 2px 0px rgba(0,0,0,0.1);
+        }
+
+        /* Game Area */
+        #game-stage {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* Characters */
+        .character {
+            position: absolute;
+            bottom: 0;
+            width: 250px;
+            height: 350px;
+            pointer-events: none; /* Let clicks pass through to game elements mostly */
+            z-index: 10;
+        }
+
+        #teacher {
+            left: 5%;
+            transform-origin: bottom center;
+        }
+
+        #jack {
+            right: 5%;
+            bottom: -20px;
+        }
+
+        /* Speech Bubbles */
+        .bubble {
+            position: absolute;
+            background: white;
+            border: 2px solid black;
+            border-radius: 50%;
+            padding: 15px;
+            max-width: 200px;
+            text-align: center;
+            font-size: 1rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 20;
+            box-shadow: 3px 3px 0 rgba(0,0,0,0.1);
+        }
+        
+        .bubble::after {
+            content: '';
+            position: absolute;
+            border-style: solid;
+            border-width: 10px 10px 0;
+            border-color: black transparent;
+            display: block;
+            width: 0;
+            z-index: 1;
+            bottom: -10px;
+            left: 50%;
+            margin-left: -10px;
+        }
+
+        #teacher-bubble {
+            left: 10%;
+            top: 20%;
+        }
+
+        #jack-bubble {
+            right: 10%;
+            top: 30%;
+        }
+
+        /* Blocks (The Capital) */
+        #block-pile {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 150px;
+            display: flex;
+            flex-wrap: wrap-reverse;
+            justify-content: center;
+            align-content: flex-start;
+            z-index: 5;
+        }
+
+        .block {
+            width: 40px;
+            height: 40px;
+            background-color: var(--block-color);
+            border: 3px solid var(--block-border);
+            margin: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #5d4037;
+            position: relative;
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        /* Enemies (Grabby Hands) */
+        .enemy {
+            position: absolute;
+            font-size: 3rem;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.1s;
+            z-index: 50;
+            filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.2));
+        }
+
+        .enemy:active {
+            transform: scale(0.9);
+        }
+
+        /* Start/Game Over Screen */
+        #overlay-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-decoration: underline;
+            text-decoration-style: wavy; 
+        }
+
+        button {
+            background: #ffeb3b;
+            border: 3px solid black;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+            transition: transform 0.1s;
+        }
+
+        button:hover {
+            transform: scale(1.05) rotate(-2deg);
+            background: #fff176;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            animation: fly 1s forwards;
+            font-size: 1.5rem;
+            z-index: 60;
+        }
+
+        @keyframes fly {
+            0% { transform: translate(0,0) rotate(0deg); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) rotate(720deg); opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="stat-box">Capital (Blocks): <span id="score">10</span></div>
+        <div class="stat-box">Wave: <span id="wave">1</span></div>
+    </div>
+
+    <div id="game-stage">
+        <!-- Teacher SVG -->
+        <div id="teacher" class="character">
+            <svg viewBox="0 0 200 300" width="100%" height="100%">
+                <!-- Head -->
+                <circle cx="100" cy="50" r="40" fill="none" stroke="black" stroke-width="3" />
+                <!-- Hair -->
+                <path d="M60,50 Q40,100 50,150 M140,50 Q160,100 150,150 M60,30 Q100,10 140,30" fill="none" stroke="black" stroke-width="3"/>
+                <!-- Eyes -->
+                <circle cx="85" cy="45" r="2" fill="black" />
+                <circle cx="115" cy="45" r="2" fill="black" />
+                <!-- Mouth (Sad) -->
+                <path d="M80,70 Q100,60 120,70" fill="none" stroke="black" stroke-width="3" />
+                <!-- Body -->
+                <line x1="100" y1="90" x2="100" y2="200" stroke="black" stroke-width="3" />
+                <!-- Arms -->
+                <line x1="100" y1="120" x2="50" y2="180" stroke="black" stroke-width="3" />
+                <line x1="100" y1="120" x2="150" y2="180" stroke="black" stroke-width="3" />
+            </svg>
+        </div>
+        <div id="teacher-bubble" class="bubble">Jack, you should share your toys.</div>
+
+        <!-- Block Pile -->
+        <div id="block-pile"></div>
+
+        <!-- Jack SVG -->
+        <div id="jack" class="character">
+            <svg viewBox="0 0 200 300" width="100%" height="100%">
+                <!-- Head -->
+                <circle cx="100" cy="80" r="50" fill="none" stroke="black" stroke-width="4" />
+                <!-- Eyes -->
+                <circle cx="80" cy="70" r="4" fill="black" />
+                <circle cx="120" cy="70" r="4" fill="black" />
+                <!-- Eyebrows (Angry) -->
+                <line x1="60" y1="50" x2="90" y2="70" stroke="black" stroke-width="4" />
+                <line x1="140" y1="50" x2="110" y2="70" stroke="black" stroke-width="4" />
+                <!-- Mouth (Frown) -->
+                <path d="M80,110 Q100,100 120,110" fill="none" stroke="black" stroke-width="4" />
+                <!-- Body -->
+                <line x1="100" y1="130" x2="100" y2="250" stroke="black" stroke-width="4" />
+                <!-- Arms (Defensive) -->
+                <line x1="100" y1="160" x2="60" y2="220" stroke="black" stroke-width="4" />
+                <line x1="100" y1="160" x2="140" y2="200" stroke="black" stroke-width="4" />
+                <!-- Desk -->
+                <path d="M0,250 L200,150 L200,300 L0,300 Z" fill="black" />
+            </svg>
+        </div>
+        <div id="jack-bubble" class="bubble">Have you not heard about property rights?!</div>
+
+    </div>
+
+    <div id="overlay-screen">
+        <h1>Kindergarten Capitalist</h1>
+        <p style="font-size: 1.2rem; max-width: 600px; margin-bottom: 30px;">
+            The teacher is trying to redistribute your hard-earned blocks!<br>
+            Click the <strong>Socialist Hands (👋)</strong> to slap them away before they steal your property.<br>
+            Don't let your Capital reach zero!
+        </p>
+        <button id="start-btn" onclick="startGame()">DEFEND PROPERTY</button>
+    </div>
+
+    <script>
+        // Game State
+        let score = 10;
+        let wave = 1;
+        let isPlaying = false;
+        let spawnRate = 2000;
+        let enemySpeed = 2;
+        let enemies = [];
+        let animationFrameId;
+        let lastSpawnTime = 0;
+
+        // DOM Elements
+        const scoreEl = document.getElementById('score');
+        const waveEl = document.getElementById('wave');
+        const gameStage = document.getElementById('game-stage');
+        const blockPile = document.getElementById('block-pile');
+        const overlay = document.getElementById('overlay-screen');
+        const teacherBubble = document.getElementById('teacher-bubble');
+        const jackBubble = document.getElementById('jack-bubble');
+        const startBtn = document.getElementById('start-btn');
+        const h1 = document.querySelector('h1');
+
+        // Quotes
+        const teacherQuotes = [
+            "Jack, you should share your toys.",
+            "Sharing is caring!",
+            "Think of the other children.",
+            "It's for the greater good.",
+            "Don't be selfish, Jack.",
+            "We need to redistribute these.",
+            "Ownership is a social construct."
+        ];
+
+        const jackQuotes = [
+            "Fuck off you communist!",
+            "Have you not heard about property rights?",
+            "Taxation is theft!",
+            "Read some economics!",
+            "This is my private property!",
+            "Don't tread on me!",
+            "I homesteaded these blocks!"
+        ];
+
+        function randomLetter() {
+            const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            return chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+
+        function renderBlocks() {
+            blockPile.innerHTML = '';
+            for(let i=0; i<score; i++) {
+                const b = document.createElement('div');
+                b.className = 'block';
+                b.innerText = randomLetter();
+                blockPile.appendChild(b);
+            }
+        }
+
+        function showBubble(element, text) {
+            element.innerText = text;
+            element.style.opacity = 1;
+            setTimeout(() => {
+                element.style.opacity = 0;
+            }, 2000);
+        }
+
+        function spawnEnemy() {
+            const el = document.createElement('div');
+            el.className = 'enemy';
+            el.innerText = '👋'; // The grabbing hand
+            
+            // Start from left side (Teacher's side)
+            const startY = Math.random() * (window.innerHeight - 200) + 100;
+            el.style.left = '-50px';
+            el.style.top = startY + 'px';
+            
+            // Target: Center of screen (Block pile)
+            const targetX = window.innerWidth / 2;
+            const targetY = window.innerHeight - 100;
+
+            // Store data
+            const enemy = {
+                el: el,
+                x: -50,
+                y: startY,
+                vx: (Math.random() * 1 + 1) * (1 + (wave * 0.1)), // Speed increases with wave
+                vy: (targetY - startY) / 200 // Slight arc
+            };
+
+            // Click handler
+            el.onmousedown = (e) => {
+                e.stopPropagation();
+                killEnemy(enemy);
+                showBubble(jackBubble, jackQuotes[Math.floor(Math.random() * jackQuotes.length)]);
+            };
+
+            gameStage.appendChild(el);
+            enemies.push(enemy);
+
+            // Teacher speaks occasionally
+            if(Math.random() > 0.7) {
+                showBubble(teacherBubble, teacherQuotes[Math.floor(Math.random() * teacherQuotes.length)]);
+            }
+        }
+
+        function createParticles(x, y) {
+            for(let i=0; i<5; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.innerText = ['💥', '🚫', '💢'][Math.floor(Math.random()*3)];
+                p.style.left = x + 'px';
+                p.style.top = y + 'px';
+                p.style.setProperty('--tx', (Math.random()*100 - 50) + 'px');
+                p.style.setProperty('--ty', (Math.random()*100 - 50) + 'px');
+                gameStage.appendChild(p);
+                setTimeout(() => p.remove(), 1000);
+            }
+        }
+
+        function killEnemy(enemy) {
+            const index = enemies.indexOf(enemy);
+            if (index > -1) {
+                enemies.splice(index, 1);
+                createParticles(enemy.x, enemy.y);
+                enemy.el.remove();
+            }
+        }
+
+        function updateGame(timestamp) {
+            if (!isPlaying) return;
+
+            // Spawning
+            if (timestamp - lastSpawnTime > spawnRate) {
+                spawnEnemy();
+                lastSpawnTime = timestamp;
+                // Increase difficulty
+                if (spawnRate > 500) spawnRate -= 20;
+            }
+
+            // Move Enemies
+            const pileRect = blockPile.getBoundingClientRect();
+            
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                e.x += e.vx;
+                e.y += e.vy * 0.5; // Move towards bottom center
+
+                e.el.style.transform = `translate(${e.x}px, 0)`;
+
+                // Collision Detection with Pile
+                if (e.x > pileRect.left - 50) {
+                    // Steal block
+                    score--;
+                    scoreEl.innerText = score;
+                    renderBlocks();
+                    
+                    // Visual feedback
+                    document.body.classList.add('shake');
+                    setTimeout(()=>document.body.classList.remove('shake'), 500);
+
+                    // Remove enemy
+                    e.el.remove();
+                    enemies.splice(i, 1);
+
+                    if (score <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+
+            // Wave Logic based on time or score? Let's do time roughly
+            if (timestamp % 10000 < 20) {
+                wave++;
+                waveEl.innerText = wave;
+            }
+
+            animationFrameId = requestAnimationFrame(updateGame);
+        }
+
+        function startGame() {
+            score = 10;
+            wave = 1;
+            spawnRate = 2000;
+            enemies.forEach(e => e.el.remove());
+            enemies = [];
+            scoreEl.innerText = score;
+            waveEl.innerText = wave;
+            renderBlocks();
+            
+            overlay.style.display = 'none';
+            isPlaying = true;
+            lastSpawnTime = performance.now();
+            requestAnimationFrame(updateGame);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            cancelAnimationFrame(animationFrameId);
+            overlay.style.display = 'flex';
+            h1.innerText = "PROPERTY SEIZED";
+            document.querySelector('#overlay-screen p').innerHTML = `The state has redistributed all your toys.<br>You survived ${wave} waves.`;
+            startBtn.innerText = "TRY AGAIN";
+        }
+
+        // Initial render
+        renderBlocks();
+
+    </script>
+</body>
+</html>

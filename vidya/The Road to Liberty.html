@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Road to Liberty</title>
+    <style>
+        :root {
+            --skin-color: #d4a373;
+            --skin-shadow: #bc8a5f;
+            --vein-color: rgba(50, 80, 150, 0.3);
+            --sky-color: #87CEEB;
+            --road-color: #333;
+            --grass-color: #4CAF50;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            background: #000;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #87CEEB 50%, #4CAF50 50%);
+            perspective: 800px;
+            /* Increased for less distortion */
+            overflow: hidden;
+        }
+
+        /* --- UI / HUD --- */
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 100;
+        }
+
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 20px;
+            border: 2px solid gold;
+            text-align: center;
+            display: none;
+            z-index: 200;
+            box-shadow: 0 0 20px gold;
+        }
+
+        button {
+            background: gold;
+            border: 2px solid #b8860b;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 16px;
+        }
+
+        /* --- THE ROAD --- */
+        #road-container {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            transform-style: preserve-3d;
+            perspective: 300px;
+            /* Increased for less distortion */
+        }
+
+        #road {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            width: 600px;
+            height: 1000px;
+            /* Long road */
+            background: var(--road-color);
+            transform: translateX(-50%) rotateX(60deg);
+            transform-origin: top center;
+            border-left: 10px solid white;
+            border-right: 10px solid white;
+        }
+
+        .lane-marker {
+            position: absolute;
+            left: 50%;
+            width: 10px;
+            height: 50px;
+            background: yellow;
+            transform: translateX(-50%);
+        }
+
+        /* --- OBJECTS --- */
+        .entity {
+            position: absolute;
+            transform-style: preserve-3d;
+            transform-origin: center bottom;
+            /* Will be positioned by JS */
+        }
+
+        /* Marx / Obstacle */
+        .obstacle {
+            font-size: 60px;
+            text-shadow: 0 5px 5px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Gold / Collectible */
+        .collectible {
+            font-size: 50px;
+            animation: spin 1s infinite linear;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotateY(0deg);
+            }
+
+            to {
+                transform: rotateY(360deg);
+            }
+        }
+
+        /* --- INTERIOR --- */
+        #dashboard {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 250px;
+            background: #1a1a1a;
+            border-top: 5px solid #000;
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+        }
+
+        /* Rearview Mirror */
+        #mirror-container {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 100px;
+            background: #111;
+            border-radius: 0 0 30px 30px;
+            z-index: 60;
+            border: 4px solid #444;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        #mirror-reflection {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #555, #222);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Hoppe in Mirror */
+        .hoppe-face {
+            width: 60px;
+            height: 70px;
+            background: #e0b080;
+            border-radius: 30px;
+            position: relative;
+            box-shadow: inset -2px -2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .hoppe-glasses {
+            position: absolute;
+            top: 25px;
+            width: 50px;
+            height: 10px;
+            left: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .glass-lens {
+            width: 20px;
+            height: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid gold;
+            border-radius: 2px;
+        }
+
+        .police-lights {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(255, 0, 0, 0.2), rgba(0, 0, 255, 0.2));
+            animation: police 0.5s infinite alternate;
+            z-index: 2;
+        }
+
+        @keyframes police {
+            from {
+                opacity: 0.3;
+            }
+
+            to {
+                opacity: 0.8;
+            }
+        }
+
+        /* Hanging Ornament */
+        #ornament {
+            position: absolute;
+            top: 100px;
+            left: 60%;
+            width: 60px;
+            height: 60px;
+            background: radial-gradient(circle, #fff, #eee);
+            border: 2px solid #d32f2f;
+            border-radius: 50%;
+            z-index: 55;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 8px;
+            text-align: center;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3);
+            transform-origin: top center;
+            animation: swing 2s infinite ease-in-out;
+        }
+
+        #ornament::before {
+            content: '';
+            position: absolute;
+            top: -20px;
+            width: 2px;
+            height: 20px;
+            background: #888;
+        }
+
+        @keyframes swing {
+            0% {
+                transform: rotate(5deg);
+            }
+
+            50% {
+                transform: rotate(-5deg);
+            }
+
+            100% {
+                transform: rotate(5deg);
+            }
+        }
+
+        /* --- THE ARM & WHEEL --- */
+        #steering-column {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            bottom: -150px;
+            transition: transform 0.1s;
+        }
+
+        #wheel {
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            border: 20px solid #222;
+            box-shadow: inset 0 0 20px #000, 0 5px 10px rgba(0, 0, 0, 0.5);
+            position: absolute;
+            left: 50px;
+            top: 0;
+            background: transparent;
+        }
+
+        #wheel::before {
+            /* Spoke */
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 20px;
+            background: #222;
+            transform: translateY(-50%);
+        }
+
+        #wheel::after {
+            /* Spoke */
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 20px;
+            height: 50%;
+            background: #222;
+            transform: translateX(-50%);
+        }
+
+        /* THE VEINY ARM */
+        #arm-wrapper {
+            position: absolute;
+            bottom: -50px;
+            right: -50px;
+            width: 600px;
+            height: 300px;
+            pointer-events: none;
+            z-index: 52;
+            transform-origin: bottom right;
+        }
+
+        .arm-muscle {
+            position: absolute;
+            background: radial-gradient(circle at 30% 30%, var(--skin-color), var(--skin-shadow));
+            border-radius: 50px;
+            box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        #forearm {
+            width: 400px;
+            height: 140px;
+            bottom: 50px;
+            right: 50px;
+            transform: rotate(-20deg);
+            border-radius: 20px 100px 100px 40px;
+        }
+
+        #bicep {
+            width: 300px;
+            height: 200px;
+            bottom: -20px;
+            right: -80px;
+            border-radius: 50%;
+        }
+
+        /* Veins */
+        .vein {
+            position: absolute;
+            fill: none;
+            stroke: var(--vein-color);
+            stroke-width: 4;
+            stroke-linecap: round;
+            filter: blur(1px);
+        }
+
+        /* Hand holding phone */
+        #hand {
+            position: absolute;
+            bottom: 120px;
+            left: 20px;
+            /* Relative to arm wrapper */
+            width: 120px;
+            height: 140px;
+            z-index: 53;
+            transform: rotate(-10deg);
+        }
+
+        .finger {
+            position: absolute;
+            height: 25px;
+            background: var(--skin-color);
+            border-radius: 10px;
+            border: 1px solid var(--skin-shadow);
+            right: -10px;
+            z-index: 2;
+        }
+
+        #phone {
+            position: absolute;
+            width: 80px;
+            height: 140px;
+            background: #111;
+            border-radius: 10px;
+            border: 2px solid #444;
+            left: 0;
+            top: 0;
+            z-index: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+
+        #phone-screen {
+            width: 70px;
+            height: 100px;
+            background: #fff;
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Rothbard on Phone */
+        .rothbard-face {
+            width: 50px;
+            height: 60px;
+            background: #f0c090;
+            border-radius: 20px;
+            position: relative;
+        }
+
+        .rothbard-glasses {
+            position: absolute;
+            top: 20px;
+            width: 44px;
+            left: 3px;
+            height: 10px;
+            border-bottom: 2px solid black;
+        }
+
+        .rothbard-glasses::before,
+        .rothbard-glasses::after {
+            content: '';
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border: 2px solid black;
+            border-radius: 50%;
+            top: -5px;
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .rothbard-glasses::before {
+            left: 0;
+        }
+
+        .rothbard-glasses::after {
+            right: 0;
+        }
+
+        .rothbard-bowtie {
+            position: absolute;
+            bottom: -5px;
+            left: 15px;
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 10px solid red;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="game-container">
+
+        <!-- Environment -->
+        <div id="sky"></div>
+        <div id="road-container">
+            <div id="road">
+                <!-- Lanes generated by JS -->
+            </div>
+        </div>
+
+        <!-- HUD -->
+        <div id="hud">
+            Net Worth: $<span id="score">0</span><br>
+            <span style="font-size: 14px; color: #ffeb3b">Avoid Taxes (🚩) | Collect Gold (💰)</span>
+        </div>
+
+        <!-- Rearview Mirror -->
+        <div id="mirror-container">
+            <div id="mirror-reflection">
+                <div class="police-lights"></div>
+                <div class="hoppe-face">
+                    <div class="hoppe-glasses">
+                        <div class="glass-lens"></div>
+                        <div class="glass-lens"></div>
+                    </div>
+                    <div style="position:absolute; bottom:15px; left:20px; width:20px; height:2px; background:#533;">
+                    </div> <!-- Mouth -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Ornament -->
+        <div id="ornament">
+            <span>I ❤️<br>Property</span>
+        </div>
+
+        <!-- Dashboard / Cockpit -->
+        <div id="dashboard">
+
+            <!-- Steering Wheel -->
+            <div id="steering-column">
+                <div id="wheel"></div>
+            </div>
+
+            <!-- The Veiny Arm -->
+            <div id="arm-wrapper">
+                <div id="bicep" class="arm-muscle"></div>
+                <div id="forearm" class="arm-muscle">
+                    <!-- SVG Veins -->
+                    <svg width="100%" height="100%" style="position:absolute; border-radius:inherit;">
+                        <path d="M 50 80 Q 150 60 300 90" class="vein" />
+                        <path d="M 60 90 Q 200 110 350 70" class="vein" />
+                        <path d="M 100 50 Q 200 40 320 60" class="vein" />
+                        <path d="M 250 80 Q 300 100 380 80" class="vein" />
+                    </svg>
+                </div>
+
+                <!-- Hand & Phone -->
+                <div id="hand">
+                    <div class="finger" style="top:20px; width:90px;"></div>
+                    <div class="finger" style="top:50px; width:95px;"></div>
+                    <div class="finger" style="top:80px; width:90px;"></div>
+                    <div class="finger" style="top:110px; width:80px;"></div>
+
+                    <div id="phone">
+                        <div style="width:100%; height:10px; background:#222; margin-bottom:2px;"></div>
+                        <div id="phone-screen">
+                            <div class="rothbard-face">
+                                <div class="rothbard-glasses"></div>
+                                <div class="rothbard-bowtie"></div>
+                                <div
+                                    style="position:absolute; bottom:15px; left:15px; width:20px; height:2px; background:#000; transform: rotate(-5deg);">
+                                </div> <!-- Smile -->
+                            </div>
+                        </div>
+                        <div
+                            style="width:10px; height:10px; background:#333; border-radius:50%; margin-top:5px; border:1px solid #555;">
+                        </div>
+                    </div>
+
+                    <!-- Thumb overlay -->
+                    <div class="finger" style="top:60px; left:-20px; width:60px; transform: rotate(45deg); z-index:5;">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="instructions">Use Mouse/Touch to Steer</div>
+
+        <div id="game-over">
+            <h1>TAXED!</h1>
+            <p>The state seized your assets.</p>
+            <p>Final Net Worth: $<span id="final-score">0</span></p>
+            <button onclick="restartGame()">Evade Again</button>
+        </div>
+
+    </div>
+
+    <script>
+        // Game State
+        const state = {
+            playing: true,
+            score: 0,
+            position: 0, // -1 (left) to 1 (right)
+            obstacles: [],
+            lastFrame: 0,
+            spawnTimer: 0
+        };
+
+        // DOM Elements
+        const road = document.getElementById('road');
+        const scoreEl = document.getElementById('score');
+        const finalScoreEl = document.getElementById('final-score');
+        const gameOverEl = document.getElementById('game-over');
+        const wheel = document.getElementById('steering-column');
+        const arm = document.getElementById('arm-wrapper');
+        const gameContainer = document.getElementById('game-container');
+
+        // Input Handling
+        let targetPos = 0;
+
+        gameContainer.addEventListener('mousemove', (e) => {
+            if (!state.playing) return;
+            const x = e.clientX / window.innerWidth; // 0 to 1
+            targetPos = (x - 0.5) * 2.5; // -1.25 to 1.25
+            // Clamp
+            if (targetPos < -1) targetPos = -1;
+            if (targetPos > 1) targetPos = 1;
+        });
+
+        gameContainer.addEventListener('touchmove', (e) => {
+            if (!state.playing) return;
+            const x = e.touches[0].clientX / window.innerWidth;
+            targetPos = (x - 0.5) * 2.5;
+            if (targetPos < -1) targetPos = -1;
+            if (targetPos > 1) targetPos = 1;
+        });
+
+        // Game Loop
+        function loop(timestamp) {
+            if (!state.playing) return;
+
+            const delta = timestamp - state.lastFrame;
+            state.lastFrame = timestamp;
+
+            // Smooth steering
+            state.position += (targetPos - state.position) * 0.1;
+
+            // Update Visuals
+            updateVisuals();
+
+            // Spawn Entities
+            state.spawnTimer += delta;
+            if (state.spawnTimer > 1000 - (state.score * 2)) { // Gets harder
+                spawnEntity();
+                state.spawnTimer = 0;
+            }
+
+            // Move Entities
+            moveEntities();
+
+            // Background movement (fake road scrolling)
+            // We simulate this by moving markers, but for simplicity in this 3D setup,
+            // we just move the objects towards the camera.
+
+            requestAnimationFrame(loop);
+        }
+
+        function updateVisuals() {
+            // Rotate wheel
+            const rot = state.position * 90;
+            wheel.style.transform = `translateX(${state.position * 20}px) rotate(${rot}deg)`;
+
+            // Move Arm slightly to simulate muscle tension
+            const armShift = state.position * 10;
+            arm.style.transform = `translateX(${armShift}px) rotate(${state.position * 5}deg)`;
+
+            // Move Road to simulate lateral movement
+            // In a real 3D game we move the camera, here we shift the road container
+            road.style.transform = `translateX(calc(-50% + ${-state.position * 200}px)) rotateX(60deg)`;
+        }
+
+        function spawnEntity() {
+            const type = Math.random() > 0.3 ? 'tax' : 'gold';
+            const lane = (Math.random() * 1.8) - 0.9; // -0.9 to 0.9, keeps entities off the very edge
+
+            const el = document.createElement('div');
+            el.classList.add('entity');
+
+            if (type === 'tax') {
+                el.classList.add('obstacle');
+                el.innerHTML = Math.random() > 0.5 ? '🚩' : '🎅'; // Red flag or Marx-like Santa
+                // Sometimes spawn a police car
+                if (Math.random() > 0.8) el.innerHTML = '🚓';
+            } else {
+                el.classList.add('collectible');
+                el.innerHTML = '💰';
+            }
+
+            road.appendChild(el);
+
+            state.obstacles.push({
+                el: el,
+                x: lane,
+                z: -1000, // Starts far away at the top of the road
+                type: type
+            });
+        }
+
+        function moveEntities() {
+            // Speed increases with score
+            const speed = 10 + (state.score * 0.5);
+
+            for (let i = state.obstacles.length - 1; i >= 0; i--) {
+                const obs = state.obstacles[i];
+                obs.z += speed;
+
+                // X positioning
+                // The road is 600px wide. x is -1 to 1.
+                // 0 is center.
+                const xPos = obs.x * 250;
+
+                // We use a true 3D transform. The `perspective` on the parent container
+                // will handle the scaling and Y-positioning automatically.
+                // z goes from -1000 (far) to 0 (near).
+                obs.el.style.transform = `translate3d(${xPos}px, 0, ${obs.z}px)`;
+                obs.el.style.zIndex = Math.floor(obs.z + 1000);
+
+                // Collision Detection
+                // Check for collision when the object is near the bottom of the screen (close to the player)
+                // This happens as z approaches 0.
+                if (obs.z > -150 && obs.z < 0) {
+                    // Check lateral distance
+                    const dist = Math.abs(obs.x - state.position);
+                    if (dist < 0.3) { // Hit
+                        if (obs.type === 'tax') {
+                            gameOver();
+                        } else {
+                            if (!obs.collected) collect(obs, i);
+                        }
+                    }
+                }
+
+                // Cleanup
+                if (obs.z > 0) {
+                    obs.el.remove();
+                    state.obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        function collect(obs, index) {
+            obs.collected = true; // Prevent double collection
+            state.score += 100;
+            scoreEl.innerText = state.score;
+            obs.el.remove();
+            state.obstacles.splice(index, 1);
+
+            // Visual feedback
+            const flash = document.createElement('div');
+            flash.style.position = 'absolute';
+            flash.style.top = '0';
+            flash.style.left = '0';
+            flash.style.width = '100%';
+            flash.style.height = '100%';
+            flash.style.background = 'rgba(255, 215, 0, 0.3)';
+            flash.style.pointerEvents = 'none';
+            document.body.appendChild(flash);
+            setTimeout(() => flash.remove(), 100);
+        }
+
+        function gameOver() {
+            state.playing = false;
+            finalScoreEl.innerText = state.score;
+            gameOverEl.style.display = 'block';
+
+            // Shake effect
+            gameContainer.style.animation = 'shake 0.5s';
+            setTimeout(() => gameContainer.style.animation = '', 500);
+        }
+
+        function restartGame() {
+            state.score = 0;
+            state.obstacles.forEach(o => o.el.remove());
+            state.obstacles = [];
+            scoreEl.innerText = '0';
+            gameOverEl.style.display = 'none';
+            state.playing = true;
+            state.lastFrame = performance.now();
+            requestAnimationFrame(loop);
+        }
+
+        // Add shake animation
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes shake {
+                0% { transform: translate(1px, 1px) rotate(0deg); }
+                10% { transform: translate(-1px, -2px) rotate(-1deg); }
+                20% { transform: translate(-3px, 0px) rotate(1deg); }
+                30% { transform: translate(3px, 2px) rotate(0deg); }
+                40% { transform: translate(1px, -1px) rotate(1deg); }
+                50% { transform: translate(-1px, 2px) rotate(-1deg); }
+                60% { transform: translate(-3px, 1px) rotate(0deg); }
+                70% { transform: translate(3px, 1px) rotate(-1deg); }
+                80% { transform: translate(-1px, -1px) rotate(1deg); }
+                90% { transform: translate(1px, 2px) rotate(0deg); }
+                100% { transform: translate(1px, -2px) rotate(-1deg); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Start
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+
+</html>
