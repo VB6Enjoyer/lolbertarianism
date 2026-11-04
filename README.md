@@ -8,7 +8,8 @@ A free-market arcade of libertarian in-jokes, playable at
 ```bash
 npm install
 npm run dev       # http://localhost:5173/lolbertarianism/
-npm run build     # type-check + production build into dist/
+npm test          # unit tests (Vitest)
+npm run build     # type-check + tests + production build into dist/
 npm run preview   # serve dist/ locally
 npm run images -- public/vidya/img/new.png   # convert art to WebP next to the original
 ```
@@ -19,11 +20,13 @@ npm run images -- public/vidya/img/new.png   # convert art to WebP next to the o
 - `src/games.ts`: the list of games. It drives the homepage cards, the build
   inputs and the redirects from old URLs.
 - `vidya/<slug>.html`: one page per game (markup and CSS).
-- `src/games/<slug>/main.js`: each game's code, loaded as an ES module.
+- `src/games/<slug>/main.js` (or `main.ts`): each game's code, loaded as an ES module.
+  Ancapistan Tycoon is fully TypeScript: content and balance in `data.ts`,
+  rules in `logic.ts` (tested), saves in `save.ts`.
 - `src/shared/`: code shared by all games:
   - `arcade-button.ts`: the back-to-arcade button.
   - `effects.ts`: `spawnText` for floaters, particles and hit numbers; `pick`.
-  - `format.ts`: `formatNumber` and `formatCompact`.
+  - `format.ts`: `formatNumber`, `formatMoney` ("1.235 billion") and `formatCompact`.
   - `audio.ts`: `playTone` for synthesized sound effects.
   - `storage.ts`: `createSaveSlot` for versioned, namespaced saves.
 - `src/styles/tailwind.css`: Tailwind (v3) for the pages that use utility

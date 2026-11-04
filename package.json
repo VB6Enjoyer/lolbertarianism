@@ -4,11 +4,12 @@
   "description": "A free-market arcade of libertarian in-jokes",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vitest run && vite build",
     "preview": "vite preview",
     "typecheck": "tsc",
     "prepare": "husky",
-    "images": "node scripts/optimize-images.mjs"
+    "images": "node scripts/optimize-images.mjs",
+    "test": "vitest run"
   },
   "type": "module",
   "devDependencies": {
@@ -19,7 +20,8 @@
     "sharp": "^0.35.5",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   },
   "private": true
 }
