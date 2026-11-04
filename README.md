@@ -10,6 +10,7 @@ npm install
 npm run dev       # http://localhost:5173/lolbertarianism/
 npm run build     # type-check + production build into dist/
 npm run preview   # serve dist/ locally
+npm run images -- public/vidya/img/new.png   # convert art to WebP next to the original
 ```
 
 ## Layout
@@ -25,7 +26,10 @@ npm run preview   # serve dist/ locally
   - `format.ts`: `formatNumber` and `formatCompact`.
   - `audio.ts`: `playTone` for synthesized sound effects.
   - `storage.ts`: `createSaveSlot` for versioned, namespaced saves.
+- `src/styles/tailwind.css`: Tailwind (v3) for the pages that use utility
+  classes; which files it scans is set in `tailwind.config.js`.
 - `public/`: static files copied as-is (game images, thumbnails, favicon).
+  Images are WebP; convert new ones with `npm run images`, then delete the original.
 
 ## Adding a game
 

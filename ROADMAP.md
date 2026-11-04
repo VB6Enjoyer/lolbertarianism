@@ -34,12 +34,19 @@ Noticed along the way, left alone for now:
   `heldBook` (Eminem's Human Action), `enemySpeed` and `targetX` (Kindergarten).
   Clean up when porting each game to TS.
 
-## Phase 3: Assets
+## Phase 3: Assets ✅
 
-- Optimize `public/vidya/img/liberland.svg` (~1 MB) with SVGO.
-- Convert portrait PNGs to WebP (`bohmbawerk.png` alone is ~640 KB).
-- Replace the Tailwind CDN script (Basic Economics Trainer, Eminem's Human
-  Action) with the Tailwind Vite plugin.
+- All 33 PNGs converted to WebP at their original dimensions (quality 90,
+  full-quality alpha; lossless where that came out smaller): 3.3 MB → ~440 KB.
+- `liberland.svg` (~1 MB; SVGO only got it to ~550 KB) rasterized to a
+  480 px-wide WebP (4 KB). It's shown as a 60 px sticker, so it looks the same.
+  The SVG is in git history if a bigger version is ever needed.
+- `npm run images -- <files>` converts new art the same way (see `scripts/optimize-images.mjs`).
+- Tailwind CDN script replaced with a build-time stylesheet
+  (`src/styles/tailwind.css`, `tailwind.config.js`). It uses Tailwind v3, the
+  same engine the CDN ran: v4 changes the default palette and preflight, which
+  would have shifted colors. Screenshots matched the CDN version pixel for pixel.
+  Move to v4 when porting those two games, if wanted.
 
 ## Phase 4: Ancapistan Tycoon
 
