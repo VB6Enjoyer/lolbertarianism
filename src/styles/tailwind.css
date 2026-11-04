@@ -1,0 +1,4 @@
+/* Tailwind v3, same engine the old cdn.tailwindcss.com script ran, so the pages look identical. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
