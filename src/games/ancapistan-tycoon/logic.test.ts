@@ -1,0 +1,207 @@
+import { describe, expect, it } from 'vitest';
+import { ACHIEVEMENTS, BALANCE, PERKS, UPGRADES } from './data.ts';
+import {
+  buyPerk,
+  buyUpgrade,
+  citiesFor,
+  click,
+  derive,
+  earn,
+  earningsForCities,
+  newState,
+  offlineEarnings,
+  pendingCities,
+  secede,
+  unlockAchievements,
+  upgradeCost,
+} from './logic.ts';
+import { migrateV1, normalize, spentOn } from './save.ts';
+
+const upgrade = (id: number) => UPGRADES.find((u) => u.id === id)!;
+const perk = (id: string) => PERKS.find((p) => p.id === id)!;
+
+describe('upgrade costs', () => {
+  it('grow 15% per copy, rounded up, like the original game', () => {
+    expect(upgradeCost(upgrade(1), 0)).toBe(15);
+    expect(upgradeCost(upgrade(1), 1)).toBe(Math.ceil(15 * 1.15));
+    expect(upgradeCost(upgrade(1), 10)).toBe(Math.ceil(15 * 1.15 ** 10));
+  });
+
+  it('buying deducts the price and needs enough cash', () => {
+    const s = newState();
+    s.score = 20;
+    expect(buyUpgrade(s, upgrade(1))).toBe(true);
+    expect(s.score).toBe(5);
+    expect(s.owned[1]).toBe(1);
+    expect(buyUpgrade(s, upgrade(1))).toBe(false);
+    expect(s.owned[1]).toBe(1);
+  });
+
+  it('perks can only be bought once', () => {
+    const s = newState();
+    s.score = 1e9;
+    expect(buyPerk(s, perk('su2'))).toBe(true);
+    expect(buyPerk(s, perk('su2'))).toBe(false);
+    expect(s.score).toBe(1e9 - perk('su2').cost);
+  });
+});
+
+describe('derived stats match the original formulas', () => {
+  it('starts at $1 per click and no income', () => {
+    const d = derive(newState());
+    expect(d.clickAmount).toBe(1);
+    expect(d.incomePerSec).toBe(0);
+  });
+
+  it('adds click bonuses and passive income per copy owned', () => {
+    const s = newState();
+    s.owned = { 1: 3, 2: 4, 4: 1 }; // books, lemonade, raw milk
+    const d = derive(s);
+    expect(d.clickValue).toBe(1 + 3);
+    expect(d.income).toBe(4 + 10);
+  });
+
+  it('applies perks: click multiplier, passive multiplier, income-to-click, crit, evasion', () => {
+    const s = newState();
+    s.owned = { 1: 9, 2: 100 }; // click value 10, income 100
+    s.perks = ['su1', 'su2', 'su3', 'su4', 'su5', 'su6'];
+    const d = derive(s);
+    expect(d.critChance).toBeCloseTo(0.15);
+    expect(d.raidEvasionChance).toBe(0.5);
+    expect(d.incomePerSec).toBe(100 * 1.5);
+    // (clickValue + income × 1%) × 2, as in the original clickMain
+    expect(d.clickAmount).toBeCloseTo((10 + 100 * 0.01) * 2);
+  });
+
+  it('cities and achievements multiply everything', () => {
+    const s = newState();
+    s.owned = { 2: 10 };
+    s.cities = 3;
+    s.achievements = ['first-click', 'earn-1k'];
+    const expected = (1 + 3 * BALANCE.secession.bonusPerCity) * (1 + 2 * BALANCE.bonusPerAchievement);
+    expect(derive(s).globalMultiplier).toBeCloseTo(expected);
+    expect(derive(s).incomePerSec).toBeCloseTo(10 * expected);
+  });
+});
+
+describe('clicking', () => {
+  it('crits pay 5x when the roll is under the crit chance', () => {
+    const s = newState();
+    s.perks = ['su1']; // 5% crit
+    expect(click(s, 0.5)).toEqual({ amount: 1, crit: false });
+    expect(click(s, 0.01)).toEqual({ amount: 5, crit: true });
+    expect(s.stats.clicks).toBe(2);
+    expect(s.stats.crits).toBe(1);
+    expect(s.allTimeEarnings).toBe(6);
+  });
+});
+
+describe('secession', () => {
+  it('cities grow with the square root of all-time earnings', () => {
+    expect(citiesFor(999_999)).toBe(0);
+    expect(citiesFor(1e6)).toBe(1);
+    expect(citiesFor(100e6)).toBe(10);
+    expect(earningsForCities(10)).toBe(100e6);
+  });
+
+  it("can't secede before earning a city", () => {
+    const s = newState();
+    earn(s, 500_000);
+    expect(secede(s)).toBe(0);
+    expect(s.score).toBe(500_000);
+  });
+
+  it('resets the run but keeps cities, achievements, lifetime earnings and stats', () => {
+    const s = newState();
+    earn(s, 4e6);
+    s.owned = { 1: 5 };
+    s.perks = ['su1'];
+    s.achievements = ['first-click'];
+    s.stats.clicks = 42;
+    expect(pendingCities(s)).toBe(2);
+
+    expect(secede(s)).toBe(2);
+    expect(s).toMatchObject({ cities: 2, score: 0, runEarnings: 0, owned: {}, perks: [], allTimeEarnings: 4e6 });
+    expect(s.achievements).toEqual(['first-click']);
+    expect(s.stats).toMatchObject({ clicks: 42, secessions: 1 });
+
+    // The next city needs 9M all-time, not another 1M.
+    expect(pendingCities(s)).toBe(0);
+    earn(s, 5e6);
+    expect(pendingCities(s)).toBe(1);
+  });
+});
+
+describe('offline earnings', () => {
+  const withIncome = () => {
+    const s = newState();
+    s.owned = { 2: 10 }; // $10/s
+    s.lastSaved = 1_000_000;
+    return s;
+  };
+
+  it('pays the offline rate for time away', () => {
+    const s = withIncome();
+    const { seconds, amount } = offlineEarnings(s, s.lastSaved + 3600 * 1000);
+    expect(seconds).toBe(3600);
+    expect(amount).toBe(10 * 3600 * BALANCE.offline.rate);
+  });
+
+  it('caps the time away', () => {
+    const s = withIncome();
+    expect(offlineEarnings(s, s.lastSaved + 48 * 3600 * 1000).seconds).toBe(BALANCE.offline.maxSeconds);
+  });
+
+  it('ignores short absences and brand-new games', () => {
+    const s = withIncome();
+    expect(offlineEarnings(s, s.lastSaved + 30 * 1000).amount).toBe(0);
+    expect(offlineEarnings(newState(), Date.now()).amount).toBe(0);
+  });
+});
+
+describe('achievements', () => {
+  it('unlock once and are reported only when new', () => {
+    const s = newState();
+    click(s, 0.9);
+    expect(unlockAchievements(s).map((a) => a.id)).toEqual(['first-click']);
+    expect(unlockAchievements(s)).toEqual([]);
+  });
+
+  it('all have unique ids', () => {
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+  });
+});
+
+describe('saves', () => {
+  it('migrates v1 saves and credits what was already spent', () => {
+    const state = migrateV1({
+      score: 1000,
+      upgrades: [{ id: 1, owned: 2 }, { id: 2, owned: 0 }, { id: 999, owned: 5 }],
+      specialUpgrades: [{ id: 'su1', purchased: true }, { id: 'su2', purchased: false }],
+    });
+    expect(state.score).toBe(1000);
+    expect(state.owned).toEqual({ 1: 2 });
+    expect(state.perks).toEqual(['su1']);
+    const spent = 15 + Math.ceil(15 * 1.15) + perk('su1').cost;
+    expect(spentOn(state.owned, state.perks)).toBe(spent);
+    expect(state.allTimeEarnings).toBe(1000 + spent);
+  });
+
+  it('normalizes damaged saves instead of crashing', () => {
+    const state = normalize({
+      score: -5,
+      cities: Number.NaN,
+      owned: { 1: 3, 999: 4 } as Record<number, number>,
+      perks: ['su1', 'nope'],
+      achievements: ['first-click', 'made-up'],
+      stats: { clicks: 7 } as never,
+    });
+    expect(state.score).toBe(0);
+    expect(state.cities).toBe(0);
+    expect(state.owned).toEqual({ 1: 3 });
+    expect(state.perks).toEqual(['su1']);
+    expect(state.achievements).toEqual(['first-click']);
+    expect(state.stats.clicks).toBe(7);
+    expect(state.stats.crits).toBe(0);
+  });
+});

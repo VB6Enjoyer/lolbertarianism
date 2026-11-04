@@ -1,0 +1,615 @@
+:root {
+    --ancap-yellow: #F7D02C;
+    --ancap-black: #1a1a1a;
+    --anime-pink: #FFB7C5;
+    --bg-color: #fdfdfd;
+}
+
+body {
+    font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+    background-color: var(--bg-color);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Draggable Sticker Background */
+#sticker-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    overflow: hidden;
+    pointer-events: none;
+    /* Allow clicks to pass through to the UI below */
+}
+
+.sticker {
+    position: absolute;
+    cursor: grab;
+    transition: transform 0.1s, top 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    font-weight: bold;
+    text-align: center;
+    filter: drop-shadow(2px 2px 0px rgba(0, 0, 0, 0.1));
+    pointer-events: auto;
+    /* Make individual stickers clickable/draggable */
+}
+
+.sticker:active {
+    cursor: grabbing;
+    transform: scale(1.1);
+}
+
+.sticker.text {
+    background: white;
+    padding: 5px 10px;
+    border: 2px solid black;
+    font-size: 14px;
+    max-width: 150px;
+}
+
+.sticker.img-rep {
+    font-size: 40px;
+}
+
+.sticker.image {
+    width: 60px;
+    padding: 3px;
+    filter: none !important;
+}
+
+.sticker.image img {
+    width: 100%;
+    height: auto;
+    display: block;
+    pointer-events: none;
+}
+
+/* The Game UI */
+#game-ui {
+    z-index: 5;
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+    pointer-events: none;
+    /* Let clicks pass through to stickers where empty */
+}
+
+/* Left Panel: The Clicker */
+.panel {
+    pointer-events: auto;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(5px);
+    border: 4px solid var(--ancap-black);
+    margin: 20px;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 8px 8px 0px var(--ancap-yellow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#clicker-panel {
+    flex: 1;
+    justify-content: center;
+    min-width: 300px;
+}
+
+#shop-panel {
+    flex: 1;
+    overflow-y: auto;
+    min-width: 300px;
+}
+
+h1 {
+    font-size: 2rem;
+    margin: 0;
+    text-transform: uppercase;
+    color: var(--ancap-black);
+    text-shadow: 2px 2px 0px var(--ancap-yellow);
+}
+
+.score-display {
+    font-size: 2.5rem;
+    margin: 20px 0;
+    color: green;
+    font-family: monospace;
+    font-weight: bold;
+}
+
+.sub-score {
+    font-size: 1rem;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+/* The Big Button */
+#main-btn {
+    width: 200px;
+    height: 200px;
+    background: linear-gradient(135deg, var(--ancap-yellow) 50%, var(--ancap-black) 50%);
+    border-radius: 50%;
+    border: 5px solid black;
+    font-size: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    position: relative;
+    overflow: hidden;
+}
+
+#main-btn:active {
+    transform: scale(0.95);
+}
+
+#main-btn::after {
+    content: "DONT TREAD";
+    position: absolute;
+    bottom: 20px;
+    font-size: 16px;
+    color: white;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+}
+
+/* Shop Items */
+.shop-item {
+    width: 100%;
+    background: white;
+    border: 2px solid black;
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.2s;
+}
+
+.shop-item:hover {
+    background: #fffbe6;
+}
+
+.shop-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #eee;
+}
+
+#special-upgrades-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 2px dashed var(--ancap-black);
+}
+
+.special-upgrade {
+    flex: 1;
+    background: #fff;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.special-upgrade:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+}
+
+.special-upgrade.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: #ddd;
+    transform: none;
+    box-shadow: none;
+}
+
+.special-upgrade-icon {
+    font-size: 30px;
+}
+
+.special-upgrade-name {
+    font-size: 0.8em;
+    font-weight: bold;
+    margin: 5px 0;
+}
+
+.special-upgrade-cost {
+    font-size: 0.7em;
+    color: #d35400;
+}
+
+.item-icon {
+    font-size: 24px;
+    margin-right: 10px;
+}
+
+.item-icon img {
+    height: 40px;
+    /* Match font size */
+    width: auto;
+    vertical-align: middle;
+    /* Align with text */
+}
+
+.item-info {
+    flex-grow: 1;
+    text-align: left;
+}
+
+.item-name {
+    font-weight: bold;
+    display: block;
+}
+
+.item-cost {
+    color: #d35400;
+    font-size: 0.9em;
+}
+
+/* Floating Text Animation */
+.floater {
+    position: absolute;
+    font-weight: bold;
+    pointer-events: none;
+    animation: floatUp 1s ease-out forwards;
+    z-index: 100;
+    text-shadow: 1px 1px 0 #fff;
+}
+
+@keyframes floatUp {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-50px) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Tax Raid Event */
+#raid-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 0, 0, 0.5);
+    z-index: 999;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    animation: flash 0.5s infinite;
+}
+
+@keyframes flash {
+    0% {
+        background: rgba(255, 0, 0, 0.3);
+    }
+
+    50% {
+        background: rgba(255, 0, 0, 0.6);
+    }
+
+    100% {
+        background: rgba(255, 0, 0, 0.3);
+    }
+}
+
+#raid-box {
+    background: white;
+    padding: 30px;
+    border: 5px solid red;
+    text-align: center;
+    border-radius: 10px;
+    box-shadow: 0 0 20px red;
+}
+
+.btn-evade {
+    background: var(--ancap-black);
+    color: var(--ancap-yellow);
+    border: none;
+    padding: 15px 30px;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 20px;
+    border-radius: 5px;
+}
+
+.btn-evade:hover {
+    transform: scale(1.05);
+}
+
+.btn-reshuffle {
+    background: var(--ancap-black);
+    color: var(--ancap-yellow);
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 20px;
+    border-radius: 5px;
+    font-family: inherit;
+}
+
+.btn-reshuffle:hover {
+    transform: scale(1.05);
+}
+
+/* CSS Shapes for Flags */
+.flag-ancap {
+    width: 70px;
+    height: 50px;
+    background: linear-gradient(135deg, var(--ancap-yellow) 50%, var(--ancap-black) 50%);
+    border: 1px solid black;
+    display: inline-block;
+}
+
+.flag-eu-cross {
+    width: 60px;
+    height: 40px;
+    background: #003399;
+    position: relative;
+    border: 1px solid black;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+}
+
+.flag-eu-cross::after {
+    content: "❌";
+    position: absolute;
+    font-size: 25px;
+    color: red;
+    opacity: 0.7;
+}
+
+/* Responsive */
+@media (max-width: 800px) {
+    #game-ui {
+        flex-direction: column;
+    }
+
+    .panel {
+        margin: 10px;
+        padding: 10px;
+        flex: 1;
+    }
+
+    #main-btn {
+        width: 150px;
+        height: 150px;
+        font-size: 60px;
+    }
+}
+
+/* ===================== Phase 4 additions ===================== */
+
+.sticker {
+    touch-action: none;
+    /* lets stickers be dragged on touch screens */
+}
+
+#main-btn:focus-visible {
+    outline: 4px solid var(--ancap-black);
+    outline-offset: 4px;
+}
+
+.prestige-line {
+    font-size: 0.9rem;
+    margin: -10px 0 16px;
+    padding: 4px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: var(--ancap-yellow);
+    font-weight: bold;
+}
+
+.btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0 8px;
+}
+
+.btn-secede.locked {
+    opacity: 0.5;
+}
+
+.special-upgrade.owned {
+    opacity: 1;
+    background: #fff8d6;
+    border-style: dashed;
+}
+
+.special-upgrade.owned .special-upgrade-cost {
+    color: green;
+    font-weight: bold;
+}
+
+/* Dialogs */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.modal[hidden] {
+    display: none;
+}
+
+.modal-box {
+    width: min(560px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    background: white;
+    border: 4px solid var(--ancap-black);
+    border-radius: 15px;
+    box-shadow: 8px 8px 0 var(--ancap-yellow);
+    padding: 20px 24px;
+    text-align: center;
+}
+
+.modal-box h2 {
+    margin-top: 0;
+    text-transform: uppercase;
+    text-shadow: 2px 2px 0 var(--ancap-yellow);
+}
+
+.modal-box .big-number {
+    font-family: monospace;
+    font-size: 2rem;
+    font-weight: bold;
+    color: green;
+    margin: 10px 0;
+}
+
+.modal-box .fine-print {
+    font-size: 0.85em;
+    color: #666;
+}
+
+.modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0 10px;
+}
+
+.modal-actions .btn-reshuffle.secondary {
+    background: white;
+    color: var(--ancap-black);
+    border: 2px solid var(--ancap-black);
+}
+
+/* Achievements grid */
+.achievement-summary {
+    margin: 0 0 12px;
+    font-weight: bold;
+}
+
+.achievement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    text-align: left;
+}
+
+.achievement {
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #fffbe6;
+}
+
+.achievement.locked {
+    background: #eee;
+    opacity: 0.55;
+}
+
+.achievement-icon {
+    font-size: 24px;
+}
+
+.achievement-name {
+    display: block;
+    font-weight: bold;
+    font-size: 0.85em;
+    margin: 2px 0;
+}
+
+.achievement-desc {
+    display: block;
+    font-size: 0.75em;
+    color: #444;
+}
+
+.achievement a {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #d35400;
+}
+
+/* Achievement toasts */
+.toasts {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--ancap-black);
+    color: var(--ancap-yellow);
+    border: 2px solid var(--ancap-yellow);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-weight: bold;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25);
+    animation: toastIn 0.3s ease-out, toastOut 0.4s ease-in 3.6s forwards;
+    width: max-content;
+    max-width: calc(100vw - 24px);
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.toast small {
+    display: block;
+    color: #fff;
+    font-weight: normal;
+}
+
+@keyframes toastIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+}
+
+@keyframes toastOut {
+    to {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+}
+
+@media (max-width: 800px) {
+    .btn-row .btn-reshuffle {
+        margin-top: 10px;
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+}

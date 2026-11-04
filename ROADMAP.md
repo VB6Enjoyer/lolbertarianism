@@ -48,13 +48,31 @@ Noticed along the way, left alone for now:
   would have shifted colors. Screenshots matched the CDN version pixel for pixel.
   Move to v4 when porting those two games, if wanted.
 
-## Phase 4: Ancapistan Tycoon
+## Phase 4: Ancapistan Tycoon ✅
 
-- Port to TypeScript with balance numbers in a data file.
-- Prestige as "Secession" / "Exit": reset to found a new free private city for a
-  permanent multiplier.
-- Offline earnings and achievements.
-- Consider folding JUST GETTING STARTED 😈 in as an unlockable mini-game.
+- Ported to TypeScript in `src/games/ancapistan-tycoon/`:
+  - `data.ts`: upgrades, perks, stickers, phrases, achievements and every
+    balance number (`BALANCE`).
+  - `logic.ts`: pure game rules, unit-tested in `logic.test.ts` (`npm test`).
+  - `save.ts`: save format v2 with migration from v0/v1 saves.
+  - `stickers.ts`, `main.ts`, `style.css`: the page.
+- **Secession** (prestige): once all-time earnings reach $1M, secede to found Free
+  Private Cities, each giving +10% to all income forever. Total cities =
+  floor(√(all-time earnings / $1M)), so city #2 needs $4M, #10 needs $100M.
+  Old saves are credited with what they'd already spent.
+- **Offline earnings**: 50% of passive income while away, up to 8 hours, with a
+  "Welcome back!" popup.
+- **Achievements**: 26 of them, +1% income each, with toasts and a 🏆 panel.
+- **JUST GETTING STARTED 😈**: kept as its own game rather than merged in.
+  The "NAH, WE'RE JUST GETTING STARTED" achievement (secede 3 times) unlocks a link to it.
+- Fixes: the score shows right away on load; stickers can be dragged on touch
+  screens; reshuffling no longer piles up event listeners; owned perks are
+  marked "✔ Owned"; amounts over a billion read "1.235 billion".
+
+Ideas for later:
+- Spend cities on secession-only perks (a second prestige shop).
+- More upgrades past "Privatize solar system" for late-game runs.
+- Sound effects with `playTone` (clicks, purchases, raid siren).
 
 ## Phase 5: The rest, one at a time
 
