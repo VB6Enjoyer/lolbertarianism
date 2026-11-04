@@ -12,13 +12,27 @@ not the bits.
 - Shared "back to the arcade" button on every game.
 - GitHub Actions workflow deploying `dist/` to GitHub Pages.
 
-## Phase 2: Shared toolkit
+## Phase 2: Shared toolkit ✅
 
-- Extract repeated helpers into `src/shared/`: number formatting, floating text
-  (`createFloater` / `spawnFloater`), particles, sound, game-over/restart screens.
-- Save helper with a schema version and per-game key prefix. localStorage is
-  shared across everything on `vb6enjoyer.github.io`, so keys must be namespaced.
-  Keep reading `ancapTycoonSave` so existing saves migrate.
+- Each game's script moved out of its HTML into `src/games/<slug>/main.js`
+  (an ES module). Functions used by inline `onclick=""` attributes are exposed
+  on `window` at the bottom of each file.
+- `src/shared/effects.ts`: `spawnText` (floaters, particles, explosions, hit
+  numbers) and `pick`.
+- `src/shared/format.ts`: `formatNumber` (locale separators) and `formatCompact` (1.2k / 3.40M).
+- `src/shared/audio.ts`: shared AudioContext and `playTone` for synthesized sound effects.
+- `src/shared/storage.ts`: `createSaveSlot` with a schema version and keys
+  namespaced as `lolbertarianism:<game>`. The Tycoon now saves there and imports
+  old `ancapTycoonSave` saves automatically (the old key is left in place).
+- Not shared on purpose: game-over/restart screens. Each one is its own
+  markup and jokes, and the only common logic is showing/hiding an element.
+
+Noticed along the way, left alone for now:
+- Tycoon shows `$0` for about a second after loading a save, until the first tick
+  (`updateUI()` isn't called on load). Fix in phase 4.
+- Unused variables: `raidTimer` (Tycoon), `isTyping` (Basic Economics Trainer),
+  `heldBook` (Eminem's Human Action), `enemySpeed` and `targetX` (Kindergarten).
+  Clean up when porting each game to TS.
 
 ## Phase 3: Assets
 
