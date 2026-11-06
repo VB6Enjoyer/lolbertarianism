@@ -41,6 +41,7 @@ import {
   raidsBlocked,
   secede,
   stickerCost,
+  tick,
   unlockAchievements,
   type BuyAmount,
   type GameState,
@@ -48,6 +49,7 @@ import {
 import { pickHeadline, type NewsContext } from './news.ts';
 import { loadState, saveState } from './save.ts';
 import { setMuted, sfx } from './sfx.ts';
+import { buildStats } from './stats.ts';
 import { dropSticker, enableStickerDragging, spawnStickers, stickerPreview } from './stickers.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -79,6 +81,8 @@ let state: GameState = loadState() ?? newState();
 let raidActive = false;
 /** Open sticker shop tab, or null when the shop isn't open. */
 let shopTab: StickerCategory | null = null;
+/** Whether the stats panel is open (it refreshes every tick). */
+let statsOpen = false;
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -183,6 +187,7 @@ function updateUI() {
   els.charters.textContent = unspent ? `📜 Charters (${unspent} 🏙️)` : '📜 Charters';
 
   if (shopTab) updateShopPrices();
+  if (statsOpen) els.modalBody.replaceChildren(renderStats());
 
   const pending = pendingCities(state);
   els.secede.classList.toggle('locked', pending < 1);
@@ -275,6 +280,7 @@ function openModal(title: string, body: Node, actions: ModalAction[]) {
 function closeModal() {
   els.modal.hidden = true;
   shopTab = null;
+  statsOpen = false;
 }
 
 const isModalOpen = () => !els.modal.hidden;
@@ -497,6 +503,28 @@ function onBuyCharter(c: Charter) {
 }
 
 // ---------------------------------------------------------------------------
+// Stats panel
+// ---------------------------------------------------------------------------
+
+function renderStats(): HTMLElement {
+  const body = el('div', 'stats-panel');
+  for (const section of buildStats(state)) {
+    const box = el('section', 'stats-section');
+    box.append(el('h3', '', section.title));
+    const list = el('dl');
+    for (const [label, value] of section.rows) list.append(el('dt', '', label), el('dd', '', value));
+    box.append(list);
+    body.append(box);
+  }
+  return body;
+}
+
+function showStats() {
+  openModal('📊 Stats', renderStats(), [{ label: 'Close' }]);
+  statsOpen = true;
+}
+
+// ---------------------------------------------------------------------------
 // Golden stickers
 // ---------------------------------------------------------------------------
 
@@ -616,7 +644,7 @@ function onSecede() {
 }
 
 function gameLoop() {
-  if (!raidActive) earn(state, derive(state).incomePerSec);
+  tick(state, raidActive);
   refresh();
 }
 
@@ -724,6 +752,7 @@ byId('btn-reshuffle').addEventListener('click', () => {
   refresh();
 });
 byId('btn-achievements').addEventListener('click', showAchievements);
+byId('btn-stats').addEventListener('click', showStats);
 els.charters.addEventListener('click', showCharters);
 byId('btn-stickers').addEventListener('click', showStickerShop);
 els.buyAmount.addEventListener('click', (e) => {
@@ -757,6 +786,8 @@ window.addEventListener('pagehide', save);
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
+
+if (!state.stats.firstPlayed) state.stats.firstPlayed = Date.now();
 
 const away = offlineEarnings(state, Date.now());
 if (away.amount > 0) {

@@ -31,6 +31,16 @@ export interface Stats {
   stickersDragged: number;
   offlineCollected: number;
   goldenClicks: number;
+  /** Seconds of play (game ticks while the page is open). */
+  playSeconds: number;
+  /** Seconds since the last secession. */
+  runSeconds: number;
+  /** Most earned in a single run (between secessions). */
+  bestRunEarnings: number;
+  /** Largest single click, crits included. */
+  biggestClick: number;
+  /** Epoch ms when stats started being tracked. */
+  firstPlayed: number;
 }
 
 /** A timed golden-sticker boost. Not saved: boosts end when the tab closes. */
@@ -85,6 +95,11 @@ export function newStats(): Stats {
     stickersDragged: 0,
     offlineCollected: 0,
     goldenClicks: 0,
+    playSeconds: 0,
+    runSeconds: 0,
+    bestRunEarnings: 0,
+    biggestClick: 0,
+    firstPlayed: 0,
   };
 }
 
@@ -137,6 +152,9 @@ export interface Derived {
   raidEvasionChance: number;
   /** Bonus from Free Private Cities and achievements; applies to everything. */
   globalMultiplier: number;
+  /** The two parts of globalMultiplier: Free Private Cities and achievements. */
+  cityMultiplier: number;
+  achievementMultiplier: number;
   /** Bonus from owned stickers; applies to passive income only. */
   stickerMultiplier: number;
   /** Golden-sticker boosts running right now. */
@@ -187,7 +205,9 @@ export function derive(state: GameState, now = Date.now()): Derived {
     : BALANCE.secession.bonusPerCity;
   const perAchievement = hasCharter(state, 'lindy') ? CHARTER_VALUES.lindyBonusPerAchievement : BALANCE.bonusPerAchievement;
   // Spending cities on charters doesn't reduce this: it counts every city ever founded.
-  const globalMultiplier = (1 + state.cities * perCity) * (1 + state.achievements.length * perAchievement);
+  const cityMultiplier = 1 + state.cities * perCity;
+  const achievementMultiplier = 1 + state.achievements.length * perAchievement;
+  const globalMultiplier = cityMultiplier * achievementMultiplier;
 
   const stickerMultiplier = 1 + state.stickers.length * BALANCE.stickers.bonusEach;
 
@@ -207,6 +227,8 @@ export function derive(state: GameState, now = Date.now()): Derived {
     incomeToClickPercent,
     raidEvasionChance,
     globalMultiplier,
+    cityMultiplier,
+    achievementMultiplier,
     stickerMultiplier,
     clickBuff,
     incomeBuff,
@@ -233,6 +255,7 @@ export function click(state: GameState, roll: number, now = Date.now()): { amoun
   const amount = crit ? d.clickAmount * BALANCE.critMultiplier : d.clickAmount;
   state.stats.clicks++;
   if (crit) state.stats.crits++;
+  state.stats.biggestClick = Math.max(state.stats.biggestClick, amount);
   earn(state, amount);
   return { amount, crit };
 }
@@ -433,6 +456,8 @@ export function pendingCities(state: GameState): number {
 export function secede(state: GameState): number {
   const gained = pendingCities(state);
   if (gained < 1) return 0;
+  state.stats.bestRunEarnings = Math.max(state.stats.bestRunEarnings, state.runEarnings);
+  state.stats.runSeconds = 0;
   state.cities += gained;
   state.score = 0;
   state.runEarnings = 0;
@@ -443,6 +468,14 @@ export function secede(state: GameState): number {
   state.stats.secessions++;
   applyRunStart(state);
   return gained;
+}
+
+/** One second of play: earns passive income (unless a raid is freezing it) and counts time. */
+export function tick(state: GameState, raidActive: boolean, now = Date.now()): void {
+  if (!raidActive) earn(state, derive(state, now).incomePerSec);
+  state.stats.playSeconds++;
+  state.stats.runSeconds++;
+  state.stats.bestRunEarnings = Math.max(state.stats.bestRunEarnings, state.runEarnings);
 }
 
 // ---------------------------------------------------------------------------

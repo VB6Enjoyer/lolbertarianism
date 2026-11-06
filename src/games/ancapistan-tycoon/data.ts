@@ -326,6 +326,7 @@ export interface AchievementContext {
     stickersDragged: number;
     offlineCollected: number;
     goldenClicks: number;
+    playSeconds: number;
   };
 }
 
@@ -381,5 +382,6 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'charter-all', icon: '🗽', name: 'Constitution? I Hardly Know Her', description: 'Sign every charter.', check: (c) => c.chartersOwned >= CHARTERS.length },
   { id: 'golden-1', icon: '🌟', name: 'Gold Bug', description: 'Catch a golden sticker. Told you gold was the real money.', check: (c) => c.stats.goldenClicks >= 1 },
   { id: 'golden-25', icon: '🥇', name: 'Hard Money Maniac', description: 'Catch 25 golden stickers.', check: (c) => c.stats.goldenClicks >= 25 },
+  { id: 'playtime-10h', icon: '⏰', name: 'Wage Slave to Yourself', description: 'Play for 10 hours. At least the boss is you.', check: (c) => c.stats.playSeconds >= 36_000 },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },
 ];

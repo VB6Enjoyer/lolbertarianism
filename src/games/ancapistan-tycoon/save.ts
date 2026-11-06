@@ -67,7 +67,10 @@ export function normalize(raw: Partial<GameState>): GameState {
   state.sound = raw.sound !== false;
   // Golden boosts are never restored from a save.
   const stats = newStats();
-  for (const key of Object.keys(stats) as (keyof Stats)[]) stats[key] = int(raw.stats?.[key]);
+  const moneyStats: (keyof Stats)[] = ['bestRunEarnings', 'biggestClick'];
+  for (const key of Object.keys(stats) as (keyof Stats)[]) {
+    stats[key] = moneyStats.includes(key) ? num(raw.stats?.[key]) : int(raw.stats?.[key]);
+  }
   state.stats = stats;
   state.lastSaved = num(raw.lastSaved);
   return state;

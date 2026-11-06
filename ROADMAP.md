@@ -148,8 +148,19 @@ Noticed along the way, left alone for now:
 - The shared audio helper now skips sounds while the browser still has audio
   locked (before the first click), instead of queuing them up.
 
+### Stats panel ✅
+
+- 📊 Stats button opens a panel that updates live: Economy (cash, income,
+  click value, crit chance, run/all-time earnings, best run, biggest click),
+  Income bonuses (cities, achievements, stickers, special upgrades, active
+  golden boosts), Activity (clicks, crit rate, golden stickers, raids, stickers),
+  Empire (cities, secessions, charters, collection progress, upgrades owned) and
+  Time (time played, this run, tracking since).
+- New tracked stats: playtime, run time, best run, biggest click, first played.
+  Saves from before this start tracking from now.
+- Achievement: Wage Slave to Yourself (10 hours played).
+
 Ideas for later:
-- Stats panel (clicks, crits, raids evaded, golden stickers, best run).
 
 ## Phase 5: The rest, one at a time
 

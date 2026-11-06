@@ -1022,3 +1022,49 @@ h1 {
         white-space: normal;
     }
 }
+
+/* ===================== Stats panel ===================== */
+
+.modal-box:has(.stats-panel) {
+    width: min(720px, 100%);
+}
+
+.stats-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+    text-align: left;
+}
+
+.stats-section {
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: #fffbe6;
+}
+
+.stats-section h3 {
+    margin: 0 0 6px;
+    font-size: 1rem;
+}
+
+.stats-section dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    margin: 0;
+    font-size: 0.85em;
+}
+
+.stats-section dt {
+    color: #555;
+}
+
+.stats-section dd {
+    margin: 0;
+    text-align: right;
+    font-weight: bold;
+    font-family: monospace;
+    font-size: 1.05em;
+    overflow-wrap: anywhere;
+}
