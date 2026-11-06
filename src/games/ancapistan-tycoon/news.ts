@@ -40,7 +40,7 @@ export const HEADLINES: readonly Headline[] = [
   { text: 'Gadsden flag sales soar; snakes everywhere report feeling "seen".' },
   { text: 'New poll: 100% of people who read Human Action finished it. Sample size: 3.' },
   { text: 'Fiat currency declares itself a collectible. Collectors politely decline.' },
-  { text: 'Ministry of Ministries abolished; no one notices for six weeks.' },
+  { text: '¡AFUERA! Ministry of Ministries abolished; no one notices for six weeks.' },
   { text: 'Black-market exchange rate beats official rate in popularity contest, refuses to concede.' },
   { text: 'Man who said "who will build the roads" spotted building a road. Charges toll.' },
 
