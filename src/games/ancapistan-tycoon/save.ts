@@ -1,5 +1,5 @@
 import { createSaveSlot } from '../../shared/storage.ts';
-import { ACHIEVEMENTS, PERKS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
 import { newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
@@ -8,6 +8,7 @@ import { newState, newStats, upgradeCost, type GameState, type Stats } from './l
  * - v1: same shape under `lolbertarianism:ancapistan-tycoon`.
  *       { score, upgrades: [{ id, owned }], specialUpgrades: [{ id, purchased }] }
  * - v2: the full GameState (lifetime earnings, cities, achievements, stats, lastSaved).
+ *       Fields added later (stickers, showStickers) get defaults in normalize().
  */
 export const SAVE_VERSION = 2;
 
@@ -57,6 +58,10 @@ export function normalize(raw: Partial<GameState>): GameState {
   }
   state.perks = PERKS.map((p) => p.id).filter((id) => raw.perks?.includes(id));
   state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => raw.achievements?.includes(id));
+  // Saves from before the sticker shop start with the starter pack.
+  const owned = new Set([...STARTER_STICKERS, ...(raw.stickers ?? [])]);
+  state.stickers = STICKERS.map((s) => s.id).filter((id) => owned.has(id));
+  state.showStickers = raw.showStickers !== false;
   const stats = newStats();
   for (const key of Object.keys(stats) as (keyof Stats)[]) stats[key] = int(raw.stats?.[key]);
   state.stats = stats;

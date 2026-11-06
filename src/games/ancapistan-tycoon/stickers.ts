@@ -1,53 +1,64 @@
-// The draggable background collage.
+// The draggable background collage: every sticker you own, scattered on screen.
 
-import { STICKERS, STICKER_COUNTS, type StickerCategory } from './data.ts';
+import { STICKERS, type StickerData } from './data.ts';
 
-const shuffle = <T>(items: T[]) => items.sort(() => 0.5 - Math.random());
+const byId = new Map(STICKERS.map((s) => [s.id, s]));
 
-/** Drops a fresh random set of stickers into the container (replacing any there). */
-export function spawnStickers(container: HTMLElement): void {
+/** Fills an element with a sticker's look (text, emoji, image or HTML snippet). */
+function fill(el: HTMLElement, data: StickerData, randomSize: boolean) {
+  if (data.type === 'text') {
+    el.classList.add('text');
+    el.innerText = data.content;
+  } else if (data.type === 'emoji') {
+    el.classList.add('img-rep');
+    el.innerText = data.content;
+    if (randomSize) el.style.fontSize = `${Math.random() * 40 + 30}px`;
+  } else if (data.type === 'image') {
+    el.classList.add('image');
+    const img = document.createElement('img');
+    img.src = data.content;
+    img.alt = '';
+    img.draggable = false;
+    el.appendChild(img);
+  } else {
+    el.innerHTML = data.content;
+  }
+}
+
+/** Drops one sticker onto the screen at a random spot. `index` staggers the fall. */
+export function dropSticker(container: HTMLElement, id: string, index = 0): void {
+  const data = byId.get(id);
+  if (!data) return;
+  const el = document.createElement('div');
+  el.className = 'sticker';
+  el.dataset.id = id;
+
+  const finalTop = `${Math.random() * (window.innerHeight - 100)}px`;
+  // Start off-screen, then fall into place.
+  el.style.left = `${Math.random() * (window.innerWidth - 100)}px`;
+  el.style.top = '-200px';
+  fill(el, data, true);
+  el.style.transform = `rotate(${Math.random() * 40 - 20}deg)`;
+
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.top = finalTop;
+  }, 50 + index * 20); // Stagger the fall
+}
+
+/** Clears the screen and scatters the given stickers in random order. */
+export function spawnStickers(container: HTMLElement, ids: readonly string[]): void {
   container.innerHTML = '';
+  [...ids].sort(() => 0.5 - Math.random()).forEach((id, i) => dropSticker(container, id, i));
+}
 
-  const picked = shuffle(
-    (Object.keys(STICKER_COUNTS) as StickerCategory[]).flatMap((category) =>
-      shuffle(STICKERS.filter((s) => s.category === category)).slice(0, STICKER_COUNTS[category]),
-    ),
-  );
-
-  picked.forEach((data, index) => {
-    const el = document.createElement('div');
-    el.className = 'sticker';
-
-    const finalLeft = `${Math.random() * (window.innerWidth - 100)}px`;
-    const finalTop = `${Math.random() * (window.innerHeight - 100)}px`;
-    // Start off-screen, then fall into place.
-    el.style.left = finalLeft;
-    el.style.top = '-200px';
-
-    if (data.type === 'text') {
-      el.classList.add('text');
-      el.innerText = data.content;
-    } else if (data.type === 'emoji') {
-      el.classList.add('img-rep');
-      el.innerText = data.content;
-      el.style.fontSize = `${Math.random() * 40 + 30}px`;
-    } else if (data.type === 'image') {
-      el.classList.add('image');
-      const img = document.createElement('img');
-      img.src = data.content;
-      img.alt = '';
-      img.draggable = false;
-      el.appendChild(img);
-    } else {
-      el.innerHTML = data.content;
-    }
-    el.style.transform = `rotate(${Math.random() * 40 - 20}deg)`;
-
-    container.appendChild(el);
-    setTimeout(() => {
-      el.style.top = finalTop;
-    }, 50 + index * 20); // Stagger the fall
-  });
+/** A small, non-interactive copy of a sticker for the shop. */
+export function stickerPreview(id: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'sticker sticker-preview';
+  const data = byId.get(id);
+  if (data) fill(el, data, false);
+  return el;
 }
 
 /**

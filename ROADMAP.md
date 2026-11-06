@@ -69,6 +69,18 @@ Noticed along the way, left alone for now:
   screens; reshuffling no longer piles up event listeners; owned perks are
   marked "✔ Owned"; amounts over a billion read "1.235 billion".
 
+### Sticker shop ✅
+
+- 🎨 Stickers button opens a shop with tabs per category (quotes, emojis,
+  flags, people, orgs, items). You start with 5 free stickers; the other 72
+  are bought one at a time.
+- Each owned sticker adds +0.5% to passive income. The price depends only on how
+  many you've bought: $100k for the first, ~30% more per purchase, ~$10 trillion
+  for the last (`BALANCE.stickers`).
+- The screen shows every sticker you own; a toggle hides them (bonus stays).
+- Bought stickers reset when you secede (the starter pack stays).
+- Achievements: Brand Ambassador, Hall of Fame, Laptop Lid Complete.
+
 Ideas for later:
 - Spend cities on secession-only perks (a second prestige shop).
 - More upgrades past "Privatize solar system" for late-game runs.

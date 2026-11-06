@@ -613,3 +613,128 @@ h1 {
         font-size: 14px;
     }
 }
+
+/* ===================== Sticker shop ===================== */
+
+#sticker-container[hidden] {
+    display: none;
+}
+
+.modal-box:has(.sticker-shop) {
+    width: min(760px, 100%);
+}
+
+.sticker-summary {
+    margin-top: 0;
+}
+
+.sticker-next {
+    font-size: 1.5rem;
+}
+
+.sticker-toggle {
+    display: block;
+    font-size: 0.85em;
+    margin-bottom: 12px;
+    cursor: pointer;
+}
+
+.sticker-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.sticker-tab {
+    font-family: inherit;
+    font-size: 0.85em;
+    font-weight: bold;
+    padding: 6px 10px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+}
+
+.sticker-tab.active {
+    background: var(--ancap-yellow);
+}
+
+.sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.sticker-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 120px;
+    padding: 10px 6px 8px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    background: #fffbe6;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.sticker-card:hover:not(:disabled):not(.disabled) {
+    transform: translateY(-3px);
+}
+
+.sticker-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #eee;
+}
+
+.sticker-card.owned {
+    color: var(--ancap-black);
+    /* disabled buttons fade their text by default */
+    background: #fff8d6;
+    border-style: dashed;
+    cursor: default;
+}
+
+.sticker-price {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #d35400;
+}
+
+.sticker-card.owned .sticker-price {
+    color: green;
+}
+
+/* Shop previews reuse the sticker look, but sit still inside the card. */
+.sticker.sticker-preview {
+    position: static;
+    cursor: inherit;
+    transition: none;
+    pointer-events: none;
+    transform: none;
+}
+
+.sticker.sticker-preview.text {
+    font-size: 11px;
+    max-width: 100px;
+}
+
+.sticker.sticker-preview.img-rep {
+    font-size: 36px;
+}
+
+.sticker.sticker-preview.image {
+    width: 50px;
+}
+
+.sticker.sticker-preview .flag-ancap,
+.sticker.sticker-preview .flag-eu-cross {
+    transform: scale(0.8);
+}

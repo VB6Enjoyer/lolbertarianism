@@ -1,25 +1,38 @@
 import { pick, spawnText } from '../../shared/effects.ts';
 import { formatMoney } from '../../shared/format.ts';
-import { ACHIEVEMENTS, BALANCE, CLICK_PHRASES, PERKS, UPGRADES, type Achievement } from './data.ts';
+import {
+  ACHIEVEMENTS,
+  BALANCE,
+  CLICK_PHRASES,
+  PERKS,
+  STICKERS,
+  STICKER_CATEGORIES,
+  UPGRADES,
+  type Achievement,
+  type StickerCategory,
+} from './data.ts';
 import {
   buyPerk,
+  buySticker,
   buyUpgrade,
   click,
   derive,
   earn,
   earningsForCities,
   hasPerk,
+  hasSticker,
   newState,
   offlineEarnings,
   ownedCount,
   pendingCities,
   secede,
+  stickerCost,
   unlockAchievements,
   upgradeCost,
   type GameState,
 } from './logic.ts';
 import { loadState, saveState } from './save.ts';
-import { enableStickerDragging, spawnStickers } from './stickers.ts';
+import { dropSticker, enableStickerDragging, spawnStickers, stickerPreview } from './stickers.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -42,6 +55,8 @@ const els = {
 
 let state: GameState = loadState() ?? newState();
 let raidActive = false;
+/** Open sticker shop tab, or null when the shop isn't open. */
+let shopTab: StickerCategory | null = null;
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -132,6 +147,8 @@ function updateUI() {
     `🏙️ ${state.cities} Free Private ${state.cities === 1 ? 'City' : 'Cities'} · ` +
     `🏆 ${state.achievements.length}/${ACHIEVEMENTS.length} · +${bonus}% income`;
 
+  if (shopTab) updateShopPrices();
+
   const pending = pendingCities(state);
   els.secede.classList.toggle('locked', pending < 1);
   els.secede.textContent = pending >= 1 ? `🏴 Secede (+${pending} 🏙️)` : '🏴 Secede';
@@ -215,11 +232,13 @@ function openModal(title: string, body: Node, actions: ModalAction[]) {
     }),
   );
   els.modal.hidden = false;
-  (els.modalActions.lastElementChild as HTMLElement | null)?.focus();
+  els.modalBody.parentElement!.scrollTop = 0;
+  (els.modalActions.lastElementChild as HTMLElement | null)?.focus({ preventScroll: true });
 }
 
 function closeModal() {
   els.modal.hidden = true;
+  shopTab = null;
 }
 
 const isModalOpen = () => !els.modal.hidden;
@@ -283,6 +302,104 @@ function showWelcomeBack(seconds: number, amount: number) {
 }
 
 // ---------------------------------------------------------------------------
+// Sticker shop
+// ---------------------------------------------------------------------------
+
+/** Draws (or hides) every owned sticker. */
+function showStickers() {
+  els.stickers.hidden = !state.showStickers;
+  spawnStickers(els.stickers, state.showStickers ? state.stickers : []);
+}
+
+const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+
+function shopSummary() {
+  const bonus = state.stickers.length * BALANCE.stickers.bonusEach;
+  return (
+    `You own ${state.stickers.length}/${STICKERS.length} stickers: +${pct(bonus)} income/sec. ` +
+    `Each one adds +${pct(BALANCE.stickers.bonusEach)}, and every purchase makes the next one pricier.`
+  );
+}
+
+function renderStickerShop(): HTMLElement {
+  const tab = shopTab ?? 'quote';
+  const body = el('div', 'sticker-shop');
+
+  body.append(el('p', 'fine-print sticker-summary', shopSummary()));
+
+  const next = el('div', 'big-number sticker-next', `Next sticker: ${money(stickerCost(state))}`);
+  body.append(next);
+
+  const toggle = el('label', 'sticker-toggle');
+  const box = el('input');
+  box.type = 'checkbox';
+  box.checked = state.showStickers;
+  box.addEventListener('change', () => {
+    state.showStickers = box.checked;
+    showStickers();
+  });
+  toggle.append(box, document.createTextNode(' Show stickers on screen (the bonus counts either way)'));
+  body.append(toggle);
+
+  const tabs = el('div', 'sticker-tabs');
+  for (const c of STICKER_CATEGORIES) {
+    const inCat = STICKERS.filter((s) => s.category === c.id);
+    const owned = inCat.filter((s) => hasSticker(state, s.id)).length;
+    const btn = el('button', `sticker-tab${c.id === tab ? ' active' : ''}`, `${c.label} ${owned}/${inCat.length}`);
+    btn.addEventListener('click', () => {
+      shopTab = c.id;
+      els.modalBody.replaceChildren(renderStickerShop());
+    });
+    tabs.append(btn);
+  }
+  body.append(tabs);
+
+  const grid = el('div', 'sticker-grid');
+  for (const s of STICKERS.filter((x) => x.category === tab)) {
+    const owned = hasSticker(state, s.id);
+    const card = el('button', `sticker-card${owned ? ' owned' : ''}`);
+    card.title = s.id;
+    card.append(stickerPreview(s.id), el('span', 'sticker-price', owned ? '✔ Owned' : `Buy · ${money(stickerCost(state))}`));
+    if (owned) {
+      card.disabled = true;
+    } else {
+      card.dataset.locked = '';
+      card.addEventListener('click', () => onBuySticker(s.id));
+    }
+    grid.append(card);
+  }
+  body.append(grid);
+  return body;
+}
+
+/** Keeps the open shop's price and buy buttons in sync with your cash. */
+function updateShopPrices() {
+  const cost = stickerCost(state);
+  const next = els.modalBody.querySelector('.sticker-next');
+  if (next) next.textContent = `Next sticker: ${money(cost)}`;
+  els.modalBody.querySelectorAll<HTMLElement>('.sticker-card[data-locked]').forEach((card) => {
+    card.classList.toggle('disabled', state.score < cost);
+    const price = card.querySelector('.sticker-price');
+    if (price) price.textContent = `Buy · ${money(cost)}`;
+  });
+}
+
+function showStickerShop() {
+  shopTab ??= 'quote';
+  openModal('🎨 Sticker Shop', renderStickerShop(), [{ label: 'Done' }]);
+  updateShopPrices();
+}
+
+function onBuySticker(id: string) {
+  if (!buySticker(state, id)) return;
+  if (state.showStickers) dropSticker(els.stickers, id);
+  const { x, y } = center();
+  spawnFloater(x, y, 'STICKER UNLOCKED!', '#8e44ad');
+  els.modalBody.replaceChildren(renderStickerShop());
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
 
@@ -324,7 +441,7 @@ function onSecede() {
   saveState(state);
   renderShop();
   renderPerks();
-  spawnStickers(els.stickers);
+  showStickers();
   const { x, y } = center();
   spawnFloater(x, y, `INDEPENDENCE! +${gained} 🏙️`, 'black');
   refresh();
@@ -375,11 +492,12 @@ els.mainBtn.addEventListener('keydown', (e) => {
 });
 
 byId('btn-reshuffle').addEventListener('click', () => {
-  spawnStickers(els.stickers);
+  showStickers();
   state.stats.reshuffles++;
   refresh();
 });
 byId('btn-achievements').addEventListener('click', showAchievements);
+byId('btn-stickers').addEventListener('click', showStickerShop);
 els.secede.addEventListener('click', showSecession);
 byId('btn-evade').addEventListener('click', evadeTax);
 
@@ -413,7 +531,7 @@ if (away.amount > 0) {
 
 renderShop();
 renderPerks();
-spawnStickers(els.stickers);
+showStickers();
 refresh(); // Show loaded progress right away
 save(); // Stamp the time now, so a quick reload can't collect offline earnings twice
 

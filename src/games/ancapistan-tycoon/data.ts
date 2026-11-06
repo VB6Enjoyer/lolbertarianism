@@ -29,6 +29,14 @@ export const BALANCE = {
   },
   /** Income bonus per unlocked achievement. */
   bonusPerAchievement: 0.01,
+  stickers: {
+    /** Passive income (CPS) bonus per sticker owned. */
+    bonusEach: 0.005,
+    /** Price of the first sticker you buy… */
+    firstCost: 100_000,
+    /** …and of the last one. Prices in between grow by the same factor each purchase. */
+    lastCost: 10_000_000_000_000,
+  },
   saveIntervalMs: 5000,
 } as const;
 
@@ -100,24 +108,27 @@ export const CLICK_PHRASES = ['Freedom!', 'My Property!', 'Based', 'No Step!'] a
 export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item';
 
 export interface StickerData {
+  /** Stable id used in saves (the content itself). */
+  id: string;
   type: 'text' | 'emoji' | 'html' | 'image';
   category: StickerCategory;
   content: string;
 }
 
-/** How many stickers of each category are on screen at once. */
-export const STICKER_COUNTS: Record<StickerCategory, number> = {
-  quote: 7,
-  emoji: 7,
-  html: 2,
-  person: 5,
-  organization: 2,
-  item: 3,
-};
+/** Sticker shop tabs, in order. */
+export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string }[] = [
+  { id: 'quote', label: '💬 Quotes' },
+  { id: 'emoji', label: '🐍 Emojis' },
+  { id: 'html', label: '🏴 Flags' },
+  { id: 'person', label: '🧔 People' },
+  { id: 'organization', label: '🏛️ Orgs' },
+  { id: 'item', label: '🔫 Items' },
+];
 
-const quote = (content: string): StickerData => ({ type: 'text', category: 'quote', content });
-const emoji = (content: string): StickerData => ({ type: 'emoji', category: 'emoji', content });
-const image = (category: StickerCategory, name: string): StickerData => ({ type: 'image', category, content: `img/${name}.webp` });
+const quote = (content: string): StickerData => ({ id: content, type: 'text', category: 'quote', content });
+const emoji = (content: string): StickerData => ({ id: content, type: 'emoji', category: 'emoji', content });
+const html = (id: string, content: string): StickerData => ({ id, type: 'html', category: 'html', content });
+const image = (category: StickerCategory, name: string): StickerData => ({ id: name, type: 'image', category, content: `img/${name}.webp` });
 
 export const STICKERS: readonly StickerData[] = [
   // Quotes
@@ -164,8 +175,8 @@ export const STICKERS: readonly StickerData[] = [
   emoji('🗽'),
   emoji('💊'),
   // HTML
-  { type: 'html', category: 'html', content: '<div class="flag-ancap"></div>' },
-  { type: 'html', category: 'html', content: '<div class="flag-eu-cross">🇪🇺</div>' },
+  html('flag-ancap', '<div class="flag-ancap"></div>'),
+  html('flag-eu-cross', '<div class="flag-eu-cross">🇪🇺</div>'),
   // People
   ...[
     'rothbard', 'hoppe', 'mises', 'kinsella', 'tucker', 'hayek', 'ronpaul', 'menger', 'bohmbawerk',
@@ -182,6 +193,9 @@ export const STICKERS: readonly StickerData[] = [
   image('item', 'ak47'),
 ];
 
+/** Stickers everyone starts with (free, and kept after seceding). */
+export const STARTER_STICKERS: readonly string[] = ['Taxation is theft!', '🐍', 'flag-ancap', 'rothbard', 'pistol'];
+
 // ---------------------------------------------------------------------------
 // Achievements
 // ---------------------------------------------------------------------------
@@ -194,6 +208,10 @@ export interface AchievementContext {
   ownsEveryUpgrade: boolean;
   perksOwned: number;
   cities: number;
+  /** Stickers owned (starter ones included). */
+  stickersOwned: number;
+  /** True when every sticker of that category is owned. */
+  stickerCategoryComplete: (category: StickerCategory) => boolean;
   stats: {
     clicks: number;
     crits: number;
@@ -249,5 +267,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'cities-10', icon: '🏙️', name: 'Network State', description: 'Own 10 Free Private Cities.', check: (c) => c.cities >= 10 },
   { id: 'reshuffle-10', icon: '🎨', name: 'Collage Artist', description: 'Reshuffle the stickers 10 times.', check: (c) => c.stats.reshuffles >= 10 },
   { id: 'drag-25', icon: '🪑', name: 'Spontaneous Order', description: 'Drag 25 stickers around. Nobody planned this.', check: (c) => c.stats.stickersDragged >= 25 },
+  { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > STARTER_STICKERS.length },
+  { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
+  { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => c.stickersOwned >= STICKERS.length },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },
 ];

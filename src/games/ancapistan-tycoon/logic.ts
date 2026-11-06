@@ -5,10 +5,13 @@ import {
   ACHIEVEMENTS,
   BALANCE,
   PERKS,
+  STARTER_STICKERS,
+  STICKERS,
   UPGRADES,
   type Achievement,
   type AchievementContext,
   type Perk,
+  type StickerCategory,
   type Upgrade,
 } from './data.ts';
 
@@ -37,6 +40,10 @@ export interface GameState {
   perks: string[];
   /** Unlocked achievement ids. */
   achievements: string[];
+  /** Owned sticker ids (starter stickers included). */
+  stickers: string[];
+  /** Whether owned stickers are drawn on screen (the bonus applies either way). */
+  showStickers: boolean;
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -64,6 +71,8 @@ export function newState(): GameState {
     owned: {},
     perks: [],
     achievements: [],
+    stickers: [...STARTER_STICKERS],
+    showStickers: true,
     stats: newStats(),
     lastSaved: 0,
   };
@@ -93,6 +102,8 @@ export interface Derived {
   raidEvasionChance: number;
   /** Bonus from Free Private Cities and achievements; applies to everything. */
   globalMultiplier: number;
+  /** Bonus from owned stickers; applies to passive income only. */
+  stickerMultiplier: number;
   /** What a normal (non-crit) click earns. */
   clickAmount: number;
   incomePerSec: number;
@@ -137,6 +148,8 @@ export function derive(state: GameState): Derived {
     (1 + state.cities * BALANCE.secession.bonusPerCity) *
     (1 + state.achievements.length * BALANCE.bonusPerAchievement);
 
+  const stickerMultiplier = 1 + state.stickers.length * BALANCE.stickers.bonusEach;
+
   return {
     clickValue,
     income,
@@ -146,8 +159,9 @@ export function derive(state: GameState): Derived {
     incomeToClickPercent,
     raidEvasionChance,
     globalMultiplier,
+    stickerMultiplier,
     clickAmount: (clickValue + income * incomeToClickPercent) * clickMultiplier * globalMultiplier,
-    incomePerSec: income * passiveMultiplier * globalMultiplier,
+    incomePerSec: income * passiveMultiplier * stickerMultiplier * globalMultiplier,
   };
 }
 
@@ -189,6 +203,40 @@ export function buyPerk(state: GameState, perk: Perk): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Sticker shop
+// ---------------------------------------------------------------------------
+
+/** How many stickers can be bought (everything but the free starters). */
+export const BUYABLE_STICKERS = STICKERS.length - STARTER_STICKERS.length;
+
+/** Price growth per purchase, so the first costs `firstCost` and the last `lastCost`. */
+export const STICKER_COST_GROWTH = Math.pow(
+  BALANCE.stickers.lastCost / BALANCE.stickers.firstCost,
+  1 / Math.max(1, BUYABLE_STICKERS - 1),
+);
+
+/** Price of the next sticker. Depends only on how many you've bought, not which one. */
+export function stickerCost(state: GameState): number {
+  const bought = state.stickers.filter((id) => !STARTER_STICKERS.includes(id)).length;
+  return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought));
+}
+
+export const hasSticker = (state: GameState, id: string) => state.stickers.includes(id);
+
+export function buySticker(state: GameState, id: string): boolean {
+  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id)) return false;
+  const cost = stickerCost(state);
+  if (state.score < cost) return false;
+  state.score -= cost;
+  state.stickers.push(id);
+  return true;
+}
+
+export function stickerCategoryComplete(state: GameState, category: StickerCategory): boolean {
+  return STICKERS.filter((s) => s.category === category).every((s) => hasSticker(state, s.id));
+}
+
+// ---------------------------------------------------------------------------
 // Secession (prestige)
 // ---------------------------------------------------------------------------
 
@@ -209,7 +257,7 @@ export function pendingCities(state: GameState): number {
 
 /**
  * Leaves everything behind to found new Free Private Cities. Keeps cities,
- * achievements, lifetime earnings and stats. Returns how many cities were gained
+ * achievements, lifetime earnings, stats and the starter stickers. Returns how many cities were gained
  * (0 means you couldn't secede yet and nothing changed).
  */
 export function secede(state: GameState): number {
@@ -220,6 +268,7 @@ export function secede(state: GameState): number {
   state.runEarnings = 0;
   state.owned = {};
   state.perks = [];
+  state.stickers = [...STARTER_STICKERS];
   state.stats.secessions++;
   return gained;
 }
@@ -249,6 +298,8 @@ export function achievementContext(state: GameState): AchievementContext {
     ownsEveryUpgrade: UPGRADES.every((u) => ownedCount(state, u.id) > 0),
     perksOwned: state.perks.length,
     cities: state.cities,
+    stickersOwned: state.stickers.length,
+    stickerCategoryComplete: (category) => stickerCategoryComplete(state, category),
     stats: state.stats,
   };
 }

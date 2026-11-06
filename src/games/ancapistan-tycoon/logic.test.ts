@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, PERKS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
 import {
+  BUYABLE_STICKERS,
   buyPerk,
+  buySticker,
   buyUpgrade,
   citiesFor,
   click,
@@ -12,6 +14,7 @@ import {
   offlineEarnings,
   pendingCities,
   secede,
+  stickerCost,
   unlockAchievements,
   upgradeCost,
 } from './logic.ts';
@@ -64,6 +67,7 @@ describe('derived stats match the original formulas', () => {
   it('applies perks: click multiplier, passive multiplier, income-to-click, crit, evasion', () => {
     const s = newState();
     s.owned = { 1: 9, 2: 100 }; // click value 10, income 100
+    s.stickers = []; // isolate perk math from the sticker bonus
     s.perks = ['su1', 'su2', 'su3', 'su4', 'su5', 'su6'];
     const d = derive(s);
     expect(d.critChance).toBeCloseTo(0.15);
@@ -76,6 +80,7 @@ describe('derived stats match the original formulas', () => {
   it('cities and achievements multiply everything', () => {
     const s = newState();
     s.owned = { 2: 10 };
+    s.stickers = [];
     s.cities = 3;
     s.achievements = ['first-click', 'earn-1k'];
     const expected = (1 + 3 * BALANCE.secession.bonusPerCity) * (1 + 2 * BALANCE.bonusPerAchievement);
@@ -136,6 +141,7 @@ describe('offline earnings', () => {
   const withIncome = () => {
     const s = newState();
     s.owned = { 2: 10 }; // $10/s
+    s.stickers = [];
     s.lastSaved = 1_000_000;
     return s;
   };
@@ -203,5 +209,64 @@ describe('saves', () => {
     expect(state.achievements).toEqual(['first-click']);
     expect(state.stats.clicks).toBe(7);
     expect(state.stats.crits).toBe(0);
+  });
+});
+
+describe('sticker shop', () => {
+  const firstBuyable = () => STICKERS.find((x) => !STARTER_STICKERS.includes(x.id))!.id;
+
+  it('starts with the starter pack and all sticker ids are unique', () => {
+    expect(newState().stickers).toEqual([...STARTER_STICKERS]);
+    expect(new Set(STICKERS.map((x) => x.id)).size).toBe(STICKERS.length);
+    for (const id of STARTER_STICKERS) expect(STICKERS.some((x) => x.id === id)).toBe(true);
+  });
+
+  it('prices go from firstCost to lastCost as you buy', () => {
+    const s = newState();
+    expect(stickerCost(s)).toBe(BALANCE.stickers.firstCost);
+    s.score = Infinity;
+    for (const x of STICKERS) buySticker(s, x.id);
+    expect(s.stickers.length).toBe(STICKERS.length);
+    // After buying everything, the price "of the next one" is one step past the last.
+    s.stickers.pop();
+    expect(stickerCost(s) / BALANCE.stickers.lastCost).toBeCloseTo(1, 6);
+    expect(BUYABLE_STICKERS).toBe(STICKERS.length - STARTER_STICKERS.length);
+  });
+
+  it('buying deducts the price, needs cash, and each sticker can be bought once', () => {
+    const s = newState();
+    const id = firstBuyable();
+    s.score = 99_999;
+    expect(buySticker(s, id)).toBe(false);
+    s.score = 250_000;
+    expect(buySticker(s, id)).toBe(true);
+    expect(s.score).toBe(150_000);
+    expect(buySticker(s, id)).toBe(false);
+    expect(buySticker(s, 'not-a-sticker')).toBe(false);
+  });
+
+  it('each sticker adds 0.5% to passive income only', () => {
+    const s = newState();
+    s.owned = { 2: 100 }; // $100/s
+    s.stickers = STICKERS.slice(0, 20).map((x) => x.id);
+    const d = derive(s);
+    expect(d.incomePerSec).toBeCloseTo(100 * (1 + 20 * BALANCE.stickers.bonusEach));
+    expect(d.clickAmount).toBe(1);
+  });
+
+  it('seceding resets bought stickers back to the starter pack', () => {
+    const s = newState();
+    earn(s, 4e6);
+    buySticker(s, firstBuyable());
+    secede(s);
+    expect(s.stickers).toEqual([...STARTER_STICKERS]);
+  });
+
+  it('older saves get the starter pack; unknown ids are dropped', () => {
+    expect(normalize({}).stickers).toEqual(STICKERS.filter((x) => STARTER_STICKERS.includes(x.id)).map((x) => x.id));
+    const n = normalize({ stickers: ['hoppe', 'bogus'], showStickers: false });
+    expect(n.stickers).toContain('hoppe');
+    expect(n.stickers).not.toContain('bogus');
+    expect(n.showStickers).toBe(false);
   });
 });
