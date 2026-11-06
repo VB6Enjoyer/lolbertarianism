@@ -1,6 +1,6 @@
 // The draggable background collage: every sticker you own, scattered on screen.
 
-import { STICKERS, type StickerData } from './data.ts';
+import { STICKERS, STICKER_LABELS, type StickerData } from './data.ts';
 
 const byId = new Map(STICKERS.map((s) => [s.id, s]));
 
@@ -33,6 +33,8 @@ export function dropSticker(container: HTMLElement, id: string, index = 0): void
   const el = document.createElement('div');
   el.className = 'sticker';
   el.dataset.id = id;
+  const label = STICKER_LABELS[id];
+  if (label) el.title = label.note ? `${label.name}: ${label.note}` : label.name;
 
   const finalTop = `${Math.random() * (window.innerHeight - 100)}px`;
   // Start off-screen, then fall into place.
