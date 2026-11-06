@@ -160,7 +160,26 @@ Noticed along the way, left alone for now:
   Saves from before this start tracking from now.
 - Achievement: Wage Slave to Yourself (10 hours played).
 
-Ideas for later: nothing queued right now.
+### Secret achievements and save codes ✅
+
+- 12 secret achievements, shown as "🤫 ???" with a cryptic hint until unlocked;
+  they count toward the +1% income each. Triggers: leave a raid up for a
+  minute, drag Rothbard onto Mises, catch Milei's Chainsaw with the Milei
+  sticker on screen, buy the EU flag as your first sticker, play at 3 a.m., on
+  April 15, or on May 25 / July 9, click the news ticker, toggle sound 10 times
+  in a row, type "taxation is theft", secede with under $1, or don't click for
+  10 minutes while making $1M/sec.
+- 💾 Save data screen (Stats → Save / Load): copy a save code (`ANCAP1:…`),
+  load one on another browser or device (with a confirmation showing what's in
+  it), or start over (with a confirmation). Codes survive copy-paste line
+  breaks, and bad values inside a code are cleaned up like a normal save.
+
+Ideas for later:
+- Balance pass: simulate a typical player to check pacing (first secession,
+  10th city, all charters, Andromeda).
+- Sticker sets: a bonus for completing a category.
+- Seasonal events tied to dates.
+- Challenge runs (e.g. "Minarchist Mode") for unique badges.
 
 ## Phase 5: The rest, one at a time
 

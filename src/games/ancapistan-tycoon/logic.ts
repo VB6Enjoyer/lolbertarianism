@@ -17,6 +17,7 @@ import {
   type CharterId,
   type GoldenEffect,
   type Perk,
+  type SecretAchievementId,
   type StickerCategory,
   type Upgrade,
 } from './data.ts';
@@ -522,7 +523,26 @@ export function achievementContext(state: GameState): AchievementContext {
 /** Unlocks any achievements whose conditions are now met and returns them. */
 export function unlockAchievements(state: GameState): Achievement[] {
   const ctx = achievementContext(state);
-  const unlocked = ACHIEVEMENTS.filter((a) => !state.achievements.includes(a.id) && a.check(ctx));
+  const unlocked = ACHIEVEMENTS.filter((a) => a.check && !state.achievements.includes(a.id) && a.check(ctx));
   for (const a of unlocked) state.achievements.push(a.id);
   return unlocked;
+}
+
+/** Unlocks one achievement directly (used for secret ones). Returns it if it was newly unlocked. */
+export function grantAchievement(state: GameState, id: SecretAchievementId): Achievement | null {
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a || state.achievements.includes(id)) return null;
+  state.achievements.push(id);
+  return a;
+}
+
+/** Whether the date counts for the date-based secret achievements. */
+export function secretDateAchievements(date: Date): SecretAchievementId[] {
+  const ids: SecretAchievementId[] = [];
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  if (date.getHours() === 3) ids.push('insomniac');
+  if (m === 4 && d === 15) ids.push('tax-day');
+  if ((m === 5 && d === 25) || (m === 7 && d === 9)) ids.push('fechas-patrias');
+  return ids;
 }

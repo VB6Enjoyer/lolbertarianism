@@ -65,7 +65,7 @@ export function stickerPreview(id: string): HTMLElement {
  * Lets stickers inside `container` be dragged with mouse or touch.
  * Uses one set of listeners for all stickers, so reshuffling doesn't pile up handlers.
  */
-export function enableStickerDragging(container: HTMLElement, onDragged: () => void): void {
+export function enableStickerDragging(container: HTMLElement, onDragged: (sticker: HTMLElement) => void): void {
   let dragging: HTMLElement | null = null;
   let startX = 0;
   let startY = 0;
@@ -98,9 +98,10 @@ export function enableStickerDragging(container: HTMLElement, onDragged: () => v
 
   const stop = () => {
     if (!dragging) return;
-    dragging.style.zIndex = '21';
+    const dropped = dragging;
+    dropped.style.zIndex = '21';
     dragging = null;
-    if (moved) onDragged();
+    if (moved) onDragged(dropped);
   };
   container.addEventListener('pointerup', stop);
   container.addEventListener('pointercancel', stop);

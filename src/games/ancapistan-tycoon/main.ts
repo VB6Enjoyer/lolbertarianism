@@ -6,6 +6,7 @@ import {
   CHARTERS,
   CLICK_PHRASES,
   PERKS,
+  SECRET_PHRASE,
   STARTER_STICKERS,
   STICKERS,
   STICKER_CATEGORIES,
@@ -13,6 +14,7 @@ import {
   type Achievement,
   type Charter,
   type GoldenEffect,
+  type SecretAchievementId,
   type StickerCategory,
 } from './data.ts';
 import {
@@ -28,6 +30,7 @@ import {
   earn,
   earningsForCities,
   goldenDelayMultiplier,
+  grantAchievement,
   hasCharter,
   hasPerk,
   hasSticker,
@@ -40,6 +43,7 @@ import {
   raidChance,
   raidsBlocked,
   secede,
+  secretDateAchievements,
   stickerCost,
   tick,
   unlockAchievements,
@@ -47,7 +51,7 @@ import {
   type GameState,
 } from './logic.ts';
 import { pickHeadline, type NewsContext } from './news.ts';
-import { loadState, saveState } from './save.ts';
+import { clearSave, exportSave, importSave, loadState, saveState } from './save.ts';
 import { setMuted, sfx } from './sfx.ts';
 import { buildStats } from './stats.ts';
 import { dropSticker, enableStickerDragging, spawnStickers, stickerPreview } from './stickers.ts';
@@ -83,6 +87,9 @@ let raidActive = false;
 let shopTab: StickerCategory | null = null;
 /** Whether the stats panel is open (it refreshes every tick). */
 let statsOpen = false;
+/** For secret achievements: when the current raid started, and when the snake was last clicked. */
+let raidStartedAt = 0;
+let lastClickAt = Date.now();
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -221,14 +228,25 @@ function refresh() {
   updateUI();
 }
 
+/** Unlocks a secret achievement with a special toast (no-op if already unlocked). */
+function unlockSecret(id: SecretAchievementId) {
+  const a = grantAchievement(state, id);
+  if (!a) return;
+  sfx.achievement();
+  toast(`🤫 Secret achievement: ${a.icon} ${a.name}`, a.description);
+  updateUI();
+}
+
 function achievementCard(a: Achievement) {
   const unlocked = state.achievements.includes(a.id);
-  const card = el('div', `achievement${unlocked ? '' : ' locked'}`);
+  const card = el('div', `achievement${unlocked ? '' : ' locked'}${a.secret ? ' secret' : ''}`);
+  const hidden = a.secret && !unlocked;
   card.append(
-    el('span', 'achievement-icon', unlocked ? a.icon : '🔒'),
-    el('span', 'achievement-name', a.name),
-    el('span', 'achievement-desc', a.description),
+    el('span', 'achievement-icon', unlocked ? a.icon : hidden ? '🤫' : '🔒'),
+    el('span', 'achievement-name', hidden ? '???' : a.name),
+    el('span', 'achievement-desc', hidden ? `Hint: ${a.hint}` : a.description),
   );
+  if (a.secret && unlocked) card.append(el('span', 'achievement-secret-tag', '🤫 Secret'));
   if (unlocked && a.reward) {
     const link = el('a', '', `${a.reward.label} →`);
     link.href = a.reward.href;
@@ -239,9 +257,17 @@ function achievementCard(a: Achievement) {
 
 function showAchievements() {
   const body = el('div');
-  const pct = Math.round(state.achievements.length * BALANCE.bonusPerAchievement * 100);
+  const pct = Math.round((derive(state).achievementMultiplier - 1) * 100);
+  const secrets = ACHIEVEMENTS.filter((a) => a.secret);
+  const regular = ACHIEVEMENTS.length - secrets.length;
+  const has = (a: Achievement) => state.achievements.includes(a.id);
   body.append(
-    el('p', 'achievement-summary', `${state.achievements.length} / ${ACHIEVEMENTS.length} unlocked · +${pct}% income`),
+    el(
+      'p',
+      'achievement-summary',
+      `${ACHIEVEMENTS.filter((a) => !a.secret && has(a)).length} / ${regular} unlocked · ` +
+        `🤫 ${secrets.filter(has).length} / ${secrets.length} secret · +${pct}% income`,
+    ),
   );
   const grid = el('div', 'achievement-grid');
   grid.append(...ACHIEVEMENTS.map(achievementCard));
@@ -441,7 +467,9 @@ function showStickerShop() {
 }
 
 function onBuySticker(id: string) {
+  const firstPurchase = state.stickers.every((s) => STARTER_STICKERS.includes(s));
   if (!buySticker(state, id)) return;
+  if (firstPurchase && id === 'flag-eu-cross') unlockSecret('brussels-effect');
   if (state.showStickers) dropSticker(els.stickers, id);
   const { x, y } = center();
   spawnFloater(x, y, 'STICKER UNLOCKED!', '#8e44ad');
@@ -520,8 +548,108 @@ function renderStats(): HTMLElement {
 }
 
 function showStats() {
-  openModal('📊 Stats', renderStats(), [{ label: 'Close' }]);
+  openModal('📊 Stats', renderStats(), [{ label: '💾 Save / Load', secondary: true, onClick: showSaveData }, { label: 'Close' }]);
   statsOpen = true;
+}
+
+// ---------------------------------------------------------------------------
+// Save data: export, import, start over
+// ---------------------------------------------------------------------------
+
+/** Swaps in a whole new game state (loaded code or fresh start) and redraws everything. */
+function replaceState(next: GameState) {
+  state = next;
+  raidActive = false;
+  els.raid.style.display = 'none';
+  if (!state.stats.firstPlayed) state.stats.firstPlayed = Date.now();
+  lastClickAt = Date.now();
+  updateSoundButton();
+  renderShop();
+  renderPerks();
+  showStickers();
+  save();
+  refresh();
+}
+
+function confirmDialog(title: string, text: string, yes: string, no: string, onYes: () => void) {
+  openModal(title, paragraph(text), [{ label: no, secondary: true }, { label: yes, onClick: onYes }]);
+}
+
+function showSaveData() {
+  const body = el('div', 'save-data');
+
+  body.append(
+    el('h3', '', '📤 Your save code'),
+    paragraph('Copy this and keep it somewhere safe, or paste it into the game on another browser or device.', 'fine-print'),
+  );
+  const out = el('textarea', 'save-code');
+  out.readOnly = true;
+  out.rows = 4;
+  out.value = exportSave(state);
+  out.addEventListener('focus', () => out.select());
+  const copy = el('button', 'btn-reshuffle', '📋 Copy code');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(out.value);
+      copy.textContent = '✔ Copied!';
+    } catch {
+      out.focus();
+      out.select();
+      copy.textContent = 'Selected: press Ctrl+C / ⌘C';
+    }
+  });
+  body.append(out, copy);
+
+  body.append(
+    el('h3', '', '📥 Load a save code'),
+    paragraph('This replaces your current progress with the one in the code.', 'fine-print'),
+  );
+  const input = el('textarea', 'save-code');
+  input.rows = 4;
+  input.placeholder = 'Paste a save code here (it starts with ANCAP1:)';
+  const error = el('p', 'save-error');
+  const load = el('button', 'btn-reshuffle', '📥 Load code');
+  load.addEventListener('click', () => {
+    const next = importSave(input.value);
+    if (!next) {
+      error.textContent = "That doesn't look like an Ancapistan Tycoon save code. Check that you copied all of it.";
+      return;
+    }
+    confirmDialog(
+      'Load this save?',
+      `It has ${money(next.allTimeEarnings)} earned all-time and ${next.cities} Free Private ${next.cities === 1 ? 'City' : 'Cities'}. ` +
+        'Your current progress will be replaced.',
+      'Load it',
+      'Cancel',
+      () => {
+        replaceState(next);
+        toast('💾 Save loaded', 'Welcome back to your empire.');
+      },
+    );
+  });
+  body.append(input, load, error);
+
+  body.append(
+    el('h3', '', '🧨 Start over'),
+    paragraph('Deletes everything: cash, upgrades, cities, charters, achievements and stats. Copy your save code first if you might want it back.', 'fine-print'),
+  );
+  const reset = el('button', 'btn-reshuffle btn-danger', 'Delete my progress…');
+  reset.addEventListener('click', () =>
+    confirmDialog(
+      'Delete everything?',
+      'Your whole empire will be gone for good, unless you saved your code.',
+      'Delete everything',
+      'Keep my empire',
+      () => {
+        clearSave();
+        replaceState(newState());
+        toast('🧨 Fresh start', 'Back to square one. Taxation is still theft.');
+      },
+    ),
+  );
+  body.append(reset);
+
+  openModal('💾 Save data', body, [{ label: 'Done' }]);
 }
 
 // ---------------------------------------------------------------------------
@@ -584,6 +712,9 @@ function spawnGolden() {
 function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
   const cash = catchGolden(state, effect);
   sfx.goldenCatch();
+  if (effect.id === 'chainsaw' && els.stickers.querySelector('[data-id="milei"]') && !els.stickers.hidden) {
+    unlockSecret('afuera');
+  }
   spawnFloater(x, y, cash ? `${effect.icon} +${money(cash)}!` : `${effect.icon} ${effect.name.toUpperCase()}!`, '#c9a100');
   toast(`${effect.icon} ${effect.name}`, cash ? `${effect.description} +${money(cash)}` : effect.description);
   refresh();
@@ -595,6 +726,7 @@ function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
 
 function onClickMain(x: number, y: number) {
   if (raidActive) return;
+  lastClickAt = Date.now();
   const { amount, crit } = click(state, Math.random());
   if (crit) sfx.crit();
   else sfx.click();
@@ -631,8 +763,10 @@ function onBuyPerk(id: string) {
 }
 
 function onSecede() {
+  const broke = state.score < 1;
   const gained = secede(state);
   if (!gained) return;
+  if (broke) unlockSecret('exit-liquidity');
   saveState(state);
   renderShop();
   renderPerks();
@@ -645,7 +779,16 @@ function onSecede() {
 
 function gameLoop() {
   tick(state, raidActive);
+  checkTimedSecrets();
   refresh();
+}
+
+/** Secret achievements that depend on time passing, or on the date and hour. */
+function checkTimedSecrets() {
+  const now = Date.now();
+  if (raidActive && now - raidStartedAt >= 60_000) unlockSecret('civil-disobedience');
+  if (now - lastClickAt >= 10 * 60_000 && derive(state, now).incomePerSec >= 1e6) unlockSecret('zero-time-preference');
+  for (const id of secretDateAchievements(new Date(now))) unlockSecret(id);
 }
 
 // Raid Event Logic
@@ -660,6 +803,7 @@ function tryRaid() {
       return; // Automatically evaded
     }
     raidActive = true;
+    raidStartedAt = Date.now();
     els.raid.style.display = 'flex';
     sfx.raid();
     // Penalty if ignored: income stops until you hide your assets.
@@ -726,7 +870,13 @@ function updateSoundButton() {
   els.sound.setAttribute('aria-label', label);
 }
 
+let soundToggles = 0;
+let lastSoundToggle = 0;
 els.sound.addEventListener('click', () => {
+  const now = Date.now();
+  soundToggles = now - lastSoundToggle < 2000 ? soundToggles + 1 : 1;
+  lastSoundToggle = now;
+  if (soundToggles >= 10) unlockSecret('make-up-your-mind');
   state.sound = !state.sound;
   updateSoundButton();
   if (state.sound) sfx.purchase(); // a little confirmation blip
@@ -772,9 +922,32 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && isModalOpen()) closeModal();
 });
 
-enableStickerDragging(els.stickers, () => {
+enableStickerDragging(els.stickers, (sticker) => {
   state.stats.stickersDragged++;
+  if (sticker.dataset.id === 'rothbard') {
+    // Stickers ease into place (0.8s), so check once Rothbard has settled.
+    setTimeout(() => {
+      const mises = els.stickers.querySelector<HTMLElement>('[data-id="mises"]');
+      if (mises && overlaps(sticker, mises)) unlockSecret('student-and-teacher');
+    }, 900);
+  }
   refresh();
+});
+
+function overlaps(a: HTMLElement, b: HTMLElement) {
+  const r = a.getBoundingClientRect();
+  const s = b.getBoundingClientRect();
+  return r.left < s.right && r.right > s.left && r.top < s.bottom && r.bottom > s.top;
+}
+
+els.newsTrack.addEventListener('click', () => unlockSecret('fine-print'));
+
+let typed = '';
+document.addEventListener('keydown', (e) => {
+  const target = e.target as HTMLElement;
+  if (target.matches('input, textarea') || e.key.length !== 1) return;
+  typed = (typed + e.key.toLowerCase()).slice(-SECRET_PHRASE.length);
+  if (typed === SECRET_PHRASE) unlockSecret('say-it');
 });
 
 const save = () => saveState(state);

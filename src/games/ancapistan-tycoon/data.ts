@@ -335,9 +335,16 @@ export interface Achievement {
   icon: string;
   name: string;
   description: string;
-  check: (c: AchievementContext) => boolean;
+  /**
+   * Unlocks automatically once this returns true. Achievements without it are
+   * granted by the game when something happens (see SECRET_ACHIEVEMENTS).
+   */
+  check?: (c: AchievementContext) => boolean;
   /** Optional link shown once unlocked. */
   reward?: { label: string; href: string };
+  /** Hidden as "???" until unlocked; `hint` is shown instead of the description. */
+  secret?: boolean;
+  hint?: string;
 }
 
 export const ACHIEVEMENTS: readonly Achievement[] = [
@@ -384,4 +391,37 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'golden-25', icon: '🥇', name: 'Hard Money Maniac', description: 'Catch 25 golden stickers.', check: (c) => c.stats.goldenClicks >= 25 },
   { id: 'playtime-10h', icon: '⏰', name: 'Wage Slave to Yourself', description: 'Play for 10 hours. At least the boss is you.', check: (c) => c.stats.playSeconds >= 36_000 },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },
+
+  // Secret achievements: granted by main.ts when the player does something specific.
+  ...([
+    { id: 'civil-disobedience', icon: '🪧', name: 'Civil Disobedience', description: 'Left a Fed raid on screen for a whole minute. Thoreau would be proud.', hint: 'Sometimes the best response to the State is no response at all.' },
+    { id: 'student-and-teacher', icon: '🎓', name: 'Student and Teacher', description: 'Dragged Rothbard onto Mises. The seminar is back in session.', hint: 'Put the student next to the teacher.' },
+    { id: 'afuera', icon: '🪚', name: '¡AFUERA!', description: "Caught Milei's Chainsaw with Milei himself on screen.", hint: 'A certain Argentine, and a certain power tool.' },
+    { id: 'brussels-effect', icon: '🇪🇺', name: 'Brussels Effect', description: 'Made the crossed-out EU flag your very first sticker.', hint: 'Be the first to leave the Union.' },
+    { id: 'insomniac', icon: '🦉', name: 'Insomniac Agorist', description: 'Played between 3 and 4 a.m. The market never sleeps.', hint: 'The counter-economy keeps odd hours.' },
+    { id: 'tax-day', icon: '🧾', name: 'Tax Day', description: 'Played on April 15. Hide your assets.', hint: 'A date every American taxpayer dreads.' },
+    { id: 'fechas-patrias', icon: '🇦🇷', name: 'Independence From What, Exactly?', description: 'Played on May 25 or July 9. ¡Viva la libertad, carajo!', hint: 'Fechas patrias.' },
+    { id: 'fine-print', icon: '📰', name: 'Read the Fine Print', description: 'Clicked the news ticker. Journalism is dead; long live clicking.', hint: 'Read all about it.' },
+    { id: 'make-up-your-mind', icon: '🔇', name: 'Make Up Your Mind', description: 'Toggled the sound 10 times in a row.', hint: 'On, off, on, off…' },
+    { id: 'say-it', icon: '⌨️', name: 'Say It With Me', description: 'Typed "taxation is theft". Correct.', hint: 'Type the first commandment.' },
+    { id: 'exit-liquidity', icon: '🫗', name: 'Exit Liquidity', description: 'Seceded with less than $1 in your pocket.', hint: 'Leave with nothing but your principles.' },
+    { id: 'zero-time-preference', icon: '🧘', name: 'Time Preference: Zero', description: "Didn't click the snake for 10 minutes while making $1M/sec.", hint: 'Patience. A lot of it. While rich.' },
+  ] as const).map((a) => ({ ...a, secret: true })),
 ];
+
+export type SecretAchievementId =
+  | 'civil-disobedience'
+  | 'student-and-teacher'
+  | 'afuera'
+  | 'brussels-effect'
+  | 'insomniac'
+  | 'tax-day'
+  | 'fechas-patrias'
+  | 'fine-print'
+  | 'make-up-your-mind'
+  | 'say-it'
+  | 'exit-liquidity'
+  | 'zero-time-preference';
+
+/** The phrase that unlocks "Say It With Me" when typed. */
+export const SECRET_PHRASE = 'taxation is theft';

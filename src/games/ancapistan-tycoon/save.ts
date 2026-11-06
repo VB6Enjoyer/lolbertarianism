@@ -97,3 +97,47 @@ export function saveState(state: GameState, now = Date.now()): void {
 export function clearSave(): void {
   slot.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Save codes: copy your progress to another browser or device
+// ---------------------------------------------------------------------------
+
+/** Every save code starts with this, so random text is rejected. */
+const CODE_PREFIX = 'ANCAP1:';
+
+/** Base64 of UTF-8 text (sticker ids include emoji, which plain btoa can't handle). */
+function toBase64(text: string): string {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function fromBase64(code: string): string {
+  const binary = atob(code);
+  return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
+}
+
+/** A text code holding the whole save (golden boosts excluded). */
+export function exportSave(state: GameState): string {
+  const { buffs: _buffs, ...saved } = state;
+  return CODE_PREFIX + toBase64(JSON.stringify({ v: SAVE_VERSION, data: saved }));
+}
+
+/**
+ * Reads a save code. Returns the cleaned-up state, or null if the code isn't a
+ * valid Ancapistan Tycoon save. Whitespace and line breaks from copy-paste are ignored.
+ */
+export function importSave(code: string): GameState | null {
+  const trimmed = code.replace(/\s+/g, '');
+  if (!trimmed.startsWith(CODE_PREFIX)) return null;
+  try {
+    const parsed: unknown = JSON.parse(fromBase64(trimmed.slice(CODE_PREFIX.length)));
+    if (!parsed || typeof parsed !== 'object') return null;
+    const { v, data } = parsed as { v?: unknown; data?: unknown };
+    if (typeof v !== 'number' || !data || typeof data !== 'object') return null;
+    const migrated = v <= 1 ? migrateV1(data as SaveV1) : (data as Partial<GameState>);
+    return normalize(migrated);
+  } catch {
+    return null;
+  }
+}
