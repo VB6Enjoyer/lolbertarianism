@@ -15,7 +15,6 @@ import {
   PRESENT_EFFECTS,
   REGULAR_STICKERS,
   PERKS,
-  STARTER_STICKERS,
   STICKERS,
   STICKER_SETS,
   UPGRADES,
@@ -143,7 +142,7 @@ export function newState(): GameState {
     owned: {},
     perks: [],
     achievements: [],
-    stickers: [...STARTER_STICKERS],
+    stickers: [],
     showStickers: true,
     buyAmount: 1,
     buffs: [],
@@ -433,8 +432,8 @@ export function buyPerk(state: GameState, perk: Perk): boolean {
 // Sticker shop
 // ---------------------------------------------------------------------------
 
-/** How many regular stickers can be bought (everything but the free starters and limited editions). */
-export const BUYABLE_STICKERS = REGULAR_STICKERS.length - STARTER_STICKERS.length;
+/** How many regular stickers can be bought (everything but limited editions). */
+export const BUYABLE_STICKERS = REGULAR_STICKERS.length;
 
 /** Price growth per purchase, so the first costs `firstCost` and the last `lastCost`. */
 export const STICKER_COST_GROWTH = Math.pow(
@@ -446,7 +445,7 @@ const isSeasonal = (id: string) => !!STICKERS.find((s) => s.id === id)?.season;
 
 /** Price of the next regular sticker. Depends only on how many you've bought, not which one. */
 export function stickerCost(state: GameState): number {
-  const bought = state.stickers.filter((id) => !STARTER_STICKERS.includes(id) && !isSeasonal(id)).length;
+  const bought = state.stickers.filter((id) => !isSeasonal(id)).length;
   return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought) * challengePriceFactor(state));
 }
 
@@ -641,7 +640,7 @@ export function secede(state: GameState): number {
   state.owned = {};
   if (!hasCharter(state, 'tenure')) state.perks = [];
   // Limited-edition stickers always stay; the rest only with Collector's Exemption.
-  if (!hasCharter(state, 'sticker-license')) state.stickers = [...STARTER_STICKERS, ...state.stickers.filter(isSeasonal)];
+  if (!hasCharter(state, 'sticker-license')) state.stickers = state.stickers.filter(isSeasonal);
   state.buffs = [];
   state.stats.secessions++;
   applyRunStart(state);

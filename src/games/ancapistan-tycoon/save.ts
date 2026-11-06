@@ -1,5 +1,5 @@
 import { createSaveSlot } from '../../shared/storage.ts';
-import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STICKERS, UPGRADES } from './data.ts';
 import { newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
@@ -61,8 +61,7 @@ export function normalize(raw: Partial<GameState>): GameState {
   const renamed: Record<string, string> = { 'fechas-patrias': 'white-paper' };
   const unlocked = new Set((raw.achievements ?? []).map((id) => renamed[id] ?? id));
   state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => unlocked.has(id));
-  // Saves from before the sticker shop start with the starter pack.
-  const owned = new Set([...STARTER_STICKERS, ...(raw.stickers ?? [])]);
+  const owned = new Set(raw.stickers ?? []);
   state.stickers = STICKERS.map((s) => s.id).filter((id) => owned.has(id));
   state.showStickers = raw.showStickers !== false;
   state.buyAmount = raw.buyAmount === 10 || raw.buyAmount === 'max' ? raw.buyAmount : 1;

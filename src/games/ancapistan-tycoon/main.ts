@@ -9,7 +9,6 @@ import {
   PERKS,
   PRESENT_EFFECTS,
   SECRET_PHRASE,
-  STARTER_STICKERS,
   STICKERS,
   STICKER_CATEGORIES,
   STICKER_SETS,
@@ -96,6 +95,7 @@ const els = {
   secede: byId<HTMLButtonElement>('btn-secede'),
   charters: byId<HTMLButtonElement>('btn-charters'),
   challenges: byId<HTMLButtonElement>('btn-challenges'),
+  reshuffle: byId<HTMLButtonElement>('btn-reshuffle'),
   challengeBanner: byId('challenge-banner'),
   challengeName: byId('challenge-name'),
   challengeFill: byId('challenge-fill'),
@@ -241,6 +241,8 @@ function updateUI() {
   // Challenges open up after your first secession.
   els.challenges.hidden = inChallenge || (state.cities === 0 && state.completedChallenges.length === 0);
   els.secede.hidden = inChallenge;
+  // Nothing to reshuffle until you own a sticker.
+  els.reshuffle.hidden = state.stickers.length === 0;
   renderChallengeBanner();
   els.charters.textContent = unspent ? `📜 Charters (${unspent} 🏙️)` : '📜 Charters';
 
@@ -570,7 +572,7 @@ function showStickerShop() {
 }
 
 function onBuySticker(id: string) {
-  const firstPurchase = state.stickers.every((s) => STARTER_STICKERS.includes(s));
+  const firstPurchase = state.stickers.length === 0;
   const setsBefore = completedStickerSets(state).length;
   if (!buySticker(state, id, today())) return;
   const newSet = completedStickerSets(state).length > setsBefore
@@ -977,7 +979,7 @@ function spawnGolden() {
     return;
   }
   const present = christmas();
-  const pool = state.stickers.length > STARTER_STICKERS.length ? state.stickers : STICKERS.map((s) => s.id);
+  const pool = state.stickers.length ? state.stickers : STICKERS.map((s) => s.id);
   const btn = el('button', `golden-sticker${present ? ' present' : ''}`);
   btn.setAttribute('aria-label', present ? 'A Christmas present! Click it' : 'Golden sticker! Click it');
   btn.append(present ? stickerPreview('ancap-gift') : stickerPreview(pick(pool)));

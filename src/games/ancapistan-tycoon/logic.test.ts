@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STARTER_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
   buyCharter,
@@ -231,12 +231,11 @@ describe('saves', () => {
 });
 
 describe('sticker shop', () => {
-  const firstBuyable = () => STICKERS.find((x) => !STARTER_STICKERS.includes(x.id))!.id;
+  const firstBuyable = () => REGULAR_STICKERS[0].id;
 
-  it('starts with the starter pack and all sticker ids are unique', () => {
-    expect(newState().stickers).toEqual([...STARTER_STICKERS]);
+  it('every sticker starts locked, and all sticker ids are unique', () => {
+    expect(newState().stickers).toEqual([]);
     expect(new Set(STICKERS.map((x) => x.id)).size).toBe(STICKERS.length);
-    for (const id of STARTER_STICKERS) expect(STICKERS.some((x) => x.id === id)).toBe(true);
   });
 
   it('prices go from firstCost to lastCost as you buy', () => {
@@ -248,17 +247,18 @@ describe('sticker shop', () => {
     // After buying everything, the price "of the next one" is one step past the last.
     s.stickers.pop();
     expect(stickerCost(s) / BALANCE.stickers.lastCost).toBeCloseTo(1, 6);
-    expect(BUYABLE_STICKERS).toBe(REGULAR_STICKERS.length - STARTER_STICKERS.length);
+    expect(BUYABLE_STICKERS).toBe(REGULAR_STICKERS.length);
   });
 
   it('buying deducts the price, needs cash, and each sticker can be bought once', () => {
     const s = newState();
     const id = firstBuyable();
-    s.score = 99_999;
+    const first = BALANCE.stickers.firstCost; // $10,000
+    s.score = first - 1;
     expect(buySticker(s, id)).toBe(false);
-    s.score = 250_000;
+    s.score = first + 5_000;
     expect(buySticker(s, id)).toBe(true);
-    expect(s.score).toBe(150_000);
+    expect(s.score).toBe(5_000);
     expect(buySticker(s, id)).toBe(false);
     expect(buySticker(s, 'not-a-sticker')).toBe(false);
   });
@@ -272,16 +272,17 @@ describe('sticker shop', () => {
     expect(d.clickAmount).toBe(1);
   });
 
-  it('seceding resets bought stickers back to the starter pack', () => {
+  it('seceding takes away bought stickers', () => {
     const s = newState();
     earn(s, earningsForCities(2));
     buySticker(s, firstBuyable());
     secede(s);
-    expect(s.stickers).toEqual([...STARTER_STICKERS]);
+    expect(s.stickers).toEqual([]);
   });
 
-  it('older saves get the starter pack; unknown ids are dropped', () => {
-    expect(normalize({}).stickers).toEqual(STICKERS.filter((x) => STARTER_STICKERS.includes(x.id)).map((x) => x.id));
+  it('saves keep the stickers they had (including the old free ones); unknown ids are dropped', () => {
+    expect(normalize({}).stickers).toEqual([]);
+    expect(normalize({ stickers: ['Taxation is theft!', 'rothbard'] }).stickers).toEqual(['Taxation is theft!', 'rothbard']);
     const n = normalize({ stickers: ['hoppe', 'bogus'], showStickers: false });
     expect(n.stickers).toContain('hoppe');
     expect(n.stickers).not.toContain('bogus');
@@ -429,7 +430,7 @@ describe('charters (prestige shop)', () => {
   it("collector's exemption and tenure keep stickers and perks through secession", () => {
     const s = withCharters(13, 'sticker-license', 'tenure');
     earn(s, earningsForCities(14));
-    s.stickers = [...STARTER_STICKERS, 'hoppe'];
+    s.stickers = ['hoppe'];
     s.perks = ['su1', 'su2'];
     secede(s);
     expect(s.stickers).toContain('hoppe');

@@ -71,13 +71,14 @@ Noticed along the way, left alone for now:
 ### Sticker shop ✅
 
 - 🎨 Stickers button opens a shop with tabs per category (quotes, emojis,
-  flags, people, orgs, items). You start with 5 free stickers; the other 72
-  are bought one at a time.
+  flags, people, orgs, items). Every sticker starts locked; all 77 are bought
+  one at a time. Reshuffle Stickers appears once you own one.
 - Each owned sticker adds +0.5% to passive income. The price depends only on how
-  many you've bought: $100k for the first, ~30% more per purchase, ~$10 trillion
+  many you've bought: $10k for the first, ~31% more per purchase, ~$10 trillion
   for the last (`BALANCE.stickers`).
 - The screen shows every sticker you own; a toggle hides them (bonus stays).
-- Bought stickers reset when you secede (the starter pack stays).
+- Bought stickers reset when you secede (limited editions stay). Saves from
+  before this change keep the five stickers that used to be free.
 - Achievements: Brand Ambassador, Hall of Fame, Laptop Lid Complete.
 
 ### Golden stickers and bulk buying ✅

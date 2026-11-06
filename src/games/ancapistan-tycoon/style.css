@@ -966,26 +966,31 @@ h1 {
 .news-ticker {
     display: flex;
     align-items: center;
-    gap: 8px;
     width: 100%;
+    height: 34px;
     box-sizing: border-box;
-    margin-bottom: 12px;
-    padding: 4px 4px 4px 0;
-    background: var(--ancap-black);
-    color: white;
-    border-radius: 8px;
+    margin-bottom: 14px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    box-shadow: 3px 3px 0 var(--ancap-yellow);
+    color: var(--ancap-black);
     overflow: hidden;
     font-size: 0.85rem;
 }
 
 .news-label {
     flex: none;
-    padding: 3px 8px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding: 0 18px 0 12px;
     background: var(--ancap-yellow);
-    color: var(--ancap-black);
     font-weight: bold;
-    border-radius: 8px 0 0 8px;
+    letter-spacing: 0.05em;
     white-space: nowrap;
+    /* slanted right edge, like a newsroom tag */
+    clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
 }
 
 .news-track {
@@ -993,6 +998,8 @@ h1 {
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
+    /* headlines fade in and out instead of being cut off */
+    mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
 }
 
 .news-text {
@@ -1002,13 +1009,16 @@ h1 {
 
 .sound-toggle {
     flex: none;
-    width: 30px;
+    display: grid;
+    place-items: center;
+    width: 26px;
     height: 26px;
+    margin: 0 3px 0 4px;
     padding: 0;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.15);
-    font-size: 15px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 50%;
+    background: white;
+    font-size: 13px;
     cursor: pointer;
 }
 
@@ -1341,7 +1351,7 @@ body[data-challenge='hyperinflation'] .panel {
 }
 
 .event-chip {
-    margin: -6px 0 12px;
+    margin: 14px 0 0;
     padding: 3px 12px;
     border: 2px solid #c0392b;
     border-radius: 999px;
@@ -1364,9 +1374,9 @@ body[data-challenge='hyperinflation'] .panel {
 
 .santa-hat {
     position: absolute;
-    top: -38px;
-    right: -26px;
-    width: 120px;
+    top: -22px;
+    right: -24px;
+    width: 112px;
     transform: rotate(18deg);
     pointer-events: none;
     filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.25));
@@ -1378,9 +1388,9 @@ body[data-challenge='hyperinflation'] .panel {
 
 @media (max-width: 800px) {
     .santa-hat {
-        top: -30px;
-        right: -20px;
-        width: 92px;
+        top: -20px;
+        right: -18px;
+        width: 88px;
     }
 }
 
@@ -1448,5 +1458,27 @@ body[data-challenge='hyperinflation'] .panel {
 @keyframes snowfall {
     to {
         transform: translate(40px, 105vh);
+    }
+}
+
+/* Room for the Santa hat so it doesn't cover the prestige line above the button. */
+body.christmas .main-btn-wrap {
+    margin-top: 18px;
+}
+
+/* If the clicker panel ever runs out of height, scroll instead of clipping the top. */
+#clicker-panel {
+    justify-content: safe center;
+    overflow-y: auto;
+}
+
+/* Short desktop screens: tighten the spacing around the score so everything fits. */
+@media (min-width: 801px) and (max-height: 860px) {
+    .score-display {
+        margin: 6px 0;
+    }
+
+    .sub-score {
+        margin-bottom: 10px;
     }
 }

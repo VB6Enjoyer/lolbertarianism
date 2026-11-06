@@ -168,7 +168,7 @@ function normalMilestones(): Milestone[] {
   return [
     { label: 'Earn $1,000', test: (x) => x.allTimeEarnings >= 1e3 },
     { label: 'First special upgrade', test: (x) => x.perks.length > 0 || x.stats.secessions > 0 },
-    { label: 'First bought sticker', test: (x) => x.stickers.length > 5 },
+    { label: 'First bought sticker', test: (x) => x.stickers.length > 0 },
     { label: `Earn $${(earningsForCities(1) / 1e6).toLocaleString()}M (first city possible)`, test: (x) => x.allTimeEarnings >= earningsForCities(1) },
     { label: 'First secession', test: (x) => x.stats.secessions >= 1 },
     { label: 'Privatize solar system', test: (x) => ownedCount(x, 14) > 0 },
