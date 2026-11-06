@@ -26,6 +26,16 @@
                 <div class="news-track" id="news-track"><span class="news-text" id="news-text"></span></div>
                 <button class="sound-toggle" id="btn-sound" aria-label="Mute sound" title="Mute sound">🔊</button>
             </div>
+            <div class="challenge-banner" id="challenge-banner" hidden>
+                <div class="challenge-banner-top">
+                    <span class="challenge-name" id="challenge-name"></span>
+                    <button class="challenge-abandon" id="btn-abandon">Abandon</button>
+                </div>
+                <div class="challenge-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="challenge-progress">
+                    <div class="challenge-progress-fill" id="challenge-fill"></div>
+                </div>
+                <div class="challenge-details" id="challenge-details"></div>
+            </div>
             <h1>Ancapistan Tycoon</h1>
             <p style="font-size: 0.8em; color: #888;">"Taxation is Theft"</p>
 
@@ -52,6 +62,7 @@
                 <button class="btn-reshuffle" id="btn-stats">📊 Stats</button>
                 <button class="btn-reshuffle btn-secede" id="btn-secede">🏴 Secede</button>
                 <button class="btn-reshuffle" id="btn-charters" hidden>📜 Charters</button>
+                <button class="btn-reshuffle" id="btn-challenges" hidden>🏁 Challenges</button>
             </div>
         </div>
 
@@ -76,8 +87,8 @@
     <!-- Raid Event Overlay -->
     <div id="raid-overlay">
         <div id="raid-box">
-            <h1>🚨 THE FED IS HERE! 🚨</h1>
-            <p>They want to audit your crypto wallet!</p>
+            <h1 id="raid-title">🚨 THE FED IS HERE! 🚨</h1>
+            <p id="raid-text">They want to audit your crypto wallet!</p>
             <p style="font-size: 40px;">👮‍♂️🚔📉</p>
             <button class="btn-evade" id="btn-evade">HIDE ASSETS!</button>
         </div>

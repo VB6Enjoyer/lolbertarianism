@@ -3,6 +3,7 @@ import { formatMoney } from '../../shared/format.ts';
 import {
   ACHIEVEMENTS,
   BALANCE,
+  CHALLENGES,
   CHARTERS,
   CLICK_PHRASES,
   PERKS,
@@ -13,6 +14,8 @@ import {
   STICKER_SETS,
   UPGRADES,
   type Achievement,
+  type Challenge,
+  type ChallengeId,
   type Charter,
   type GoldenEffect,
   type SecretAchievementId,
@@ -20,11 +23,13 @@ import {
 } from './data.ts';
 import {
   activeBuffs,
+  bannedReason,
   buyCharter,
   buyPerk,
   buySticker,
   buyUpgrade,
   catchGolden,
+  challengeOf,
   citiesAvailable,
   click,
   completedStickerSets,
@@ -40,9 +45,11 @@ import {
   offlineEarnings,
   offlineSettings,
   pendingCities,
+  perkCost,
   pickGoldenEffect,
   purchaseQuote,
   raidChance,
+  raidMinScore,
   raidsBlocked,
   secede,
   secretDateAchievements,
@@ -52,7 +59,16 @@ import {
   type BuyAmount,
   type GameState,
 } from './logic.ts';
+import {
+  challengeById,
+  challengeProgress,
+  checkChallengeWin,
+  enterChallenge,
+  leaveChallenge,
+  type ChallengeWin,
+} from './challenges.ts';
 import { pickHeadline, type NewsContext } from './news.ts';
+import { formatPlaytime } from './stats.ts';
 import { clearSave, exportSave, importSave, loadState, saveState } from './save.ts';
 import { setMuted, sfx } from './sfx.ts';
 import { buildStats } from './stats.ts';
@@ -73,6 +89,15 @@ const els = {
   raid: byId('raid-overlay'),
   secede: byId<HTMLButtonElement>('btn-secede'),
   charters: byId<HTMLButtonElement>('btn-charters'),
+  challenges: byId<HTMLButtonElement>('btn-challenges'),
+  challengeBanner: byId('challenge-banner'),
+  challengeName: byId('challenge-name'),
+  challengeFill: byId('challenge-fill'),
+  challengeProgress: byId('challenge-progress'),
+  challengeDetails: byId('challenge-details'),
+  raidTitle: byId('raid-title'),
+  raidText: byId('raid-text'),
+  raidButton: byId('btn-evade'),
   modal: byId('modal'),
   modalTitle: byId('modal-title'),
   modalBody: byId('modal-body'),
@@ -155,7 +180,7 @@ function renderPerks() {
     div.innerHTML = `
       <div class="special-upgrade-icon">${p.icon}</div>
       <div class="special-upgrade-name">${p.name}</div>
-      <div class="special-upgrade-cost">${owned ? '✔ Owned' : money(p.cost)}</div>
+      <div class="special-upgrade-cost">${owned ? '✔ Owned' : money(perkCost(state, p))}</div>
     `;
     els.perks.appendChild(div);
   }
@@ -168,15 +193,22 @@ function updateUI() {
 
   for (const p of PERKS) {
     const btn = document.getElementById(`btn-${p.id}`);
-    btn?.classList.toggle('disabled', hasPerk(state, p.id) || state.score < p.cost);
+    if (!btn) continue;
+    const owned = hasPerk(state, p.id);
+    const cost = perkCost(state, p);
+    btn.classList.toggle('disabled', owned || state.score < cost);
+    const price = btn.querySelector('.special-upgrade-cost');
+    if (price && !owned) price.textContent = money(cost); // challenge inflation moves prices
   }
   for (const u of UPGRADES) {
     const btn = document.getElementById(`btn-${u.id}`);
     if (!btn) continue;
+    const banned = bannedReason(state, u);
     const { count, cost } = purchaseQuote(state, u);
-    btn.classList.toggle('disabled', state.score < cost);
+    btn.classList.toggle('disabled', !!banned || state.score < cost);
+    btn.classList.toggle('banned', !!banned);
     const price = btn.querySelector('.item-cost');
-    if (price) price.textContent = count > 1 ? `×${count} · ${money(cost)}` : money(cost);
+    if (price) price.textContent = banned ?? (count > 1 ? `×${count} · ${money(cost)}` : money(cost));
   }
   for (const b of els.buyAmount.querySelectorAll<HTMLElement>('button')) {
     b.classList.toggle('active', b.dataset.amount === String(state.buyAmount));
@@ -185,14 +217,19 @@ function updateUI() {
 
   // Prestige summary, once there's something to show.
   const bonus = Math.round((d.globalMultiplier - 1) * 100);
-  els.prestige.hidden = state.cities === 0 && state.achievements.length === 0;
+  els.prestige.hidden = !!state.activeChallenge || (state.cities === 0 && state.achievements.length === 0);
   const unspent = citiesAvailable(state);
   els.prestige.textContent =
     `🏙️ ${state.cities} Free Private ${state.cities === 1 ? 'City' : 'Cities'}` +
     (unspent && state.charters.length < CHARTERS.length ? ` (${unspent} unspent)` : '') +
     ` · 🏆 ${state.achievements.length}/${ACHIEVEMENTS.length} · +${bonus}% income`;
 
-  els.charters.hidden = state.cities === 0 && state.charters.length === 0;
+  const inChallenge = !!state.activeChallenge;
+  els.charters.hidden = inChallenge || (state.cities === 0 && state.charters.length === 0);
+  // Challenges open up after your first secession.
+  els.challenges.hidden = inChallenge || (state.cities === 0 && state.completedChallenges.length === 0);
+  els.secede.hidden = inChallenge;
+  renderChallengeBanner();
   els.charters.textContent = unspent ? `📜 Charters (${unspent} 🏙️)` : '📜 Charters';
 
   if (shopTab) updateShopPrices();
@@ -581,6 +618,111 @@ function showStats() {
 }
 
 // ---------------------------------------------------------------------------
+// Challenge runs
+// ---------------------------------------------------------------------------
+
+function renderChallengeBanner() {
+  const challenge = challengeOf(state);
+  els.challengeBanner.hidden = !challenge;
+  document.body.dataset.challenge = challenge?.id ?? '';
+  if (!challenge) return;
+  const progress = challengeProgress(state);
+  const pct = Math.floor(progress * 100);
+  els.challengeName.textContent = `${challenge.icon} ${challenge.name}`;
+  els.challengeFill.style.width = `${progress * 100}%`;
+  els.challengeProgress.setAttribute('aria-valuenow', String(pct));
+  const tax = derive(state).taxRate;
+  els.challengeDetails.textContent =
+    `${money(state.runEarnings)} / ${money(challenge.goal)} earned (${pct}%) · ⏱️ ${formatPlaytime(state.stats.runSeconds)}` +
+    (tax ? ` · Taxes: ${Math.round(tax * 100)}%` : '');
+}
+
+function challengeCard(c: Challenge) {
+  const won = state.completedChallenges.includes(c.id);
+  const best = state.bestChallengeTimes[c.id];
+  const card = el('div', `challenge-card${won ? ' won' : ''}`);
+  card.append(el('span', 'challenge-card-title', `${c.icon} ${c.name}`), el('span', 'challenge-card-tagline', c.tagline));
+  const rules = el('ul', 'challenge-card-rules');
+  for (const rule of c.ruleText) rules.append(el('li', '', rule));
+  card.append(
+    rules,
+    el('span', 'challenge-card-goal', `🎯 Goal: earn ${money(c.goal)}`),
+    el('span', 'challenge-card-reward', `🎁 Reward: ${c.reward}${won ? ' (✔ unlocked)' : ''}`),
+  );
+  if (best !== undefined) card.append(el('span', 'challenge-card-best', `🏆 Best time: ${formatPlaytime(best)}`));
+  const start = el('button', 'btn-reshuffle', won ? 'Play again' : 'Start challenge');
+  start.addEventListener('click', () => confirmStartChallenge(c.id));
+  card.append(start);
+  return card;
+}
+
+function showChallenges() {
+  const body = el('div', 'challenge-shop');
+  body.append(
+    paragraph(
+      'Try running your empire under a different system. Your empire is saved and paused while you play; ' +
+        'cities, charters and achievement bonuses are switched off. Win to unlock a permanent perk. ' +
+        'You can abandon a challenge at any time and go straight back.',
+      'fine-print',
+    ),
+  );
+  const grid = el('div', 'challenge-grid');
+  grid.append(...CHALLENGES.map(challengeCard));
+  body.append(grid);
+  openModal('🏁 Challenges', body, [{ label: 'Not today' }]);
+}
+
+function confirmStartChallenge(id: ChallengeId) {
+  const c = challengeById(id);
+  confirmDialog(
+    `${c.icon} Start ${c.name}?`,
+    `Your empire will be saved and paused until you win or abandon the challenge. Goal: earn ${money(c.goal)}.`,
+    'Start',
+    'Cancel',
+    () => {
+      const run = enterChallenge(state, id);
+      if (!run) return;
+      replaceState(run);
+      toast(`${c.icon} ${c.name}`, c.tagline);
+      sfx.raid();
+    },
+  );
+}
+
+function confirmAbandonChallenge() {
+  const c = challengeOf(state);
+  if (!c) return;
+  confirmDialog(
+    'Abandon the challenge?',
+    `You'll go back to your empire exactly as you left it. Progress in ${c.name} will be lost.`,
+    'Abandon',
+    'Keep going',
+    () => {
+      replaceState(leaveChallenge(state));
+      toast('🏃 Challenge abandoned', 'Back to the free market.');
+    },
+  );
+}
+
+function finishChallenge(win: ChallengeWin) {
+  replaceState(leaveChallenge(state));
+  sfx.secede();
+  const body = el('div');
+  body.append(
+    paragraph(`You beat ${win.challenge.name} in`),
+    el('div', 'big-number', formatPlaytime(win.seconds)),
+    paragraph(win.newBest && !win.firstWin ? '🏆 A new best time!' : win.firstWin ? `🎁 Unlocked for good: ${win.challenge.reward}.` : ''),
+  );
+  if (win.achievements.length) {
+    const list = el('ul', 'challenge-win-achievements');
+    for (const a of win.achievements) list.append(el('li', '', `${a.icon} ${a.name}`));
+    body.append(paragraph('Achievements unlocked:', 'fine-print'), list);
+  }
+  body.append(paragraph('Welcome back to your empire. It waited for you.', 'fine-print'));
+  openModal(`${win.challenge.icon} Challenge won!`, body, [{ label: 'Back to my empire' }]);
+}
+
+// ---------------------------------------------------------------------------
 // Save data: export, import, start over
 // ---------------------------------------------------------------------------
 
@@ -755,7 +897,13 @@ function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
 function onClickMain(x: number, y: number) {
   if (raidActive) return;
   lastClickAt = Date.now();
-  const { amount, crit } = click(state, Math.random());
+  const { amount, crit, requisitioned } = click(state, Math.random());
+  if (requisitioned) {
+    spawnFloater(x, y, 'REQUISITIONED! ☭', '#c0392b');
+    sfx.click();
+    refresh();
+    return;
+  }
   if (crit) sfx.crit();
   else sfx.click();
   if (crit) spawnFloater(x, y, `CRIT! +${money(amount)}`, 'orange');
@@ -771,9 +919,15 @@ function onClickMain(x: number, y: number) {
 
 function onBuyUpgrade(id: number) {
   const upgrade = UPGRADES.find((u) => u.id === id)!;
-  const bought = buyUpgrade(state, upgrade);
-  if (!bought) return;
+  const { count: bought, failed } = buyUpgrade(state, upgrade);
   const { x, y } = center();
+  if (failed) {
+    spawnFloater(x, y, 'BUSINESS FAILED! Permit denied.', '#c0392b');
+    sfx.evade();
+    refresh();
+    return;
+  }
+  if (!bought) return;
   spawnFloater(x, y, bought > 1 ? `PURCHASED ×${bought}!` : 'PURCHASED!', 'green');
   sfx.purchase();
   renderShop(); // Re-render to update costs
@@ -808,6 +962,11 @@ function onSecede() {
 function gameLoop() {
   tick(state, raidActive);
   checkTimedSecrets();
+  const win = checkChallengeWin(state);
+  if (win) {
+    finishChallenge(win);
+    return;
+  }
   refresh();
 }
 
@@ -822,7 +981,7 @@ function checkTimedSecrets() {
 // Raid Event Logic
 function tryRaid() {
   if (raidActive || isModalOpen() || raidsBlocked(state)) return;
-  if (state.score > BALANCE.raid.minScore && Math.random() < raidChance(state)) {
+  if (state.score >= raidMinScore(state) && Math.random() < raidChance(state)) {
     if (Math.random() < derive(state).raidEvasionChance) {
       state.stats.raidsAutoEvaded++;
       spawnFloater(window.innerWidth / 2, 50, 'Raid Evaded!', 'blue');
@@ -832,6 +991,10 @@ function tryRaid() {
     }
     raidActive = true;
     raidStartedAt = Date.now();
+    const themed = challengeOf(state)?.raid;
+    els.raidTitle.textContent = themed?.title ?? '🚨 THE FED IS HERE! 🚨';
+    els.raidText.textContent = themed?.text ?? 'They want to audit your crypto wallet!';
+    els.raidButton.textContent = themed?.button ?? 'HIDE ASSETS!';
     els.raid.style.display = 'flex';
     sfx.raid();
     // Penalty if ignored: income stops until you hide your assets.
@@ -932,6 +1095,8 @@ byId('btn-reshuffle').addEventListener('click', () => {
 byId('btn-achievements').addEventListener('click', showAchievements);
 byId('btn-stats').addEventListener('click', showStats);
 els.charters.addEventListener('click', showCharters);
+els.challenges.addEventListener('click', showChallenges);
+byId('btn-abandon').addEventListener('click', confirmAbandonChallenge);
 byId('btn-stickers').addEventListener('click', showStickerShop);
 els.buyAmount.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-amount]');

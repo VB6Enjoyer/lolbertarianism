@@ -2,8 +2,9 @@
 // Balance check for Ancapistan Tycoon: a simulated player runs the real game
 // rules second by second and reports when milestones are reached.
 //
-//   npm run simulate              # both player profiles, up to 300 hours
-//   npm run simulate -- 100       # stop at 100 hours
+//   npm run simulate                      # normal game, both player profiles, up to 300 hours
+//   npm run simulate -- 100               # stop at 100 hours
+//   npm run simulate -- --challenges      # each challenge run, up to 8 hours
 //
 // The player buys whatever pays for itself fastest, catches most golden
 // stickers, hides from raids after a few seconds, secedes when that at least
@@ -13,7 +14,18 @@
 // Try other numbers without editing data.ts (deep-merged into BALANCE / CHARTER_VALUES):
 //   BALANCE='{"secession":{"root":3}}' npm run simulate
 
-import { BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, STICKERS, STICKER_SETS, UPGRADES } from '../src/games/ancapistan-tycoon/data.ts';
+import { enterChallenge } from '../src/games/ancapistan-tycoon/challenges.ts';
+import {
+  BALANCE,
+  CHALLENGES,
+  CHARTERS,
+  CHARTER_VALUES,
+  PERKS,
+  STICKERS,
+  STICKER_SETS,
+  UPGRADES,
+  type ChallengeId,
+} from '../src/games/ancapistan-tycoon/data.ts';
 import {
   buyCharter,
   buyPerk,
@@ -28,14 +40,15 @@ import {
   newState,
   ownedCount,
   pendingCities,
+  perkCost,
   pickGoldenEffect,
+  purchaseQuote,
   raidChance,
+  raidMinScore,
   secede,
   stickerCost,
   tick,
   unlockAchievements,
-  upgradeCost,
-  upgradePriceMultiplier,
   type GameState,
 } from '../src/games/ancapistan-tycoon/logic.ts';
 
@@ -53,7 +66,11 @@ const PROFILES: Profile[] = [
   { name: 'Casual (1 click/s)', clicksPerSec: 1, goldenCatchRate: 0.5, raidReaction: 10 },
 ];
 
-const MAX_HOURS = Number(process.argv[2]) || 300;
+const args = process.argv.slice(2);
+const CHALLENGE_MODE = args.includes('--challenges');
+const MAX_HOURS = Number(args.find((a) => /^\d+$/.test(a))) || (CHALLENGE_MODE ? 8 : 300);
+const DECIDE_EVERY = 5; // seconds between shopping trips
+const RAID_EVERY = BALANCE.raid.intervalMs / 1000;
 
 /** Deep-merges JSON overrides into a (runtime-mutable) settings object. */
 function override(target: Record<string, unknown>, json: string | undefined) {
@@ -68,7 +85,6 @@ function override(target: Record<string, unknown>, json: string | undefined) {
 }
 override(BALANCE as unknown as Record<string, unknown>, process.env.BALANCE);
 override(CHARTER_VALUES as unknown as Record<string, unknown>, process.env.CHARTER_VALUES);
-const DECIDE_EVERY = 5; // seconds between shopping trips
 
 /** Seeded RNG so runs are repeatable. */
 function rng(seed: number) {
@@ -77,21 +93,22 @@ function rng(seed: number) {
     return seed / 2 ** 32;
   };
 }
+let random = rng(42);
 
-/** Money per second from income plus clicking, crits included. */
+/** Money per second from income plus clicking, crits and requisitioned clicks included. */
 function rate(s: GameState, p: Profile, now: number): number {
   const d = derive(s, now);
-  return d.incomePerSec + p.clicksPerSec * d.clickAmount * (1 + d.critChance * (BALANCE.critMultiplier - 1));
+  const keep = 1 - (s.activeChallenge ? (CHALLENGES.find((c) => c.id === s.activeChallenge!.id)!.rules.clickFailChance ?? 0) : 0);
+  return d.incomePerSec + p.clicksPerSec * keep * d.clickAmount * (1 + d.critChance * (BALANCE.critMultiplier - 1));
 }
 
 const clone = (s: GameState): GameState => structuredClone(s);
 
-type Option = { label: string; cost: number; gain: number; buy: (s: GameState) => unknown };
+type Option = { cost: number; gain: number; buy: (s: GameState) => unknown };
 
 function options(s: GameState, p: Profile, now: number): Option[] {
   const base = rate(s, p, now);
   const opts: Option[] = [];
-  const m = upgradePriceMultiplier(s);
   const gainOf = (apply: (x: GameState) => unknown) => {
     const c = clone(s);
     c.score = Infinity; // so the purchase goes through for the what-if
@@ -99,11 +116,15 @@ function options(s: GameState, p: Profile, now: number): Option[] {
     return rate(c, p, now) - base;
   };
   for (const u of UPGRADES) {
-    opts.push({ label: u.name, cost: upgradeCost(u, ownedCount(s, u.id), m), gain: gainOf((c) => { c.buyAmount = 1; buyUpgrade(c, u); }), buy: (x) => { x.buyAmount = 1; buyUpgrade(x, u); } });
+    const { cost } = purchaseQuote(s, u); // Infinity when banned
+    if (!Number.isFinite(cost)) continue;
+    // Expected gain: a Status Quo business can fail, so weight by the chance it works.
+    const failChance = u.type === 'passive' ? (s.activeChallenge ? (CHALLENGES.find((c) => c.id === s.activeChallenge!.id)!.rules.businessFailChance ?? 0) : 0) : 0;
+    opts.push({ cost, gain: gainOf((c) => buyUpgrade(c, u, 1)) * (1 - failChance), buy: (x) => buyUpgrade(x, u, random()) });
   }
   for (const perk of PERKS) {
     if (s.perks.includes(perk.id)) continue;
-    opts.push({ label: perk.name, cost: perk.cost, gain: gainOf((c) => buyPerk(c, perk)), buy: (x) => buyPerk(x, perk) });
+    opts.push({ cost: perkCost(s, perk), gain: gainOf((c) => buyPerk(c, perk)), buy: (x) => buyPerk(x, perk) });
   }
   // Stickers: aim at the set closest to completion.
   const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !s.stickers.includes(x.id)))
@@ -114,7 +135,7 @@ function options(s: GameState, p: Profile, now: number): Option[] {
     // A sticker's own +0.5% is small; count a share of the set bonus it works toward.
     const direct = gainOf((c) => buySticker(c, id));
     const setGain = gainOf((c) => missing.forEach((x) => buySticker(c, x.id))) / missing.length;
-    opts.push({ label: 'sticker', cost: stickerCost(s), gain: Math.max(direct, setGain), buy: (x) => buySticker(x, id) });
+    opts.push({ cost: stickerCost(s), gain: Math.max(direct, setGain), buy: (x) => buySticker(x, id) });
   }
   return opts.filter((o) => o.gain > 0);
 }
@@ -141,14 +162,8 @@ interface Milestone {
   at?: number;
 }
 
-function simulate(p: Profile) {
-  const random = rng(42);
-  const s = newState();
-  let now = 0;
-  let nextGolden = (BALANCE.golden.minDelaySec + random() * (BALANCE.golden.maxDelaySec - BALANCE.golden.minDelaySec)) * 1000;
-  let frozenUntil = 0;
-
-  const milestones: Milestone[] = [
+function normalMilestones(): Milestone[] {
+  return [
     { label: 'Earn $1,000', test: (x) => x.allTimeEarnings >= 1e3 },
     { label: 'First special upgrade', test: (x) => x.perks.length > 0 || x.stats.secessions > 0 },
     { label: 'First bought sticker', test: (x) => x.stickers.length > 5 },
@@ -164,15 +179,33 @@ function simulate(p: Profile) {
     { label: 'Andromeda ($200T)', test: (x) => ownedCount(x, 22) > 0 },
     { label: 'All 77 stickers in one run', test: (x) => x.stickers.length === STICKERS.length },
   ];
+}
+
+function challengeMilestones(id: ChallengeId): Milestone[] {
+  const goal = CHALLENGES.find((c) => c.id === id)!.goal;
+  return [0.1, 0.25, 0.5, 1].map((share) => ({
+    label: share === 1 ? 'Win' : `${share * 100}% of goal`,
+    test: (x: GameState) => x.runEarnings >= goal * share,
+  }));
+}
+
+function simulate(p: Profile, challenge?: ChallengeId) {
+  random = rng(42);
+  const s = challenge ? enterChallenge(newState(), challenge)! : newState();
+  s.buyAmount = 1;
+  let now = 0;
+  let nextGolden = (BALANCE.golden.minDelaySec + random() * (BALANCE.golden.maxDelaySec - BALANCE.golden.minDelaySec)) * 1000;
+  let frozenUntil = 0;
+  const milestones = challenge ? challengeMilestones(challenge) : normalMilestones();
 
   const end = MAX_HOURS * 3600;
   for (let t = 1; t <= end; t++) {
     now = t * 1000;
     const raided = now < frozenUntil;
     tick(s, raided, now);
-    if (!raided) for (let c = 0; c < p.clicksPerSec; c++) click(s, random(), now);
+    if (!raided) for (let c = 0; c < p.clicksPerSec; c++) click(s, random(), now, random());
 
-    if (t % BALANCE.raid.intervalMs / 1000 === 0 && s.score > BALANCE.raid.minScore && random() < raidChance(s)) {
+    if (t % RAID_EVERY === 0 && s.score >= raidMinScore(s) && random() < raidChance(s)) {
       if (random() >= derive(s, now).raidEvasionChance) {
         frozenUntil = now + p.raidReaction * 1000;
         s.stats.raidsEvaded++;
@@ -187,7 +220,7 @@ function simulate(p: Profile) {
     if (t % DECIDE_EVERY === 0) {
       shop(s, p, now);
       unlockAchievements(s);
-      if (pendingCities(s) >= Math.max(1, s.cities)) {
+      if (!challenge && pendingCities(s) >= Math.max(1, s.cities)) {
         secede(s);
         for (const c of [...CHARTERS].sort((a, b) => a.cost - b.cost)) {
           if (citiesAvailable(s) >= c.cost) buyCharter(s, c);
@@ -208,14 +241,28 @@ const fmtTime = (sec?: number) => {
   return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(sec % 60).padStart(2, '0')}s`;
 };
 
-const results = PROFILES.map((p) => ({ p, ...simulate(p) }));
-const labels = results[0].milestones.map((m) => m.label);
-const width = Math.max(...labels.map((l) => l.length));
-console.log(`\nAncapistan Tycoon balance simulation (open-game time, max ${MAX_HOURS}h)\n`);
-console.log(`${'Milestone'.padEnd(width)}  ${results.map((r) => r.p.name.padStart(20)).join('  ')}`);
-for (const [i, label] of labels.entries()) {
-  console.log(`${label.padEnd(width)}  ${results.map((r) => fmtTime(r.milestones[i].at).padStart(20)).join('  ')}`);
+function table(title: string, results: { p: Profile; milestones: Milestone[] }[]) {
+  const labels = results[0].milestones.map((m) => m.label);
+  const width = Math.max(...labels.map((l) => l.length), 9);
+  console.log(`\n${title}\n`);
+  console.log(`${'Milestone'.padEnd(width)}  ${results.map((r) => r.p.name.padStart(20)).join('  ')}`);
+  for (const [i, label] of labels.entries()) {
+    console.log(`${label.padEnd(width)}  ${results.map((r) => fmtTime(r.milestones[i].at).padStart(20)).join('  ')}`);
+  }
 }
-for (const { p, s } of results) {
-  console.log(`\n${p.name} at the end: ${s.cities} cities, ${s.stats.secessions} secessions, ${s.charters.length} charters, ${s.achievements.length} achievements, ${GOLDEN_EFFECTS.length && s.stats.goldenClicks} golden stickers`);
+
+if (CHALLENGE_MODE) {
+  console.log(`\nAncapistan Tycoon challenge simulation (open-game time, max ${MAX_HOURS}h)`);
+  for (const c of CHALLENGES) {
+    const results = PROFILES.map((p) => ({ p, ...simulate(p, c.id) }));
+    table(`${c.icon} ${c.name}: goal $${c.goal.toLocaleString()}, speedrun under ${fmtTime(c.speedrunSec)}`, results);
+    const [active] = results;
+    console.log(`  (active player: ${active.s.stats.failedPurchases} failed purchases, ${active.s.stats.requisitionedClicks} requisitioned clicks, ${active.s.stats.raidsEvaded} raids)`);
+  }
+} else {
+  const results = PROFILES.map((p) => ({ p, ...simulate(p) }));
+  table(`Ancapistan Tycoon balance simulation (open-game time, max ${MAX_HOURS}h)`, results);
+  for (const { p, s } of results) {
+    console.log(`\n${p.name} at the end: ${s.cities} cities, ${s.stats.secessions} secessions, ${s.charters.length} charters, ${s.achievements.length} achievements, ${s.stats.goldenClicks} golden stickers, ${s.stats.raidsEvaded} raids`);
+  }
 }

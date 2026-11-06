@@ -1,7 +1,7 @@
 // The 📊 Stats panel's contents, as plain data (no DOM), so it's easy to test.
 
 import { formatMoney } from '../../shared/format.ts';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHALLENGES, CHARTERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
 import { activeBuffs, citiesAvailable, completedStickerSets, derive, type GameState } from './logic.ts';
 
 export interface StatsSection {
@@ -78,6 +78,7 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Achievements', `${state.achievements.length} / ${ACHIEVEMENTS.length}`],
         ['Stickers', `${state.stickers.length} / ${STICKERS.length}`],
         ['Sticker sets', `${completedStickerSets(state).length} / ${STICKER_SETS.length}`],
+        ['Challenges won', `${state.completedChallenges.length} / ${CHALLENGES.length}`],
         ['Upgrades owned', count(upgradesOwned)],
       ],
     },
@@ -87,6 +88,9 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Time played', formatPlaytime(st.playSeconds)],
         ['This run', formatPlaytime(st.runSeconds)],
         ['Tracking since', st.firstPlayed ? new Date(st.firstPlayed).toLocaleDateString() : 'Today'],
+        ...CHALLENGES.filter((c) => state.bestChallengeTimes[c.id] !== undefined).map(
+          (c): [string, string] => [`Best: ${c.name}`, formatPlaytime(state.bestChallengeTimes[c.id]!)],
+        ),
       ],
     },
   ];

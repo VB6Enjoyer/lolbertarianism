@@ -1171,3 +1171,161 @@ h1 {
 .sticker-set.complete .sticker-set-status {
     color: green;
 }
+
+/* ===================== Challenge runs ===================== */
+
+.challenge-banner {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 10px;
+    background: #fff3b0;
+    text-align: left;
+}
+
+.challenge-banner[hidden] {
+    display: none;
+}
+
+.challenge-banner-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.challenge-name {
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.challenge-abandon {
+    font-family: inherit;
+    font-size: 0.8em;
+    font-weight: bold;
+    padding: 3px 10px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+}
+
+.challenge-progress {
+    height: 12px;
+    margin: 6px 0 4px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    overflow: hidden;
+}
+
+.challenge-progress-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--ancap-yellow), #2ecc71);
+    transition: width 0.5s;
+}
+
+.challenge-details {
+    font-size: 0.8em;
+}
+
+/* A light tint per system, so you never forget where you are. */
+body[data-challenge='minarchist'] .panel {
+    box-shadow: 8px 8px 0 #3498db;
+}
+
+body[data-challenge='status-quo'] .panel {
+    box-shadow: 8px 8px 0 #7f8c8d;
+}
+
+body[data-challenge='communism'] .panel {
+    box-shadow: 8px 8px 0 #c0392b;
+}
+
+body[data-challenge='communism'] .challenge-banner {
+    background: #fde2e0;
+}
+
+body[data-challenge='hyperinflation'] .panel {
+    box-shadow: 8px 8px 0 #27ae60;
+}
+
+.shop-item.banned .item-cost {
+    color: #c0392b;
+    font-weight: bold;
+}
+
+.modal-box:has(.challenge-shop) {
+    width: min(760px, 100%);
+}
+
+.challenge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    text-align: left;
+}
+
+.challenge-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 10px;
+    background: #fffbe6;
+}
+
+.challenge-card.won {
+    border-color: green;
+    background: #eaffea;
+}
+
+.challenge-card-title {
+    font-weight: bold;
+    font-size: 1.05em;
+}
+
+.challenge-card-tagline {
+    font-style: italic;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.challenge-card-rules {
+    margin: 4px 0;
+    padding-left: 18px;
+    font-size: 0.82em;
+}
+
+.challenge-card-goal,
+.challenge-card-reward,
+.challenge-card-best {
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
+.challenge-card .btn-reshuffle {
+    align-self: flex-start;
+    margin-top: 6px;
+}
+
+.challenge-win-achievements {
+    text-align: left;
+    display: inline-block;
+    margin: 0 0 8px;
+}
+
+.btn-reshuffle[hidden],
+.btn-secede[hidden] {
+    display: none;
+}
+
+@media (max-width: 800px) {
+    .challenge-grid {
+        grid-template-columns: 1fr;
+    }
+}

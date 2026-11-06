@@ -1,5 +1,5 @@
 import { createSaveSlot } from '../../shared/storage.ts';
-import { ACHIEVEMENTS, CHARTERS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
 import { newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
@@ -8,7 +8,7 @@ import { newState, newStats, upgradeCost, type GameState, type Stats } from './l
  * - v1: same shape under `lolbertarianism:ancapistan-tycoon`.
  *       { score, upgrades: [{ id, owned }], specialUpgrades: [{ id, purchased }] }
  * - v2: the full GameState (lifetime earnings, cities, achievements, stats, lastSaved).
- *       Fields added later (stickers, showStickers, buyAmount, charters, sound) get defaults in normalize().
+ *       Fields added later (stickers, showStickers, buyAmount, charters, sound, challenges) get defaults in normalize().
  */
 export const SAVE_VERSION = 2;
 
@@ -65,6 +65,17 @@ export function normalize(raw: Partial<GameState>): GameState {
   state.buyAmount = raw.buyAmount === 10 || raw.buyAmount === 'max' ? raw.buyAmount : 1;
   state.charters = CHARTERS.map((c) => c.id).filter((id) => raw.charters?.includes(id));
   state.sound = raw.sound !== false;
+  const challengeIds = CHALLENGES.map((c) => c.id);
+  state.completedChallenges = challengeIds.filter((id) => raw.completedChallenges?.includes(id));
+  for (const id of challengeIds) {
+    const t = raw.bestChallengeTimes?.[id];
+    if (typeof t === 'number' && Number.isFinite(t) && t >= 0) state.bestChallengeTimes[id] = Math.floor(t);
+  }
+  // A challenge in progress keeps the empire it set aside (cleaned up the same way).
+  const active = raw.activeChallenge;
+  if (active && challengeIds.includes(active.id) && active.main && typeof active.main === 'object') {
+    state.activeChallenge = { id: active.id, main: normalize({ ...active.main, activeChallenge: null }) };
+  }
   // Golden boosts are never restored from a save.
   const stats = newStats();
   const moneyStats: (keyof Stats)[] = ['bestRunEarnings', 'biggestClick'];

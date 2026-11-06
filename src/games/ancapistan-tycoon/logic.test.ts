@@ -45,10 +45,10 @@ describe('upgrade costs', () => {
   it('buying deducts the price and needs enough cash', () => {
     const s = newState();
     s.score = 20;
-    expect(buyUpgrade(s, upgrade(1))).toBe(1);
+    expect(buyUpgrade(s, upgrade(1)).count).toBe(1);
     expect(s.score).toBe(5);
     expect(s.owned[1]).toBe(1);
-    expect(buyUpgrade(s, upgrade(1))).toBe(0);
+    expect(buyUpgrade(s, upgrade(1)).count).toBe(0);
     expect(s.owned[1]).toBe(1);
   });
 
@@ -105,8 +105,8 @@ describe('clicking', () => {
   it('crits pay 5x when the roll is under the crit chance', () => {
     const s = newState();
     s.perks = ['su1']; // 5% crit
-    expect(click(s, 0.5)).toEqual({ amount: 1, crit: false });
-    expect(click(s, 0.01)).toEqual({ amount: 5, crit: true });
+    expect(click(s, 0.5)).toMatchObject({ amount: 1, crit: false });
+    expect(click(s, 0.01)).toMatchObject({ amount: 5, crit: true });
     expect(s.stats.clicks).toBe(2);
     expect(s.stats.crits).toBe(1);
     expect(s.allTimeEarnings).toBe(6);
@@ -309,9 +309,9 @@ describe('buy ×10 / MAX', () => {
     const s = newState();
     s.buyAmount = 10;
     s.score = bulkCost(upgrade(1), 0, 10) - 1;
-    expect(buyUpgrade(s, upgrade(1))).toBe(0);
+    expect(buyUpgrade(s, upgrade(1)).count).toBe(0);
     s.score += 1;
-    expect(buyUpgrade(s, upgrade(1))).toBe(10);
+    expect(buyUpgrade(s, upgrade(1)).count).toBe(10);
     expect(s.owned[1]).toBe(10);
     expect(s.score).toBe(0);
   });
@@ -321,7 +321,7 @@ describe('buy ×10 / MAX', () => {
     s.buyAmount = 'max';
     expect(purchaseQuote(s, upgrade(1))).toEqual({ count: 1, cost: 15 });
     s.score = bulkCost(upgrade(1), 0, 12) + 5;
-    expect(buyUpgrade(s, upgrade(1))).toBe(12);
+    expect(buyUpgrade(s, upgrade(1)).count).toBe(12);
     expect(s.score).toBe(5);
   });
 });

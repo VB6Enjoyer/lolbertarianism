@@ -4,6 +4,8 @@
 import {
   ACHIEVEMENTS,
   BALANCE,
+  CHALLENGES,
+  CHALLENGE_REWARDS,
   CHARTERS,
   CHARTER_VALUES,
   GOLDEN_EFFECTS,
@@ -14,6 +16,9 @@ import {
   UPGRADES,
   type Achievement,
   type AchievementContext,
+  type Challenge,
+  type ChallengeId,
+  type ChallengeRules,
   type Charter,
   type CharterId,
   type GoldenEffect,
@@ -44,6 +49,9 @@ export interface Stats {
   biggestClick: number;
   /** Epoch ms when stats started being tracked. */
   firstPlayed: number;
+  /** Challenge runs: purchases that failed, and clicks requisitioned. */
+  failedPurchases: number;
+  requisitionedClicks: number;
 }
 
 /** A timed golden-sticker boost. Not saved: boosts end when the tab closes. */
@@ -82,6 +90,14 @@ export interface GameState {
   charters: CharterId[];
   /** Sound effects on or off. */
   sound: boolean;
+  /** Challenges won, and the fastest win of each (seconds). */
+  completedChallenges: ChallengeId[];
+  bestChallengeTimes: Partial<Record<ChallengeId, number>>;
+  /**
+   * The challenge being played, with your real empire set aside in `main`.
+   * While this is set, `state` itself is the challenge run.
+   */
+  activeChallenge: { id: ChallengeId; main: GameState } | null;
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -103,6 +119,8 @@ export function newStats(): Stats {
     bestRunEarnings: 0,
     biggestClick: 0,
     firstPlayed: 0,
+    failedPurchases: 0,
+    requisitionedClicks: 0,
   };
 }
 
@@ -121,6 +139,9 @@ export function newState(): GameState {
     buffs: [],
     charters: [],
     sound: true,
+    completedChallenges: [],
+    bestChallengeTimes: {},
+    activeChallenge: null,
     stats: newStats(),
     lastSaved: 0,
   };
@@ -139,9 +160,50 @@ export function upgradeCost(upgrade: Upgrade, owned: number, multiplier = 1): nu
   return Math.ceil(upgrade.baseCost * Math.pow(BALANCE.costGrowth, owned) * multiplier);
 }
 
-/** Upgrade price multiplier from charters. */
+// ---------------------------------------------------------------------------
+// Challenge rules (the runs themselves are started and ended in challenges.ts)
+// ---------------------------------------------------------------------------
+
+export const challengeOf = (state: GameState): Challenge | null =>
+  state.activeChallenge ? (CHALLENGES.find((c) => c.id === state.activeChallenge!.id) ?? null) : null;
+
+const NO_RULES: ChallengeRules = {};
+export const challengeRules = (state: GameState): ChallengeRules => challengeOf(state)?.rules ?? NO_RULES;
+
+/** A challenge's permanent reward, which only applies in normal play. */
+const hasReward = (state: GameState, id: ChallengeId) => !state.activeChallenge && state.completedChallenges.includes(id);
+
+/** Challenge price factor for everything: the flat multiplier times inflation so far. */
+export function challengePriceFactor(state: GameState): number {
+  const r = challengeRules(state);
+  const minutes = state.stats.runSeconds / 60;
+  return (r.priceMultiplier ?? 1) * Math.pow(1 + (r.inflationPerMinute ?? 0), minutes);
+}
+
+/** Why an upgrade can't be bought right now, or null if it can. */
+export function bannedReason(state: GameState, upgrade: Upgrade): string | null {
+  const r = challengeRules(state);
+  if (r.banned?.[upgrade.id]) return r.banned[upgrade.id];
+  if (r.clickOnly && upgrade.type === 'passive') return '☭ Collectivized';
+  return null;
+}
+
+/** Tax rate on earnings, from the challenge's flat tax or bracket for this gross income per second. */
+export function taxRate(state: GameState, grossIncomePerSec: number): number {
+  const r = challengeRules(state);
+  let rate = r.flatTax ?? 0;
+  for (const [from, bracket] of r.taxBrackets ?? []) if (grossIncomePerSec >= from) rate = bracket;
+  return rate;
+}
+
+/** Upgrade price multiplier from charters, challenge rewards and the current challenge. */
 export const upgradePriceMultiplier = (state: GameState) =>
-  hasCharter(state, 'bulk-discount') ? CHARTER_VALUES.bulkDiscount : 1;
+  (hasCharter(state, 'bulk-discount') ? CHARTER_VALUES.bulkDiscount : 1) *
+  (hasReward(state, 'status-quo') ? CHALLENGE_REWARDS.statusQuoPrices : 1) *
+  challengePriceFactor(state);
+
+/** A special upgrade's price right now. */
+export const perkCost = (state: GameState, perk: Perk) => Math.ceil(perk.cost * challengePriceFactor(state));
 
 export interface Derived {
   /** Base click value from click upgrades (starts at 1). */
@@ -166,6 +228,8 @@ export interface Derived {
   /** Golden-sticker boosts running right now. */
   clickBuff: number;
   incomeBuff: number;
+  /** Tax taken from earnings (challenges only). clickAmount and incomePerSec are after tax. */
+  taxRate: number;
   /** What a normal (non-crit) click earns. */
   clickAmount: number;
   incomePerSec: number;
@@ -212,7 +276,8 @@ export function derive(state: GameState, now = Date.now()): Derived {
   const perAchievement = hasCharter(state, 'lindy') ? CHARTER_VALUES.lindyBonusPerAchievement : BALANCE.bonusPerAchievement;
   // Spending cities on charters doesn't reduce this: it counts every city ever founded.
   const cityMultiplier = 1 + state.cities * perCity;
-  const achievementMultiplier = 1 + state.achievements.length * perAchievement;
+  // Challenges are played without the achievement bonus (cities and charters are absent anyway).
+  const achievementMultiplier = state.activeChallenge ? 1 : 1 + state.achievements.length * perAchievement;
   const globalMultiplier = cityMultiplier * achievementMultiplier;
 
   const stickerMultiplier = 1 + state.stickers.length * BALANCE.stickers.bonusEach;
@@ -232,6 +297,11 @@ export function derive(state: GameState, now = Date.now()): Derived {
     incomeBuff *= effect.incomeMultiplier;
   }
 
+  if (hasReward(state, 'communism')) clickMultiplier *= CHALLENGE_REWARDS.communismClicks;
+
+  const grossIncome = income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff;
+  const tax = taxRate(state, grossIncome);
+
   return {
     clickValue,
     income,
@@ -248,10 +318,10 @@ export function derive(state: GameState, now = Date.now()): Derived {
     setIncomeMultiplier,
     clickBuff,
     incomeBuff,
+    taxRate: tax,
     clickAmount:
-      (clickValue + income * incomeToClickPercent) * clickMultiplier * setClickMultiplier * globalMultiplier * clickBuff,
-    incomePerSec:
-      income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff,
+      (clickValue + income * incomeToClickPercent) * clickMultiplier * setClickMultiplier * globalMultiplier * clickBuff * (1 - tax),
+    incomePerSec: grossIncome * (1 - tax),
   };
 }
 
@@ -266,16 +336,28 @@ export function earn(state: GameState, amount: number): void {
   state.allTimeEarnings += amount;
 }
 
-/** Resolves one click. `roll` is a random number in [0, 1) used for the crit check. */
-export function click(state: GameState, roll: number, now = Date.now()): { amount: number; crit: boolean } {
+/**
+ * Resolves one click. `roll` (crit check) and `failRoll` (Communism's requisitioning)
+ * are random numbers in [0, 1).
+ */
+export function click(
+  state: GameState,
+  roll: number,
+  now = Date.now(),
+  failRoll = Math.random(),
+): { amount: number; crit: boolean; requisitioned: boolean } {
+  state.stats.clicks++;
+  if (failRoll < (challengeRules(state).clickFailChance ?? 0)) {
+    state.stats.requisitionedClicks++;
+    return { amount: 0, crit: false, requisitioned: true };
+  }
   const d = derive(state, now);
   const crit = roll < d.critChance;
   const amount = crit ? d.clickAmount * BALANCE.critMultiplier : d.clickAmount;
-  state.stats.clicks++;
   if (crit) state.stats.crits++;
   state.stats.biggestClick = Math.max(state.stats.biggestClick, amount);
   earn(state, amount);
-  return { amount, crit };
+  return { amount, crit, requisitioned: false };
 }
 
 /** Total price of the next `count` copies, each priced like a single purchase. */
@@ -303,6 +385,7 @@ export function maxAffordable(upgrade: Upgrade, owned: number, cash: number, mul
  * and the total price. In MAX mode with nothing affordable, it quotes one copy.
  */
 export function purchaseQuote(state: GameState, upgrade: Upgrade): { count: number; cost: number } {
+  if (bannedReason(state, upgrade)) return { count: 0, cost: Infinity };
   const owned = ownedCount(state, upgrade.id);
   const m = upgradePriceMultiplier(state);
   const count =
@@ -310,18 +393,27 @@ export function purchaseQuote(state: GameState, upgrade: Upgrade): { count: numb
   return { count, cost: bulkCost(upgrade, owned, count, m) };
 }
 
-/** Buys the quoted number of copies, or nothing if you can't afford all of them. Returns how many were bought. */
-export function buyUpgrade(state: GameState, upgrade: Upgrade): number {
+/**
+ * Buys the quoted number of copies, or nothing if you can't afford all of them.
+ * In Status Quo Mode a passive business can fail: the money is spent and nothing is gained.
+ * `roll` is a random number in [0, 1) for that check.
+ */
+export function buyUpgrade(state: GameState, upgrade: Upgrade, roll = Math.random()): { count: number; failed: boolean } {
   const { count, cost } = purchaseQuote(state, upgrade);
-  if (state.score < cost) return 0;
+  if (!count || state.score < cost) return { count: 0, failed: false };
   state.score -= cost;
+  if (upgrade.type === 'passive' && roll < (challengeRules(state).businessFailChance ?? 0)) {
+    state.stats.failedPurchases++;
+    return { count: 0, failed: true };
+  }
   state.owned[upgrade.id] = ownedCount(state, upgrade.id) + count;
-  return count;
+  return { count, failed: false };
 }
 
 export function buyPerk(state: GameState, perk: Perk): boolean {
-  if (state.score < perk.cost || hasPerk(state, perk.id)) return false;
-  state.score -= perk.cost;
+  const cost = perkCost(state, perk);
+  if (state.score < cost || hasPerk(state, perk.id)) return false;
+  state.score -= cost;
   state.perks.push(perk.id);
   return true;
 }
@@ -342,7 +434,7 @@ export const STICKER_COST_GROWTH = Math.pow(
 /** Price of the next sticker. Depends only on how many you've bought, not which one. */
 export function stickerCost(state: GameState): number {
   const bought = state.stickers.filter((id) => !STARTER_STICKERS.includes(id)).length;
-  return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought));
+  return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought) * challengePriceFactor(state));
 }
 
 export const hasSticker = (state: GameState, id: string) => state.stickers.includes(id);
@@ -399,7 +491,8 @@ export function pickGoldenEffect(roll: number): GoldenEffect {
 export function goldenCash(state: GameState, now = Date.now()): number {
   const d = derive(state, now);
   const g = BALANCE.golden;
-  return Math.max(Math.min(state.score * g.cashShareOfScore, d.incomePerSec * g.cashIncomeSeconds), d.clickAmount * g.cashMinClicks);
+  const base = Math.max(Math.min(state.score * g.cashShareOfScore, d.incomePerSec * g.cashIncomeSeconds), d.clickAmount * g.cashMinClicks);
+  return base * (hasReward(state, 'hyperinflation') ? CHALLENGE_REWARDS.hyperinflationWallet : 1);
 }
 
 /** Applies a caught golden sticker. Returns the cash paid out (0 for timed boosts). */
@@ -425,9 +518,17 @@ export const goldenDelayMultiplier = (state: GameState) =>
 
 /** Odds of a raid at each raid check. */
 export const raidChance = (state: GameState) =>
-  BALANCE.raid.chance *
-  (hasCharter(state, 'private-courts') ? CHARTER_VALUES.privateCourtsRaidChance : 1) *
-  setProduct(state, 'raidChance');
+  Math.min(
+    1,
+    BALANCE.raid.chance *
+      (hasCharter(state, 'private-courts') ? CHARTER_VALUES.privateCourtsRaidChance : 1) *
+      setProduct(state, 'raidChance') *
+      (hasReward(state, 'minarchist') ? CHALLENGE_REWARDS.minarchistRaidChance : 1) *
+      (challengeRules(state).raidChanceMultiplier ?? 1),
+  );
+
+/** Cash needed before raids start (Communism audits you from the start). */
+export const raidMinScore = (state: GameState) => (challengeRules(state).raidsFromStart ? 0 : BALANCE.raid.minScore);
 
 // ---------------------------------------------------------------------------
 // Charters (prestige shop)
@@ -479,6 +580,7 @@ export function earningsForCities(cities: number): number {
 
 /** Cities you'd gain by seceding right now. */
 export function pendingCities(state: GameState): number {
+  if (state.activeChallenge) return 0;
   return Math.max(0, citiesFor(state.allTimeEarnings) - state.cities);
 }
 
@@ -489,6 +591,7 @@ export function pendingCities(state: GameState): number {
  * cities were gained (0 means you couldn't secede yet and nothing changed).
  */
 export function secede(state: GameState): number {
+  if (state.activeChallenge) return 0; // no seceding from a challenge: win it or abandon it
   const gained = pendingCities(state);
   if (gained < 1) return 0;
   state.stats.bestRunEarnings = Math.max(state.stats.bestRunEarnings, state.runEarnings);
@@ -507,6 +610,8 @@ export function secede(state: GameState): number {
 
 /** One second of play: earns passive income (unless a raid is freezing it) and counts time. */
 export function tick(state: GameState, raidActive: boolean, now = Date.now()): void {
+  const decay = challengeRules(state).cashDecayPerSec ?? 0;
+  if (decay) state.score *= 1 - decay;
   if (!raidActive) earn(state, derive(state, now).incomePerSec);
   state.stats.playSeconds++;
   state.stats.runSeconds++;
@@ -519,7 +624,8 @@ export function tick(state: GameState, raidActive: boolean, now = Date.now()): v
 
 /** What the enterprises made while the tab was closed. */
 export function offlineEarnings(state: GameState, now: number): { seconds: number; amount: number } {
-  if (!state.lastSaved) return { seconds: 0, amount: 0 };
+  // Challenges only count time with the game open.
+  if (!state.lastSaved || state.activeChallenge) return { seconds: 0, amount: 0 };
   const away = Math.floor((now - state.lastSaved) / 1000);
   if (away < BALANCE.offline.minSeconds) return { seconds: 0, amount: 0 };
   const { rate, maxSeconds } = offlineSettings(state);
@@ -551,6 +657,8 @@ export function achievementContext(state: GameState): AchievementContext {
     chartersOwned: state.charters.length,
     stickerCategoryComplete: (category) => stickerCategoryComplete(state, category),
     stickerSetsComplete: completedStickerSets(state).length,
+    challenge: state.activeChallenge?.id ?? null,
+    challengesCompleted: state.completedChallenges.length,
     stats: state.stats,
   };
 }
@@ -564,7 +672,7 @@ export function unlockAchievements(state: GameState): Achievement[] {
 }
 
 /** Unlocks one achievement directly (used for secret ones). Returns it if it was newly unlocked. */
-export function grantAchievement(state: GameState, id: SecretAchievementId): Achievement | null {
+export function grantAchievement(state: GameState, id: SecretAchievementId | string): Achievement | null {
   const a = ACHIEVEMENTS.find((x) => x.id === id);
   if (!a || state.achievements.includes(id)) return null;
   state.achievements.push(id);

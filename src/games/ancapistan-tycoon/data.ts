@@ -112,6 +112,141 @@ export const CHARTERS: readonly Charter[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Challenge runs: play under a different system, then return to your empire
+// ---------------------------------------------------------------------------
+
+export type ChallengeId = 'minarchist' | 'status-quo' | 'communism' | 'hyperinflation';
+
+/** The rule changes a challenge applies. Anything left out works as normal. */
+export interface ChallengeRules {
+  /** Flat tax on everything earned. */
+  flatTax?: number;
+  /** Progressive tax: [income per second from, rate]. The highest bracket reached applies. */
+  taxBrackets?: readonly (readonly [number, number])[];
+  raidChanceMultiplier?: number;
+  /** Raids can happen from the start (normally only above BALANCE.raid.minScore). */
+  raidsFromStart?: boolean;
+  /** Multiplies every price (upgrades, special upgrades, stickers). */
+  priceMultiplier?: number;
+  /** Every price grows by this share each minute of the run, compounding. */
+  inflationPerMinute?: number;
+  /** Upgrades that can't be bought, with the label shown instead of a price. */
+  banned?: Readonly<Record<number, string>>;
+  /** Passive upgrades can't be bought. */
+  clickOnly?: boolean;
+  /** Chance each click produces nothing. */
+  clickFailChance?: number;
+  /** Chance that buying a passive business fails: the money is gone, nothing is gained. */
+  businessFailChance?: number;
+  /** Share of your cash that evaporates every second, compounding. */
+  cashDecayPerSec?: number;
+  /** Upgrades you start the challenge with. */
+  startWith?: Readonly<Record<number, number>>;
+}
+
+export interface Challenge {
+  id: ChallengeId;
+  icon: string;
+  name: string;
+  tagline: string;
+  /** The rules in plain words, for the challenge card. */
+  ruleText: readonly string[];
+  rules: ChallengeRules;
+  /** Earn this much in the challenge run to win. */
+  goal: number;
+  /** Win within this many seconds for the speedrun achievement. */
+  speedrunSec: number;
+  /** The permanent perk for winning, in plain words (effects live in CHALLENGE_REWARDS). */
+  reward: string;
+  /** Achievement ids granted for winning and for the speedrun. */
+  achievement: string;
+  speedrunAchievement: string;
+  /** Themed raid popup text (defaults to the Fed raid). */
+  raid?: { title: string; text: string; button: string };
+}
+
+export const CHALLENGES: readonly Challenge[] = [
+  {
+    id: 'minarchist',
+    icon: '⚖️',
+    name: 'Minarchist Mode',
+    tagline: 'A night-watchman state. It watches mostly you.',
+    ruleText: ['Fed raids twice as often', 'A flat 5% tax on everything you earn', 'You start with one State-provided PMC'],
+    rules: { flatTax: 0.05, raidChanceMultiplier: 2, startWith: { 9: 1 } },
+    goal: 2.5e8,
+    speedrunSec: 3600,
+    reward: 'Fed raids 10% less often',
+    achievement: 'challenge-minarchist',
+    speedrunAchievement: 'speedrun-minarchist',
+  },
+  {
+    id: 'status-quo',
+    icon: '🏛️',
+    name: 'Status Quo Mode',
+    tagline: 'Welcome to the real world. Please take a number.',
+    ruleText: [
+      'Progressive income tax: 10% → 20% → 35% → 50% as you grow',
+      'AK-47s and raw milk are banned',
+      'Passive businesses fail 20% of the time: the money is gone',
+      'All prices rise 1% every minute (the "target rate")',
+    ],
+    rules: {
+      taxBrackets: [[0, 0.1], [10, 0.2], [1_000, 0.35], [100_000, 0.5]],
+      banned: { 3: '🚫 Banned by the ATF', 4: '🚫 Banned by the FDA' },
+      businessFailChance: 0.2,
+      inflationPerMinute: 0.01,
+    },
+    goal: 7.5e7,
+    speedrunSec: 3600,
+    reward: 'All upgrades 5% cheaper',
+    achievement: 'challenge-status-quo',
+    speedrunAchievement: 'speedrun-status-quo',
+    raid: { title: '🚨 THE IRS IS HERE! 🚨', text: 'Your paperwork is missing form 27-B/6, in triplicate.', button: 'SHRED THE EVIDENCE!' },
+  },
+  {
+    id: 'communism',
+    icon: '☭',
+    name: 'Communism Mode',
+    tagline: 'From each according to their clicks, to the Party according to its needs.',
+    ruleText: [
+      'Only click upgrades: every business is collectivized',
+      'Half your clicks are requisitioned for the Five-Year Plan',
+      'Everything costs 10× as much',
+      'The Party audits you about once a minute, from day one',
+    ],
+    rules: { clickOnly: true, clickFailChance: 0.5, priceMultiplier: 10, raidChanceMultiplier: 5 / 3, raidsFromStart: true },
+    goal: 1e6,
+    speedrunSec: 3600,
+    reward: 'Clicks are worth 25% more',
+    achievement: 'challenge-communism',
+    speedrunAchievement: 'speedrun-communism',
+    raid: { title: '🚨 PARTY AUDIT! 🚨', text: 'The commissar wants to inspect your ration book!', button: 'HIDE THE BREAD!' },
+  },
+  {
+    id: 'hyperinflation',
+    icon: '💸',
+    name: 'Hyperinflation Mode',
+    tagline: 'The central bank has discovered the print button.',
+    ruleText: ['Your cash loses 0.1% of its value every second', 'All prices double every 10 minutes', "Spend it before it's worthless"],
+    rules: { cashDecayPerSec: 0.001, inflationPerMinute: Math.pow(2, 1 / 10) - 1 },
+    goal: 1.5e7,
+    speedrunSec: 3600,
+    reward: 'The Unclaimed Bitcoin Wallet pays 50% more',
+    achievement: 'challenge-hyperinflation',
+    speedrunAchievement: 'speedrun-hyperinflation',
+    raid: { title: '🚨 PRICE CONTROLS! 🚨', text: 'The Ministry of Prices wants to know why yours went up.', button: 'HIDE THE RECEIPTS!' },
+  },
+];
+
+/** Permanent perks for winning challenges (normal play only). */
+export const CHALLENGE_REWARDS = {
+  minarchistRaidChance: 0.9,
+  statusQuoPrices: 0.95,
+  communismClicks: 1.25,
+  hyperinflationWallet: 1.5,
+} as const;
+
+// ---------------------------------------------------------------------------
 // Golden sticker rewards
 // ---------------------------------------------------------------------------
 
@@ -347,6 +482,9 @@ export interface AchievementContext {
   /** True when every sticker of that category is owned. */
   stickerCategoryComplete: (category: StickerCategory) => boolean;
   stickerSetsComplete: number;
+  /** The challenge being played, if any. */
+  challenge: ChallengeId | null;
+  challengesCompleted: number;
   stats: {
     clicks: number;
     crits: number;
@@ -423,6 +561,19 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'golden-25', icon: '🥇', name: 'Hard Money Maniac', description: 'Catch 25 golden stickers.', check: (c) => c.stats.goldenClicks >= 25 },
   { id: 'playtime-10h', icon: '⏰', name: 'Wage Slave to Yourself', description: 'Play for 10 hours. At least the boss is you.', check: (c) => c.stats.playSeconds >= 36_000 },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },
+
+  // Challenge runs: winning and speedrun achievements are granted when you win.
+  { id: 'challenge-minarchist', icon: '⚖️', name: 'Night Watchman', description: 'Win Minarchist Mode.' },
+  { id: 'speedrun-minarchist', icon: '⏱️', name: 'Limited Government, Unlimited Hustle', description: 'Win Minarchist Mode in under an hour.' },
+  { id: 'challenge-status-quo', icon: '🏛️', name: 'Regulatory Capture', description: 'Win Status Quo Mode.' },
+  { id: 'speedrun-status-quo', icon: '📎', name: 'Red Tape Speedrun', description: 'Win Status Quo Mode in under an hour.' },
+  { id: 'permit-office', icon: '🗃️', name: 'Survived the Permit Office', description: 'Win Status Quo Mode after 10 or more of your businesses failed.' },
+  { id: 'challenge-communism', icon: '🧱', name: 'Escape to the West', description: 'Win Communism Mode.' },
+  { id: 'speedrun-communism', icon: '⚒️', name: 'Five-Year Plan, Fulfilled Early', description: 'Win Communism Mode in under an hour.' },
+  { id: 'socialist-labor', icon: '🎖️', name: 'Hero of Socialist Labor', description: 'Click 10,000 times in a single Communism run.', check: (c) => c.challenge === 'communism' && c.stats.clicks >= 10_000 },
+  { id: 'challenge-hyperinflation', icon: '🛒', name: 'Wheelbarrow Economics', description: 'Win Hyperinflation Mode.' },
+  { id: 'speedrun-hyperinflation', icon: '🔥', name: 'Spend It Before It Melts', description: 'Win Hyperinflation Mode in under an hour.' },
+  { id: 'all-challenges', icon: '🌍', name: 'Tried Every System', description: 'Win every challenge. Turns out the market was right.', check: (c) => c.challengesCompleted >= 4 },
 
   // Secret achievements: granted by main.ts when the player does something specific.
   ...([

@@ -199,9 +199,35 @@ Noticed along the way, left alone for now:
 - Existing saves keep the cities they already have; new cities follow the new
   curve once lifetime earnings catch up.
 
+### Challenge runs ✅
+
+- 🏁 Challenges button (after your first secession). Starting one sets your
+  empire aside inside the save and begins a fresh run with no cities, charters
+  or achievement bonus. Win by reaching the goal, or abandon at any time; either
+  way you return to your empire exactly as you left it (it's paused, with no
+  offline earnings for the challenge's duration). Achievements and lifetime
+  counters from the run carry back.
+- Four challenges (`CHALLENGES`; rules in `ChallengeRules`, applied in logic.ts):
+  - ⚖️ Minarchist ($250M): raids ×2, 5% flat tax, start with a State-provided PMC.
+    Reward: raids 10% less often.
+  - 🏛️ Status Quo ($75M): progressive tax brackets, AK-47s and raw milk banned,
+    passive businesses fail 20% of the time, prices +1%/minute. Reward: upgrades 5% cheaper.
+  - ☭ Communism ($1M): click upgrades only, half of clicks requisitioned, ×10
+    prices, audits about once a minute from the start. Reward: clicks +25%.
+  - 💸 Hyperinflation ($15M): cash melts 0.1%/sec, prices double every 10 minutes.
+    Reward: the Unclaimed Bitcoin Wallet pays 50% more.
+- Themed raid popups per challenge, a progress banner, and a tint per system.
+- Achievements: a win and a sub-1-hour speedrun for each, plus Survived the
+  Permit Office, Hero of Socialist Labor and Tried Every System.
+- Goals tuned with `npm run simulate -- --challenges`: an active player wins
+  each in about 1h17m–1h23m. Casual players (1 click/s) can win Minarchist and
+  Communism in 5–7 hours, but not Status Quo or Hyperinflation within 8 hours.
+- The simulator's raid check was fixed (it raided every ~8 hours instead of
+  every ~100 seconds); the normal-game pacing barely moved.
+
 Ideas for later:
-- Seasonal events tied to dates.
-- Challenge runs (e.g. "Minarchist Mode") for unique badges.
+- Seasonal events tied to dates (Christmas week, birthdays, anniversaries).
+  Deferred until there are assets for them.
 
 ## Phase 5: The rest, one at a time
 
