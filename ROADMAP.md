@@ -120,8 +120,21 @@ Noticed along the way, left alone for now:
 - Achievements: We the Sovereign Individual (first charter), Constitution? I
   Hardly Know Her (all of them).
 
+### Late-game upgrades ✅
+
+- 8 upgrades past "Privatize solar system", alternating click/passive, $5B → $200T:
+  🛰️ NAP-enforcement orbital railgun, ☄️ Asteroid mining guild, 🚪 Physical
+  removal service, ☀️ Dyson sphere toll booth, ⏳ Lower your time preference,
+  🚀 Interstellar free trade zone, 🔀 Multiverse arbitrage, 🌀 Homestead the
+  Andromeda galaxy.
+- Passives earn back their price at a rate close to Solar system's (tested), so
+  each tier stays worth buying.
+- Shop rows show bonuses formatted ("+4,000,000/s", "+1 billion/s").
+- Achievements: I Would Privatize the Sun, Intergalactic Landlord.
+- Phone layout fix: the page scrolls on narrow screens (the shop had been pushed
+  off-screen), perks wrap into a 3×2 grid, and nothing overflows 320px phones.
+
 Ideas for later:
-- More upgrades past "Privatize solar system" for late-game runs.
 - Sound effects with `playTone` (clicks, purchases, raid siren, golden chime).
 - News ticker of absurd headlines that change with progress.
 - Stats panel (clicks, crits, raids evaded, golden stickers, best run).

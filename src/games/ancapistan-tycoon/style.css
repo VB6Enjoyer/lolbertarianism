@@ -918,3 +918,45 @@ h1 {
 .charter-card.owned .charter-cost {
     color: green;
 }
+
+/* ===================== Phone layout ===================== */
+/* The clicker panel grew with prestige, boosts and more buttons, which pushed
+   the shop off the bottom of fixed-height phone screens. On narrow screens the
+   page scrolls instead, and each panel takes its natural height. */
+@media (max-width: 800px) {
+    body {
+        height: auto;
+        min-height: 100vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    #game-ui {
+        height: auto;
+    }
+
+    .panel {
+        flex: none;
+    }
+
+    /* The desktop 300px minimum overflows 320px-wide phones. */
+    #clicker-panel,
+    #shop-panel {
+        min-width: 0;
+    }
+
+    #shop-panel {
+        overflow-y: visible;
+    }
+
+    /* Rows were 100% wide plus padding, poking out of the panel. */
+    .shop-item {
+        box-sizing: border-box;
+    }
+
+    /* Six perks don't fit in one row on a phone (the last two used to be cut off). */
+    #special-upgrades-container {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
