@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_LABELS, STICKER_SETS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
   buyCharter,
@@ -547,5 +547,15 @@ describe('sticker sets', () => {
     const s = base();
     s.stickers = [...allOf('html'), ...allOf('organization'), ...allOf('item')];
     expect(unlockAchievements(s).map((a) => a.id)).toContain('sticker-sets-3');
+  });
+});
+
+describe('sticker names', () => {
+  it('every sticker that is not a quote has a name', () => {
+    for (const s of STICKERS.filter((x) => x.type !== 'text')) expect(STICKER_LABELS[s.id]?.name, s.id).toBeTruthy();
+  });
+
+  it('every name belongs to a real sticker', () => {
+    for (const id of Object.keys(STICKER_LABELS)) expect(STICKERS.some((s) => s.id === id), id).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ import {
   SECRET_PHRASE,
   STICKERS,
   STICKER_CATEGORIES,
+  STICKER_LABELS,
   STICKER_SETS,
   UPGRADES,
   type Achievement,
@@ -537,9 +538,17 @@ function renderStickerShop(): HTMLElement {
   for (const s of STICKERS.filter((x) => x.category === tab)) {
     const owned = hasSticker(state, s.id);
     const card = el('button', `sticker-card${owned ? ' owned' : ''}`);
-    card.title = s.id;
+    const label = STICKER_LABELS[s.id];
+    card.title = label ? [label.name, label.note].filter(Boolean).join(': ') : s.content;
     card.dataset.id = s.id;
-    card.append(stickerPreview(s.id), el('span', 'sticker-price', owned ? '✔ Owned' : stickerPriceLabel(s.id)));
+    card.append(stickerPreview(s.id));
+    if (label) {
+      const caption = el('span', 'sticker-caption');
+      caption.append(el('span', 'sticker-name', label.name));
+      if (label.note) caption.append(el('span', 'sticker-note', label.note));
+      card.append(caption);
+    }
+    card.append(el('span', 'sticker-price', owned ? '✔ Owned' : stickerPriceLabel(s.id)));
     if (owned || !stickerForSale(s.id, today())) {
       card.disabled = true;
     } else {

@@ -242,8 +242,8 @@ Noticed along the way, left alone for now:
   (even through secession), with a Christmas Spirit set bonus (income ×1.1). They
   don't affect the regular sticker price ladder.
 - 🎂 December 23, the Fed's birthday: raids ×2, and every dodged raid pays a
-  minute of income ("a slice of the cake"). Text-only popup for now; add the Fed
-  birthday image as `popup.image` when it's in the repo.
+  minute of income ("a slice of the cake"). Its popup shows the Fed in a party
+  hat with Woodrow Wilson in the sky.
 - Snow, a Santa hat on the snake button, Christmas headlines, and five
   achievements: A Murray Christmas, Krampus Was a Tax Collector, Ho Ho Homestead,
   Party Pooper, A Hoppe New Year.

@@ -341,6 +341,8 @@ export const EVENTS: readonly GameEvent[] = [
     start: [12, 23],
     end: [12, 23],
     popup: {
+      image: 'img/fed-birthday.webp',
+      imageAlt: 'The Federal Reserve building wearing a party hat, with the ghost of Woodrow Wilson in the sky',
       title: "🎂 Happy Birthday, Federal Reserve!",
       message: 'On December 23, 1913, Woodrow Wilson signed the Federal Reserve Act. The Fed is throwing itself a party.',
       when: 'All day today:',
@@ -539,6 +541,75 @@ export const STICKERS: readonly StickerData[] = [
   christmasQuote('Naughty list: tax collectors'),
   christmasQuote('Ho Ho Homestead!'),
 ];
+
+/**
+ * Names for every sticker that isn't a quote, so newcomers know what they're
+ * looking at: `name` is shown under the sticker in the shop (and as a tooltip),
+ * `note` is a short "known for" line.
+ */
+export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: string }>> = {
+  // Emojis
+  '🐍': { name: 'Snek', note: "Don't Tread on Me" },
+  '💉': { name: 'Probably Ketamine' },
+  '📉': { name: 'Not stonks' },
+  '📈': { name: 'Stonks' },
+  '🚁': { name: 'Physical removal' },
+  '💰': { name: 'Money bag' },
+  '🦔': { name: 'Porcupine' },
+  '🪙': { name: 'Gold standard' },
+  '🇱🇮': { name: 'Flag of Liechtenstein' },
+  '☢️': { name: 'McNuke' },
+  '🏴‍☠️': { name: 'Anti-IP' },
+  '🗽': { name: 'Statue of Liberty' },
+  '💊': { name: 'Banned Meds' },
+  // Flags
+  'flag-ancap': { name: 'Anarcho-capitalist flag' },
+  'flag-eu-cross': { name: 'EU flag, crossed out' },
+  // People
+  rothbard: { name: 'Murray Rothbard', note: '"Mr. Libertarian"' },
+  hoppe: { name: 'Hans-Hermann Hoppe', note: 'Democracy: The God That Failed' },
+  mises: { name: 'Ludwig von Mises', note: 'Human Action' },
+  kinsella: { name: 'Stephan Kinsella', note: 'Against Intellectual Property' },
+  tucker: { name: 'Jeffrey Tucker', note: 'Libertarian writer and publisher' },
+  hayek: { name: 'F. A. Hayek', note: 'The Road to Serfdom' },
+  ronpaul: { name: 'Ron Paul', note: 'End the Fed' },
+  menger: { name: 'Carl Menger', note: 'Founder of the Austrian School' },
+  bohmbawerk: { name: 'Eugen von Böhm-Bawerk', note: 'Capital and Interest' },
+  hazlitt: { name: 'Henry Hazlitt', note: 'Economics in One Lesson' },
+  murphy: { name: 'Robert P. Murphy', note: 'Austrian economist' },
+  kirzner: { name: 'Israel Kirzner', note: 'Competition and Entrepreneurship' },
+  gordon: { name: 'David Gordon', note: 'Mises Institute scholar' },
+  lewrockwell: { name: 'Lew Rockwell', note: 'Founder of the Mises Institute' },
+  caplan: { name: 'Bryan Caplan', note: 'The Myth of the Rational Voter' },
+  salerno: { name: 'Joseph Salerno', note: 'Austrian economist' },
+  woods: { name: 'Tom Woods', note: 'The Tom Woods Show' },
+  block: { name: 'Walter Block', note: 'Defending the Undefendable' },
+  bylund: { name: 'Per Bylund', note: 'Economist of entrepreneurship' },
+  nock: { name: 'Albert Jay Nock', note: 'Our Enemy, the State' },
+  hansen: { name: 'Kristoffer Mousten Hansen', note: 'Austrian economist' },
+  dfriedman: { name: 'David D. Friedman', note: 'The Machinery of Freedom' },
+  deist: { name: 'Jeff Deist', note: 'Former Mises Institute president' },
+  hulsmann: { name: 'Jörg Guido Hülsmann', note: 'Mises: The Last Knight of Liberalism' },
+  ammous: { name: 'Saifedean Ammous', note: 'The Bitcoin Standard' },
+  dilorenzo: { name: 'Thomas DiLorenzo', note: 'The Real Lincoln' },
+  bagus: { name: 'Philipp Bagus', note: 'The Tragedy of the Euro' },
+  jhs: { name: 'Jesús Huerta de Soto', note: 'Money, Bank Credit, and Economic Cycles' },
+  milei: { name: 'Javier Milei', note: 'President of Argentina' },
+  // Organizations
+  misesinstitute: { name: 'Mises Institute' },
+  liberland: { name: 'Flag of Liberland', note: 'A micronation on the Danube' },
+  // Items
+  pistol: { name: 'Pistol' },
+  m249: { name: 'M249 machine gun' },
+  ak47: { name: 'AK-47' },
+  // Christmas
+  'ancap-santa': { name: 'Ancap Santa' },
+  'ancap-reindeer': { name: 'Ancap Reindeer' },
+  'ancap-gift': { name: 'Ancap Gift' },
+  'ancap-rpg7': { name: 'RPG-7 Gift' },
+  'ancap-tree': { name: 'Ancap Christmas Tree' },
+  'ancap-gingerbread': { name: 'Ancap Gingerbread Man' },
+};
 
 /** Stickers on sale all year (everything but limited editions). */
 export const REGULAR_STICKERS: readonly StickerData[] = STICKERS.filter((s) => !s.season);
