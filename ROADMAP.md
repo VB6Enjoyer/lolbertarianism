@@ -160,7 +160,7 @@ Noticed along the way, left alone for now:
   Saves from before this start tracking from now.
 - Achievement: Wage Slave to Yourself (10 hours played).
 
-Ideas for later:
+Ideas for later: nothing queued right now.
 
 ## Phase 5: The rest, one at a time
 
