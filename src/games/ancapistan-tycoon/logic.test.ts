@@ -474,3 +474,21 @@ describe('charters (prestige shop)', () => {
     expect(normalize({}).charters).toEqual([]);
   });
 });
+
+describe('upgrade list', () => {
+  it('has unique ids, rising prices and alternates click/passive', () => {
+    expect(new Set(UPGRADES.map((u) => u.id)).size).toBe(UPGRADES.length);
+    for (let i = 1; i < UPGRADES.length; i++) {
+      expect(UPGRADES[i].baseCost).toBeGreaterThan(UPGRADES[i - 1].baseCost);
+      expect(UPGRADES[i].type).not.toBe(UPGRADES[i - 1].type);
+    }
+  });
+
+  it('late-game passives pay back their price at a similar rate to Privatize solar system', () => {
+    const rate = (id: number) => upgrade(id).income / upgrade(id).baseCost;
+    for (const id of [16, 18, 20, 22]) {
+      expect(rate(id)).toBeGreaterThanOrEqual(rate(14) * 0.4);
+      expect(rate(id)).toBeLessThanOrEqual(rate(14) * 1.01);
+    }
+  });
+});

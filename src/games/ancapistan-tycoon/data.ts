@@ -165,6 +165,15 @@ export const UPGRADES: readonly Upgrade[] = [
   { id: 12, name: 'Homestead the moon', icon: '🌑', baseCost: 75000000, income: 1000, clickBonus: 0, type: 'passive', lore: 'One small step for man, one giant leap for private property.' },
   { id: 13, name: 'Interplanetary drug smuggling', icon: '💊', baseCost: 250000000, income: 0, clickBonus: 1000, type: 'click', lore: "The war on drugs doesn't apply in zero gravity." },
   { id: 14, name: 'Privatize solar system', icon: '🌌', baseCost: 1000000000, income: 10000, clickBonus: 0, type: 'passive', lore: "Why stop at one planet? It's all un-homesteaded real estate." },
+  // Late game
+  { id: 15, name: 'NAP-enforcement orbital railgun', icon: '🛰️', baseCost: 5_000_000_000, income: 0, clickBonus: 10_000, type: 'click', lore: 'Aggression detected. Response delivered from low Earth orbit. No bureaucracy involved.' },
+  { id: 16, name: 'Asteroid mining guild', icon: '☄️', baseCost: 25_000_000_000, income: 250_000, clickBonus: 0, type: 'passive', lore: 'Platinum by the megaton. Wait, if gold gets this abundant, what happens to sound money? Keep mining, think later.' },
+  { id: 17, name: 'Physical removal service', icon: '🚪', baseCost: 100_000_000_000, income: 0, clickBonus: 100_000, type: 'click', lore: 'Covenant communities need bouncers. Hoppe already wrote the job description.' },
+  { id: 18, name: 'Dyson sphere toll booth', icon: '☀️', baseCost: 500_000_000_000, income: 4_000_000, clickBonus: 0, type: 'passive', lore: 'You did privatize the sun after all. Photons are now pay-per-view.' },
+  { id: 19, name: 'Lower your time preference', icon: '⏳', baseCost: 2_500_000_000_000, income: 0, clickBonus: 1_000_000, type: 'click', lore: "Your time preference is so low you're clicking for your great-great-grandchildren's retirement." },
+  { id: 20, name: 'Interstellar free trade zone', icon: '🚀', baseCost: 10_000_000_000_000, income: 60_000_000, clickBonus: 0, type: 'passive', lore: 'No tariffs for light-years in every direction. Customs officers have to bring their own oxygen.' },
+  { id: 21, name: 'Multiverse arbitrage', icon: '🔀', baseCost: 50_000_000_000_000, income: 0, clickBonus: 10_000_000, type: 'click', lore: 'Buy low in a universe with central banks, sell high in one without.' },
+  { id: 22, name: 'Homestead the Andromeda galaxy', icon: '🌀', baseCost: 200_000_000_000_000, income: 1_000_000_000, clickBonus: 0, type: 'passive', lore: '2.5 million light-years from the nearest tax office. Mix your labor with a trillion stars.' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -345,6 +354,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'roads', icon: '🚧', name: 'Who Will Build the Roads?', description: 'Privatize the roads. You. You will.', check: (c) => c.owned(8) >= 1 },
   { id: 'moon', icon: '🌑', name: 'Lunar Lockean', description: 'Homestead the moon.', check: (c) => c.owned(12) >= 1 },
   { id: 'solar', icon: '🌌', name: 'Galactic Landlord', description: 'Privatize the solar system. Rent is due.', check: (c) => c.owned(14) >= 1 },
+  { id: 'dyson', icon: '☀️', name: 'I Would Privatize the Sun', description: 'Build a Dyson sphere toll booth. You said you would.', check: (c) => c.owned(18) >= 1 },
+  { id: 'andromeda', icon: '🌀', name: 'Intergalactic Landlord', description: 'Homestead the Andromeda galaxy. The rent is astronomical.', check: (c) => c.owned(22) >= 1 },
   { id: 'every-upgrade', icon: '🧺', name: 'Diversified Portfolio', description: 'Own at least one of every upgrade.', check: (c) => c.ownsEveryUpgrade },
   { id: 'all-perks', icon: '🎓', name: 'Mises Institute Alumnus', description: 'Buy every special upgrade.', check: (c) => c.perksOwned >= PERKS.length },
   { id: 'first-crit', icon: '💥', name: 'Subjective Value, Objective Damage', description: 'Land a Critical Click.', check: (c) => c.stats.crits >= 1 },

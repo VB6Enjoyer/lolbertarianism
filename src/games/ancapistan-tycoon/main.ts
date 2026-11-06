@@ -119,7 +119,7 @@ function renderShop() {
         <span class="item-cost"></span>
       </div>
       <div style="font-size:0.8em; color:#666;">
-        ${u.type === 'passive' ? '+' + u.income + '/s' : '+' + u.clickBonus + '/click'}
+        ${u.type === 'passive' ? '+' + formatMoney(u.income) + '/s' : '+' + formatMoney(u.clickBonus) + '/click'}
       </div>
     `;
     els.shop.appendChild(div);
