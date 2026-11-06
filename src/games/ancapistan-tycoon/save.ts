@@ -57,7 +57,10 @@ export function normalize(raw: Partial<GameState>): GameState {
     if (n > 0) state.owned[u.id] = n;
   }
   state.perks = PERKS.map((p) => p.id).filter((id) => raw.perks?.includes(id));
-  state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => raw.achievements?.includes(id));
+  // Renamed achievements keep counting under their new id.
+  const renamed: Record<string, string> = { 'fechas-patrias': 'white-paper' };
+  const unlocked = new Set((raw.achievements ?? []).map((id) => renamed[id] ?? id));
+  state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => unlocked.has(id));
   // Saves from before the sticker shop start with the starter pack.
   const owned = new Set([...STARTER_STICKERS, ...(raw.stickers ?? [])]);
   state.stickers = STICKERS.map((s) => s.id).filter((id) => owned.has(id));

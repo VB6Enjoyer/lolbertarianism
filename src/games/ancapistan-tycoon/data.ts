@@ -583,7 +583,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     { id: 'brussels-effect', icon: '🇪🇺', name: 'Brussels Effect', description: 'Made the crossed-out EU flag your very first sticker.', hint: 'Be the first to leave the Union.' },
     { id: 'insomniac', icon: '🦉', name: 'Insomniac Agorist', description: 'Played between 3 and 4 a.m. The market never sleeps.', hint: 'The counter-economy keeps odd hours.' },
     { id: 'tax-day', icon: '🧾', name: 'Tax Day', description: 'Played on April 15. Hide your assets.', hint: 'A date every American taxpayer dreads.' },
-    { id: 'fechas-patrias', icon: '🇦🇷', name: 'Independence From What, Exactly?', description: 'Played on May 25 or July 9. ¡Viva la libertad, carajo!', hint: 'Fechas patrias.' },
+    { id: 'white-paper', icon: '📜', name: 'Peer-to-Peer Electronic Cash', description: 'Played on October 31, the day the Bitcoin white paper came out in 2008.', hint: 'A spooky day for central bankers.' },
     { id: 'fine-print', icon: '📰', name: 'Read the Fine Print', description: 'Clicked the news ticker. Journalism is dead; long live clicking.', hint: 'Read all about it.' },
     { id: 'make-up-your-mind', icon: '🔇', name: 'Make Up Your Mind', description: 'Toggled the sound 10 times in a row.', hint: 'On, off, on, off…' },
     { id: 'say-it', icon: '⌨️', name: 'Say It With Me', description: 'Typed "taxation is theft". Correct.', hint: 'Type the first commandment.' },
@@ -599,7 +599,7 @@ export type SecretAchievementId =
   | 'brussels-effect'
   | 'insomniac'
   | 'tax-day'
-  | 'fechas-patrias'
+  | 'white-paper'
   | 'fine-print'
   | 'make-up-your-mind'
   | 'say-it'

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENTS, GOLDEN_EFFECTS } from './data.ts';
 import { catchGolden, derive, grantAchievement, newState, secretDateAchievements, unlockAchievements } from './logic.ts';
-import { exportSave, importSave } from './save.ts';
+import { exportSave, importSave, normalize } from './save.ts';
 
 const secrets = ACHIEVEMENTS.filter((a) => a.secret);
 
@@ -22,6 +22,12 @@ describe('secret achievements', () => {
     for (const a of secrets) expect(s.achievements).not.toContain(a.id);
   });
 
+  it('saves with the old fechas-patrias achievement keep it as white-paper', () => {
+    expect(normalize({ achievements: ['fechas-patrias', 'fine-print'] }).achievements).toEqual(
+      expect.arrayContaining(['white-paper', 'fine-print']),
+    );
+  });
+
   it('are granted once and count toward the income bonus', () => {
     const s = newState();
     const before = derive(s).achievementMultiplier;
@@ -32,8 +38,9 @@ describe('secret achievements', () => {
 
   it('date and hour triggers', () => {
     expect(secretDateAchievements(new Date(2026, 3, 15, 12))).toEqual(['tax-day']);
-    expect(secretDateAchievements(new Date(2026, 4, 25, 12))).toEqual(['fechas-patrias']);
-    expect(secretDateAchievements(new Date(2026, 6, 9, 3, 30))).toEqual(['insomniac', 'fechas-patrias']);
+    expect(secretDateAchievements(new Date(2026, 9, 31, 12))).toEqual(['white-paper']);
+    expect(secretDateAchievements(new Date(2026, 9, 31, 3, 30))).toEqual(['insomniac', 'white-paper']);
+    expect(secretDateAchievements(new Date(2026, 4, 25, 12))).toEqual([]);
     expect(secretDateAchievements(new Date(2026, 10, 6, 14))).toEqual([]);
   });
 });

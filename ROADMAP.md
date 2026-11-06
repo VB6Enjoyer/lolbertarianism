@@ -165,7 +165,7 @@ Noticed along the way, left alone for now:
   they count toward the +1% income each. Triggers: leave a raid up for a
   minute, drag Rothbard onto Mises, catch Milei's Chainsaw with the Milei
   sticker on screen, buy the EU flag as your first sticker, play at 3 a.m., on
-  April 15, or on May 25 / July 9, click the news ticker, toggle sound 10 times
+  April 15, or on October 31 (Bitcoin white paper day), click the news ticker, toggle sound 10 times
   in a row, type "taxation is theft", secede with under $1, or don't click for
   10 minutes while making $1M/sec.
 - 💾 Save data screen (Stats → Save / Load): copy a save code (`ANCAP1:…`),

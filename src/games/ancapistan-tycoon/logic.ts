@@ -686,6 +686,6 @@ export function secretDateAchievements(date: Date): SecretAchievementId[] {
   const d = date.getDate();
   if (date.getHours() === 3) ids.push('insomniac');
   if (m === 4 && d === 15) ids.push('tax-day');
-  if ((m === 5 && d === 25) || (m === 7 && d === 9)) ids.push('fechas-patrias');
+  if (m === 10 && d === 31) ids.push('white-paper');
   return ids;
 }
