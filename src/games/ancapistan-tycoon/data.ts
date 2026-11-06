@@ -38,7 +38,7 @@ export const BALANCE = {
     /** Passive income (CPS) bonus per sticker owned. */
     bonusEach: 0.005,
     /** Price of the first sticker you buy… */
-    firstCost: 100_000,
+    firstCost: 10_000,
     /** …and of the last one. Prices in between grow by the same factor each purchase. */
     lastCost: 10_000_000_000_000,
   },
@@ -569,8 +569,6 @@ export const STICKER_SETS: readonly StickerSet[] = [
   { category: 'christmas', icon: '🎄', name: 'Christmas Spirit', description: 'Income ×1.1, all year round.', incomeMultiplier: 1.1 },
 ];
 
-/** Stickers everyone starts with (free, and kept after seceding). */
-export const STARTER_STICKERS: readonly string[] = ['Taxation is theft!', '🐍', 'flag-ancap', 'rothbard', 'pistol'];
 
 // ---------------------------------------------------------------------------
 // Achievements
@@ -661,7 +659,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'cities-10', icon: '🏙️', name: 'Network State', description: 'Own 10 Free Private Cities.', check: (c) => c.cities >= 10 },
   { id: 'reshuffle-10', icon: '🎨', name: 'Collage Artist', description: 'Reshuffle the stickers 10 times.', check: (c) => c.stats.reshuffles >= 10 },
   { id: 'drag-25', icon: '🪑', name: 'Spontaneous Order', description: 'Drag 25 stickers around. Nobody planned this.', check: (c) => c.stats.stickersDragged >= 25 },
-  { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > STARTER_STICKERS.length },
+  { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > 0 },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
   { id: 'sticker-sets-3', icon: '🗂️', name: 'Completionist Tendencies', description: 'Complete 3 sticker sets in one run.', check: (c) => c.stickerSetsComplete >= 3 },
   { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => REGULAR_STICKERS.every((s) => c.ownsSticker(s.id)) },

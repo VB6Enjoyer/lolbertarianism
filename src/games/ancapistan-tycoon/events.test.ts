@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, CHRISTMAS, EVENTS, PRESENT_EFFECTS, STARTER_STICKERS, STICKERS } from './data.ts';
+import { BALANCE, CHRISTMAS, EVENTS, PRESENT_EFFECTS, STICKERS } from './data.ts';
 import { eventsOn, gameDate, isEventActive, seasonKey } from './events.ts';
 import {
   buySticker,
@@ -95,7 +95,6 @@ describe('Christmas stickers', () => {
     earn(s, earningsForCities(2));
     secede(s);
     for (const x of christmasStickers) expect(s.stickers).toContain(x.id);
-    for (const id of STARTER_STICKERS) expect(s.stickers).toContain(id);
     expect(derive(s).setIncomeMultiplier).toBeCloseTo(1.1);
   });
 });
