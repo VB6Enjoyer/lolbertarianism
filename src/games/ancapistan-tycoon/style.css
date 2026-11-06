@@ -1132,3 +1132,42 @@ h1 {
     background: #c0392b;
     color: white;
 }
+
+/* ===================== Sticker sets ===================== */
+
+.sticker-tab.complete {
+    border-color: green;
+}
+
+.sticker-set {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px 10px;
+    margin: 0 0 12px;
+    padding: 6px 10px;
+    border: 2px dashed var(--ancap-black);
+    border-radius: 8px;
+    background: #fffbe6;
+    font-size: 0.85em;
+}
+
+.sticker-set.complete {
+    border-style: solid;
+    border-color: green;
+    background: #eaffea;
+}
+
+.sticker-set-name {
+    font-weight: bold;
+}
+
+.sticker-set-status {
+    font-weight: bold;
+    color: #d35400;
+}
+
+.sticker-set.complete .sticker-set-status {
+    color: green;
+}

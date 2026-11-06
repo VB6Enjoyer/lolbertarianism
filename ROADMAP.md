@@ -174,10 +174,20 @@ Noticed along the way, left alone for now:
   it), or start over (with a confirmation). Codes survive copy-paste line
   breaks, and bad values inside a code are cleaned up like a normal save.
 
+### Sticker sets ✅
+
+- Completing every sticker in a category grants a set bonus (`STICKER_SETS`):
+  💬 Pamphleteer's Library (quotes, clicks ×1.25), 🐍 Emoji Mosaic (golden
+  stickers 15% sooner), 🏴 Flag Collection (income ×1.05), 🧔 Austrian Pantheon
+  (people, income ×1.25), 🏛️ Think Tank Network (raids 25% less often),
+  🔫 Private Armory (+5% crit chance).
+- The shop shows each tab's set bonus and progress, completed tabs get a ✔,
+  and completing a set gets its own toast. Stats shows sets and their bonuses.
+- Achievement: Completionist Tendencies (3 sets in one run).
+
 Ideas for later:
 - Balance pass: simulate a typical player to check pacing (first secession,
   10th city, all charters, Andromeda).
-- Sticker sets: a bonus for completing a category.
 - Seasonal events tied to dates.
 - Challenge runs (e.g. "Minarchist Mode") for unique badges.
 

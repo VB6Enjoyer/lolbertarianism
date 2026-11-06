@@ -296,6 +296,31 @@ export const STICKERS: readonly StickerData[] = [
   image('item', 'ak47'),
 ];
 
+/** Completing every sticker in a category grants its set bonus. */
+export interface StickerSet {
+  category: StickerCategory;
+  icon: string;
+  name: string;
+  description: string;
+  clickMultiplier?: number;
+  incomeMultiplier?: number;
+  /** Added to crit chance. */
+  critChance?: number;
+  /** Multiplies the wait between golden stickers. */
+  goldenDelay?: number;
+  /** Multiplies the odds of a raid. */
+  raidChance?: number;
+}
+
+export const STICKER_SETS: readonly StickerSet[] = [
+  { category: 'quote', icon: '💬', name: "Pamphleteer's Library", description: 'Clicks are worth ×1.25.', clickMultiplier: 1.25 },
+  { category: 'emoji', icon: '🐍', name: 'Emoji Mosaic', description: 'Golden stickers show up 15% sooner.', goldenDelay: 0.85 },
+  { category: 'html', icon: '🏴', name: 'Flag Collection', description: 'Income ×1.05.', incomeMultiplier: 1.05 },
+  { category: 'person', icon: '🧔', name: 'Austrian Pantheon', description: 'Income ×1.25.', incomeMultiplier: 1.25 },
+  { category: 'organization', icon: '🏛️', name: 'Think Tank Network', description: 'Fed raids happen 25% less often.', raidChance: 0.75 },
+  { category: 'item', icon: '🔫', name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
+];
+
 /** Stickers everyone starts with (free, and kept after seceding). */
 export const STARTER_STICKERS: readonly string[] = ['Taxation is theft!', '🐍', 'flag-ancap', 'rothbard', 'pistol'];
 
@@ -316,6 +341,7 @@ export interface AchievementContext {
   chartersOwned: number;
   /** True when every sticker of that category is owned. */
   stickerCategoryComplete: (category: StickerCategory) => boolean;
+  stickerSetsComplete: number;
   stats: {
     clicks: number;
     crits: number;
@@ -384,6 +410,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'drag-25', icon: '🪑', name: 'Spontaneous Order', description: 'Drag 25 stickers around. Nobody planned this.', check: (c) => c.stats.stickersDragged >= 25 },
   { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > STARTER_STICKERS.length },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
+  { id: 'sticker-sets-3', icon: '🗂️', name: 'Completionist Tendencies', description: 'Complete 3 sticker sets in one run.', check: (c) => c.stickerSetsComplete >= 3 },
   { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => c.stickersOwned >= STICKERS.length },
   { id: 'charter-1', icon: '📜', name: 'We the Sovereign Individual', description: 'Sign your first charter.', check: (c) => c.chartersOwned >= 1 },
   { id: 'charter-all', icon: '🗽', name: 'Constitution? I Hardly Know Her', description: 'Sign every charter.', check: (c) => c.chartersOwned >= CHARTERS.length },

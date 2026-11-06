@@ -10,6 +10,7 @@ import {
   STARTER_STICKERS,
   STICKERS,
   STICKER_CATEGORIES,
+  STICKER_SETS,
   UPGRADES,
   type Achievement,
   type Charter,
@@ -26,6 +27,7 @@ import {
   catchGolden,
   citiesAvailable,
   click,
+  completedStickerSets,
   derive,
   earn,
   earningsForCities,
@@ -421,7 +423,12 @@ function renderStickerShop(): HTMLElement {
   for (const c of STICKER_CATEGORIES) {
     const inCat = STICKERS.filter((s) => s.category === c.id);
     const owned = inCat.filter((s) => hasSticker(state, s.id)).length;
-    const btn = el('button', `sticker-tab${c.id === tab ? ' active' : ''}`, `${c.label} ${owned}/${inCat.length}`);
+    const done = owned === inCat.length;
+    const btn = el(
+      'button',
+      `sticker-tab${c.id === tab ? ' active' : ''}${done ? ' complete' : ''}`,
+      `${c.label} ${done ? '✔' : `${owned}/${inCat.length}`}`,
+    );
     btn.addEventListener('click', () => {
       shopTab = c.id;
       els.modalBody.replaceChildren(renderStickerShop());
@@ -429,6 +436,19 @@ function renderStickerShop(): HTMLElement {
     tabs.append(btn);
   }
   body.append(tabs);
+
+  const set = STICKER_SETS.find((x) => x.category === tab);
+  if (set) {
+    const inCat = STICKERS.filter((s) => s.category === tab);
+    const left = inCat.filter((s) => !hasSticker(state, s.id)).length;
+    const banner = el('div', `sticker-set${left ? '' : ' complete'}`);
+    banner.append(
+      el('span', 'sticker-set-name', `${set.icon} Set bonus: ${set.name}`),
+      el('span', 'sticker-set-desc', set.description),
+      el('span', 'sticker-set-status', left ? `${left} to go` : '✔ Active'),
+    );
+    body.append(banner);
+  }
 
   const grid = el('div', 'sticker-grid');
   for (const s of STICKERS.filter((x) => x.category === tab)) {
@@ -468,7 +488,15 @@ function showStickerShop() {
 
 function onBuySticker(id: string) {
   const firstPurchase = state.stickers.every((s) => STARTER_STICKERS.includes(s));
+  const setsBefore = completedStickerSets(state).length;
   if (!buySticker(state, id)) return;
+  const newSet = completedStickerSets(state).length > setsBefore
+    ? STICKER_SETS.find((x) => x.category === STICKERS.find((s) => s.id === id)?.category)
+    : undefined;
+  if (newSet) {
+    toast(`${newSet.icon} Set complete: ${newSet.name}`, newSet.description);
+    sfx.perk();
+  }
   if (firstPurchase && id === 'flag-eu-cross') unlockSecret('brussels-effect');
   if (state.showStickers) dropSticker(els.stickers, id);
   const { x, y } = center();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, STARTER_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
   buyCharter,
@@ -490,5 +490,55 @@ describe('upgrade list', () => {
       expect(rate(id)).toBeGreaterThanOrEqual(rate(14) * 0.4);
       expect(rate(id)).toBeLessThanOrEqual(rate(14) * 1.01);
     }
+  });
+});
+
+describe('sticker sets', () => {
+  const allOf = (category: string) => STICKERS.filter((x) => x.category === category).map((x) => x.id);
+  const base = () => {
+    const s = newState();
+    s.stickers = [];
+    s.owned = { 2: 100 }; // $100/s, $1 clicks
+    return s;
+  };
+
+  it('a partial set does nothing; a complete one applies its bonus', () => {
+    const s = base();
+    s.stickers = allOf('person').slice(1);
+    const partial = derive(s);
+    expect(partial.setIncomeMultiplier).toBe(1);
+    s.stickers = allOf('person');
+    expect(derive(s).setIncomeMultiplier).toBe(1.25);
+    // 29 stickers: +0.5% each (×1.145), then the set's ×1.25
+    expect(derive(s).incomePerSec).toBeCloseTo(100 * (1 + 29 * BALANCE.stickers.bonusEach) * 1.25);
+    expect(partial.incomePerSec).toBeCloseTo(100 * (1 + 28 * BALANCE.stickers.bonusEach));
+  });
+
+  it('quotes boost clicks, items add crit chance', () => {
+    const s = base();
+    s.stickers = [...allOf('quote'), ...allOf('item')];
+    const d = derive(s);
+    expect(d.setClickMultiplier).toBe(1.25);
+    expect(d.critChance).toBeCloseTo(0.05);
+  });
+
+  it('emojis speed up golden stickers and orgs cut raids, stacking with charters', () => {
+    const s = base();
+    s.stickers = [...allOf('emoji'), ...allOf('organization')];
+    s.cities = 5;
+    s.charters = ['seed-phrases', 'private-courts'];
+    expect(goldenDelayMultiplier(s)).toBeCloseTo(0.75 * 0.85);
+    expect(raidChance(s)).toBeCloseTo(BALANCE.raid.chance * 0.5 * 0.75);
+  });
+
+  it('every category has exactly one set', () => {
+    const cats = new Set(STICKERS.map((x) => x.category));
+    expect(STICKER_SETS.map((x) => x.category).sort()).toEqual([...cats].sort());
+  });
+
+  it('Completionist Tendencies unlocks at 3 sets', () => {
+    const s = base();
+    s.stickers = [...allOf('html'), ...allOf('organization'), ...allOf('item')];
+    expect(unlockAchievements(s).map((a) => a.id)).toContain('sticker-sets-3');
   });
 });

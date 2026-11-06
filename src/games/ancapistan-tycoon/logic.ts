@@ -10,6 +10,7 @@ import {
   PERKS,
   STARTER_STICKERS,
   STICKERS,
+  STICKER_SETS,
   UPGRADES,
   type Achievement,
   type AchievementContext,
@@ -19,6 +20,7 @@ import {
   type Perk,
   type SecretAchievementId,
   type StickerCategory,
+  type StickerSet,
   type Upgrade,
 } from './data.ts';
 
@@ -158,6 +160,9 @@ export interface Derived {
   achievementMultiplier: number;
   /** Bonus from owned stickers; applies to passive income only. */
   stickerMultiplier: number;
+  /** Bonuses from completed sticker sets. */
+  setClickMultiplier: number;
+  setIncomeMultiplier: number;
   /** Golden-sticker boosts running right now. */
   clickBuff: number;
   incomeBuff: number;
@@ -212,6 +217,14 @@ export function derive(state: GameState, now = Date.now()): Derived {
 
   const stickerMultiplier = 1 + state.stickers.length * BALANCE.stickers.bonusEach;
 
+  let setClickMultiplier = 1;
+  let setIncomeMultiplier = 1;
+  for (const set of completedStickerSets(state)) {
+    setClickMultiplier *= set.clickMultiplier ?? 1;
+    setIncomeMultiplier *= set.incomeMultiplier ?? 1;
+    critChance += set.critChance ?? 0;
+  }
+
   let clickBuff = 1;
   let incomeBuff = 1;
   for (const { effect } of activeBuffs(state, now)) {
@@ -231,10 +244,14 @@ export function derive(state: GameState, now = Date.now()): Derived {
     cityMultiplier,
     achievementMultiplier,
     stickerMultiplier,
+    setClickMultiplier,
+    setIncomeMultiplier,
     clickBuff,
     incomeBuff,
-    clickAmount: (clickValue + income * incomeToClickPercent) * clickMultiplier * globalMultiplier * clickBuff,
-    incomePerSec: income * passiveMultiplier * stickerMultiplier * globalMultiplier * incomeBuff,
+    clickAmount:
+      (clickValue + income * incomeToClickPercent) * clickMultiplier * setClickMultiplier * globalMultiplier * clickBuff,
+    incomePerSec:
+      income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff,
   };
 }
 
@@ -343,6 +360,14 @@ export function stickerCategoryComplete(state: GameState, category: StickerCateg
   return STICKERS.filter((s) => s.category === category).every((s) => hasSticker(state, s.id));
 }
 
+export function completedStickerSets(state: GameState): StickerSet[] {
+  return STICKER_SETS.filter((set) => stickerCategoryComplete(state, set.category));
+}
+
+/** Product of a numeric field over the completed sets (1 when none apply). */
+const setProduct = (state: GameState, field: 'goldenDelay' | 'raidChance') =>
+  completedStickerSets(state).reduce((m, set) => m * (set[field] ?? 1), 1);
+
 // ---------------------------------------------------------------------------
 // Golden stickers
 // ---------------------------------------------------------------------------
@@ -396,11 +421,13 @@ export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.n
 
 /** Multiplier on the wait between golden stickers. */
 export const goldenDelayMultiplier = (state: GameState) =>
-  hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1;
+  (hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1) * setProduct(state, 'goldenDelay');
 
 /** Odds of a raid at each raid check. */
 export const raidChance = (state: GameState) =>
-  BALANCE.raid.chance * (hasCharter(state, 'private-courts') ? CHARTER_VALUES.privateCourtsRaidChance : 1);
+  BALANCE.raid.chance *
+  (hasCharter(state, 'private-courts') ? CHARTER_VALUES.privateCourtsRaidChance : 1) *
+  setProduct(state, 'raidChance');
 
 // ---------------------------------------------------------------------------
 // Charters (prestige shop)
@@ -516,6 +543,7 @@ export function achievementContext(state: GameState): AchievementContext {
     stickersOwned: state.stickers.length,
     chartersOwned: state.charters.length,
     stickerCategoryComplete: (category) => stickerCategoryComplete(state, category),
+    stickerSetsComplete: completedStickerSets(state).length,
     stats: state.stats,
   };
 }
