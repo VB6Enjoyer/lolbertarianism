@@ -114,23 +114,29 @@ describe('clicking', () => {
 });
 
 describe('secession', () => {
-  it('cities grow with the square root of all-time earnings', () => {
-    expect(citiesFor(999_999)).toBe(0);
-    expect(citiesFor(1e6)).toBe(1);
-    expect(citiesFor(100e6)).toBe(10);
-    expect(earningsForCities(10)).toBe(100e6);
+  it('cities follow the configured root of all-time earnings', () => {
+    const { divisor, root } = BALANCE.secession;
+    expect(citiesFor(divisor - 1)).toBe(0);
+    expect(citiesFor(divisor)).toBe(1);
+    expect(earningsForCities(10)).toBe(10 ** root * divisor);
+    for (const n of [2, 3, 10, 55, 100]) {
+      expect(citiesFor(earningsForCities(n))).toBe(n); // exact thresholds don't round down
+      expect(citiesFor(earningsForCities(n) - 1)).toBe(n - 1);
+    }
   });
 
   it("can't secede before earning a city", () => {
     const s = newState();
-    earn(s, 500_000);
+    const almost = earningsForCities(1) / 2;
+    earn(s, almost);
     expect(secede(s)).toBe(0);
-    expect(s.score).toBe(500_000);
+    expect(s.score).toBe(almost);
   });
 
   it('resets the run but keeps cities, achievements, lifetime earnings and stats', () => {
     const s = newState();
-    earn(s, 4e6);
+    const twoCities = earningsForCities(2);
+    earn(s, twoCities);
     s.owned = { 1: 5 };
     s.perks = ['su1'];
     s.achievements = ['first-click'];
@@ -138,13 +144,13 @@ describe('secession', () => {
     expect(pendingCities(s)).toBe(2);
 
     expect(secede(s)).toBe(2);
-    expect(s).toMatchObject({ cities: 2, score: 0, runEarnings: 0, owned: {}, perks: [], allTimeEarnings: 4e6 });
+    expect(s).toMatchObject({ cities: 2, score: 0, runEarnings: 0, owned: {}, perks: [], allTimeEarnings: twoCities });
     expect(s.achievements).toEqual(['first-click']);
     expect(s.stats).toMatchObject({ clicks: 42, secessions: 1 });
 
-    // The next city needs 9M all-time, not another 1M.
+    // The third city needs earningsForCities(3) all-time, not another first-city amount.
     expect(pendingCities(s)).toBe(0);
-    earn(s, 5e6);
+    earn(s, earningsForCities(3) - twoCities);
     expect(pendingCities(s)).toBe(1);
   });
 });
@@ -268,7 +274,7 @@ describe('sticker shop', () => {
 
   it('seceding resets bought stickers back to the starter pack', () => {
     const s = newState();
-    earn(s, 4e6);
+    earn(s, earningsForCities(2));
     buySticker(s, firstBuyable());
     secede(s);
     expect(s.stickers).toEqual([...STARTER_STICKERS]);
@@ -412,7 +418,7 @@ describe('charters (prestige shop)', () => {
 
   it('seed capital and grandfather clause shape every new run', () => {
     const s = withCharters(3, 'seed-capital', 'grandfathered');
-    earn(s, 16e6); // enough for more cities
+    earn(s, earningsForCities(4)); // enough for more cities
     s.owned = { 1: 50, 5: 3 };
     secede(s);
     expect(s.score).toBe(CHARTER_VALUES.seedCapital);
@@ -422,7 +428,7 @@ describe('charters (prestige shop)', () => {
 
   it("collector's exemption and tenure keep stickers and perks through secession", () => {
     const s = withCharters(13, 'sticker-license', 'tenure');
-    earn(s, 400e6);
+    earn(s, earningsForCities(14));
     s.stickers = [...STARTER_STICKERS, 'hoppe'];
     s.perks = ['su1', 'su2'];
     secede(s);

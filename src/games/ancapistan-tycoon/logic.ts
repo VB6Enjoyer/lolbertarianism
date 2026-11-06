@@ -462,12 +462,19 @@ export function applyRunStart(state: GameState): void {
 
 /** Total Free Private Cities earned for a given all-time earnings figure. */
 export function citiesFor(allTimeEarnings: number): number {
-  return Math.floor(Math.sqrt(Math.max(0, allTimeEarnings) / BALANCE.secession.divisor));
+  const { divisor, root } = BALANCE.secession;
+  const earned = Math.max(0, allTimeEarnings);
+  let n = Math.floor(Math.pow(earned / divisor, 1 / root));
+  // Floating-point roots can land just off a whole number (1000^(1/3) = 9.999…),
+  // so settle the edges against the exact threshold.
+  while (earningsForCities(n + 1) <= earned) n++;
+  while (n > 0 && earningsForCities(n) > earned) n--;
+  return n;
 }
 
 /** All-time earnings needed to have earned `cities` cities in total. */
 export function earningsForCities(cities: number): number {
-  return cities * cities * BALANCE.secession.divisor;
+  return Math.pow(cities, BALANCE.secession.root) * BALANCE.secession.divisor;
 }
 
 /** Cities you'd gain by seceding right now. */

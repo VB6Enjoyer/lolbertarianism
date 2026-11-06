@@ -22,8 +22,13 @@ export const BALANCE = {
     minSeconds: 60,
   },
   secession: {
-    /** Total Free Private Cities ever earned = floor(sqrt(all-time earnings / divisor)). */
-    divisor: 1_000_000,
+    /**
+     * Total Free Private Cities ever earned = floor((all-time earnings / divisor) ^ (1 / root)).
+     * Tuned with `npm run simulate`: a cube root keeps the prestige loop from running away
+     * (a square root reached ~17,000 cities in 6 hours of play).
+     */
+    divisor: 5_000_000,
+    root: 3,
     /** Income bonus per Free Private City (applies to clicks and passive income). */
     bonusPerCity: 0.1,
   },

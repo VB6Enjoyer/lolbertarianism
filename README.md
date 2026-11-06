@@ -12,6 +12,7 @@ npm test          # unit tests (Vitest)
 npm run build     # type-check + tests + production build into dist/
 npm run preview   # serve dist/ locally
 npm run images -- public/vidya/img/new.png   # convert art to WebP next to the original
+npm run simulate  # Ancapistan Tycoon balance check (simulated playthrough)
 ```
 
 ## Layout

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENTS, CHARTERS, STICKERS } from './data.ts';
-import { click, earn, newState, secede, tick } from './logic.ts';
+import { click, earn, earningsForCities, newState, secede, tick } from './logic.ts';
 import { normalize } from './save.ts';
 import { buildStats, formatPlaytime } from './stats.ts';
 
@@ -41,14 +41,15 @@ describe('stats tracking', () => {
 
   it('seceding records the run and restarts the run timer, but not total playtime', () => {
     const s = newState();
-    earn(s, 4e6);
+    const run = earningsForCities(2);
+    earn(s, run);
     s.stats.playSeconds = s.stats.runSeconds = 500;
     secede(s);
-    expect(s.stats.bestRunEarnings).toBe(4e6);
+    expect(s.stats.bestRunEarnings).toBe(run);
     expect(s.stats.runSeconds).toBe(0);
     expect(s.stats.playSeconds).toBe(500);
-    earn(s, 1e6);
-    expect(Math.max(s.stats.bestRunEarnings, s.runEarnings)).toBe(4e6); // a smaller run doesn't replace it
+    earn(s, run / 4);
+    expect(Math.max(s.stats.bestRunEarnings, s.runEarnings)).toBe(run); // a smaller run doesn't replace it
   });
 
   it('saves keep money stats exact and fill in missing ones', () => {

@@ -56,9 +56,8 @@ Noticed along the way, left alone for now:
   - `logic.ts`: pure game rules, unit-tested in `logic.test.ts` (`npm test`).
   - `save.ts`: save format v2 with migration from v0/v1 saves.
   - `stickers.ts`, `main.ts`, `style.css`: the page.
-- **Secession** (prestige): once all-time earnings reach $1M, secede to found Free
-  Private Cities, each giving +10% to all income forever. Total cities =
-  floor(√(all-time earnings / $1M)), so city #2 needs $4M, #10 needs $100M.
+- **Secession** (prestige): secede to found Free Private Cities, each giving +10%
+  to all income forever. (Formula retuned in the balance pass below.)
   Old saves are credited with what they'd already spent.
 - **Offline earnings**: 50% of passive income while away, up to 8 hours, with a
   "Welcome back!" popup.
@@ -185,9 +184,22 @@ Noticed along the way, left alone for now:
   and completing a set gets its own toast. Stats shows sets and their bonuses.
 - Achievement: Completionist Tendencies (3 sets in one run).
 
+### Balance pass ✅
+
+- `npm run simulate` runs a simulated player through the real game rules and
+  prints when milestones happen, for an active (5 clicks/s) and a casual
+  (1 click/s) player. Try numbers without editing files:
+  `BALANCE='{"secession":{"divisor":3000000}}' npm run simulate`.
+- Finding: the prestige loop ran away. With cities = √(all-time / $1M), the
+  active player had all charters in 3h, Andromeda in 6h, and ~17,000 cities.
+- Fix: cities = ∛(all-time / $5M) (`BALANCE.secession`): city #1 at $5M,
+  #10 at $5B, #55 at ~$832B. Everything else unchanged.
+- Result (open-game time, active / casual): first secession 19m / 1h,
+  10 cities 8.5h / 27h, all charters 26.5h / 76h, Andromeda 40.5h / 97h.
+- Existing saves keep the cities they already have; new cities follow the new
+  curve once lifetime earnings catch up.
+
 Ideas for later:
-- Balance pass: simulate a typical player to check pacing (first secession,
-  10th city, all charters, Andromeda).
 - Seasonal events tied to dates.
 - Challenge runs (e.g. "Minarchist Mode") for unique badges.
 
