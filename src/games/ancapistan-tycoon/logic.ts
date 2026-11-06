@@ -4,6 +4,8 @@
 import {
   ACHIEVEMENTS,
   BALANCE,
+  CHARTERS,
+  CHARTER_VALUES,
   GOLDEN_EFFECTS,
   PERKS,
   STARTER_STICKERS,
@@ -11,6 +13,8 @@ import {
   UPGRADES,
   type Achievement,
   type AchievementContext,
+  type Charter,
+  type CharterId,
   type GoldenEffect,
   type Perk,
   type StickerCategory,
@@ -61,6 +65,8 @@ export interface GameState {
   buyAmount: BuyAmount;
   /** Running golden-sticker boosts. */
   buffs: ActiveBuff[];
+  /** Signed charters (prestige shop). Permanent across secessions. */
+  charters: CharterId[];
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -93,6 +99,7 @@ export function newState(): GameState {
     showStickers: true,
     buyAmount: 1,
     buffs: [],
+    charters: [],
     stats: newStats(),
     lastSaved: 0,
   };
@@ -104,11 +111,16 @@ export function newState(): GameState {
 
 export const ownedCount = (state: GameState, id: number) => state.owned[id] ?? 0;
 export const hasPerk = (state: GameState, id: string) => state.perks.includes(id);
+export const hasCharter = (state: GameState, id: CharterId) => state.charters.includes(id);
 
-/** Price of the next copy of an upgrade. */
-export function upgradeCost(upgrade: Upgrade, owned: number): number {
-  return Math.ceil(upgrade.baseCost * Math.pow(BALANCE.costGrowth, owned));
+/** Price of the next copy of an upgrade. `multiplier` applies discounts (1 = full price). */
+export function upgradeCost(upgrade: Upgrade, owned: number, multiplier = 1): number {
+  return Math.ceil(upgrade.baseCost * Math.pow(BALANCE.costGrowth, owned) * multiplier);
 }
+
+/** Upgrade price multiplier from charters. */
+export const upgradePriceMultiplier = (state: GameState) =>
+  hasCharter(state, 'bulk-discount') ? CHARTER_VALUES.bulkDiscount : 1;
 
 export interface Derived {
   /** Base click value from click upgrades (starts at 1). */
@@ -167,9 +179,12 @@ export function derive(state: GameState, now = Date.now()): Derived {
     }
   }
 
-  const globalMultiplier =
-    (1 + state.cities * BALANCE.secession.bonusPerCity) *
-    (1 + state.achievements.length * BALANCE.bonusPerAchievement);
+  const perCity = hasCharter(state, 'network-effects')
+    ? CHARTER_VALUES.networkEffectsBonusPerCity
+    : BALANCE.secession.bonusPerCity;
+  const perAchievement = hasCharter(state, 'lindy') ? CHARTER_VALUES.lindyBonusPerAchievement : BALANCE.bonusPerAchievement;
+  // Spending cities on charters doesn't reduce this: it counts every city ever founded.
+  const globalMultiplier = (1 + state.cities * perCity) * (1 + state.achievements.length * perAchievement);
 
   const stickerMultiplier = 1 + state.stickers.length * BALANCE.stickers.bonusEach;
 
@@ -220,18 +235,18 @@ export function click(state: GameState, roll: number, now = Date.now()): { amoun
 }
 
 /** Total price of the next `count` copies, each priced like a single purchase. */
-export function bulkCost(upgrade: Upgrade, owned: number, count: number): number {
+export function bulkCost(upgrade: Upgrade, owned: number, count: number, multiplier = 1): number {
   let total = 0;
-  for (let i = 0; i < count; i++) total += upgradeCost(upgrade, owned + i);
+  for (let i = 0; i < count; i++) total += upgradeCost(upgrade, owned + i, multiplier);
   return total;
 }
 
 /** How many copies `cash` can buy in a row (capped so it stays fast). */
-export function maxAffordable(upgrade: Upgrade, owned: number, cash: number, cap = 10_000): number {
+export function maxAffordable(upgrade: Upgrade, owned: number, cash: number, multiplier = 1, cap = 10_000): number {
   let count = 0;
   let total = 0;
   while (count < cap) {
-    const next = upgradeCost(upgrade, owned + count);
+    const next = upgradeCost(upgrade, owned + count, multiplier);
     if (total + next > cash) break;
     total += next;
     count++;
@@ -245,9 +260,10 @@ export function maxAffordable(upgrade: Upgrade, owned: number, cash: number, cap
  */
 export function purchaseQuote(state: GameState, upgrade: Upgrade): { count: number; cost: number } {
   const owned = ownedCount(state, upgrade.id);
+  const m = upgradePriceMultiplier(state);
   const count =
-    state.buyAmount === 'max' ? Math.max(1, maxAffordable(upgrade, owned, state.score)) : state.buyAmount;
-  return { count, cost: bulkCost(upgrade, owned, count) };
+    state.buyAmount === 'max' ? Math.max(1, maxAffordable(upgrade, owned, state.score, m)) : state.buyAmount;
+  return { count, cost: bulkCost(upgrade, owned, count, m) };
 }
 
 /** Buys the quoted number of copies, or nothing if you can't afford all of them. Returns how many were bought. */
@@ -345,9 +361,45 @@ export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.n
   if (effect.durationSec > 0) {
     // Catching the same boost again restarts its timer instead of stacking.
     state.buffs = state.buffs.filter((b) => b.effectId !== effect.id);
-    state.buffs.push({ effectId: effect.id, endsAt: now + effect.durationSec * 1000 });
+    const duration = effect.durationSec * (hasCharter(state, 'long-bull') ? CHARTER_VALUES.longBullDuration : 1);
+    state.buffs.push({ effectId: effect.id, endsAt: now + duration * 1000 });
   }
   return cash;
+}
+
+/** Multiplier on the wait between golden stickers. */
+export const goldenDelayMultiplier = (state: GameState) =>
+  hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1;
+
+/** Odds of a raid at each raid check. */
+export const raidChance = (state: GameState) =>
+  BALANCE.raid.chance * (hasCharter(state, 'private-courts') ? CHARTER_VALUES.privateCourtsRaidChance : 1);
+
+// ---------------------------------------------------------------------------
+// Charters (prestige shop)
+// ---------------------------------------------------------------------------
+
+/** Cities already spent on charters. */
+export const citiesSpent = (state: GameState) =>
+  CHARTERS.filter((c) => hasCharter(state, c.id)).reduce((sum, c) => sum + c.cost, 0);
+
+/** Cities you can still spend. Spending never lowers the income bonus from cities. */
+export const citiesAvailable = (state: GameState) => Math.max(0, state.cities - citiesSpent(state));
+
+export function buyCharter(state: GameState, charter: Charter): boolean {
+  if (hasCharter(state, charter.id) || citiesAvailable(state) < charter.cost) return false;
+  state.charters.push(charter.id);
+  return true;
+}
+
+/** What a fresh run starts with, given your charters. */
+export function applyRunStart(state: GameState): void {
+  if (hasCharter(state, 'seed-capital')) state.score = CHARTER_VALUES.seedCapital;
+  if (hasCharter(state, 'grandfathered')) {
+    for (const [id, n] of Object.entries(CHARTER_VALUES.grandfathered)) {
+      state.owned[Number(id)] = Math.max(state.owned[Number(id)] ?? 0, n);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -371,8 +423,9 @@ export function pendingCities(state: GameState): number {
 
 /**
  * Leaves everything behind to found new Free Private Cities. Keeps cities,
- * achievements, lifetime earnings, stats and the starter stickers. Returns how many cities were gained
- * (0 means you couldn't secede yet and nothing changed).
+ * charters, achievements, lifetime earnings, stats and the starter stickers
+ * (plus bought stickers and perks, with the right charters). Returns how many
+ * cities were gained (0 means you couldn't secede yet and nothing changed).
  */
 export function secede(state: GameState): number {
   const gained = pendingCities(state);
@@ -381,10 +434,11 @@ export function secede(state: GameState): number {
   state.score = 0;
   state.runEarnings = 0;
   state.owned = {};
-  state.perks = [];
-  state.stickers = [...STARTER_STICKERS];
+  if (!hasCharter(state, 'tenure')) state.perks = [];
+  if (!hasCharter(state, 'sticker-license')) state.stickers = [...STARTER_STICKERS];
   state.buffs = [];
   state.stats.secessions++;
+  applyRunStart(state);
   return gained;
 }
 
@@ -397,9 +451,17 @@ export function offlineEarnings(state: GameState, now: number): { seconds: numbe
   if (!state.lastSaved) return { seconds: 0, amount: 0 };
   const away = Math.floor((now - state.lastSaved) / 1000);
   if (away < BALANCE.offline.minSeconds) return { seconds: 0, amount: 0 };
-  const seconds = Math.min(away, BALANCE.offline.maxSeconds);
+  const { rate, maxSeconds } = offlineSettings(state);
+  const seconds = Math.min(away, maxSeconds);
   // Golden boosts don't count while you're away.
-  return { seconds, amount: derive({ ...state, buffs: [] }).incomePerSec * seconds * BALANCE.offline.rate };
+  return { seconds, amount: derive({ ...state, buffs: [] }).incomePerSec * seconds * rate };
+}
+
+/** Offline rate and cap, after charters. */
+export function offlineSettings(state: GameState): { rate: number; maxSeconds: number } {
+  return hasCharter(state, 'remote-management')
+    ? CHARTER_VALUES.remoteManagement
+    : { rate: BALANCE.offline.rate, maxSeconds: BALANCE.offline.maxSeconds };
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +477,7 @@ export function achievementContext(state: GameState): AchievementContext {
     perksOwned: state.perks.length,
     cities: state.cities,
     stickersOwned: state.stickers.length,
+    chartersOwned: state.charters.length,
     stickerCategoryComplete: (category) => stickerCategoryComplete(state, category),
     stats: state.stats,
   };

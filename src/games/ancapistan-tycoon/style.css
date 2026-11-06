@@ -845,3 +845,76 @@ h1 {
         animation: goldenOut 1s ease-in calc(var(--life, 13s) - 1s) forwards;
     }
 }
+
+/* ===================== Charters (prestige shop) ===================== */
+
+.btn-reshuffle[hidden] {
+    display: none;
+}
+
+.modal-box:has(.charter-shop) {
+    width: min(760px, 100%);
+}
+
+.charter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    text-align: left;
+}
+
+.charter-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    background: #fffbe6;
+    color: var(--ancap-black);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.charter-card:hover:not(:disabled):not(.disabled) {
+    transform: translateY(-3px);
+    box-shadow: 4px 4px 0 var(--ancap-yellow);
+}
+
+.charter-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #eee;
+}
+
+.charter-card.owned {
+    background: #fff3b0;
+    border-style: dashed;
+    cursor: default;
+}
+
+.charter-icon {
+    font-size: 26px;
+}
+
+.charter-name {
+    font-weight: bold;
+}
+
+.charter-desc {
+    font-size: 0.8em;
+    color: #444;
+    flex-grow: 1;
+}
+
+.charter-cost {
+    margin-top: 4px;
+    font-weight: bold;
+    color: #8e44ad;
+}
+
+.charter-card.owned .charter-cost {
+    color: green;
+}

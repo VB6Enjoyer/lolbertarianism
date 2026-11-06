@@ -53,6 +53,60 @@ export const BALANCE = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Charters (the prestige shop): permanent perks bought with Free Private Cities
+// ---------------------------------------------------------------------------
+
+export type CharterId =
+  | 'seed-capital'
+  | 'grandfathered'
+  | 'private-courts'
+  | 'seed-phrases'
+  | 'remote-management'
+  | 'long-bull'
+  | 'sticker-license'
+  | 'bulk-discount'
+  | 'tenure'
+  | 'lindy'
+  | 'network-effects';
+
+export interface Charter {
+  id: CharterId;
+  icon: string;
+  name: string;
+  description: string;
+  lore: string;
+  /** Price in Free Private Cities. */
+  cost: number;
+}
+
+/** The numbers behind each charter. Tweak here. */
+export const CHARTER_VALUES = {
+  seedCapital: 25_000,
+  grandfathered: { 1: 10, 2: 10 } as Record<number, number>, // theory books, lemonade stands
+  privateCourtsRaidChance: 0.5, // raid odds multiplier
+  seedPhrasesDelay: 0.75, // golden sticker wait multiplier
+  remoteManagement: { rate: 1, maxSeconds: 24 * 60 * 60 },
+  longBullDuration: 1.5, // golden boost duration multiplier
+  bulkDiscount: 0.9, // upgrade price multiplier
+  lindyBonusPerAchievement: 0.02,
+  networkEffectsBonusPerCity: 0.15,
+} as const;
+
+export const CHARTERS: readonly Charter[] = [
+  { id: 'seed-capital', icon: '💼', name: 'Seed Capital', cost: 1, description: 'Start every new city with $25,000.', lore: 'Angel investors love a founder with a track record of fleeing jurisdictions.' },
+  { id: 'grandfathered', icon: '📜', name: 'Grandfather Clause', cost: 2, description: 'Start every new city with 10 theory books and 10 lemonade stands.', lore: 'Your lemonade empire predates the regulations. Legally, it never stopped existing.' },
+  { id: 'private-courts', icon: '⚖️', name: 'Private Courts', cost: 2, description: 'Fed raids happen half as often.', lore: 'Polycentric law: the Fed can sue you, but your arbitrator has never heard of them.' },
+  { id: 'seed-phrases', icon: '🧠', name: 'Memorized Seed Phrases', cost: 3, description: 'Golden stickers show up 25% sooner.', lore: 'Twenty-four words, tattooed somewhere only you know.' },
+  { id: 'remote-management', icon: '🏝️', name: 'Remote Management', cost: 3, description: 'Offline earnings are 100% of your income, for up to 24 hours.', lore: 'You hired managers who believe in incentives. They stopped embezzling.' },
+  { id: 'long-bull', icon: '🐂', name: 'Secular Bull Market', cost: 4, description: 'Golden sticker boosts last 50% longer.', lore: "With sound money, the good times don't get printed away." },
+  { id: 'sticker-license', icon: '🏷️', name: "Collector's Exemption", cost: 5, description: 'Keep your bought stickers when you secede.', lore: 'Your collection is classified as a sovereign cultural archive.' },
+  { id: 'bulk-discount', icon: '🏪', name: 'Competitive Suppliers', cost: 6, description: 'All upgrades cost 10% less.', lore: 'Without licensing cartels, a dozen vendors fight for your business.' },
+  { id: 'tenure', icon: '🎓', name: 'Austrian Tenure', cost: 8, description: 'Keep your special upgrades when you secede.', lore: 'Once you understand praxeology, you never un-understand it.' },
+  { id: 'lindy', icon: '🏆', name: 'Lindy Effect', cost: 10, description: 'Achievements give +2% income each instead of +1%.', lore: 'The longer you have survived the State, the longer you will survive it.' },
+  { id: 'network-effects', icon: '🌐', name: 'Network Effects', cost: 15, description: 'Each Free Private City gives +15% income instead of +10%.', lore: 'Every new city makes all the others more valuable. Metcalfe was a libertarian, probably.' },
+];
+
+// ---------------------------------------------------------------------------
 // Golden sticker rewards
 // ---------------------------------------------------------------------------
 
@@ -250,6 +304,7 @@ export interface AchievementContext {
   cities: number;
   /** Stickers owned (starter ones included). */
   stickersOwned: number;
+  chartersOwned: number;
   /** True when every sticker of that category is owned. */
   stickerCategoryComplete: (category: StickerCategory) => boolean;
   stats: {
@@ -311,6 +366,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > STARTER_STICKERS.length },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
   { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => c.stickersOwned >= STICKERS.length },
+  { id: 'charter-1', icon: '📜', name: 'We the Sovereign Individual', description: 'Sign your first charter.', check: (c) => c.chartersOwned >= 1 },
+  { id: 'charter-all', icon: '🗽', name: 'Constitution? I Hardly Know Her', description: 'Sign every charter.', check: (c) => c.chartersOwned >= CHARTERS.length },
   { id: 'golden-1', icon: '🌟', name: 'Gold Bug', description: 'Catch a golden sticker. Told you gold was the real money.', check: (c) => c.stats.goldenClicks >= 1 },
   { id: 'golden-25', icon: '🥇', name: 'Hard Money Maniac', description: 'Catch 25 golden stickers.', check: (c) => c.stats.goldenClicks >= 25 },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },

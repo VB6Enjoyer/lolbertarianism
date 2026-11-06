@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, GOLDEN_EFFECTS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
+  buyCharter,
+  citiesAvailable,
+  goldenDelayMultiplier,
+  offlineSettings,
+  raidChance,
   bulkCost,
   catchGolden,
   maxAffordable,
@@ -374,5 +379,98 @@ describe('golden stickers', () => {
     catchGolden(s, effect('bull-run'), T);
     expect(offlineEarnings(s, T + 3600_000).amount).toBe(10 * 3600 * BALANCE.offline.rate);
     expect(normalize({ ...s }).buffs).toEqual([]);
+  });
+});
+
+describe('charters (prestige shop)', () => {
+  const charter = (id: string) => CHARTERS.find((c) => c.id === id)!;
+  const T = 1_000_000;
+  /** A state that has just seceded with `cities` cities and the given charters. */
+  const withCharters = (cities: number, ...ids: string[]) => {
+    const s = newState();
+    s.cities = cities;
+    for (const id of ids) expect(buyCharter(s, charter(id))).toBe(true);
+    return s;
+  };
+
+  it('costs cities but never lowers the city income bonus', () => {
+    const s = newState();
+    s.cities = 5;
+    s.stickers = [];
+    const before = derive(s).globalMultiplier;
+    expect(buyCharter(s, charter('private-courts'))).toBe(true); // 2
+    expect(buyCharter(s, charter('seed-phrases'))).toBe(true); // 3
+    expect(citiesAvailable(s)).toBe(0);
+    expect(buyCharter(s, charter('seed-capital'))).toBe(false); // broke
+    expect(buyCharter(s, charter('private-courts'))).toBe(false); // already signed
+    expect(derive(s).globalMultiplier).toBe(before);
+  });
+
+  it('all have unique ids', () => {
+    expect(new Set(CHARTERS.map((c) => c.id)).size).toBe(CHARTERS.length);
+  });
+
+  it('seed capital and grandfather clause shape every new run', () => {
+    const s = withCharters(3, 'seed-capital', 'grandfathered');
+    earn(s, 16e6); // enough for more cities
+    s.owned = { 1: 50, 5: 3 };
+    secede(s);
+    expect(s.score).toBe(CHARTER_VALUES.seedCapital);
+    expect(s.owned).toEqual({ 1: 10, 2: 10 });
+    expect(s.runEarnings).toBe(0); // starting cash isn't "earned"
+  });
+
+  it("collector's exemption and tenure keep stickers and perks through secession", () => {
+    const s = withCharters(13, 'sticker-license', 'tenure');
+    earn(s, 400e6);
+    s.stickers = [...STARTER_STICKERS, 'hoppe'];
+    s.perks = ['su1', 'su2'];
+    secede(s);
+    expect(s.stickers).toContain('hoppe');
+    expect(s.perks).toEqual(['su1', 'su2']);
+  });
+
+  it('private courts halve raids; seed phrases speed up golden stickers', () => {
+    expect(raidChance(newState())).toBe(BALANCE.raid.chance);
+    expect(raidChance(withCharters(2, 'private-courts'))).toBe(BALANCE.raid.chance * 0.5);
+    expect(goldenDelayMultiplier(newState())).toBe(1);
+    expect(goldenDelayMultiplier(withCharters(3, 'seed-phrases'))).toBe(0.75);
+  });
+
+  it('remote management pays 100% offline for up to 24 hours', () => {
+    const s = withCharters(3, 'remote-management');
+    expect(offlineSettings(s)).toEqual({ rate: 1, maxSeconds: 86400 });
+    s.stickers = [];
+    s.owned = { 2: 10 };
+    s.lastSaved = T;
+    const away = offlineEarnings(s, T + 48 * 3600_000);
+    expect(away.seconds).toBe(86400);
+    expect(away.amount).toBeCloseTo(10 * 1.3 * 86400); // 3 cities = +30% income, 100% rate
+  });
+
+  it('secular bull market makes golden boosts last 50% longer', () => {
+    const s = withCharters(4, 'long-bull');
+    catchGolden(s, GOLDEN_EFFECTS.find((e) => e.id === 'chainsaw')!, T);
+    expect(derive(s, T + 44_000).clickBuff).toBe(7); // 30s × 1.5 = 45s
+    expect(derive(s, T + 46_000).clickBuff).toBe(1);
+  });
+
+  it('competitive suppliers discount upgrades by 10%, single and bulk', () => {
+    const s = withCharters(6, 'bulk-discount');
+    expect(purchaseQuote(s, upgrade(4)).cost).toBe(Math.ceil(2000 * 0.9));
+    s.buyAmount = 10;
+    expect(purchaseQuote(s, upgrade(1)).cost).toBe(bulkCost(upgrade(1), 0, 10, 0.9));
+    expect(bulkCost(upgrade(1), 0, 10, 0.9)).toBeLessThan(bulkCost(upgrade(1), 0, 10));
+  });
+
+  it('lindy and network effects raise the per-achievement and per-city bonuses', () => {
+    const s = withCharters(25, 'lindy', 'network-effects');
+    s.achievements = ['first-click', 'earn-1k', 'earn-1m'];
+    expect(derive(s).globalMultiplier).toBeCloseTo((1 + 25 * 0.15) * (1 + 3 * 0.02));
+  });
+
+  it('saves keep valid charters only', () => {
+    expect(normalize({ charters: ['tenure', 'fake'] as never }).charters).toEqual(['tenure']);
+    expect(normalize({}).charters).toEqual([]);
   });
 });

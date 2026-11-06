@@ -3,6 +3,7 @@ import { formatMoney } from '../../shared/format.ts';
 import {
   ACHIEVEMENTS,
   BALANCE,
+  CHARTERS,
   CLICK_PHRASES,
   PERKS,
   STARTER_STICKERS,
@@ -10,32 +11,37 @@ import {
   STICKER_CATEGORIES,
   UPGRADES,
   type Achievement,
+  type Charter,
   type GoldenEffect,
   type StickerCategory,
 } from './data.ts';
 import {
   activeBuffs,
+  buyCharter,
   buyPerk,
   buySticker,
   buyUpgrade,
   catchGolden,
+  citiesAvailable,
   click,
   derive,
   earn,
   earningsForCities,
+  goldenDelayMultiplier,
+  hasCharter,
   hasPerk,
   hasSticker,
   newState,
   offlineEarnings,
-  ownedCount,
+  offlineSettings,
   pendingCities,
   pickGoldenEffect,
   purchaseQuote,
+  raidChance,
   raidsBlocked,
   secede,
   stickerCost,
   unlockAchievements,
-  upgradeCost,
   type BuyAmount,
   type GameState,
 } from './logic.ts';
@@ -56,6 +62,7 @@ const els = {
   stickers: byId('sticker-container'),
   raid: byId('raid-overlay'),
   secede: byId<HTMLButtonElement>('btn-secede'),
+  charters: byId<HTMLButtonElement>('btn-charters'),
   modal: byId('modal'),
   modalTitle: byId('modal-title'),
   modalBody: byId('modal-body'),
@@ -109,7 +116,7 @@ function renderShop() {
       <div class="item-icon">${u.icon}</div>
       <div class="item-info">
         <span class="item-name">${u.name}</span>
-        <span class="item-cost">${money(upgradeCost(u, ownedCount(state, u.id)))}</span>
+        <span class="item-cost"></span>
       </div>
       <div style="font-size:0.8em; color:#666;">
         ${u.type === 'passive' ? '+' + u.income + '/s' : '+' + u.clickBonus + '/click'}
@@ -161,9 +168,14 @@ function updateUI() {
   // Prestige summary, once there's something to show.
   const bonus = Math.round((d.globalMultiplier - 1) * 100);
   els.prestige.hidden = state.cities === 0 && state.achievements.length === 0;
+  const unspent = citiesAvailable(state);
   els.prestige.textContent =
-    `🏙️ ${state.cities} Free Private ${state.cities === 1 ? 'City' : 'Cities'} · ` +
-    `🏆 ${state.achievements.length}/${ACHIEVEMENTS.length} · +${bonus}% income`;
+    `🏙️ ${state.cities} Free Private ${state.cities === 1 ? 'City' : 'Cities'}` +
+    (unspent && state.charters.length < CHARTERS.length ? ` (${unspent} unspent)` : '') +
+    ` · 🏆 ${state.achievements.length}/${ACHIEVEMENTS.length} · +${bonus}% income`;
+
+  els.charters.hidden = state.cities === 0 && state.charters.length === 0;
+  els.charters.textContent = unspent ? `📜 Charters (${unspent} 🏙️)` : '📜 Charters';
 
   if (shopTab) updateShopPrices();
 
@@ -293,8 +305,13 @@ function showSecession() {
     paragraph(`You'll found ${pending === 1 ? `Free Private City #${cityNumber}` : `${pending} new Free Private Cities`}:`),
     el('div', 'big-number', `+${pending} 🏙️ = +${Math.round(pending * BALANCE.secession.bonusPerCity * 100)}% income`),
     paragraph(
-      `You leave behind your ${money(state.score)}, every upgrade and every special upgrade. ` +
-        'Your cities, achievements and lifetime earnings come with you.',
+      `You leave behind your ${money(state.score)}, every upgrade` +
+        (hasCharter(state, 'tenure') ? '' : ', every special upgrade') +
+        (hasCharter(state, 'sticker-license') ? '' : ' and your bought stickers') +
+        '. Your cities, charters, achievements and lifetime earnings come with you' +
+        (hasCharter(state, 'tenure') ? ', and so do your special upgrades' : '') +
+        (hasCharter(state, 'sticker-license') ? ', and so do your stickers' : '') +
+        '.',
       'fine-print',
     ),
   );
@@ -306,13 +323,16 @@ function showSecession() {
 
 function showWelcomeBack(seconds: number, amount: number) {
   const body = el('div');
-  const keptPct = Math.round(BALANCE.offline.rate * 100);
+  const { rate, maxSeconds } = offlineSettings(state);
+  const hours = maxSeconds / 3600;
   body.append(
     paragraph(`While you were away (${formatDuration(seconds)}), your enterprises made:`),
     el('div', 'big-number', money(amount)),
     paragraph(
-      `You only get ${keptPct}% of your usual income while away: unsupervised employees embezzled the rest. ` +
-        `The market will sort them out. (Counts up to ${BALANCE.offline.maxSeconds / 3600} hours.)`,
+      rate >= 1
+        ? `Your remote managers believe in incentives: you got 100% of your income. (Counts up to ${hours} hours.)`
+        : `You only get ${Math.round(rate * 100)}% of your usual income while away: unsupervised employees ` +
+            `embezzled the rest. The market will sort them out. (Counts up to ${hours} hours.)`,
       'fine-print',
     ),
   );
@@ -418,6 +438,57 @@ function onBuySticker(id: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Charters (prestige shop)
+// ---------------------------------------------------------------------------
+
+function charterCard(c: Charter) {
+  const owned = hasCharter(state, c.id);
+  const affordable = citiesAvailable(state) >= c.cost;
+  const card = el('button', `charter-card${owned ? ' owned' : affordable ? '' : ' disabled'}`);
+  card.title = c.lore;
+  card.append(
+    el('span', 'charter-icon', c.icon),
+    el('span', 'charter-name', c.name),
+    el('span', 'charter-desc', c.description),
+    el('span', 'charter-cost', owned ? '✔ Signed' : `🏙️ ${c.cost}`),
+  );
+  if (owned) card.disabled = true;
+  else card.addEventListener('click', () => onBuyCharter(c));
+  return card;
+}
+
+function renderCharters(): HTMLElement {
+  const body = el('div', 'charter-shop');
+  const unspent = citiesAvailable(state);
+  body.append(
+    paragraph(
+      `You've founded ${state.cities} Free Private ${state.cities === 1 ? 'City' : 'Cities'}. ` +
+        'Each one can sign one charter: a permanent perk that survives every secession. ' +
+        'Signing never reduces the income bonus your cities give.',
+      'fine-print',
+    ),
+    el('div', 'big-number', `${unspent} 🏙️ to spend`),
+  );
+  const grid = el('div', 'charter-grid');
+  grid.append(...CHARTERS.map(charterCard));
+  body.append(grid);
+  return body;
+}
+
+function showCharters() {
+  openModal('📜 City Charters', renderCharters(), [{ label: 'Done' }]);
+}
+
+function onBuyCharter(c: Charter) {
+  if (!buyCharter(state, c)) return;
+  const { x, y } = center();
+  spawnFloater(x, y, `CHARTER SIGNED: ${c.name.toUpperCase()}!`, '#8e44ad');
+  els.modalBody.replaceChildren(renderCharters());
+  save();
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
 // Golden stickers
 // ---------------------------------------------------------------------------
 
@@ -439,7 +510,7 @@ function renderBuffs() {
 
 function scheduleGolden() {
   const { minDelaySec, maxDelaySec } = BALANCE.golden;
-  const delay = (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000;
+  const delay = (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000 * goldenDelayMultiplier(state);
   setTimeout(spawnGolden, delay);
 }
 
@@ -537,7 +608,7 @@ function gameLoop() {
 // Raid Event Logic
 function tryRaid() {
   if (raidActive || isModalOpen() || raidsBlocked(state)) return;
-  if (state.score > BALANCE.raid.minScore && Math.random() < BALANCE.raid.chance) {
+  if (state.score > BALANCE.raid.minScore && Math.random() < raidChance(state)) {
     if (Math.random() < derive(state).raidEvasionChance) {
       state.stats.raidsAutoEvaded++;
       spawnFloater(window.innerWidth / 2, 50, 'Raid Evaded!', 'blue');
@@ -579,6 +650,7 @@ byId('btn-reshuffle').addEventListener('click', () => {
   refresh();
 });
 byId('btn-achievements').addEventListener('click', showAchievements);
+els.charters.addEventListener('click', showCharters);
 byId('btn-stickers').addEventListener('click', showStickerShop);
 els.buyAmount.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-amount]');

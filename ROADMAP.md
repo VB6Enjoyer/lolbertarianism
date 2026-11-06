@@ -99,8 +99,28 @@ Noticed along the way, left alone for now:
   ("×10 · $308"); MAX buys as many as you can afford and updates live. ×10
   buys nothing unless you can afford all ten. The setting is saved.
 
+### Charters (prestige shop) ✅
+
+- 📜 Charters button (shown once you've founded a city). Each Free Private City
+  can sign one charter: a permanent perk that survives every secession.
+  Signing never lowers the +10%-per-city income bonus (it counts every city
+  founded); it just uses up that city's charter.
+- 11 charters (`CHARTERS`, numbers in `CHARTER_VALUES`), 55 cities for all:
+  - 1 💼 Seed Capital: start each run with $25,000
+  - 2 📜 Grandfather Clause: start with 10 theory books + 10 lemonade stands
+  - 2 ⚖️ Private Courts: raids half as often
+  - 3 🧠 Memorized Seed Phrases: golden stickers 25% sooner
+  - 3 🏝️ Remote Management: offline earnings 100%, up to 24 hours
+  - 4 🐂 Secular Bull Market: golden boosts last 50% longer
+  - 5 🏷️ Collector's Exemption: keep bought stickers when seceding
+  - 6 🏪 Competitive Suppliers: upgrades 10% cheaper
+  - 8 🎓 Austrian Tenure: keep special upgrades when seceding
+  - 10 🏆 Lindy Effect: +2% per achievement instead of +1%
+  - 15 🌐 Network Effects: +15% per city instead of +10%
+- Achievements: We the Sovereign Individual (first charter), Constitution? I
+  Hardly Know Her (all of them).
+
 Ideas for later:
-- Spend cities on secession-only perks (a second prestige shop).
 - More upgrades past "Privatize solar system" for late-game runs.
 - Sound effects with `playTone` (clicks, purchases, raid siren, golden chime).
 - News ticker of absurd headlines that change with progress.
