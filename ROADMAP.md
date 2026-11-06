@@ -134,9 +134,21 @@ Noticed along the way, left alone for now:
 - Phone layout fix: the page scrolls on narrow screens (the shop had been pushed
   off-screen), perks wrap into a 3×2 grid, and nothing overflows 320px phones.
 
+### News ticker and sound effects ✅
+
+- 📰 News strip at the top of the clicker panel: one headline scrolls across,
+  then the next. ~50 absurd headlines in `news.ts`, many unlocked by progress
+  (upgrades owned, raids evaded, golden stickers, secession, charters), some
+  with live numbers. No repeats until 8 others have shown. Reduced-motion users
+  get static headlines that change every 9 seconds.
+- 🔊 Synthesized sound effects (`sfx.ts`, built on the shared `playTone`): click,
+  crit, purchase, perk/charter, sticker, achievement, golden sticker appear and
+  catch, raid siren, evade, and a little anthem on secession. The 🔊/🔇 button
+  on the ticker toggles them; the setting is saved.
+- The shared audio helper now skips sounds while the browser still has audio
+  locked (before the first click), instead of queuing them up.
+
 Ideas for later:
-- Sound effects with `playTone` (clicks, purchases, raid siren, golden chime).
-- News ticker of absurd headlines that change with progress.
 - Stats panel (clicks, crits, raids evaded, golden stickers, best run).
 
 ## Phase 5: The rest, one at a time

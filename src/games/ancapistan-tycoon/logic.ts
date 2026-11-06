@@ -67,6 +67,8 @@ export interface GameState {
   buffs: ActiveBuff[];
   /** Signed charters (prestige shop). Permanent across secessions. */
   charters: CharterId[];
+  /** Sound effects on or off. */
+  sound: boolean;
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -100,6 +102,7 @@ export function newState(): GameState {
     buyAmount: 1,
     buffs: [],
     charters: [],
+    sound: true,
     stats: newStats(),
     lastSaved: 0,
   };

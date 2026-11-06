@@ -45,7 +45,9 @@ import {
   type BuyAmount,
   type GameState,
 } from './logic.ts';
+import { pickHeadline, type NewsContext } from './news.ts';
 import { loadState, saveState } from './save.ts';
+import { setMuted, sfx } from './sfx.ts';
 import { dropSticker, enableStickerDragging, spawnStickers, stickerPreview } from './stickers.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -68,6 +70,9 @@ const els = {
   modalBody: byId('modal-body'),
   modalActions: byId('modal-actions'),
   toasts: byId('toasts'),
+  newsTrack: byId('news-track'),
+  newsText: byId('news-text'),
+  sound: byId<HTMLButtonElement>('btn-sound'),
 };
 
 let state: GameState = loadState() ?? newState();
@@ -202,6 +207,7 @@ function toast(title: string, detail: string) {
 /** Checks achievements, announces new ones and refreshes the UI. */
 function refresh() {
   const unlocked = unlockAchievements(state);
+  if (unlocked.length) sfx.achievement();
   if (unlocked.length > 3) {
     toast(`🏆 ${unlocked.length} achievements unlocked!`, 'Open 🏆 Achievements to see them.');
   } else {
@@ -433,6 +439,7 @@ function onBuySticker(id: string) {
   if (state.showStickers) dropSticker(els.stickers, id);
   const { x, y } = center();
   spawnFloater(x, y, 'STICKER UNLOCKED!', '#8e44ad');
+  sfx.sticker();
   els.modalBody.replaceChildren(renderStickerShop());
   refresh();
 }
@@ -483,6 +490,7 @@ function onBuyCharter(c: Charter) {
   if (!buyCharter(state, c)) return;
   const { x, y } = center();
   spawnFloater(x, y, `CHARTER SIGNED: ${c.name.toUpperCase()}!`, '#8e44ad');
+  sfx.perk();
   els.modalBody.replaceChildren(renderCharters());
   save();
   refresh();
@@ -542,10 +550,12 @@ function spawnGolden() {
   });
   setTimeout(finish, BALANCE.golden.lifetimeSec * 1000);
   document.body.append(btn);
+  sfx.goldenAppear();
 }
 
 function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
   const cash = catchGolden(state, effect);
+  sfx.goldenCatch();
   spawnFloater(x, y, cash ? `${effect.icon} +${money(cash)}!` : `${effect.icon} ${effect.name.toUpperCase()}!`, '#c9a100');
   toast(`${effect.icon} ${effect.name}`, cash ? `${effect.description} +${money(cash)}` : effect.description);
   refresh();
@@ -558,6 +568,8 @@ function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
 function onClickMain(x: number, y: number) {
   if (raidActive) return;
   const { amount, crit } = click(state, Math.random());
+  if (crit) sfx.crit();
+  else sfx.click();
   if (crit) spawnFloater(x, y, `CRIT! +${money(amount)}`, 'orange');
   else spawnFloater(x, y, `+${money(amount)}`);
 
@@ -575,6 +587,7 @@ function onBuyUpgrade(id: number) {
   if (!bought) return;
   const { x, y } = center();
   spawnFloater(x, y, bought > 1 ? `PURCHASED ×${bought}!` : 'PURCHASED!', 'green');
+  sfx.purchase();
   renderShop(); // Re-render to update costs
   refresh();
 }
@@ -584,6 +597,7 @@ function onBuyPerk(id: string) {
   if (!buyPerk(state, perk)) return;
   const { x, y } = center();
   spawnFloater(x, y, 'PERK UNLOCKED!', 'gold');
+  sfx.perk();
   renderPerks();
   refresh();
 }
@@ -597,6 +611,7 @@ function onSecede() {
   showStickers();
   const { x, y } = center();
   spawnFloater(x, y, `INDEPENDENCE! +${gained} 🏙️`, 'black');
+  sfx.secede();
   refresh();
 }
 
@@ -612,11 +627,13 @@ function tryRaid() {
     if (Math.random() < derive(state).raidEvasionChance) {
       state.stats.raidsAutoEvaded++;
       spawnFloater(window.innerWidth / 2, 50, 'Raid Evaded!', 'blue');
+      sfx.evade();
       refresh();
       return; // Automatically evaded
     }
     raidActive = true;
     els.raid.style.display = 'flex';
+    sfx.raid();
     // Penalty if ignored: income stops until you hide your assets.
   }
 }
@@ -626,10 +643,67 @@ function evadeTax() {
   els.raid.style.display = 'none';
   const { x, y } = center();
   spawnFloater(x, y, 'TAX EVADED!', 'blue');
+  sfx.evade();
   state.stats.raidsEvaded++;
   earn(state, BALANCE.raid.evadeBonus); // Bonus for evasion
   refresh();
 }
+
+// ---------------------------------------------------------------------------
+// News ticker and sound toggle
+// ---------------------------------------------------------------------------
+
+const recentHeadlines: number[] = [];
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+/** Ticker speed in pixels per second. */
+const NEWS_SPEED = 70;
+
+function newsContext(): NewsContext {
+  return {
+    allTimeEarnings: state.allTimeEarnings,
+    incomePerSec: derive(state).incomePerSec,
+    owned: (id) => state.owned[id] ?? 0,
+    cities: state.cities,
+    charters: state.charters.length,
+    stickers: state.stickers.length,
+    secessions: state.stats.secessions,
+    raidsEvaded: state.stats.raidsEvaded,
+    goldenClicks: state.stats.goldenClicks,
+    clicks: state.stats.clicks,
+  };
+}
+
+/** Shows the next headline: it scrolls across once, then the next one starts. */
+function nextHeadline() {
+  els.newsText.textContent = pickHeadline(newsContext(), recentHeadlines, Math.random());
+  if (reducedMotion.matches || !els.newsText.animate) {
+    els.newsText.style.transform = 'none';
+    setTimeout(nextHeadline, 9000);
+    return;
+  }
+  const from = els.newsTrack.clientWidth;
+  const to = -els.newsText.scrollWidth;
+  const animation = els.newsText.animate(
+    [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+    { duration: ((from - to) / NEWS_SPEED) * 1000, easing: 'linear' },
+  );
+  animation.onfinish = nextHeadline;
+}
+
+function updateSoundButton() {
+  setMuted(!state.sound);
+  els.sound.textContent = state.sound ? '🔊' : '🔇';
+  const label = state.sound ? 'Mute sound' : 'Turn sound on';
+  els.sound.title = label;
+  els.sound.setAttribute('aria-label', label);
+}
+
+els.sound.addEventListener('click', () => {
+  state.sound = !state.sound;
+  updateSoundButton();
+  if (state.sound) sfx.purchase(); // a little confirmation blip
+  save();
+});
 
 // ---------------------------------------------------------------------------
 // Wiring
@@ -690,10 +764,12 @@ if (away.amount > 0) {
   state.stats.offlineCollected++;
 }
 
+updateSoundButton();
 renderShop();
 renderPerks();
 showStickers();
 refresh(); // Show loaded progress right away
+nextHeadline();
 save(); // Stamp the time now, so a quick reload can't collect offline earnings twice
 
 if (away.amount > 0) showWelcomeBack(away.seconds, away.amount);
