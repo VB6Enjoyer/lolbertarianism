@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, GOLDEN_EFFECTS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
 import {
+  activeBuffs,
+  bulkCost,
+  catchGolden,
+  maxAffordable,
+  pickGoldenEffect,
+  purchaseQuote,
+  raidsBlocked,
   BUYABLE_STICKERS,
   buyPerk,
   buySticker,
@@ -33,10 +40,10 @@ describe('upgrade costs', () => {
   it('buying deducts the price and needs enough cash', () => {
     const s = newState();
     s.score = 20;
-    expect(buyUpgrade(s, upgrade(1))).toBe(true);
+    expect(buyUpgrade(s, upgrade(1))).toBe(1);
     expect(s.score).toBe(5);
     expect(s.owned[1]).toBe(1);
-    expect(buyUpgrade(s, upgrade(1))).toBe(false);
+    expect(buyUpgrade(s, upgrade(1))).toBe(0);
     expect(s.owned[1]).toBe(1);
   });
 
@@ -268,5 +275,104 @@ describe('sticker shop', () => {
     expect(n.stickers).toContain('hoppe');
     expect(n.stickers).not.toContain('bogus');
     expect(n.showStickers).toBe(false);
+  });
+});
+
+describe('buy ×10 / MAX', () => {
+  it('bulk cost is the sum of single purchases', () => {
+    const u = upgrade(2);
+    let sum = 0;
+    for (let i = 3; i < 13; i++) sum += upgradeCost(u, i);
+    expect(bulkCost(u, 3, 10)).toBe(sum);
+  });
+
+  it('max affordable buys as many as the cash covers', () => {
+    const u = upgrade(1);
+    const cash = bulkCost(u, 0, 7);
+    expect(maxAffordable(u, 0, cash)).toBe(7);
+    expect(maxAffordable(u, 0, cash - 1)).toBe(6);
+    expect(maxAffordable(u, 0, 0)).toBe(0);
+  });
+
+  it('×10 buys ten at once, or nothing if you cannot afford all ten', () => {
+    const s = newState();
+    s.buyAmount = 10;
+    s.score = bulkCost(upgrade(1), 0, 10) - 1;
+    expect(buyUpgrade(s, upgrade(1))).toBe(0);
+    s.score += 1;
+    expect(buyUpgrade(s, upgrade(1))).toBe(10);
+    expect(s.owned[1]).toBe(10);
+    expect(s.score).toBe(0);
+  });
+
+  it('MAX buys everything affordable and quotes one copy when broke', () => {
+    const s = newState();
+    s.buyAmount = 'max';
+    expect(purchaseQuote(s, upgrade(1))).toEqual({ count: 1, cost: 15 });
+    s.score = bulkCost(upgrade(1), 0, 12) + 5;
+    expect(buyUpgrade(s, upgrade(1))).toBe(12);
+    expect(s.score).toBe(5);
+  });
+});
+
+describe('golden stickers', () => {
+  const effect = (id: string) => GOLDEN_EFFECTS.find((e) => e.id === id)!;
+  const T = 1_000_000;
+
+  it('picks rewards by weight across the whole roll range', () => {
+    const total = GOLDEN_EFFECTS.reduce((n, e) => n + e.weight, 0);
+    expect(pickGoldenEffect(0).id).toBe(GOLDEN_EFFECTS[0].id);
+    expect(pickGoldenEffect(0.999999).id).toBe(GOLDEN_EFFECTS[GOLDEN_EFFECTS.length - 1].id);
+    expect(pickGoldenEffect((GOLDEN_EFFECTS[0].weight + 0.01) / total).id).toBe(GOLDEN_EFFECTS[1].id);
+  });
+
+  it('timed boosts multiply clicks or income until they expire', () => {
+    const s = newState();
+    s.stickers = [];
+    s.owned = { 2: 10 };
+    catchGolden(s, effect('chainsaw'), T);
+    catchGolden(s, effect('bull-run'), T);
+    expect(derive(s, T + 1000).clickAmount).toBe(7);
+    expect(derive(s, T + 1000).incomePerSec).toBe(30);
+    expect(derive(s, T + 31_000).clickAmount).toBe(1); // chainsaw over
+    expect(derive(s, T + 31_000).incomePerSec).toBe(30); // bull run still on
+    expect(derive(s, T + 61_000).incomePerSec).toBe(10);
+    expect(s.stats.goldenClicks).toBe(2);
+  });
+
+  it('catching the same boost again restarts it instead of stacking', () => {
+    const s = newState();
+    catchGolden(s, effect('chainsaw'), T);
+    catchGolden(s, effect('chainsaw'), T + 20_000);
+    expect(activeBuffs(s, T + 40_000)).toHaveLength(1);
+    expect(derive(s, T + 40_000).clickBuff).toBe(7);
+  });
+
+  it('tax holiday blocks raids while it lasts', () => {
+    const s = newState();
+    catchGolden(s, effect('tax-holiday'), T);
+    expect(raidsBlocked(s, T + 1000)).toBe(true);
+    expect(raidsBlocked(s, T + 46_000)).toBe(false);
+  });
+
+  it('the wallet pays min(25% of cash, 15 min of income), at least 50 clicks', () => {
+    const s = newState();
+    s.stickers = [];
+    s.owned = { 2: 10 }; // $10/s → 15 min = 9000
+    s.score = 1e6;
+    expect(catchGolden(s, effect('wallet'), T)).toBe(9000);
+    const broke = newState();
+    expect(catchGolden(broke, effect('wallet'), T)).toBe(50); // 50 × $1 clicks
+    expect(broke.allTimeEarnings).toBe(50);
+  });
+
+  it('boosts are not saved and do not count toward offline earnings', () => {
+    const s = newState();
+    s.stickers = [];
+    s.owned = { 2: 10 };
+    s.lastSaved = T;
+    catchGolden(s, effect('bull-run'), T);
+    expect(offlineEarnings(s, T + 3600_000).amount).toBe(10 * 3600 * BALANCE.offline.rate);
+    expect(normalize({ ...s }).buffs).toEqual([]);
   });
 });

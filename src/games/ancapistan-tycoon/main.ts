@@ -5,16 +5,20 @@ import {
   BALANCE,
   CLICK_PHRASES,
   PERKS,
+  STARTER_STICKERS,
   STICKERS,
   STICKER_CATEGORIES,
   UPGRADES,
   type Achievement,
+  type GoldenEffect,
   type StickerCategory,
 } from './data.ts';
 import {
+  activeBuffs,
   buyPerk,
   buySticker,
   buyUpgrade,
+  catchGolden,
   click,
   derive,
   earn,
@@ -25,10 +29,14 @@ import {
   offlineEarnings,
   ownedCount,
   pendingCities,
+  pickGoldenEffect,
+  purchaseQuote,
+  raidsBlocked,
   secede,
   stickerCost,
   unlockAchievements,
   upgradeCost,
+  type BuyAmount,
   type GameState,
 } from './logic.ts';
 import { loadState, saveState } from './save.ts';
@@ -40,6 +48,8 @@ const els = {
   score: byId('score'),
   income: byId('income'),
   prestige: byId('prestige-line'),
+  buffs: byId('buff-bar'),
+  buyAmount: byId('buy-amount'),
   mainBtn: byId('main-btn'),
   shop: byId('shop-list'),
   perks: byId('special-upgrades-container'),
@@ -137,8 +147,16 @@ function updateUI() {
   }
   for (const u of UPGRADES) {
     const btn = document.getElementById(`btn-${u.id}`);
-    btn?.classList.toggle('disabled', state.score < upgradeCost(u, ownedCount(state, u.id)));
+    if (!btn) continue;
+    const { count, cost } = purchaseQuote(state, u);
+    btn.classList.toggle('disabled', state.score < cost);
+    const price = btn.querySelector('.item-cost');
+    if (price) price.textContent = count > 1 ? `×${count} · ${money(cost)}` : money(cost);
   }
+  for (const b of els.buyAmount.querySelectorAll<HTMLElement>('button')) {
+    b.classList.toggle('active', b.dataset.amount === String(state.buyAmount));
+  }
+  renderBuffs();
 
   // Prestige summary, once there's something to show.
   const bonus = Math.round((d.globalMultiplier - 1) * 100);
@@ -400,6 +418,69 @@ function onBuySticker(id: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Golden stickers
+// ---------------------------------------------------------------------------
+
+function renderBuffs() {
+  const now = Date.now();
+  els.buffs.replaceChildren(
+    ...activeBuffs(state, now).map(({ effect, endsAt }) => {
+      const parts = [];
+      if (effect.clickMultiplier !== 1) parts.push(`×${effect.clickMultiplier} clicks`);
+      if (effect.incomeMultiplier !== 1) parts.push(`×${effect.incomeMultiplier} income`);
+      if (effect.noRaids) parts.push('no raids');
+      const secs = Math.max(0, Math.ceil((endsAt - now) / 1000));
+      const chip = el('span', 'buff-chip', `${effect.icon} ${effect.name}: ${parts.join(', ')} · ${secs}s`);
+      chip.title = effect.description;
+      return chip;
+    }),
+  );
+}
+
+function scheduleGolden() {
+  const { minDelaySec, maxDelaySec } = BALANCE.golden;
+  const delay = (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000;
+  setTimeout(spawnGolden, delay);
+}
+
+/** Drops a glowing golden sticker somewhere on screen. Catch it before it fades. */
+function spawnGolden() {
+  if (raidActive || document.hidden) {
+    scheduleGolden();
+    return;
+  }
+  const pool = state.stickers.length > STARTER_STICKERS.length ? state.stickers : STICKERS.map((s) => s.id);
+  const btn = el('button', 'golden-sticker');
+  btn.setAttribute('aria-label', 'Golden sticker! Click it');
+  btn.append(stickerPreview(pick(pool)));
+  btn.style.left = `${40 + Math.random() * (window.innerWidth - 160)}px`;
+  btn.style.top = `${40 + Math.random() * (window.innerHeight - 200)}px`;
+  btn.style.setProperty('--life', `${BALANCE.golden.lifetimeSec}s`);
+
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    btn.remove();
+    scheduleGolden();
+  };
+  btn.addEventListener('click', (e) => {
+    if (done) return;
+    onCatchGolden(pickGoldenEffect(Math.random()), e.clientX || window.innerWidth / 2, e.clientY || window.innerHeight / 2);
+    finish();
+  });
+  setTimeout(finish, BALANCE.golden.lifetimeSec * 1000);
+  document.body.append(btn);
+}
+
+function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
+  const cash = catchGolden(state, effect);
+  spawnFloater(x, y, cash ? `${effect.icon} +${money(cash)}!` : `${effect.icon} ${effect.name.toUpperCase()}!`, '#c9a100');
+  toast(`${effect.icon} ${effect.name}`, cash ? `${effect.description} +${money(cash)}` : effect.description);
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
 
@@ -419,9 +500,10 @@ function onClickMain(x: number, y: number) {
 
 function onBuyUpgrade(id: number) {
   const upgrade = UPGRADES.find((u) => u.id === id)!;
-  if (!buyUpgrade(state, upgrade)) return;
+  const bought = buyUpgrade(state, upgrade);
+  if (!bought) return;
   const { x, y } = center();
-  spawnFloater(x, y, 'PURCHASED!', 'green');
+  spawnFloater(x, y, bought > 1 ? `PURCHASED ×${bought}!` : 'PURCHASED!', 'green');
   renderShop(); // Re-render to update costs
   refresh();
 }
@@ -454,7 +536,7 @@ function gameLoop() {
 
 // Raid Event Logic
 function tryRaid() {
-  if (raidActive || isModalOpen()) return;
+  if (raidActive || isModalOpen() || raidsBlocked(state)) return;
   if (state.score > BALANCE.raid.minScore && Math.random() < BALANCE.raid.chance) {
     if (Math.random() < derive(state).raidEvasionChance) {
       state.stats.raidsAutoEvaded++;
@@ -498,6 +580,13 @@ byId('btn-reshuffle').addEventListener('click', () => {
 });
 byId('btn-achievements').addEventListener('click', showAchievements);
 byId('btn-stickers').addEventListener('click', showStickerShop);
+els.buyAmount.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-amount]');
+  if (!btn) return;
+  const v = btn.dataset.amount;
+  state.buyAmount = (v === 'max' ? 'max' : Number(v)) as BuyAmount;
+  updateUI();
+});
 els.secede.addEventListener('click', showSecession);
 byId('btn-evade').addEventListener('click', evadeTax);
 
@@ -540,3 +629,4 @@ if (away.amount > 0) showWelcomeBack(away.seconds, away.amount);
 setInterval(gameLoop, 1000);
 setInterval(tryRaid, BALANCE.raid.intervalMs);
 setInterval(save, BALANCE.saveIntervalMs);
+scheduleGolden();

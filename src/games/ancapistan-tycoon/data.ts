@@ -37,8 +37,48 @@ export const BALANCE = {
     /** …and of the last one. Prices in between grow by the same factor each purchase. */
     lastCost: 10_000_000_000_000,
   },
+  golden: {
+    /** Seconds between golden stickers (random in this range). */
+    minDelaySec: 90,
+    maxDelaySec: 240,
+    /** How long one stays on screen before it's gone. */
+    lifetimeSec: 13,
+    /** Instant-cash reward: the smaller of this share of your cash… */
+    cashShareOfScore: 0.25,
+    /** …and this many seconds of income, but never less than this many clicks' worth. */
+    cashIncomeSeconds: 900,
+    cashMinClicks: 50,
+  },
   saveIntervalMs: 5000,
 } as const;
+
+// ---------------------------------------------------------------------------
+// Golden sticker rewards
+// ---------------------------------------------------------------------------
+
+export interface GoldenEffect {
+  id: string;
+  icon: string;
+  name: string;
+  description: string;
+  /** Relative odds of being picked. */
+  weight: number;
+  /** Timed boosts: multipliers and duration. Instant rewards have duration 0. */
+  clickMultiplier: number;
+  incomeMultiplier: number;
+  durationSec: number;
+  /** Fed raids can't happen while this is active. */
+  noRaids?: boolean;
+  /** Gives an instant cash payout (see BALANCE.golden). */
+  cash?: boolean;
+}
+
+export const GOLDEN_EFFECTS: readonly GoldenEffect[] = [
+  { id: 'chainsaw', icon: '🪚', name: "Milei's Chainsaw", description: 'Clicks are worth ×7 for 30 seconds. ¡AFUERA!', weight: 3, clickMultiplier: 7, incomeMultiplier: 1, durationSec: 30 },
+  { id: 'bull-run', icon: '🐂', name: 'Bull Run', description: 'Income ×3 for 60 seconds. Number go up.', weight: 3, clickMultiplier: 1, incomeMultiplier: 3, durationSec: 60 },
+  { id: 'wallet', icon: '🔑', name: 'Unclaimed Bitcoin Wallet', description: 'You remembered the seed phrase. Instant cash.', weight: 3, clickMultiplier: 1, incomeMultiplier: 1, durationSec: 0, cash: true },
+  { id: 'tax-holiday', icon: '🏖️', name: 'Tax Holiday', description: 'Everything ×2 and no Fed raids for 45 seconds.', weight: 1, clickMultiplier: 2, incomeMultiplier: 2, durationSec: 45, noRaids: true },
+];
 
 // ---------------------------------------------------------------------------
 // Upgrades
@@ -221,6 +261,7 @@ export interface AchievementContext {
     reshuffles: number;
     stickersDragged: number;
     offlineCollected: number;
+    goldenClicks: number;
   };
 }
 
@@ -270,5 +311,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > STARTER_STICKERS.length },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
   { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => c.stickersOwned >= STICKERS.length },
+  { id: 'golden-1', icon: '🌟', name: 'Gold Bug', description: 'Catch a golden sticker. Told you gold was the real money.', check: (c) => c.stats.goldenClicks >= 1 },
+  { id: 'golden-25', icon: '🥇', name: 'Hard Money Maniac', description: 'Catch 25 golden stickers.', check: (c) => c.stats.goldenClicks >= 25 },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },
 ];

@@ -27,6 +27,7 @@
             <div class="score-display">$<span id="score">0</span></div>
             <div class="sub-score">$<span id="income">0</span> / sec</div>
             <div class="prestige-line" id="prestige-line" hidden></div>
+            <div class="buff-bar" id="buff-bar" aria-live="polite"></div>
 
             <div id="main-btn" role="button" tabindex="0" aria-label="Click for money">
                 🐍
@@ -52,6 +53,12 @@
             <h2>The Free Market</h2>
             <div id="special-upgrades-container">
                 <!-- Special upgrades injected here -->
+            </div>
+            <div class="buy-amount" id="buy-amount" role="group" aria-label="How many to buy">
+                <span>Buy:</span>
+                <button data-amount="1">×1</button>
+                <button data-amount="10">×10</button>
+                <button data-amount="max">MAX</button>
             </div>
             <div id="shop-list">
                 <!-- Shop items injected here -->

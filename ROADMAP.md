@@ -81,10 +81,30 @@ Noticed along the way, left alone for now:
 - Bought stickers reset when you secede (the starter pack stays).
 - Achievements: Brand Ambassador, Hall of Fame, Laptop Lid Complete.
 
+### Golden stickers and bulk buying ✅
+
+- Every 1.5–4 minutes a glowing golden sticker drops in (looks like one of your
+  stickers) and fades after 13 seconds. Catching it gives one of
+  (`GOLDEN_EFFECTS`, weighted 3/3/3/1):
+  - 🪚 Milei's Chainsaw: clicks ×7 for 30s
+  - 🐂 Bull Run: income ×3 for 60s
+  - 🔑 Unclaimed Bitcoin Wallet: instant cash, min(25% of cash, 15 min of
+    income), at least 50 clicks' worth
+  - 🏖️ Tax Holiday: everything ×2 and no raids for 45s
+- Active boosts show as chips with a countdown under the income. Boosts aren't
+  saved and don't count toward offline earnings. Golden stickers wait while a
+  raid is on screen or the tab is hidden.
+- Achievements: Gold Bug (1 caught), Hard Money Maniac (25).
+- Shop toggle: Buy ×1 / ×10 / MAX. Prices show the total for the batch
+  ("×10 · $308"); MAX buys as many as you can afford and updates live. ×10
+  buys nothing unless you can afford all ten. The setting is saved.
+
 Ideas for later:
 - Spend cities on secession-only perks (a second prestige shop).
 - More upgrades past "Privatize solar system" for late-game runs.
-- Sound effects with `playTone` (clicks, purchases, raid siren).
+- Sound effects with `playTone` (clicks, purchases, raid siren, golden chime).
+- News ticker of absurd headlines that change with progress.
+- Stats panel (clicks, crits, raids evaded, golden stickers, best run).
 
 ## Phase 5: The rest, one at a time
 

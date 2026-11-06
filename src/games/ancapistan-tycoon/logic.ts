@@ -4,12 +4,14 @@
 import {
   ACHIEVEMENTS,
   BALANCE,
+  GOLDEN_EFFECTS,
   PERKS,
   STARTER_STICKERS,
   STICKERS,
   UPGRADES,
   type Achievement,
   type AchievementContext,
+  type GoldenEffect,
   type Perk,
   type StickerCategory,
   type Upgrade,
@@ -24,7 +26,18 @@ export interface Stats {
   reshuffles: number;
   stickersDragged: number;
   offlineCollected: number;
+  goldenClicks: number;
 }
+
+/** A timed golden-sticker boost. Not saved: boosts end when the tab closes. */
+export interface ActiveBuff {
+  effectId: string;
+  /** Epoch ms when it runs out. */
+  endsAt: number;
+}
+
+/** How many copies the shop buys per click. */
+export type BuyAmount = 1 | 10 | 'max';
 
 export interface GameState {
   score: number;
@@ -44,6 +57,10 @@ export interface GameState {
   stickers: string[];
   /** Whether owned stickers are drawn on screen (the bonus applies either way). */
   showStickers: boolean;
+  /** Shop setting: buy 1, 10 or as many as you can afford. */
+  buyAmount: BuyAmount;
+  /** Running golden-sticker boosts. */
+  buffs: ActiveBuff[];
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -59,6 +76,7 @@ export function newStats(): Stats {
     reshuffles: 0,
     stickersDragged: 0,
     offlineCollected: 0,
+    goldenClicks: 0,
   };
 }
 
@@ -73,6 +91,8 @@ export function newState(): GameState {
     achievements: [],
     stickers: [...STARTER_STICKERS],
     showStickers: true,
+    buyAmount: 1,
+    buffs: [],
     stats: newStats(),
     lastSaved: 0,
   };
@@ -104,12 +124,15 @@ export interface Derived {
   globalMultiplier: number;
   /** Bonus from owned stickers; applies to passive income only. */
   stickerMultiplier: number;
+  /** Golden-sticker boosts running right now. */
+  clickBuff: number;
+  incomeBuff: number;
   /** What a normal (non-crit) click earns. */
   clickAmount: number;
   incomePerSec: number;
 }
 
-export function derive(state: GameState): Derived {
+export function derive(state: GameState, now = Date.now()): Derived {
   let clickValue = 1;
   let income = 0;
   for (const u of UPGRADES) {
@@ -150,6 +173,13 @@ export function derive(state: GameState): Derived {
 
   const stickerMultiplier = 1 + state.stickers.length * BALANCE.stickers.bonusEach;
 
+  let clickBuff = 1;
+  let incomeBuff = 1;
+  for (const { effect } of activeBuffs(state, now)) {
+    clickBuff *= effect.clickMultiplier;
+    incomeBuff *= effect.incomeMultiplier;
+  }
+
   return {
     clickValue,
     income,
@@ -160,8 +190,10 @@ export function derive(state: GameState): Derived {
     raidEvasionChance,
     globalMultiplier,
     stickerMultiplier,
-    clickAmount: (clickValue + income * incomeToClickPercent) * clickMultiplier * globalMultiplier,
-    incomePerSec: income * passiveMultiplier * stickerMultiplier * globalMultiplier,
+    clickBuff,
+    incomeBuff,
+    clickAmount: (clickValue + income * incomeToClickPercent) * clickMultiplier * globalMultiplier * clickBuff,
+    incomePerSec: income * passiveMultiplier * stickerMultiplier * globalMultiplier * incomeBuff,
   };
 }
 
@@ -177,8 +209,8 @@ export function earn(state: GameState, amount: number): void {
 }
 
 /** Resolves one click. `roll` is a random number in [0, 1) used for the crit check. */
-export function click(state: GameState, roll: number): { amount: number; crit: boolean } {
-  const d = derive(state);
+export function click(state: GameState, roll: number, now = Date.now()): { amount: number; crit: boolean } {
+  const d = derive(state, now);
   const crit = roll < d.critChance;
   const amount = crit ? d.clickAmount * BALANCE.critMultiplier : d.clickAmount;
   state.stats.clicks++;
@@ -187,12 +219,44 @@ export function click(state: GameState, roll: number): { amount: number; crit: b
   return { amount, crit };
 }
 
-export function buyUpgrade(state: GameState, upgrade: Upgrade): boolean {
-  const cost = upgradeCost(upgrade, ownedCount(state, upgrade.id));
-  if (state.score < cost) return false;
+/** Total price of the next `count` copies, each priced like a single purchase. */
+export function bulkCost(upgrade: Upgrade, owned: number, count: number): number {
+  let total = 0;
+  for (let i = 0; i < count; i++) total += upgradeCost(upgrade, owned + i);
+  return total;
+}
+
+/** How many copies `cash` can buy in a row (capped so it stays fast). */
+export function maxAffordable(upgrade: Upgrade, owned: number, cash: number, cap = 10_000): number {
+  let count = 0;
+  let total = 0;
+  while (count < cap) {
+    const next = upgradeCost(upgrade, owned + count);
+    if (total + next > cash) break;
+    total += next;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * What the shop would buy right now for the current buy amount: how many copies
+ * and the total price. In MAX mode with nothing affordable, it quotes one copy.
+ */
+export function purchaseQuote(state: GameState, upgrade: Upgrade): { count: number; cost: number } {
+  const owned = ownedCount(state, upgrade.id);
+  const count =
+    state.buyAmount === 'max' ? Math.max(1, maxAffordable(upgrade, owned, state.score)) : state.buyAmount;
+  return { count, cost: bulkCost(upgrade, owned, count) };
+}
+
+/** Buys the quoted number of copies, or nothing if you can't afford all of them. Returns how many were bought. */
+export function buyUpgrade(state: GameState, upgrade: Upgrade): number {
+  const { count, cost } = purchaseQuote(state, upgrade);
+  if (state.score < cost) return 0;
   state.score -= cost;
-  state.owned[upgrade.id] = ownedCount(state, upgrade.id) + 1;
-  return true;
+  state.owned[upgrade.id] = ownedCount(state, upgrade.id) + count;
+  return count;
 }
 
 export function buyPerk(state: GameState, perk: Perk): boolean {
@@ -237,6 +301,56 @@ export function stickerCategoryComplete(state: GameState, category: StickerCateg
 }
 
 // ---------------------------------------------------------------------------
+// Golden stickers
+// ---------------------------------------------------------------------------
+
+/** Boosts still running at `now`, with their effect data. Expired ones are dropped. */
+export function activeBuffs(state: GameState, now = Date.now()): { effect: GoldenEffect; endsAt: number }[] {
+  state.buffs = state.buffs.filter((b) => b.endsAt > now);
+  return state.buffs.flatMap((b) => {
+    const effect = GOLDEN_EFFECTS.find((e) => e.id === b.effectId);
+    return effect ? [{ effect, endsAt: b.endsAt }] : [];
+  });
+}
+
+export const raidsBlocked = (state: GameState, now = Date.now()) =>
+  activeBuffs(state, now).some(({ effect }) => effect.noRaids);
+
+/** Picks a reward by weight. `roll` is a random number in [0, 1). */
+export function pickGoldenEffect(roll: number): GoldenEffect {
+  const total = GOLDEN_EFFECTS.reduce((sum, e) => sum + e.weight, 0);
+  let r = roll * total;
+  for (const e of GOLDEN_EFFECTS) {
+    r -= e.weight;
+    if (r < 0) return e;
+  }
+  return GOLDEN_EFFECTS[GOLDEN_EFFECTS.length - 1];
+}
+
+/** The instant-cash reward: min(25% of cash, 15 min of income), but at least 50 clicks' worth. */
+export function goldenCash(state: GameState, now = Date.now()): number {
+  const d = derive(state, now);
+  const g = BALANCE.golden;
+  return Math.max(Math.min(state.score * g.cashShareOfScore, d.incomePerSec * g.cashIncomeSeconds), d.clickAmount * g.cashMinClicks);
+}
+
+/** Applies a caught golden sticker. Returns the cash paid out (0 for timed boosts). */
+export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.now()): number {
+  state.stats.goldenClicks++;
+  let cash = 0;
+  if (effect.cash) {
+    cash = goldenCash(state, now);
+    earn(state, cash);
+  }
+  if (effect.durationSec > 0) {
+    // Catching the same boost again restarts its timer instead of stacking.
+    state.buffs = state.buffs.filter((b) => b.effectId !== effect.id);
+    state.buffs.push({ effectId: effect.id, endsAt: now + effect.durationSec * 1000 });
+  }
+  return cash;
+}
+
+// ---------------------------------------------------------------------------
 // Secession (prestige)
 // ---------------------------------------------------------------------------
 
@@ -269,6 +383,7 @@ export function secede(state: GameState): number {
   state.owned = {};
   state.perks = [];
   state.stickers = [...STARTER_STICKERS];
+  state.buffs = [];
   state.stats.secessions++;
   return gained;
 }
@@ -283,7 +398,8 @@ export function offlineEarnings(state: GameState, now: number): { seconds: numbe
   const away = Math.floor((now - state.lastSaved) / 1000);
   if (away < BALANCE.offline.minSeconds) return { seconds: 0, amount: 0 };
   const seconds = Math.min(away, BALANCE.offline.maxSeconds);
-  return { seconds, amount: derive(state).incomePerSec * seconds * BALANCE.offline.rate };
+  // Golden boosts don't count while you're away.
+  return { seconds, amount: derive({ ...state, buffs: [] }).incomePerSec * seconds * BALANCE.offline.rate };
 }
 
 // ---------------------------------------------------------------------------

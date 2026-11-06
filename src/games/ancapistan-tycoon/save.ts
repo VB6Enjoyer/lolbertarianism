@@ -8,7 +8,7 @@ import { newState, newStats, upgradeCost, type GameState, type Stats } from './l
  * - v1: same shape under `lolbertarianism:ancapistan-tycoon`.
  *       { score, upgrades: [{ id, owned }], specialUpgrades: [{ id, purchased }] }
  * - v2: the full GameState (lifetime earnings, cities, achievements, stats, lastSaved).
- *       Fields added later (stickers, showStickers) get defaults in normalize().
+ *       Fields added later (stickers, showStickers, buyAmount) get defaults in normalize().
  */
 export const SAVE_VERSION = 2;
 
@@ -62,6 +62,8 @@ export function normalize(raw: Partial<GameState>): GameState {
   const owned = new Set([...STARTER_STICKERS, ...(raw.stickers ?? [])]);
   state.stickers = STICKERS.map((s) => s.id).filter((id) => owned.has(id));
   state.showStickers = raw.showStickers !== false;
+  state.buyAmount = raw.buyAmount === 10 || raw.buyAmount === 'max' ? raw.buyAmount : 1;
+  // Golden boosts are never restored from a save.
   const stats = newStats();
   for (const key of Object.keys(stats) as (keyof Stats)[]) stats[key] = int(raw.stats?.[key]);
   state.stats = stats;
@@ -83,7 +85,8 @@ export function loadState(): GameState | null {
 
 export function saveState(state: GameState, now = Date.now()): void {
   state.lastSaved = now;
-  slot.save(state);
+  const { buffs: _buffs, ...saved } = state; // boosts are not saved
+  slot.save(saved);
 }
 
 export function clearSave(): void {
