@@ -265,6 +265,8 @@ export interface GoldenEffect {
   noRaids?: boolean;
   /** Gives an instant cash payout (see BALANCE.golden). */
   cash?: boolean;
+  /** Scales the cash payout (Fiat Coal pays almost nothing). */
+  cashMultiplier?: number;
 }
 
 export const GOLDEN_EFFECTS: readonly GoldenEffect[] = [
@@ -273,6 +275,91 @@ export const GOLDEN_EFFECTS: readonly GoldenEffect[] = [
   { id: 'wallet', icon: '🔑', name: 'Unclaimed Bitcoin Wallet', description: 'You remembered the seed phrase. Instant cash.', weight: 3, clickMultiplier: 1, incomeMultiplier: 1, durationSec: 0, cash: true },
   { id: 'tax-holiday', icon: '🏖️', name: 'Tax Holiday', description: 'Everything ×2 and no Fed raids for 45 seconds.', weight: 1, clickMultiplier: 2, incomeMultiplier: 2, durationSec: 45, noRaids: true },
 ];
+
+/** What's inside a Christmas present (they replace golden stickers during the event). */
+export const PRESENT_EFFECTS: readonly GoldenEffect[] = [
+  { id: 'elf-workshop', icon: '🧝', name: 'Unlicensed Elf Workshop', description: 'Income ×3 for 60 seconds. No union, no OSHA, all cheer.', weight: 3, clickMultiplier: 1, incomeMultiplier: 3, durationSec: 60 },
+  { id: 'sleigh-ride', icon: '🛷', name: 'Unregistered Sleigh Ride', description: 'Clicks are worth ×7 for 30 seconds. The FAA can try to catch it.', weight: 3, clickMultiplier: 7, incomeMultiplier: 1, durationSec: 30 },
+  { id: 'krugerrands', icon: '🧦', name: 'Stocking Stuffed with Krugerrands', description: 'Sound money, straight from the chimney.', weight: 3, clickMultiplier: 1, incomeMultiplier: 1, durationSec: 0, cash: true, cashMultiplier: 1.5 },
+  { id: 'fiat-coal', icon: '🪨', name: 'Fiat Coal', description: 'You were naughty: you voted. Worth almost nothing, just like the dollar.', weight: 1, clickMultiplier: 1, incomeMultiplier: 1, durationSec: 0, cash: true, cashMultiplier: 0.02 },
+];
+
+/** Every golden reward, so boosts can be looked up whatever handed them out. */
+export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS];
+
+// ---------------------------------------------------------------------------
+// Seasonal events
+// ---------------------------------------------------------------------------
+
+export type EventId = 'christmas' | 'fed-birthday';
+
+export interface GameEvent {
+  id: EventId;
+  icon: string;
+  name: string;
+  /** First and last day, as [month, day] (1-based). An end before the start wraps into January. */
+  start: readonly [number, number];
+  end: readonly [number, number];
+  /** Shown once per season, the first time the game is opened during the event. */
+  popup: {
+    /** Path under vidya/, or undefined for a text-only popup. */
+    image?: string;
+    imageAlt?: string;
+    title: string;
+    message: string;
+    /** When it runs, in words. */
+    when: string;
+    features: readonly string[];
+  };
+}
+
+export const EVENTS: readonly GameEvent[] = [
+  {
+    id: 'christmas',
+    icon: '🎄',
+    name: 'Christmas in Ancapistan',
+    start: [12, 20],
+    end: [1, 1],
+    popup: {
+      image: 'img/murray-christmas-and-a-hoppe-new-year.webp',
+      imageAlt: 'Murray Rothbard and Hans-Hermann Hoppe in Santa hats: Murray Christmas and a Hoppe New Year',
+      title: '🎄 Christmas in Ancapistan',
+      message: 'We wish all lolbertarians a Murray Christmas and a Hoppe New Year!',
+      when: 'From December 20 to January 1:',
+      features: [
+        '🎁 Presents replace golden stickers. They show up more often and hold festive rewards (and maybe some fiat coal).',
+        '🎄 A Christmas tab in the sticker shop: limited-edition stickers you keep forever, even after seceding.',
+        '🎂 December 23 is the Fed\'s birthday: raids double, but every raid you dodge swipes a slice of the cake.',
+        '❄️ Snow, a Santa hat, festive headlines and five seasonal achievements.',
+      ],
+    },
+  },
+  {
+    id: 'fed-birthday',
+    icon: '🎂',
+    name: "The Fed's Birthday",
+    start: [12, 23],
+    end: [12, 23],
+    popup: {
+      title: "🎂 Happy Birthday, Federal Reserve!",
+      message: 'On December 23, 1913, Woodrow Wilson signed the Federal Reserve Act. The Fed is throwing itself a party.',
+      when: 'All day today:',
+      features: ['🚨 Fed raids happen twice as often.', '🍰 Every raid you dodge swipes a slice of the birthday cake: a minute of your income.'],
+    },
+  },
+];
+
+/** Christmas tuning. */
+export const CHRISTMAS = {
+  /** Presents show up this much sooner than golden stickers. */
+  presentDelay: 0.6,
+  /** A Christmas sticker costs this many seconds of your income (at least `minStickerCost`). */
+  stickerIncomeSeconds: 600,
+  minStickerCost: 10_000,
+  /** On the Fed's birthday: raid odds multiplier, and seconds of income a dodged raid pays. */
+  fedBirthdayRaids: 2,
+  fedBirthdayCakeSeconds: 60,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Upgrades
@@ -348,7 +435,7 @@ export const CLICK_PHRASES = ['Freedom!', 'My Property!', 'Based', 'No Step!'] a
 // Stickers (the draggable background collage)
 // ---------------------------------------------------------------------------
 
-export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item';
+export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'christmas';
 
 export interface StickerData {
   /** Stable id used in saves (the content itself). */
@@ -356,6 +443,10 @@ export interface StickerData {
   type: 'text' | 'emoji' | 'html' | 'image';
   category: StickerCategory;
   content: string;
+  /** Limited edition: only for sale during this event, and kept through secession. */
+  season?: EventId;
+  /** On-screen width in px for image stickers (default 60). */
+  width?: number;
 }
 
 /** Sticker shop tabs, in order. */
@@ -366,12 +457,15 @@ export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string }
   { id: 'person', label: '🧔 People' },
   { id: 'organization', label: '🏛️ Orgs' },
   { id: 'item', label: '🔫 Items' },
+  { id: 'christmas', label: '🎄 Christmas' },
 ];
 
 const quote = (content: string): StickerData => ({ id: content, type: 'text', category: 'quote', content });
 const emoji = (content: string): StickerData => ({ id: content, type: 'emoji', category: 'emoji', content });
 const html = (id: string, content: string): StickerData => ({ id, type: 'html', category: 'html', content });
 const image = (category: StickerCategory, name: string): StickerData => ({ id: name, type: 'image', category, content: `img/${name}.webp` });
+const christmasImage = (name: string, width = 75): StickerData => ({ ...image('christmas', name), season: 'christmas', width });
+const christmasQuote = (content: string): StickerData => ({ ...quote(content), category: 'christmas', season: 'christmas' });
 
 export const STICKERS: readonly StickerData[] = [
   // Quotes
@@ -434,7 +528,20 @@ export const STICKERS: readonly StickerData[] = [
   image('item', 'pistol'),
   image('item', 'm249'),
   image('item', 'ak47'),
+  // Christmas (limited edition)
+  christmasImage('ancap-santa'),
+  christmasImage('ancap-reindeer'),
+  christmasImage('ancap-gift', 70),
+  christmasImage('ancap-rpg7', 120),
+  christmasImage('ancap-tree'),
+  christmasImage('ancap-gingerbread'),
+  christmasQuote('Santa is a central planner'),
+  christmasQuote('Naughty list: tax collectors'),
+  christmasQuote('Ho Ho Homestead!'),
 ];
+
+/** Stickers on sale all year (everything but limited editions). */
+export const REGULAR_STICKERS: readonly StickerData[] = STICKERS.filter((s) => !s.season);
 
 /** Completing every sticker in a category grants its set bonus. */
 export interface StickerSet {
@@ -459,6 +566,7 @@ export const STICKER_SETS: readonly StickerSet[] = [
   { category: 'person', icon: '🧔', name: 'Austrian Pantheon', description: 'Income ×1.25.', incomeMultiplier: 1.25 },
   { category: 'organization', icon: '🏛️', name: 'Think Tank Network', description: 'Fed raids happen 25% less often.', raidChance: 0.75 },
   { category: 'item', icon: '🔫', name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
+  { category: 'christmas', icon: '🎄', name: 'Christmas Spirit', description: 'Income ×1.1, all year round.', incomeMultiplier: 1.1 },
 ];
 
 /** Stickers everyone starts with (free, and kept after seceding). */
@@ -482,6 +590,7 @@ export interface AchievementContext {
   /** True when every sticker of that category is owned. */
   stickerCategoryComplete: (category: StickerCategory) => boolean;
   stickerSetsComplete: number;
+  ownsSticker: (id: string) => boolean;
   /** The challenge being played, if any. */
   challenge: ChallengeId | null;
   challengesCompleted: number;
@@ -496,6 +605,7 @@ export interface AchievementContext {
     offlineCollected: number;
     goldenClicks: number;
     playSeconds: number;
+    presentsOpened: number;
   };
 }
 
@@ -554,13 +664,20 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > STARTER_STICKERS.length },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
   { id: 'sticker-sets-3', icon: '🗂️', name: 'Completionist Tendencies', description: 'Complete 3 sticker sets in one run.', check: (c) => c.stickerSetsComplete >= 3 },
-  { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => c.stickersOwned >= STICKERS.length },
+  { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => REGULAR_STICKERS.every((s) => c.ownsSticker(s.id)) },
   { id: 'charter-1', icon: '📜', name: 'We the Sovereign Individual', description: 'Sign your first charter.', check: (c) => c.chartersOwned >= 1 },
   { id: 'charter-all', icon: '🗽', name: 'Constitution? I Hardly Know Her', description: 'Sign every charter.', check: (c) => c.chartersOwned >= CHARTERS.length },
   { id: 'golden-1', icon: '🌟', name: 'Gold Bug', description: 'Catch a golden sticker. Told you gold was the real money.', check: (c) => c.stats.goldenClicks >= 1 },
   { id: 'golden-25', icon: '🥇', name: 'Hard Money Maniac', description: 'Catch 25 golden stickers.', check: (c) => c.stats.goldenClicks >= 25 },
   { id: 'playtime-10h', icon: '⏰', name: 'Wage Slave to Yourself', description: 'Play for 10 hours. At least the boss is you.', check: (c) => c.stats.playSeconds >= 36_000 },
   { id: 'offline', icon: '😴', name: 'Passive Income Guru', description: 'Come back to money your enterprises made while you were away.', check: (c) => c.stats.offlineCollected >= 1 },
+
+  // Christmas event
+  { id: 'murray-christmas', icon: '🎄', name: 'A Murray Christmas', description: 'Play during the Christmas event (December 20 to January 1).' },
+  { id: 'krampus', icon: '🎁', name: 'Krampus Was a Tax Collector', description: 'Open 10 Christmas presents.', check: (c) => c.stats.presentsOpened >= 10 },
+  { id: 'christmas-spirit', icon: '🦌', name: 'Ho Ho Homestead', description: 'Collect every Christmas sticker.', check: (c) => c.stickerCategoryComplete('christmas') },
+  { id: 'party-pooper', icon: '🎂', name: 'Party Pooper', description: "Dodge a Fed raid on the Fed's birthday (December 23)." },
+  { id: 'hoppe-new-year', icon: '🥂', name: 'A Hoppe New Year', description: 'Play on January 1.' },
 
   // Challenge runs: winning and speedrun achievements are granted when you win.
   { id: 'challenge-minarchist', icon: '⚖️', name: 'Night Watchman', description: 'Win Minarchist Mode.' },

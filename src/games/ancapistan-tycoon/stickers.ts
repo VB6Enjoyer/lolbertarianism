@@ -15,6 +15,7 @@ function fill(el: HTMLElement, data: StickerData, randomSize: boolean) {
     if (randomSize) el.style.fontSize = `${Math.random() * 40 + 30}px`;
   } else if (data.type === 'image') {
     el.classList.add('image');
+    if (data.width) el.style.setProperty('--sticker-width', `${data.width}px`);
     const img = document.createElement('img');
     img.src = data.content;
     img.alt = '';

@@ -225,9 +225,37 @@ Noticed along the way, left alone for now:
 - The simulator's raid check was fixed (it raided every ~8 hours instead of
   every ~100 seconds); the normal-game pacing barely moved.
 
+### Christmas event ✅
+
+- `EVENTS` in data.ts, date logic in events.ts. 🎄 Christmas in Ancapistan runs
+  December 20 – January 1. The first time the game is opened in the season, a
+  popup shows the Murray & Hoppe meme (the dialog sizes itself to the image),
+  "We wish all lolbertarians a Murray Christmas and a Hoppe New Year!", the dates
+  and the features. It shows once per season (tracked in the save) and the
+  event chip under the income reopens it.
+- 🎁 Presents replace golden stickers (40% sooner; `PRESENT_EFFECTS`): Unlicensed
+  Elf Workshop (income ×3), Unregistered Sleigh Ride (clicks ×7), Stocking Stuffed
+  with Krugerrands (cash ×1.5) and Fiat Coal (almost nothing).
+- 🎄 Christmas tab in the sticker shop: the six Christmas stickers plus three text
+  ones, on sale only during the event at 10 minutes of income each, kept forever
+  (even through secession), with a Christmas Spirit set bonus (income ×1.1). They
+  don't affect the regular sticker price ladder.
+- 🎂 December 23, the Fed's birthday: raids ×2, and every dodged raid pays a
+  minute of income ("a slice of the cake"). Text-only popup for now; add the Fed
+  birthday image as `popup.image` when it's in the repo.
+- Snow, a Santa hat on the snake button, Christmas headlines, and five
+  achievements: A Murray Christmas, Krampus Was a Tax Collector, Ho Ho Homestead,
+  Party Pooper, A Hoppe New Year.
+- Preview any day with `?date=YYYY-MM-DD`, e.g.
+  `vidya/ancapistan-tycoon.html?date=2026-12-24`.
+- Full-size source art lives in `art/christmas/` (not deployed); the game uses
+  480 px WebP copies in `public/vidya/img/`.
+
 Ideas for later:
-- Seasonal events tied to dates (Christmas week, birthdays, anniversaries).
-  Deferred until there are assets for them.
+- More seasonal events: birthdays (Rothbard Mar 2, Mises Sep 29, Hayek May 8,
+  Ron Paul Aug 20, Hoppe Sep 2, Milei Oct 22, Menger Feb 23, Bastiat Jun 30)
+  and anniversaries (Bitcoin Genesis Block Jan 3, Pizza Day May 22, Liberland
+  Day Apr 13, Nixon Shock Aug 15). Each needs at least a popup image.
 
 ## Phase 5: The rest, one at a time
 

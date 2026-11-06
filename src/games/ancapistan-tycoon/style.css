@@ -1329,3 +1329,124 @@ body[data-challenge='hyperinflation'] .panel {
         grid-template-columns: 1fr;
     }
 }
+
+/* ===================== Seasonal events ===================== */
+
+.sticker.image {
+    width: var(--sticker-width, 60px);
+}
+
+.sticker.sticker-preview.image {
+    width: min(var(--sticker-width, 60px), 90px);
+}
+
+.event-chip {
+    margin: -6px 0 12px;
+    padding: 3px 12px;
+    border: 2px solid #c0392b;
+    border-radius: 999px;
+    background: #fff5f5;
+    color: #c0392b;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.event-chip[hidden] {
+    display: none;
+}
+
+/* The Santa hat sits on the snake button (which clips its own contents). */
+.main-btn-wrap {
+    position: relative;
+}
+
+.santa-hat {
+    position: absolute;
+    top: -38px;
+    right: -26px;
+    width: 120px;
+    transform: rotate(18deg);
+    pointer-events: none;
+    filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.25));
+}
+
+.santa-hat[hidden] {
+    display: none;
+}
+
+@media (max-width: 800px) {
+    .santa-hat {
+        top: -30px;
+        right: -20px;
+        width: 92px;
+    }
+}
+
+/* Presents replace golden stickers at Christmas. */
+.golden-sticker.present {
+    background: radial-gradient(circle, #fff, #ffd6d6);
+    border-color: #c0392b;
+    filter: drop-shadow(0 0 12px #e74c3c);
+}
+
+.golden-sticker.present .sticker-preview.image {
+    width: 70px;
+}
+
+/* Event popup: the dialog takes the image's width (set in main.ts). */
+.event-popup-image {
+    display: block;
+    max-width: 100%;
+    max-height: 55vh;
+    margin: 0 auto 12px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 10px;
+}
+
+.event-popup-message {
+    font-size: 1.15rem;
+    font-weight: bold;
+    margin: 0 0 8px;
+}
+
+.event-popup-when {
+    font-weight: bold;
+    margin: 0 0 4px;
+    text-align: left;
+}
+
+.event-popup-features {
+    margin: 0 0 6px;
+    padding-left: 20px;
+    text-align: left;
+    font-size: 0.9em;
+}
+
+.event-popup-features li {
+    margin-bottom: 4px;
+}
+
+/* Snow drifts behind the stickers and panels' content, never blocking clicks. */
+.snow {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.snowflake {
+    position: absolute;
+    top: -20px;
+    color: #a9cfe8;
+    text-shadow: 0 0 2px #fff;
+    animation: snowfall linear infinite;
+}
+
+@keyframes snowfall {
+    to {
+        transform: translate(40px, 105vh);
+    }
+}

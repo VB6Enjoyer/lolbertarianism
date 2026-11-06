@@ -12,11 +12,12 @@ const ctx = (over: Partial<NewsContext> = {}, owned: Record<number, number> = {}
   raidsEvaded: 0,
   goldenClicks: 0,
   clicks: 0,
+  events: [],
   ...over,
 });
 
 const everything = ctx(
-  { allTimeEarnings: 1e15, incomePerSec: 1e9, cities: 20, charters: 5, stickers: 77, secessions: 9, raidsEvaded: 12, goldenClicks: 30, clicks: 50_000 },
+  { allTimeEarnings: 1e15, incomePerSec: 1e9, cities: 20, charters: 5, stickers: 77, secessions: 9, raidsEvaded: 12, goldenClicks: 30, clicks: 50_000, events: ['christmas', 'fed-birthday'] },
   Object.fromEntries(Array.from({ length: 22 }, (_, i) => [i + 1, 10])),
 );
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, CHARTERS, STICKERS } from './data.ts';
+import { ACHIEVEMENTS, CHARTERS, REGULAR_STICKERS } from './data.ts';
 import { click, earn, earningsForCities, newState, secede, tick } from './logic.ts';
 import { normalize } from './save.ts';
 import { buildStats, formatPlaytime } from './stats.ts';
@@ -85,7 +85,7 @@ describe('stats panel', () => {
     expect(row(out, 'Empire', 'Free Private Cities')).toBe('4 (3 unspent)');
     expect(row(out, 'Empire', 'Charters')).toBe(`1 / ${CHARTERS.length}`);
     expect(row(out, 'Empire', 'Achievements')).toBe(`1 / ${ACHIEVEMENTS.length}`);
-    expect(row(out, 'Empire', 'Stickers')).toBe(`5 / ${STICKERS.length}`);
+    expect(row(out, 'Empire', 'Stickers')).toBe(`5 / ${REGULAR_STICKERS.length}`);
     expect(row(out, 'Income bonuses', 'Free Private Cities')).toBe('×1.4');
     expect(row(out, 'Time', 'Time played')).toBe('1h 1m');
   });

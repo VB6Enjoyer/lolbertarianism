@@ -7,6 +7,7 @@ import {
   CHARTERS,
   CLICK_PHRASES,
   PERKS,
+  PRESENT_EFFECTS,
   SECRET_PHRASE,
   STARTER_STICKERS,
   STICKERS,
@@ -17,6 +18,7 @@ import {
   type Challenge,
   type ChallengeId,
   type Charter,
+  type GameEvent,
   type GoldenEffect,
   type SecretAchievementId,
   type StickerCategory,
@@ -47,13 +49,16 @@ import {
   pendingCities,
   perkCost,
   pickGoldenEffect,
+  priceOfSticker,
   purchaseQuote,
   raidChance,
+  raidEvadeBonus,
   raidMinScore,
   raidsBlocked,
   secede,
   secretDateAchievements,
   stickerCost,
+  stickerForSale,
   tick,
   unlockAchievements,
   type BuyAmount,
@@ -67,6 +72,7 @@ import {
   leaveChallenge,
   type ChallengeWin,
 } from './challenges.ts';
+import { eventsOn, gameDate, isEventActive, seasonKey } from './events.ts';
 import { pickHeadline, type NewsContext } from './news.ts';
 import { formatPlaytime } from './stats.ts';
 import { clearSave, exportSave, importSave, loadState, saveState } from './save.ts';
@@ -98,6 +104,8 @@ const els = {
   raidTitle: byId('raid-title'),
   raidText: byId('raid-text'),
   raidButton: byId('btn-evade'),
+  eventChip: byId<HTMLButtonElement>('event-chip'),
+  santaHat: byId('santa-hat'),
   modal: byId('modal'),
   modalTitle: byId('modal-title'),
   modalBody: byId('modal-body'),
@@ -117,6 +125,10 @@ let statsOpen = false;
 /** For secret achievements: when the current raid started, and when the snake was last clicked. */
 let raidStartedAt = 0;
 let lastClickAt = Date.now();
+
+/** The game's "today": the real date, or the `?date=YYYY-MM-DD` preview date. */
+const today = () => gameDate();
+const christmas = () => isEventActive('christmas', today());
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -267,12 +279,12 @@ function refresh() {
   updateUI();
 }
 
-/** Unlocks a secret achievement with a special toast (no-op if already unlocked). */
-function unlockSecret(id: SecretAchievementId) {
+/** Unlocks an achievement the game grants directly (secret or seasonal); no-op if already unlocked. */
+function unlockSecret(id: SecretAchievementId | string) {
   const a = grantAchievement(state, id);
   if (!a) return;
   sfx.achievement();
-  toast(`🤫 Secret achievement: ${a.icon} ${a.name}`, a.description);
+  toast(a.secret ? `🤫 Secret achievement: ${a.icon} ${a.name}` : `${a.icon} Achievement unlocked: ${a.name}`, a.description);
   updateUI();
 }
 
@@ -346,6 +358,18 @@ function closeModal() {
   els.modal.hidden = true;
   shopTab = null;
   statsOpen = false;
+  (els.modalBody.parentElement as HTMLElement).style.width = '';
+  // Show the next queued dialog (e.g. the event popup after "Welcome back!").
+  const next = modalQueue.shift();
+  if (next) next();
+}
+
+const modalQueue: (() => void)[] = [];
+
+/** Opens a dialog now, or right after the one that's open. */
+function queueModal(show: () => void) {
+  if (isModalOpen()) modalQueue.push(show);
+  else show();
 }
 
 const isModalOpen = () => !els.modal.hidden;
@@ -431,9 +455,24 @@ const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
 function shopSummary() {
   const bonus = state.stickers.length * BALANCE.stickers.bonusEach;
   return (
-    `You own ${state.stickers.length}/${STICKERS.length} stickers: +${pct(bonus)} income/sec. ` +
+    `You own ${state.stickers.length} stickers: +${pct(bonus)} income/sec. ` +
     `Each one adds +${pct(BALANCE.stickers.bonusEach)}, and every purchase makes the next one pricier.`
   );
+}
+
+/** Tabs to show: limited-edition tabs only while on sale, or once you own one. */
+function visibleCategories() {
+  return STICKER_CATEGORIES.filter((c) => {
+    const inCat = STICKERS.filter((s) => s.category === c.id);
+    const seasonal = inCat.some((s) => s.season);
+    return !seasonal || inCat.some((s) => stickerForSale(s.id, today()) || hasSticker(state, s.id));
+  });
+}
+
+/** Price label for a sticker card. */
+function stickerPriceLabel(id: string) {
+  if (!stickerForSale(id, today())) return '🎄 Christmas only';
+  return `Buy · ${money(priceOfSticker(state, id))}`;
 }
 
 function renderStickerShop(): HTMLElement {
@@ -444,6 +483,11 @@ function renderStickerShop(): HTMLElement {
 
   const next = el('div', 'big-number sticker-next', `Next sticker: ${money(stickerCost(state))}`);
   body.append(next);
+  if (tab === 'christmas') {
+    body.append(
+      el('p', 'fine-print sticker-summary', 'Limited edition: on sale only during the Christmas event, priced at 10 minutes of your income, and kept forever (even after seceding).'),
+    );
+  }
 
   const toggle = el('label', 'sticker-toggle');
   const box = el('input');
@@ -457,7 +501,7 @@ function renderStickerShop(): HTMLElement {
   body.append(toggle);
 
   const tabs = el('div', 'sticker-tabs');
-  for (const c of STICKER_CATEGORIES) {
+  for (const c of visibleCategories()) {
     const inCat = STICKERS.filter((s) => s.category === c.id);
     const owned = inCat.filter((s) => hasSticker(state, s.id)).length;
     const done = owned === inCat.length;
@@ -492,8 +536,9 @@ function renderStickerShop(): HTMLElement {
     const owned = hasSticker(state, s.id);
     const card = el('button', `sticker-card${owned ? ' owned' : ''}`);
     card.title = s.id;
-    card.append(stickerPreview(s.id), el('span', 'sticker-price', owned ? '✔ Owned' : `Buy · ${money(stickerCost(state))}`));
-    if (owned) {
+    card.dataset.id = s.id;
+    card.append(stickerPreview(s.id), el('span', 'sticker-price', owned ? '✔ Owned' : stickerPriceLabel(s.id)));
+    if (owned || !stickerForSale(s.id, today())) {
       card.disabled = true;
     } else {
       card.dataset.locked = '';
@@ -511,9 +556,10 @@ function updateShopPrices() {
   const next = els.modalBody.querySelector('.sticker-next');
   if (next) next.textContent = `Next sticker: ${money(cost)}`;
   els.modalBody.querySelectorAll<HTMLElement>('.sticker-card[data-locked]').forEach((card) => {
-    card.classList.toggle('disabled', state.score < cost);
+    const id = card.dataset.id!;
+    card.classList.toggle('disabled', state.score < priceOfSticker(state, id));
     const price = card.querySelector('.sticker-price');
-    if (price) price.textContent = `Buy · ${money(cost)}`;
+    if (price) price.textContent = stickerPriceLabel(id);
   });
 }
 
@@ -526,7 +572,7 @@ function showStickerShop() {
 function onBuySticker(id: string) {
   const firstPurchase = state.stickers.every((s) => STARTER_STICKERS.includes(s));
   const setsBefore = completedStickerSets(state).length;
-  if (!buySticker(state, id)) return;
+  if (!buySticker(state, id, today())) return;
   const newSet = completedStickerSets(state).length > setsBefore
     ? STICKER_SETS.find((x) => x.category === STICKERS.find((s) => s.id === id)?.category)
     : undefined;
@@ -723,6 +769,82 @@ function finishChallenge(win: ChallengeWin) {
 }
 
 // ---------------------------------------------------------------------------
+// Seasonal events
+// ---------------------------------------------------------------------------
+
+/** The event popup: the event's image (the dialog sizes itself to it), message, dates and features. */
+function showEventPopup(event: GameEvent) {
+  const { popup } = event;
+  const body = el('div', 'event-popup');
+  if (popup.image) {
+    const img = el('img', 'event-popup-image');
+    img.src = popup.image;
+    img.alt = popup.imageAlt ?? '';
+    // Fit the dialog to the picture: its width, unless that won't fit on screen.
+    const fit = () => {
+      if (!img.naturalWidth) return;
+      const maxH = window.innerHeight * 0.55;
+      const shown = Math.min(img.naturalWidth, (img.naturalWidth * maxH) / img.naturalHeight);
+      (els.modalBody.parentElement as HTMLElement).style.width = `min(${Math.round(shown) + 48}px, 100%)`;
+    };
+    if (img.complete) fit();
+    else img.addEventListener('load', fit, { once: true });
+    body.append(img);
+  }
+  body.append(el('p', 'event-popup-message', popup.message), el('p', 'event-popup-when', popup.when));
+  const list = el('ul', 'event-popup-features');
+  for (const f of popup.features) list.append(el('li', '', f));
+  body.append(list);
+  openModal(popup.title, body, [{ label: "Let's go!" }]);
+}
+
+/** Shows each running event's popup the first time the game is opened that season. */
+function greetEvents() {
+  const date = today();
+  for (const event of eventsOn(date)) {
+    const key = seasonKey(event, date);
+    if (state.seenEvents.includes(key)) continue;
+    state.seenEvents.push(key);
+    queueModal(() => showEventPopup(event));
+  }
+  updateEventDecor();
+}
+
+/** Seasonal looks and the event chip, plus achievements for being here on the day. */
+function updateEventDecor() {
+  const date = today();
+  const running = eventsOn(date);
+  const isChristmas = running.some((e) => e.id === 'christmas');
+  document.body.classList.toggle('christmas', isChristmas);
+  els.santaHat.hidden = !isChristmas;
+  if (isChristmas && !document.querySelector('.snow')) letItSnow();
+  if (!isChristmas) document.querySelector('.snow')?.remove();
+
+  els.eventChip.hidden = running.length === 0;
+  els.eventChip.textContent = running.map((e) => `${e.icon} ${e.name}`).join(' · ');
+
+  if (isChristmas) unlockSecret('murray-christmas');
+  if (date.getMonth() === 0 && date.getDate() === 1) unlockSecret('hoppe-new-year');
+}
+
+/** Gentle CSS snowfall behind the game (skipped for reduced motion). */
+function letItSnow() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const snow = el('div', 'snow');
+  snow.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 40; i++) {
+    const flake = el('span', 'snowflake', Math.random() < 0.5 ? '❄' : '•');
+    flake.style.left = `${Math.random() * 100}%`;
+    flake.style.fontSize = `${8 + Math.random() * 14}px`;
+    flake.style.animationDuration = `${8 + Math.random() * 10}s`;
+    flake.style.animationDelay = `${-Math.random() * 18}s`;
+    flake.style.opacity = String(0.4 + Math.random() * 0.5);
+    snow.append(flake);
+  }
+  document.body.append(snow);
+}
+
+// ---------------------------------------------------------------------------
 // Save data: export, import, start over
 // ---------------------------------------------------------------------------
 
@@ -844,7 +966,7 @@ function renderBuffs() {
 
 function scheduleGolden() {
   const { minDelaySec, maxDelaySec } = BALANCE.golden;
-  const delay = (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000 * goldenDelayMultiplier(state);
+  const delay = (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000 * goldenDelayMultiplier(state, today());
   setTimeout(spawnGolden, delay);
 }
 
@@ -854,10 +976,11 @@ function spawnGolden() {
     scheduleGolden();
     return;
   }
+  const present = christmas();
   const pool = state.stickers.length > STARTER_STICKERS.length ? state.stickers : STICKERS.map((s) => s.id);
-  const btn = el('button', 'golden-sticker');
-  btn.setAttribute('aria-label', 'Golden sticker! Click it');
-  btn.append(stickerPreview(pick(pool)));
+  const btn = el('button', `golden-sticker${present ? ' present' : ''}`);
+  btn.setAttribute('aria-label', present ? 'A Christmas present! Click it' : 'Golden sticker! Click it');
+  btn.append(present ? stickerPreview('ancap-gift') : stickerPreview(pick(pool)));
   btn.style.left = `${40 + Math.random() * (window.innerWidth - 160)}px`;
   btn.style.top = `${40 + Math.random() * (window.innerHeight - 200)}px`;
   btn.style.setProperty('--life', `${BALANCE.golden.lifetimeSec}s`);
@@ -871,7 +994,8 @@ function spawnGolden() {
   };
   btn.addEventListener('click', (e) => {
     if (done) return;
-    onCatchGolden(pickGoldenEffect(Math.random()), e.clientX || window.innerWidth / 2, e.clientY || window.innerHeight / 2);
+    const effects = present ? PRESENT_EFFECTS : undefined;
+    onCatchGolden(pickGoldenEffect(Math.random(), effects), e.clientX || window.innerWidth / 2, e.clientY || window.innerHeight / 2);
     finish();
   });
   setTimeout(finish, BALANCE.golden.lifetimeSec * 1000);
@@ -981,7 +1105,7 @@ function checkTimedSecrets() {
 // Raid Event Logic
 function tryRaid() {
   if (raidActive || isModalOpen() || raidsBlocked(state)) return;
-  if (state.score >= raidMinScore(state) && Math.random() < raidChance(state)) {
+  if (state.score >= raidMinScore(state) && Math.random() < raidChance(state, today())) {
     if (Math.random() < derive(state).raidEvasionChance) {
       state.stats.raidsAutoEvaded++;
       spawnFloater(window.innerWidth / 2, 50, 'Raid Evaded!', 'blue');
@@ -1005,10 +1129,13 @@ function evadeTax() {
   raidActive = false;
   els.raid.style.display = 'none';
   const { x, y } = center();
-  spawnFloater(x, y, 'TAX EVADED!', 'blue');
+  const fedBirthday = isEventActive('fed-birthday', today());
+  const bonus = raidEvadeBonus(state, today());
+  spawnFloater(x, y, fedBirthday ? `🍰 SLICE OF FED CAKE! +${money(bonus)}` : 'TAX EVADED!', 'blue');
   sfx.evade();
   state.stats.raidsEvaded++;
-  earn(state, BALANCE.raid.evadeBonus); // Bonus for evasion
+  earn(state, bonus); // Bonus for evasion (a slice of cake on the Fed's birthday)
+  if (fedBirthday) unlockSecret('party-pooper');
   refresh();
 }
 
@@ -1033,6 +1160,7 @@ function newsContext(): NewsContext {
     raidsEvaded: state.stats.raidsEvaded,
     goldenClicks: state.stats.goldenClicks,
     clicks: state.stats.clicks,
+    events: eventsOn(today()).map((e) => e.id),
   };
 }
 
@@ -1096,6 +1224,9 @@ byId('btn-achievements').addEventListener('click', showAchievements);
 byId('btn-stats').addEventListener('click', showStats);
 els.charters.addEventListener('click', showCharters);
 els.challenges.addEventListener('click', showChallenges);
+els.eventChip.addEventListener('click', () => {
+  for (const event of eventsOn(today())) queueModal(() => showEventPopup(event));
+});
 byId('btn-abandon').addEventListener('click', confirmAbandonChallenge);
 byId('btn-stickers').addEventListener('click', showStickerShop);
 els.buyAmount.addEventListener('click', (e) => {
@@ -1170,8 +1301,11 @@ nextHeadline();
 save(); // Stamp the time now, so a quick reload can't collect offline earnings twice
 
 if (away.amount > 0) showWelcomeBack(away.seconds, away.amount);
+greetEvents(); // event popups wait until "Welcome back!" is closed
+save();
 
 setInterval(gameLoop, 1000);
+setInterval(updateEventDecor, 60_000); // events start and end at midnight
 setInterval(tryRaid, BALANCE.raid.intervalMs);
 setInterval(save, BALANCE.saveIntervalMs);
 scheduleGolden();

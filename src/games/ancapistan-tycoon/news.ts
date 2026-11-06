@@ -1,6 +1,7 @@
 // The news ticker: absurd headlines that change as you progress.
 
 import { formatMoney } from '../../shared/format.ts';
+import type { EventId } from './data.ts';
 
 /** What headlines can react to. Built from the game state in main.ts. */
 export interface NewsContext {
@@ -14,6 +15,8 @@ export interface NewsContext {
   raidsEvaded: number;
   goldenClicks: number;
   clicks: number;
+  /** Seasonal events running today. */
+  events: readonly EventId[];
 }
 
 export interface Headline {
@@ -43,6 +46,15 @@ export const HEADLINES: readonly Headline[] = [
   { text: '¡AFUERA! Ministry of Ministries abolished; no one notices for six weeks.' },
   { text: 'Black-market exchange rate beats official rate in popularity contest, refuses to concede.' },
   { text: 'Man who said "who will build the roads" spotted building a road. Charges toll.' },
+
+  // Christmas event
+  { text: 'North Pole secedes. Santa\'s workshop declared a Free Private City; elves sign voluntary contracts.', when: (c) => c.events.includes('christmas') },
+  { text: 'Naughty list leaked: 100% government employees. "Coincidence," says spokesperson.', when: (c) => c.events.includes('christmas') },
+  { text: 'Reindeer refuse FAA flight plan, cite natural rights. Sleigh departs on schedule anyway.', when: (c) => c.events.includes('christmas') },
+  { text: 'Local family\'s gift exchange praised as "the purest free market in the country."', when: (c) => c.events.includes('christmas') },
+  { text: 'Grinch nominated for Treasury Secretary. Confirmation hearings "a formality."', when: (c) => c.events.includes('christmas') },
+  { text: 'Fed celebrates its birthday by printing itself a cake. Cake now worth 3% less.', when: (c) => c.events.includes('fed-birthday') },
+  { text: 'Woodrow Wilson\'s ghost spotted at Fed birthday party, asks for "just one more" war.', when: (c) => c.events.includes('fed-birthday') },
 
   // Early game
   { text: 'Health inspector issues 14 citations to child\'s lemonade stand. Child issues 15.', when: (c) => c.owned(2) >= 1 },

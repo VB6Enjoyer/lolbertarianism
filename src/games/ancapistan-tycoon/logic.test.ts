@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, STARTER_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STARTER_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
   buyCharter,
@@ -243,12 +243,12 @@ describe('sticker shop', () => {
     const s = newState();
     expect(stickerCost(s)).toBe(BALANCE.stickers.firstCost);
     s.score = Infinity;
-    for (const x of STICKERS) buySticker(s, x.id);
-    expect(s.stickers.length).toBe(STICKERS.length);
+    for (const x of REGULAR_STICKERS) buySticker(s, x.id);
+    expect(s.stickers.length).toBe(REGULAR_STICKERS.length);
     // After buying everything, the price "of the next one" is one step past the last.
     s.stickers.pop();
     expect(stickerCost(s) / BALANCE.stickers.lastCost).toBeCloseTo(1, 6);
-    expect(BUYABLE_STICKERS).toBe(STICKERS.length - STARTER_STICKERS.length);
+    expect(BUYABLE_STICKERS).toBe(REGULAR_STICKERS.length - STARTER_STICKERS.length);
   });
 
   it('buying deducts the price, needs cash, and each sticker can be bought once', () => {

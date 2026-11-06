@@ -1,7 +1,7 @@
 // The 📊 Stats panel's contents, as plain data (no DOM), so it's easy to test.
 
 import { formatMoney } from '../../shared/format.ts';
-import { ACHIEVEMENTS, BALANCE, CHALLENGES, CHARTERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHALLENGES, CHARTERS, REGULAR_STICKERS, STICKERS, STICKER_SETS, UPGRADES } from './data.ts';
 import { activeBuffs, citiesAvailable, completedStickerSets, derive, type GameState } from './logic.ts';
 
 export interface StatsSection {
@@ -76,7 +76,8 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Secessions', count(st.secessions)],
         ['Charters', `${state.charters.length} / ${CHARTERS.length}`],
         ['Achievements', `${state.achievements.length} / ${ACHIEVEMENTS.length}`],
-        ['Stickers', `${state.stickers.length} / ${STICKERS.length}`],
+        ['Stickers', `${REGULAR_STICKERS.filter((s) => state.stickers.includes(s.id)).length} / ${REGULAR_STICKERS.length}`],
+        ['Christmas stickers', `${STICKERS.filter((s) => s.season === 'christmas' && state.stickers.includes(s.id)).length} / ${STICKERS.filter((s) => s.season === 'christmas').length}`],
         ['Sticker sets', `${completedStickerSets(state).length} / ${STICKER_SETS.length}`],
         ['Challenges won', `${state.completedChallenges.length} / ${CHALLENGES.length}`],
         ['Upgrades owned', count(upgradesOwned)],

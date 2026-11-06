@@ -8,7 +8,7 @@ import { newState, newStats, upgradeCost, type GameState, type Stats } from './l
  * - v1: same shape under `lolbertarianism:ancapistan-tycoon`.
  *       { score, upgrades: [{ id, owned }], specialUpgrades: [{ id, purchased }] }
  * - v2: the full GameState (lifetime earnings, cities, achievements, stats, lastSaved).
- *       Fields added later (stickers, showStickers, buyAmount, charters, sound, challenges) get defaults in normalize().
+ *       Fields added later (stickers, showStickers, buyAmount, charters, sound, challenges, seenEvents) get defaults in normalize().
  */
 export const SAVE_VERSION = 2;
 
@@ -74,6 +74,7 @@ export function normalize(raw: Partial<GameState>): GameState {
     const t = raw.bestChallengeTimes?.[id];
     if (typeof t === 'number' && Number.isFinite(t) && t >= 0) state.bestChallengeTimes[id] = Math.floor(t);
   }
+  state.seenEvents = (raw.seenEvents ?? []).filter((k): k is string => typeof k === 'string' && /^[a-z-]+-\d{4}$/.test(k));
   // A challenge in progress keeps the empire it set aside (cleaned up the same way).
   const active = raw.activeChallenge;
   if (active && challengeIds.includes(active.id) && active.main && typeof active.main === 'object') {

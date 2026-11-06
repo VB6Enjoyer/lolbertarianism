@@ -21,6 +21,7 @@ import {
   CHARTERS,
   CHARTER_VALUES,
   PERKS,
+  REGULAR_STICKERS,
   STICKERS,
   STICKER_SETS,
   UPGRADES,
@@ -127,7 +128,8 @@ function options(s: GameState, p: Profile, now: number): Option[] {
     opts.push({ cost: perkCost(s, perk), gain: gainOf((c) => buyPerk(c, perk)), buy: (x) => buyPerk(x, perk) });
   }
   // Stickers: aim at the set closest to completion.
-  const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !s.stickers.includes(x.id)))
+  // Only sets on sale all year (limited editions aren't available in a simulated year-round run).
+  const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !x.season && !s.stickers.includes(x.id)))
     .filter((list) => list.length)
     .sort((a, b) => a.length - b.length)[0];
   if (missing) {
@@ -177,7 +179,7 @@ function normalMilestones(): Milestone[] {
     { label: 'Dyson sphere ($500B)', test: (x) => ownedCount(x, 18) > 0 },
     { label: 'All 11 charters (55 cities)', test: (x) => x.charters.length === CHARTERS.length },
     { label: 'Andromeda ($200T)', test: (x) => ownedCount(x, 22) > 0 },
-    { label: 'All 77 stickers in one run', test: (x) => x.stickers.length === STICKERS.length },
+    { label: `All ${REGULAR_STICKERS.length} stickers in one run`, test: (x) => REGULAR_STICKERS.every((y) => x.stickers.includes(y.id)) },
   ];
 }
 

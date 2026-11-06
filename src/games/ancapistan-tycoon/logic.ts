@@ -1,14 +1,19 @@
 // Game rules as pure functions over a plain state object. No DOM in here,
 // so everything can be unit-tested (see logic.test.ts).
 
+import { isEventActive } from './events.ts';
 import {
   ACHIEVEMENTS,
+  ALL_GOLDEN_EFFECTS,
   BALANCE,
   CHALLENGES,
   CHALLENGE_REWARDS,
   CHARTERS,
   CHARTER_VALUES,
+  CHRISTMAS,
   GOLDEN_EFFECTS,
+  PRESENT_EFFECTS,
+  REGULAR_STICKERS,
   PERKS,
   STARTER_STICKERS,
   STICKERS,
@@ -52,6 +57,8 @@ export interface Stats {
   /** Challenge runs: purchases that failed, and clicks requisitioned. */
   failedPurchases: number;
   requisitionedClicks: number;
+  /** Christmas presents opened. */
+  presentsOpened: number;
 }
 
 /** A timed golden-sticker boost. Not saved: boosts end when the tab closes. */
@@ -98,6 +105,8 @@ export interface GameState {
    * While this is set, `state` itself is the challenge run.
    */
   activeChallenge: { id: ChallengeId; main: GameState } | null;
+  /** Event seasons whose popup was already shown, e.g. "christmas-2026". */
+  seenEvents: string[];
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -121,6 +130,7 @@ export function newStats(): Stats {
     firstPlayed: 0,
     failedPurchases: 0,
     requisitionedClicks: 0,
+    presentsOpened: 0,
   };
 }
 
@@ -142,6 +152,7 @@ export function newState(): GameState {
     completedChallenges: [],
     bestChallengeTimes: {},
     activeChallenge: null,
+    seenEvents: [],
     stats: newStats(),
     lastSaved: 0,
   };
@@ -422,8 +433,8 @@ export function buyPerk(state: GameState, perk: Perk): boolean {
 // Sticker shop
 // ---------------------------------------------------------------------------
 
-/** How many stickers can be bought (everything but the free starters). */
-export const BUYABLE_STICKERS = STICKERS.length - STARTER_STICKERS.length;
+/** How many regular stickers can be bought (everything but the free starters and limited editions). */
+export const BUYABLE_STICKERS = REGULAR_STICKERS.length - STARTER_STICKERS.length;
 
 /** Price growth per purchase, so the first costs `firstCost` and the last `lastCost`. */
 export const STICKER_COST_GROWTH = Math.pow(
@@ -431,17 +442,35 @@ export const STICKER_COST_GROWTH = Math.pow(
   1 / Math.max(1, BUYABLE_STICKERS - 1),
 );
 
-/** Price of the next sticker. Depends only on how many you've bought, not which one. */
+const isSeasonal = (id: string) => !!STICKERS.find((s) => s.id === id)?.season;
+
+/** Price of the next regular sticker. Depends only on how many you've bought, not which one. */
 export function stickerCost(state: GameState): number {
-  const bought = state.stickers.filter((id) => !STARTER_STICKERS.includes(id)).length;
+  const bought = state.stickers.filter((id) => !STARTER_STICKERS.includes(id) && !isSeasonal(id)).length;
   return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought) * challengePriceFactor(state));
 }
 
 export const hasSticker = (state: GameState, id: string) => state.stickers.includes(id);
 
-export function buySticker(state: GameState, id: string): boolean {
-  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id)) return false;
-  const cost = stickerCost(state);
+/** A Christmas sticker costs a few minutes of your income, so it's affordable at any stage. */
+export function christmasStickerCost(state: GameState, now = Date.now()): number {
+  return Math.ceil(Math.max(CHRISTMAS.minStickerCost, derive(state, now).incomePerSec * CHRISTMAS.stickerIncomeSeconds));
+}
+
+/** What a given sticker costs right now. */
+export function priceOfSticker(state: GameState, id: string, now = Date.now()): number {
+  return isSeasonal(id) ? christmasStickerCost(state, now) : stickerCost(state);
+}
+
+/** Whether a sticker is for sale today (limited editions only during their event). */
+export function stickerForSale(id: string, date = new Date()): boolean {
+  const season = STICKERS.find((s) => s.id === id)?.season;
+  return !season || isEventActive(season, date);
+}
+
+export function buySticker(state: GameState, id: string, date = new Date()): boolean {
+  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id) || !stickerForSale(id, date)) return false;
+  const cost = priceOfSticker(state, id, date.getTime());
   if (state.score < cost) return false;
   state.score -= cost;
   state.stickers.push(id);
@@ -468,7 +497,7 @@ const setProduct = (state: GameState, field: 'goldenDelay' | 'raidChance') =>
 export function activeBuffs(state: GameState, now = Date.now()): { effect: GoldenEffect; endsAt: number }[] {
   state.buffs = state.buffs.filter((b) => b.endsAt > now);
   return state.buffs.flatMap((b) => {
-    const effect = GOLDEN_EFFECTS.find((e) => e.id === b.effectId);
+    const effect = ALL_GOLDEN_EFFECTS.find((e) => e.id === b.effectId);
     return effect ? [{ effect, endsAt: b.endsAt }] : [];
   });
 }
@@ -476,15 +505,15 @@ export function activeBuffs(state: GameState, now = Date.now()): { effect: Golde
 export const raidsBlocked = (state: GameState, now = Date.now()) =>
   activeBuffs(state, now).some(({ effect }) => effect.noRaids);
 
-/** Picks a reward by weight. `roll` is a random number in [0, 1). */
-export function pickGoldenEffect(roll: number): GoldenEffect {
-  const total = GOLDEN_EFFECTS.reduce((sum, e) => sum + e.weight, 0);
+/** Picks a reward by weight. `roll` is a random number in [0, 1). Pass PRESENT_EFFECTS for presents. */
+export function pickGoldenEffect(roll: number, effects: readonly GoldenEffect[] = GOLDEN_EFFECTS): GoldenEffect {
+  const total = effects.reduce((sum, e) => sum + e.weight, 0);
   let r = roll * total;
-  for (const e of GOLDEN_EFFECTS) {
+  for (const e of effects) {
     r -= e.weight;
     if (r < 0) return e;
   }
-  return GOLDEN_EFFECTS[GOLDEN_EFFECTS.length - 1];
+  return effects[effects.length - 1];
 }
 
 /** The instant-cash reward: min(25% of cash, 15 min of income), but at least 50 clicks' worth. */
@@ -498,9 +527,10 @@ export function goldenCash(state: GameState, now = Date.now()): number {
 /** Applies a caught golden sticker. Returns the cash paid out (0 for timed boosts). */
 export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.now()): number {
   state.stats.goldenClicks++;
+  if (PRESENT_EFFECTS.includes(effect)) state.stats.presentsOpened++;
   let cash = 0;
   if (effect.cash) {
-    cash = goldenCash(state, now);
+    cash = goldenCash(state, now) * (effect.cashMultiplier ?? 1);
     earn(state, cash);
   }
   if (effect.durationSec > 0) {
@@ -512,20 +542,29 @@ export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.n
   return cash;
 }
 
-/** Multiplier on the wait between golden stickers. */
-export const goldenDelayMultiplier = (state: GameState) =>
-  (hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1) * setProduct(state, 'goldenDelay');
+/** Multiplier on the wait between golden stickers (presents come sooner at Christmas). */
+export const goldenDelayMultiplier = (state: GameState, date = new Date()) =>
+  (hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1) *
+  setProduct(state, 'goldenDelay') *
+  (isEventActive('christmas', date) ? CHRISTMAS.presentDelay : 1);
 
 /** Odds of a raid at each raid check. */
-export const raidChance = (state: GameState) =>
+export const raidChance = (state: GameState, date = new Date()) =>
   Math.min(
     1,
+    (isEventActive('fed-birthday', date) ? CHRISTMAS.fedBirthdayRaids : 1) *
     BALANCE.raid.chance *
       (hasCharter(state, 'private-courts') ? CHARTER_VALUES.privateCourtsRaidChance : 1) *
       setProduct(state, 'raidChance') *
       (hasReward(state, 'minarchist') ? CHALLENGE_REWARDS.minarchistRaidChance : 1) *
       (challengeRules(state).raidChanceMultiplier ?? 1),
   );
+
+/** What dodging a raid pays: a flat bonus, or a minute of income on the Fed's birthday. */
+export function raidEvadeBonus(state: GameState, date = new Date()): number {
+  if (!isEventActive('fed-birthday', date)) return BALANCE.raid.evadeBonus;
+  return Math.max(BALANCE.raid.evadeBonus, derive(state, date.getTime()).incomePerSec * CHRISTMAS.fedBirthdayCakeSeconds);
+}
 
 /** Cash needed before raids start (Communism audits you from the start). */
 export const raidMinScore = (state: GameState) => (challengeRules(state).raidsFromStart ? 0 : BALANCE.raid.minScore);
@@ -601,7 +640,8 @@ export function secede(state: GameState): number {
   state.runEarnings = 0;
   state.owned = {};
   if (!hasCharter(state, 'tenure')) state.perks = [];
-  if (!hasCharter(state, 'sticker-license')) state.stickers = [...STARTER_STICKERS];
+  // Limited-edition stickers always stay; the rest only with Collector's Exemption.
+  if (!hasCharter(state, 'sticker-license')) state.stickers = [...STARTER_STICKERS, ...state.stickers.filter(isSeasonal)];
   state.buffs = [];
   state.stats.secessions++;
   applyRunStart(state);
@@ -657,6 +697,7 @@ export function achievementContext(state: GameState): AchievementContext {
     chartersOwned: state.charters.length,
     stickerCategoryComplete: (category) => stickerCategoryComplete(state, category),
     stickerSetsComplete: completedStickerSets(state).length,
+    ownsSticker: (id) => hasSticker(state, id),
     challenge: state.activeChallenge?.id ?? null,
     challengesCompleted: state.completedChallenges.length,
     stats: state.stats,
