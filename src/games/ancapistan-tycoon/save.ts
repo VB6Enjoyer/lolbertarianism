@@ -1,5 +1,5 @@
 import { createSaveSlot } from '../../shared/storage.ts';
-import { ACHIEVEMENTS, PERKS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STARTER_STICKERS, STICKERS, UPGRADES } from './data.ts';
 import { newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
@@ -8,6 +8,7 @@ import { newState, newStats, upgradeCost, type GameState, type Stats } from './l
  * - v1: same shape under `lolbertarianism:ancapistan-tycoon`.
  *       { score, upgrades: [{ id, owned }], specialUpgrades: [{ id, purchased }] }
  * - v2: the full GameState (lifetime earnings, cities, achievements, stats, lastSaved).
+ *       Fields added later (stickers, showStickers, buyAmount, charters, sound, challenges, seenEvents) get defaults in normalize().
  */
 export const SAVE_VERSION = 2;
 
@@ -56,9 +57,35 @@ export function normalize(raw: Partial<GameState>): GameState {
     if (n > 0) state.owned[u.id] = n;
   }
   state.perks = PERKS.map((p) => p.id).filter((id) => raw.perks?.includes(id));
-  state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => raw.achievements?.includes(id));
+  // Renamed achievements keep counting under their new id.
+  const renamed: Record<string, string> = { 'fechas-patrias': 'white-paper' };
+  const unlocked = new Set((raw.achievements ?? []).map((id) => renamed[id] ?? id));
+  state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => unlocked.has(id));
+  // Saves from before the sticker shop start with the starter pack.
+  const owned = new Set([...STARTER_STICKERS, ...(raw.stickers ?? [])]);
+  state.stickers = STICKERS.map((s) => s.id).filter((id) => owned.has(id));
+  state.showStickers = raw.showStickers !== false;
+  state.buyAmount = raw.buyAmount === 10 || raw.buyAmount === 'max' ? raw.buyAmount : 1;
+  state.charters = CHARTERS.map((c) => c.id).filter((id) => raw.charters?.includes(id));
+  state.sound = raw.sound !== false;
+  const challengeIds = CHALLENGES.map((c) => c.id);
+  state.completedChallenges = challengeIds.filter((id) => raw.completedChallenges?.includes(id));
+  for (const id of challengeIds) {
+    const t = raw.bestChallengeTimes?.[id];
+    if (typeof t === 'number' && Number.isFinite(t) && t >= 0) state.bestChallengeTimes[id] = Math.floor(t);
+  }
+  state.seenEvents = (raw.seenEvents ?? []).filter((k): k is string => typeof k === 'string' && /^[a-z-]+-\d{4}$/.test(k));
+  // A challenge in progress keeps the empire it set aside (cleaned up the same way).
+  const active = raw.activeChallenge;
+  if (active && challengeIds.includes(active.id) && active.main && typeof active.main === 'object') {
+    state.activeChallenge = { id: active.id, main: normalize({ ...active.main, activeChallenge: null }) };
+  }
+  // Golden boosts are never restored from a save.
   const stats = newStats();
-  for (const key of Object.keys(stats) as (keyof Stats)[]) stats[key] = int(raw.stats?.[key]);
+  const moneyStats: (keyof Stats)[] = ['bestRunEarnings', 'biggestClick'];
+  for (const key of Object.keys(stats) as (keyof Stats)[]) {
+    stats[key] = moneyStats.includes(key) ? num(raw.stats?.[key]) : int(raw.stats?.[key]);
+  }
   state.stats = stats;
   state.lastSaved = num(raw.lastSaved);
   return state;
@@ -78,9 +105,54 @@ export function loadState(): GameState | null {
 
 export function saveState(state: GameState, now = Date.now()): void {
   state.lastSaved = now;
-  slot.save(state);
+  const { buffs: _buffs, ...saved } = state; // boosts are not saved
+  slot.save(saved);
 }
 
 export function clearSave(): void {
   slot.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Save codes: copy your progress to another browser or device
+// ---------------------------------------------------------------------------
+
+/** Every save code starts with this, so random text is rejected. */
+const CODE_PREFIX = 'ANCAP1:';
+
+/** Base64 of UTF-8 text (sticker ids include emoji, which plain btoa can't handle). */
+function toBase64(text: string): string {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function fromBase64(code: string): string {
+  const binary = atob(code);
+  return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
+}
+
+/** A text code holding the whole save (golden boosts excluded). */
+export function exportSave(state: GameState): string {
+  const { buffs: _buffs, ...saved } = state;
+  return CODE_PREFIX + toBase64(JSON.stringify({ v: SAVE_VERSION, data: saved }));
+}
+
+/**
+ * Reads a save code. Returns the cleaned-up state, or null if the code isn't a
+ * valid Ancapistan Tycoon save. Whitespace and line breaks from copy-paste are ignored.
+ */
+export function importSave(code: string): GameState | null {
+  const trimmed = code.replace(/\s+/g, '');
+  if (!trimmed.startsWith(CODE_PREFIX)) return null;
+  try {
+    const parsed: unknown = JSON.parse(fromBase64(trimmed.slice(CODE_PREFIX.length)));
+    if (!parsed || typeof parsed !== 'object') return null;
+    const { v, data } = parsed as { v?: unknown; data?: unknown };
+    if (typeof v !== 'number' || !data || typeof data !== 'object') return null;
+    const migrated = v <= 1 ? migrateV1(data as SaveV1) : (data as Partial<GameState>);
+    return normalize(migrated);
+  } catch {
+    return null;
+  }
 }

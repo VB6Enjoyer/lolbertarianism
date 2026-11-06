@@ -37,18 +37,35 @@ function applyEnvelope(param: AudioParam, points: EnvelopePoint[], start: number
   }
 }
 
-/** Plays one synthesized tone, e.g. a hit or a victory jingle. */
-export function playTone({ wave, duration, frequency, gain }: Tone): void {
+/**
+ * Plays one synthesized tone, e.g. a hit or a victory jingle. `delay` (seconds)
+ * schedules it a little later, for multi-note jingles.
+ *
+ * While the browser still has audio locked (no click on the page yet), the sound
+ * is skipped rather than queued, so locked-up sounds don't all burst out at once.
+ */
+export function playTone({ wave, duration, frequency, gain }: Tone, delay = 0): void {
   const audio = getAudioContext();
+  if (audio.state !== 'running') return;
   const osc = audio.createOscillator();
   const amp = audio.createGain();
   osc.connect(amp);
   amp.connect(audio.destination);
 
-  const now = audio.currentTime;
+  const start = audio.currentTime + delay;
   osc.type = wave;
-  applyEnvelope(osc.frequency, frequency, now);
-  applyEnvelope(amp.gain, gain, now);
-  osc.start();
-  osc.stop(now + duration);
+  applyEnvelope(osc.frequency, frequency, start);
+  applyEnvelope(amp.gain, gain, start);
+  osc.start(start);
+  osc.stop(start + duration);
+}
+
+/** A short note with a quick fade, handy for jingles. */
+export function note(hz: number, duration: number, volume = 0.08, wave: OscillatorType = 'square'): Tone {
+  return {
+    wave,
+    duration,
+    frequency: [[0, hz]],
+    gain: [[0, volume], [duration, 0.001, 'exp']],
+  };
 }

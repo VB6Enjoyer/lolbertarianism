@@ -21,15 +21,35 @@
     <div id="game-ui">
         <!-- Left: Clicker -->
         <div class="panel" id="clicker-panel">
+            <div class="news-ticker">
+                <span class="news-label">📰 NEWS</span>
+                <div class="news-track" id="news-track"><span class="news-text" id="news-text"></span></div>
+                <button class="sound-toggle" id="btn-sound" aria-label="Mute sound" title="Mute sound">🔊</button>
+            </div>
+            <div class="challenge-banner" id="challenge-banner" hidden>
+                <div class="challenge-banner-top">
+                    <span class="challenge-name" id="challenge-name"></span>
+                    <button class="challenge-abandon" id="btn-abandon">Abandon</button>
+                </div>
+                <div class="challenge-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="challenge-progress">
+                    <div class="challenge-progress-fill" id="challenge-fill"></div>
+                </div>
+                <div class="challenge-details" id="challenge-details"></div>
+            </div>
             <h1>Ancapistan Tycoon</h1>
             <p style="font-size: 0.8em; color: #888;">"Taxation is Theft"</p>
 
             <div class="score-display">$<span id="score">0</span></div>
             <div class="sub-score">$<span id="income">0</span> / sec</div>
             <div class="prestige-line" id="prestige-line" hidden></div>
+            <div class="buff-bar" id="buff-bar" aria-live="polite"></div>
+            <button class="event-chip" id="event-chip" hidden></button>
 
-            <div id="main-btn" role="button" tabindex="0" aria-label="Click for money">
-                🐍
+            <div class="main-btn-wrap">
+                <div id="main-btn" role="button" tabindex="0" aria-label="Click for money">
+                    🐍
+                </div>
+                <img class="santa-hat" id="santa-hat" src="img/santa-hat.webp" alt="" hidden>
             </div>
 
             <div style="margin-top: 20px; text-align: center;">
@@ -41,8 +61,12 @@
 
             <div class="btn-row">
                 <button class="btn-reshuffle" id="btn-reshuffle">Reshuffle Stickers</button>
+                <button class="btn-reshuffle" id="btn-stickers">🎨 Stickers</button>
                 <button class="btn-reshuffle" id="btn-achievements">🏆 Achievements</button>
+                <button class="btn-reshuffle" id="btn-stats">📊 Stats</button>
                 <button class="btn-reshuffle btn-secede" id="btn-secede">🏴 Secede</button>
+                <button class="btn-reshuffle" id="btn-charters" hidden>📜 Charters</button>
+                <button class="btn-reshuffle" id="btn-challenges" hidden>🏁 Challenges</button>
             </div>
         </div>
 
@@ -51,6 +75,12 @@
             <h2>The Free Market</h2>
             <div id="special-upgrades-container">
                 <!-- Special upgrades injected here -->
+            </div>
+            <div class="buy-amount" id="buy-amount" role="group" aria-label="How many to buy">
+                <span>Buy:</span>
+                <button data-amount="1">×1</button>
+                <button data-amount="10">×10</button>
+                <button data-amount="max">MAX</button>
             </div>
             <div id="shop-list">
                 <!-- Shop items injected here -->
@@ -61,8 +91,8 @@
     <!-- Raid Event Overlay -->
     <div id="raid-overlay">
         <div id="raid-box">
-            <h1>🚨 THE FED IS HERE! 🚨</h1>
-            <p>They want to audit your crypto wallet!</p>
+            <h1 id="raid-title">🚨 THE FED IS HERE! 🚨</h1>
+            <p id="raid-text">They want to audit your crypto wallet!</p>
             <p style="font-size: 40px;">👮‍♂️🚔📉</p>
             <button class="btn-evade" id="btn-evade">HIDE ASSETS!</button>
         </div>

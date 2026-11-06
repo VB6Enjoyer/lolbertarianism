@@ -12,6 +12,8 @@ npm test          # unit tests (Vitest)
 npm run build     # type-check + tests + production build into dist/
 npm run preview   # serve dist/ locally
 npm run images -- public/vidya/img/new.png   # convert art to WebP next to the original
+npm run simulate  # Ancapistan Tycoon balance check (simulated playthrough)
+npm run simulate -- --challenges   # same, for each challenge run
 ```
 
 ## Layout
@@ -33,6 +35,10 @@ npm run images -- public/vidya/img/new.png   # convert art to WebP next to the o
   classes; which files it scans is set in `tailwind.config.js`.
 - `public/`: static files copied as-is (game images, thumbnails, favicon).
   Images are WebP; convert new ones with `npm run images`, then delete the original.
+- `art/`: full-size source art (not deployed), e.g. `art/christmas/`.
+
+Seasonal events can be previewed on any day with `?date=YYYY-MM-DD`, e.g.
+`/lolbertarianism/vidya/ancapistan-tycoon.html?date=2026-12-24`.
 
 ## Adding a game
 

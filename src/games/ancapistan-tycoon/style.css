@@ -613,3 +613,840 @@ h1 {
         font-size: 14px;
     }
 }
+
+/* ===================== Sticker shop ===================== */
+
+#sticker-container[hidden] {
+    display: none;
+}
+
+.modal-box:has(.sticker-shop) {
+    width: min(760px, 100%);
+}
+
+.sticker-summary {
+    margin-top: 0;
+}
+
+.sticker-next {
+    font-size: 1.5rem;
+}
+
+.sticker-toggle {
+    display: block;
+    font-size: 0.85em;
+    margin-bottom: 12px;
+    cursor: pointer;
+}
+
+.sticker-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.sticker-tab {
+    font-family: inherit;
+    font-size: 0.85em;
+    font-weight: bold;
+    padding: 6px 10px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+}
+
+.sticker-tab.active {
+    background: var(--ancap-yellow);
+}
+
+.sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.sticker-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 120px;
+    padding: 10px 6px 8px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    background: #fffbe6;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.sticker-card:hover:not(:disabled):not(.disabled) {
+    transform: translateY(-3px);
+}
+
+.sticker-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #eee;
+}
+
+.sticker-card.owned {
+    color: var(--ancap-black);
+    /* disabled buttons fade their text by default */
+    background: #fff8d6;
+    border-style: dashed;
+    cursor: default;
+}
+
+.sticker-price {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #d35400;
+}
+
+.sticker-card.owned .sticker-price {
+    color: green;
+}
+
+/* Shop previews reuse the sticker look, but sit still inside the card. */
+.sticker.sticker-preview {
+    position: static;
+    cursor: inherit;
+    transition: none;
+    pointer-events: none;
+    transform: none;
+}
+
+.sticker.sticker-preview.text {
+    font-size: 11px;
+    max-width: 100px;
+}
+
+.sticker.sticker-preview.img-rep {
+    font-size: 36px;
+}
+
+.sticker.sticker-preview.image {
+    width: 50px;
+}
+
+.sticker.sticker-preview .flag-ancap,
+.sticker.sticker-preview .flag-eu-cross {
+    transform: scale(0.8);
+}
+
+/* ===================== Buy amount & golden stickers ===================== */
+
+.buy-amount {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 100%;
+    margin-bottom: 10px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.buy-amount button {
+    font-family: inherit;
+    font-weight: bold;
+    padding: 4px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+}
+
+.buy-amount button.active {
+    background: var(--ancap-yellow);
+}
+
+.buff-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin: -8px 0 12px;
+}
+
+.buff-bar:empty {
+    display: none;
+}
+
+.buff-chip {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #fff3b0, #f7d02c);
+    border: 2px solid #c9a100;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.golden-sticker {
+    position: fixed;
+    z-index: 900;
+    display: grid;
+    place-items: center;
+    min-width: 70px;
+    min-height: 70px;
+    padding: 8px;
+    border: 3px solid #c9a100;
+    border-radius: 14px;
+    background: radial-gradient(circle, #fff7c2, #f7d02c);
+    cursor: pointer;
+    font-family: inherit;
+    filter: sepia(0.6) saturate(2.5) drop-shadow(0 0 12px gold);
+    animation:
+        goldenIn 0.5s ease-out,
+        goldenWobble 1.2s ease-in-out infinite,
+        goldenOut 1s ease-in calc(var(--life, 13s) - 1s) forwards;
+}
+
+.golden-sticker:hover {
+    filter: sepia(0.4) saturate(3) drop-shadow(0 0 20px gold);
+}
+
+.golden-sticker .sticker-preview.text {
+    font-size: 12px;
+}
+
+@keyframes goldenIn {
+    from {
+        transform: translateY(-120px) scale(0.3);
+        opacity: 0;
+    }
+}
+
+@keyframes goldenWobble {
+    0%, 100% {
+        rotate: -8deg;
+        scale: 1;
+    }
+    50% {
+        rotate: 8deg;
+        scale: 1.08;
+    }
+}
+
+@keyframes goldenOut {
+    to {
+        opacity: 0;
+        scale: 0.6;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .golden-sticker {
+        animation: goldenOut 1s ease-in calc(var(--life, 13s) - 1s) forwards;
+    }
+}
+
+/* ===================== Charters (prestige shop) ===================== */
+
+.btn-reshuffle[hidden] {
+    display: none;
+}
+
+.modal-box:has(.charter-shop) {
+    width: min(760px, 100%);
+}
+
+.charter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    text-align: left;
+}
+
+.charter-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    background: #fffbe6;
+    color: var(--ancap-black);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.charter-card:hover:not(:disabled):not(.disabled) {
+    transform: translateY(-3px);
+    box-shadow: 4px 4px 0 var(--ancap-yellow);
+}
+
+.charter-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #eee;
+}
+
+.charter-card.owned {
+    background: #fff3b0;
+    border-style: dashed;
+    cursor: default;
+}
+
+.charter-icon {
+    font-size: 26px;
+}
+
+.charter-name {
+    font-weight: bold;
+}
+
+.charter-desc {
+    font-size: 0.8em;
+    color: #444;
+    flex-grow: 1;
+}
+
+.charter-cost {
+    margin-top: 4px;
+    font-weight: bold;
+    color: #8e44ad;
+}
+
+.charter-card.owned .charter-cost {
+    color: green;
+}
+
+/* ===================== Phone layout ===================== */
+/* The clicker panel grew with prestige, boosts and more buttons, which pushed
+   the shop off the bottom of fixed-height phone screens. On narrow screens the
+   page scrolls instead, and each panel takes its natural height. */
+@media (max-width: 800px) {
+    body {
+        height: auto;
+        min-height: 100vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    #game-ui {
+        height: auto;
+    }
+
+    .panel {
+        flex: none;
+    }
+
+    /* The desktop 300px minimum overflows 320px-wide phones. */
+    #clicker-panel,
+    #shop-panel {
+        min-width: 0;
+    }
+
+    #shop-panel {
+        overflow-y: visible;
+    }
+
+    /* Rows were 100% wide plus padding, poking out of the panel. */
+    .shop-item {
+        box-sizing: border-box;
+    }
+
+    /* Six perks don't fit in one row on a phone (the last two used to be cut off). */
+    #special-upgrades-container {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+/* ===================== News ticker & sound toggle ===================== */
+
+.news-ticker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    padding: 4px 4px 4px 0;
+    background: var(--ancap-black);
+    color: white;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.85rem;
+}
+
+.news-label {
+    flex: none;
+    padding: 3px 8px;
+    background: var(--ancap-yellow);
+    color: var(--ancap-black);
+    font-weight: bold;
+    border-radius: 8px 0 0 8px;
+    white-space: nowrap;
+}
+
+.news-track {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.news-text {
+    display: inline-block;
+    will-change: transform;
+}
+
+.sound-toggle {
+    flex: none;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.sound-toggle:hover,
+.sound-toggle:focus-visible {
+    background: var(--ancap-yellow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .news-track {
+        white-space: normal;
+    }
+}
+
+/* ===================== Stats panel ===================== */
+
+.modal-box:has(.stats-panel) {
+    width: min(720px, 100%);
+}
+
+.stats-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+    text-align: left;
+}
+
+.stats-section {
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: #fffbe6;
+}
+
+.stats-section h3 {
+    margin: 0 0 6px;
+    font-size: 1rem;
+}
+
+.stats-section dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    margin: 0;
+    font-size: 0.85em;
+}
+
+.stats-section dt {
+    color: #555;
+}
+
+.stats-section dd {
+    margin: 0;
+    text-align: right;
+    font-weight: bold;
+    font-family: monospace;
+    font-size: 1.05em;
+    overflow-wrap: anywhere;
+}
+
+/* ===================== Secret achievements & save data ===================== */
+
+.achievement.secret.locked {
+    background: repeating-linear-gradient(135deg, #eee 0 10px, #e4e4e4 10px 20px);
+}
+
+.achievement.secret.locked .achievement-desc {
+    font-style: italic;
+}
+
+.achievement-secret-tag {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 0.7em;
+    font-weight: bold;
+    color: #8e44ad;
+}
+
+.save-data {
+    text-align: left;
+}
+
+.save-data h3 {
+    margin: 16px 0 4px;
+}
+
+.save-data h3:first-child {
+    margin-top: 0;
+}
+
+.save-data .fine-print {
+    margin: 0 0 6px;
+}
+
+.save-code {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: monospace;
+    font-size: 0.75rem;
+    padding: 6px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 6px;
+    resize: vertical;
+    word-break: break-all;
+}
+
+.save-data .btn-reshuffle {
+    margin-top: 8px;
+}
+
+.save-error {
+    color: #c0392b;
+    font-weight: bold;
+    font-size: 0.85em;
+    min-height: 1em;
+    margin: 6px 0 0;
+}
+
+.btn-danger {
+    background: #c0392b;
+    color: white;
+}
+
+/* ===================== Sticker sets ===================== */
+
+.sticker-tab.complete {
+    border-color: green;
+}
+
+.sticker-set {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px 10px;
+    margin: 0 0 12px;
+    padding: 6px 10px;
+    border: 2px dashed var(--ancap-black);
+    border-radius: 8px;
+    background: #fffbe6;
+    font-size: 0.85em;
+}
+
+.sticker-set.complete {
+    border-style: solid;
+    border-color: green;
+    background: #eaffea;
+}
+
+.sticker-set-name {
+    font-weight: bold;
+}
+
+.sticker-set-status {
+    font-weight: bold;
+    color: #d35400;
+}
+
+.sticker-set.complete .sticker-set-status {
+    color: green;
+}
+
+/* ===================== Challenge runs ===================== */
+
+.challenge-banner {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 10px;
+    background: #fff3b0;
+    text-align: left;
+}
+
+.challenge-banner[hidden] {
+    display: none;
+}
+
+.challenge-banner-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.challenge-name {
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.challenge-abandon {
+    font-family: inherit;
+    font-size: 0.8em;
+    font-weight: bold;
+    padding: 3px 10px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+}
+
+.challenge-progress {
+    height: 12px;
+    margin: 6px 0 4px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 999px;
+    background: white;
+    overflow: hidden;
+}
+
+.challenge-progress-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--ancap-yellow), #2ecc71);
+    transition: width 0.5s;
+}
+
+.challenge-details {
+    font-size: 0.8em;
+}
+
+/* A light tint per system, so you never forget where you are. */
+body[data-challenge='minarchist'] .panel {
+    box-shadow: 8px 8px 0 #3498db;
+}
+
+body[data-challenge='status-quo'] .panel {
+    box-shadow: 8px 8px 0 #7f8c8d;
+}
+
+body[data-challenge='communism'] .panel {
+    box-shadow: 8px 8px 0 #c0392b;
+}
+
+body[data-challenge='communism'] .challenge-banner {
+    background: #fde2e0;
+}
+
+body[data-challenge='hyperinflation'] .panel {
+    box-shadow: 8px 8px 0 #27ae60;
+}
+
+.shop-item.banned .item-cost {
+    color: #c0392b;
+    font-weight: bold;
+}
+
+.modal-box:has(.challenge-shop) {
+    width: min(760px, 100%);
+}
+
+.challenge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    text-align: left;
+}
+
+.challenge-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 10px;
+    background: #fffbe6;
+}
+
+.challenge-card.won {
+    border-color: green;
+    background: #eaffea;
+}
+
+.challenge-card-title {
+    font-weight: bold;
+    font-size: 1.05em;
+}
+
+.challenge-card-tagline {
+    font-style: italic;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.challenge-card-rules {
+    margin: 4px 0;
+    padding-left: 18px;
+    font-size: 0.82em;
+}
+
+.challenge-card-goal,
+.challenge-card-reward,
+.challenge-card-best {
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
+.challenge-card .btn-reshuffle {
+    align-self: flex-start;
+    margin-top: 6px;
+}
+
+.challenge-win-achievements {
+    text-align: left;
+    display: inline-block;
+    margin: 0 0 8px;
+}
+
+.btn-reshuffle[hidden],
+.btn-secede[hidden] {
+    display: none;
+}
+
+@media (max-width: 800px) {
+    .challenge-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===================== Seasonal events ===================== */
+
+.sticker.image {
+    width: var(--sticker-width, 60px);
+}
+
+.sticker.sticker-preview.image {
+    width: min(var(--sticker-width, 60px), 90px);
+}
+
+.event-chip {
+    margin: -6px 0 12px;
+    padding: 3px 12px;
+    border: 2px solid #c0392b;
+    border-radius: 999px;
+    background: #fff5f5;
+    color: #c0392b;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.event-chip[hidden] {
+    display: none;
+}
+
+/* The Santa hat sits on the snake button (which clips its own contents). */
+.main-btn-wrap {
+    position: relative;
+}
+
+.santa-hat {
+    position: absolute;
+    top: -38px;
+    right: -26px;
+    width: 120px;
+    transform: rotate(18deg);
+    pointer-events: none;
+    filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.25));
+}
+
+.santa-hat[hidden] {
+    display: none;
+}
+
+@media (max-width: 800px) {
+    .santa-hat {
+        top: -30px;
+        right: -20px;
+        width: 92px;
+    }
+}
+
+/* Presents replace golden stickers at Christmas. */
+.golden-sticker.present {
+    background: radial-gradient(circle, #fff, #ffd6d6);
+    border-color: #c0392b;
+    filter: drop-shadow(0 0 12px #e74c3c);
+}
+
+.golden-sticker.present .sticker-preview.image {
+    width: 70px;
+}
+
+/* Event popup: the dialog takes the image's width (set in main.ts). */
+.event-popup-image {
+    display: block;
+    max-width: 100%;
+    max-height: 55vh;
+    margin: 0 auto 12px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 10px;
+}
+
+.event-popup-message {
+    font-size: 1.15rem;
+    font-weight: bold;
+    margin: 0 0 8px;
+}
+
+.event-popup-when {
+    font-weight: bold;
+    margin: 0 0 4px;
+    text-align: left;
+}
+
+.event-popup-features {
+    margin: 0 0 6px;
+    padding-left: 20px;
+    text-align: left;
+    font-size: 0.9em;
+}
+
+.event-popup-features li {
+    margin-bottom: 4px;
+}
+
+/* Snow drifts behind the stickers and panels' content, never blocking clicks. */
+.snow {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.snowflake {
+    position: absolute;
+    top: -20px;
+    color: #a9cfe8;
+    text-shadow: 0 0 2px #fff;
+    animation: snowfall linear infinite;
+}
+
+@keyframes snowfall {
+    to {
+        transform: translate(40px, 105vh);
+    }
+}
