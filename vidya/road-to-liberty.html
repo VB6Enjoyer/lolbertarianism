@@ -3,582 +3,112 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>The Road to Liberty</title>
-    <style>
-        :root {
-            --skin-color: #d4a373;
-            --skin-shadow: #bc8a5f;
-            --vein-color: rgba(50, 80, 150, 0.3);
-            --sky-color: #87CEEB;
-            --road-color: #333;
-            --grass-color: #4CAF50;
-        }
-
-        body,
-        html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            font-family: 'Courier New', Courier, monospace;
-            background: #000;
-            user-select: none;
-        }
-
-        #game-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(to bottom, #87CEEB 50%, #4CAF50 50%);
-            perspective: 800px;
-            /* Increased for less distortion */
-            overflow: hidden;
-        }
-
-        /* --- UI / HUD --- */
-        #hud {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-            text-shadow: 2px 2px 0 #000;
-            z-index: 100;
-        }
-
-        #game-over {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
-            color: #fff;
-            padding: 20px;
-            border: 2px solid gold;
-            text-align: center;
-            display: none;
-            z-index: 200;
-            box-shadow: 0 0 20px gold;
-        }
-
-        button {
-            background: gold;
-            border: 2px solid #b8860b;
-            padding: 10px 20px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-            font-size: 16px;
-        }
-
-        /* --- THE ROAD --- */
-        #road-container {
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 50%;
-            transform-style: preserve-3d;
-            perspective: 300px;
-            /* Increased for less distortion */
-        }
-
-        #road {
-            position: absolute;
-            left: 50%;
-            top: 0;
-            width: 600px;
-            height: 1000px;
-            /* Long road */
-            background: var(--road-color);
-            transform: translateX(-50%) rotateX(60deg);
-            transform-origin: top center;
-            border-left: 10px solid white;
-            border-right: 10px solid white;
-        }
-
-        .lane-marker {
-            position: absolute;
-            left: 50%;
-            width: 10px;
-            height: 50px;
-            background: yellow;
-            transform: translateX(-50%);
-        }
-
-        /* --- OBJECTS --- */
-        .entity {
-            position: absolute;
-            transform-style: preserve-3d;
-            transform-origin: center bottom;
-            /* Will be positioned by JS */
-        }
-
-        /* Marx / Obstacle */
-        .obstacle {
-            font-size: 60px;
-            text-shadow: 0 5px 5px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Gold / Collectible */
-        .collectible {
-            font-size: 50px;
-            animation: spin 1s infinite linear;
-        }
-
-        @keyframes spin {
-            from {
-                transform: rotateY(0deg);
-            }
-
-            to {
-                transform: rotateY(360deg);
-            }
-        }
-
-        /* --- INTERIOR --- */
-        #dashboard {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            height: 250px;
-            background: #1a1a1a;
-            border-top: 5px solid #000;
-            z-index: 50;
-            display: flex;
-            justify-content: center;
-            align-items: flex-end;
-        }
-
-        /* Rearview Mirror */
-        #mirror-container {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 300px;
-            height: 100px;
-            background: #111;
-            border-radius: 0 0 30px 30px;
-            z-index: 60;
-            border: 4px solid #444;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-        }
-
-        #mirror-reflection {
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(to bottom, #555, #222);
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        /* Hoppe in Mirror */
-        .hoppe-face {
-            width: 60px;
-            height: 70px;
-            background: #e0b080;
-            border-radius: 30px;
-            position: relative;
-            box-shadow: inset -2px -2px 5px rgba(0, 0, 0, 0.2);
-        }
-
-        .hoppe-glasses {
-            position: absolute;
-            top: 25px;
-            width: 50px;
-            height: 10px;
-            left: 5px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .glass-lens {
-            width: 20px;
-            height: 15px;
-            background: rgba(0, 0, 0, 0.7);
-            border: 1px solid gold;
-            border-radius: 2px;
-        }
-
-        .police-lights {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, rgba(255, 0, 0, 0.2), rgba(0, 0, 255, 0.2));
-            animation: police 0.5s infinite alternate;
-            z-index: 2;
-        }
-
-        @keyframes police {
-            from {
-                opacity: 0.3;
-            }
-
-            to {
-                opacity: 0.8;
-            }
-        }
-
-        /* Hanging Ornament */
-        #ornament {
-            position: absolute;
-            top: 100px;
-            left: 60%;
-            width: 60px;
-            height: 60px;
-            background: radial-gradient(circle, #fff, #eee);
-            border: 2px solid #d32f2f;
-            border-radius: 50%;
-            z-index: 55;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-size: 8px;
-            text-align: center;
-            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3);
-            transform-origin: top center;
-            animation: swing 2s infinite ease-in-out;
-        }
-
-        #ornament::before {
-            content: '';
-            position: absolute;
-            top: -20px;
-            width: 2px;
-            height: 20px;
-            background: #888;
-        }
-
-        @keyframes swing {
-            0% {
-                transform: rotate(5deg);
-            }
-
-            50% {
-                transform: rotate(-5deg);
-            }
-
-            100% {
-                transform: rotate(5deg);
-            }
-        }
-
-        /* --- THE ARM & WHEEL --- */
-        #steering-column {
-            position: relative;
-            width: 400px;
-            height: 400px;
-            bottom: -150px;
-            transition: transform 0.1s;
-        }
-
-        #wheel {
-            width: 300px;
-            height: 300px;
-            border-radius: 50%;
-            border: 20px solid #222;
-            box-shadow: inset 0 0 20px #000, 0 5px 10px rgba(0, 0, 0, 0.5);
-            position: absolute;
-            left: 50px;
-            top: 0;
-            background: transparent;
-        }
-
-        #wheel::before {
-            /* Spoke */
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 20px;
-            background: #222;
-            transform: translateY(-50%);
-        }
-
-        #wheel::after {
-            /* Spoke */
-            content: '';
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            width: 20px;
-            height: 50%;
-            background: #222;
-            transform: translateX(-50%);
-        }
-
-        /* THE VEINY ARM */
-        #arm-wrapper {
-            position: absolute;
-            bottom: -50px;
-            right: -50px;
-            width: 600px;
-            height: 300px;
-            pointer-events: none;
-            z-index: 52;
-            transform-origin: bottom right;
-        }
-
-        .arm-muscle {
-            position: absolute;
-            background: radial-gradient(circle at 30% 30%, var(--skin-color), var(--skin-shadow));
-            border-radius: 50px;
-            box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.4);
-        }
-
-        #forearm {
-            width: 400px;
-            height: 140px;
-            bottom: 50px;
-            right: 50px;
-            transform: rotate(-20deg);
-            border-radius: 20px 100px 100px 40px;
-        }
-
-        #bicep {
-            width: 300px;
-            height: 200px;
-            bottom: -20px;
-            right: -80px;
-            border-radius: 50%;
-        }
-
-        /* Veins */
-        .vein {
-            position: absolute;
-            fill: none;
-            stroke: var(--vein-color);
-            stroke-width: 4;
-            stroke-linecap: round;
-            filter: blur(1px);
-        }
-
-        /* Hand holding phone */
-        #hand {
-            position: absolute;
-            bottom: 120px;
-            left: 20px;
-            /* Relative to arm wrapper */
-            width: 120px;
-            height: 140px;
-            z-index: 53;
-            transform: rotate(-10deg);
-        }
-
-        .finger {
-            position: absolute;
-            height: 25px;
-            background: var(--skin-color);
-            border-radius: 10px;
-            border: 1px solid var(--skin-shadow);
-            right: -10px;
-            z-index: 2;
-        }
-
-        #phone {
-            position: absolute;
-            width: 80px;
-            height: 140px;
-            background: #111;
-            border-radius: 10px;
-            border: 2px solid #444;
-            left: 0;
-            top: 0;
-            z-index: 1;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
-        }
-
-        #phone-screen {
-            width: 70px;
-            height: 100px;
-            background: #fff;
-            margin-top: 15px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            position: relative;
-        }
-
-        /* Rothbard on Phone */
-        .rothbard-face {
-            width: 50px;
-            height: 60px;
-            background: #f0c090;
-            border-radius: 20px;
-            position: relative;
-        }
-
-        .rothbard-glasses {
-            position: absolute;
-            top: 20px;
-            width: 44px;
-            left: 3px;
-            height: 10px;
-            border-bottom: 2px solid black;
-        }
-
-        .rothbard-glasses::before,
-        .rothbard-glasses::after {
-            content: '';
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            border: 2px solid black;
-            border-radius: 50%;
-            top: -5px;
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        .rothbard-glasses::before {
-            left: 0;
-        }
-
-        .rothbard-glasses::after {
-            right: 0;
-        }
-
-        .rothbard-bowtie {
-            position: absolute;
-            bottom: -5px;
-            left: 15px;
-            width: 0;
-            height: 0;
-            border-left: 10px solid transparent;
-            border-right: 10px solid transparent;
-            border-top: 10px solid red;
-        }
-
-        .instructions {
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 12px;
-            pointer-events: none;
-        }
-    </style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script type="module" src="/src/shared/arcade-button.ts"></script>
 </head>
 
 <body>
-
-    <div id="game-container">
-
-        <!-- Environment -->
-        <div id="sky"></div>
-        <div id="road-container">
-            <div id="road">
-                <!-- Lanes generated by JS -->
-            </div>
-        </div>
+    <div id="game">
+        <canvas id="road" aria-label="The road ahead"></canvas>
 
         <!-- HUD -->
         <div id="hud">
-            Net Worth: $<span id="score">0</span><br>
-            <span style="font-size: 14px; color: #ffeb3b">Avoid Taxes (🚩) | Collect Gold (💰)</span>
+            <div class="hud-score">$<span id="score">0</span></div>
+            <div class="hud-line">🧔 <span id="marx-count">0</span><span class="hud-label"> Marxes flattened</span> <span id="combo" class="combo" hidden></span></div>
+            <div class="hud-line hud-best">Best: $<span id="best">0</span></div>
         </div>
+        <div id="speedometer"><span id="speed">0</span><small>km/h</small></div>
 
-        <!-- Rearview Mirror -->
-        <div id="mirror-container">
-            <div id="mirror-reflection">
-                <div class="police-lights"></div>
-                <div class="hoppe-face">
-                    <div class="hoppe-glasses">
-                        <div class="glass-lens"></div>
-                        <div class="glass-lens"></div>
-                    </div>
-                    <div style="position:absolute; bottom:15px; left:20px; width:20px; height:2px; background:#533;">
-                    </div> <!-- Mouth -->
-                </div>
+        <!-- Rearview mirror: Hoppe, and the cops behind -->
+        <div id="mirror">
+            <div id="mirror-glass">
+                <div id="mirror-road"></div>
+                <div id="cop-car">🚓</div>
+                <div id="police-lights"></div>
+                <img id="hoppe" src="img/hoppe.webp" alt="Hans-Hermann Hoppe in the rearview mirror">
             </div>
+            <div id="cop-gap">🚨 <span id="cop-distance">300</span> m</div>
         </div>
 
-        <!-- Ornament -->
-        <div id="ornament">
-            <span>I ❤️<br>Property</span>
-        </div>
+        <!-- Air freshener -->
+        <div id="ornament"><span>I ❤️<br><b>Property</b><br>and freedom</span></div>
 
-        <!-- Dashboard / Cockpit -->
+        <!-- Cockpit -->
         <div id="dashboard">
-
-            <!-- Steering Wheel -->
-            <div id="steering-column">
-                <div id="wheel"></div>
-            </div>
-
-            <!-- The Veiny Arm -->
-            <div id="arm-wrapper">
-                <div id="bicep" class="arm-muscle"></div>
-                <div id="forearm" class="arm-muscle">
-                    <!-- SVG Veins -->
-                    <svg width="100%" height="100%" style="position:absolute; border-radius:inherit;">
-                        <path d="M 50 80 Q 150 60 300 90" class="vein" />
-                        <path d="M 60 90 Q 200 110 350 70" class="vein" />
-                        <path d="M 100 50 Q 200 40 320 60" class="vein" />
-                        <path d="M 250 80 Q 300 100 380 80" class="vein" />
+            <div id="wheel"><div class="spoke"></div><div class="hub">🐍</div></div>
+            <div id="arm">
+                <div id="forearm">
+                    <svg viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
+                        <path d="M 30 80 Q 140 55 290 92 T 390 70" class="vein" />
+                        <path d="M 60 96 Q 190 120 350 74" class="vein" />
+                        <path d="M 90 48 Q 210 30 330 58" class="vein" />
+                        <path d="M 220 84 Q 290 108 390 86" class="vein" />
                     </svg>
                 </div>
-
-                <!-- Hand & Phone -->
                 <div id="hand">
-                    <div class="finger" style="top:20px; width:90px;"></div>
-                    <div class="finger" style="top:50px; width:95px;"></div>
-                    <div class="finger" style="top:80px; width:90px;"></div>
-                    <div class="finger" style="top:110px; width:80px;"></div>
-
                     <div id="phone">
-                        <div style="width:100%; height:10px; background:#222; margin-bottom:2px;"></div>
+                        <div class="phone-notch"></div>
                         <div id="phone-screen">
-                            <div class="rothbard-face">
-                                <div class="rothbard-glasses"></div>
-                                <div class="rothbard-bowtie"></div>
-                                <div
-                                    style="position:absolute; bottom:15px; left:15px; width:20px; height:2px; background:#000; transform: rotate(-5deg);">
-                                </div> <!-- Smile -->
-                            </div>
-                        </div>
-                        <div
-                            style="width:10px; height:10px; background:#333; border-radius:50%; margin-top:5px; border:1px solid #555;">
+                            <div class="phone-time">Liberty FM</div>
+                            <img src="img/rothbard.webp" alt="Murray Rothbard on the phone screen">
                         </div>
                     </div>
-
-                    <!-- Thumb overlay -->
-                    <div class="finger" style="top:60px; left:-20px; width:60px; transform: rotate(45deg); z-index:5;">
-                    </div>
+                    <div class="finger" style="top: 18px; width: 86px;"></div>
+                    <div class="finger" style="top: 46px; width: 92px;"></div>
+                    <div class="finger" style="top: 74px; width: 88px;"></div>
+                    <div class="finger" style="top: 102px; width: 76px;"></div>
+                    <div class="finger thumb"></div>
                 </div>
+            </div>
+            <button id="brake" type="button" aria-label="Brake">BRAKE</button>
+            <button id="mute" type="button" aria-label="Toggle sound">🔊</button>
+        </div>
+
+        <!-- Start screen -->
+        <div id="title" class="overlay">
+            <div class="panel">
+                <h1>The Road to Liberty</h1>
+                <p class="tagline">The Fed is in your mirror. Marx is in the road. Rothbard is on speakerphone.</p>
+                <ul class="rules">
+                    <li>🧔 <b>Run over Marx</b> for points and a speed boost. Flatten several in a row for a combo.</li>
+                    <li>💰 Grab the gold.</li>
+                    <li>🚧 Dodge <b>IRS checkpoints</b> and slow traffic, and stay off the grass: they slow you down.</li>
+                    <li>🚓 The cops are gaining. If they catch up, you're <b>busted</b>.</li>
+                </ul>
+                <p class="controls"><b>Steer:</b> ← → or A D, or hold the left/right side of the screen · <b>Brake:</b> ↓ or S · <b>Pause:</b> P</p>
+                <button id="start" type="button" class="big-button">Floor it</button>
             </div>
         </div>
 
-        <div class="instructions">Use Mouse/Touch to Steer</div>
-
-        <div id="game-over">
-            <h1>TAXED!</h1>
-            <p>The state seized your assets.</p>
-            <p>Final Net Worth: $<span id="final-score">0</span></p>
-            <button onclick="restartGame()">Evade Again</button>
+        <!-- Pause -->
+        <div id="paused" class="overlay" hidden>
+            <div class="panel">
+                <h1>Paused</h1>
+                <p>The cops are on a donut break. So are you.</p>
+                <button id="resume" type="button" class="big-button">Resume</button>
+            </div>
         </div>
 
+        <!-- Busted -->
+        <div id="busted" class="overlay" hidden>
+            <div class="panel">
+                <h1>🚨 Busted! 🚨</h1>
+                <p id="busted-line">The State caught up with you.</p>
+                <dl class="results">
+                    <dt>Net worth</dt><dd>$<span id="final-score">0</span></dd>
+                    <dt>Marxes flattened</dt><dd id="final-marx">0</dd>
+                    <dt>Distance</dt><dd id="final-distance">0 m</dd>
+                    <dt>Best</dt><dd>$<span id="final-best">0</span></dd>
+                </dl>
+                <p id="new-best" class="new-best" hidden>🏆 New personal best!</p>
+                <button id="restart" type="button" class="big-button">Floor it again</button>
+            </div>
+        </div>
     </div>
 
-    <script type="module" src="/src/games/road-to-liberty/main.js"></script>
+    <script type="module" src="/src/games/road-to-liberty/main.ts"></script>
 </body>
 
 </html>
