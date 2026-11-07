@@ -71,7 +71,7 @@ Noticed along the way, left alone for now:
 ### Sticker shop ✅
 
 - 🎨 Stickers button opens a shop with tabs per category (quotes, emojis,
-  flags, people, orgs, items). Every sticker starts locked; all 77 are bought
+  flags, people, orgs, items). Every sticker starts locked; all are bought
   one at a time. Reshuffle Stickers appears once you own one.
 - Each owned sticker adds +0.5% to passive income. The price depends only on how
   many you've bought: $10k for the first, ~31% more per purchase, ~$10 trillion
@@ -267,7 +267,9 @@ Noticed along the way, left alone for now:
   Two Pizzas for 10,000 BTC (double cash). Achievement: Most Expensive Lunch in History.
 - 💵 Nixon Shock (Aug 15): Golden Standard suspended; golden stickers become fiat
   stickers (half cash, half duration). Achievement: Closing the Gold Window.
-- New People stickers: Frédéric Bastiat and Thomas Sowell.
+- New People stickers: Frédéric Bastiat and Thomas Sowell, then Gary Becker, Milton
+  Friedman, Peter Boettke, Richard Cantillon, Martín de Azpilicueta, Juan de
+  Mariana, Gustave de Molinari and Friedrich von Wieser (39 people in all).
 - Events can now carry effects (`EventEffects`: income, per-upgrade income,
   gift sticker, bonus cities, suspended perk, golden theme and payouts).
   `?date=` previews now reach every rule, including income.
