@@ -24,6 +24,8 @@ export const BALANCE = {
     cashLoss: 0.2,
     /** A DRO retainer costs this many seconds of income… */
     retainerSeconds: 300,
+    /** …times this for every retainer you already hold, so hoarding them gets expensive. */
+    retainerGrowth: 1.25,
     /** …but never less than this. */
     retainerMinCost: 1000,
   },
@@ -873,17 +875,17 @@ export const STICKER_UNLOCKS: Readonly<Record<string, StickerUnlock>> = {
   'book-solzhenitsyn-the-gulag-archipelago': { challenge: 'communism', earned: true, need: 'Win the Communism challenge' },
   liberland: { secessions: 1, earned: true, need: 'Secede for the first time' },
   // For sale once you've earned the right
-  ak47: { upgrade: 3, count: 50, need: 'Own 50 AK-47s' },
-  m249: { upgrade: 3, count: 200, need: 'Own 200 AK-47s' },
-  '☢️': { upgrade: 11, count: 1, need: 'Own a Recreational McNuke silo' },
-  'antiroad-aktion': { upgrade: 8, count: 10, need: 'Privatize 10 roads' },
-  '🪙': { upgrade: 6, count: 1, need: 'Own an overseas crypto farm' },
-  bitcoin: { upgrade: 6, count: 50, need: 'Own 50 overseas crypto farms' },
-  solana: { upgrade: 6, count: 100, need: 'Own 100 overseas crypto farms' },
-  'I would privatize the sun': { upgrade: 14, count: 1, need: 'Privatize the solar system' },
-  'Free Market Enjoyer': { upgrade: 7, count: 1, need: 'Invoke the invisible hand' },
+  ak47: { upgrade: 3, count: 100, need: 'Own 100 AK-47s' },
+  m249: { upgrade: 3, count: 500, need: 'Own 500 AK-47s' },
+  '☢️': { upgrade: 11, count: 100, need: 'Own 100 Recreational McNuke silos' },
+  'antiroad-aktion': { upgrade: 8, count: 100, need: 'Privatize 100 roads' },
+  '🪙': { upgrade: 6, count: 100, need: 'Own 100 overseas crypto farms' },
+  bitcoin: { upgrade: 6, count: 100, need: 'Own 100 overseas crypto farms' },
+  solana: { upgrade: 6, count: 500, need: 'Own 500 overseas crypto farms' },
+  'I would privatize the sun': { upgrade: 14, count: 50, need: 'Privatize 50 solar systems' },
+  'Free Market Enjoyer': { upgrade: 7, count: 100, need: 'Invoke the invisible hand 100 times' },
   'Agorism Now!': { upgrade: 2, count: 100, need: 'Own 100 unlicensed lemonade stands' },
-  '🚁': { upgrade: 17, count: 10, need: 'Hire 10 physical removal services' },
+  '🚁': { upgrade: 17, count: 100, need: 'Hire 100 physical removal services' },
   'End! The! Fed!': { raidsEvaded: 100, need: 'Dodge 100 Fed raids' },
 };
 

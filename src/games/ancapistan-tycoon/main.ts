@@ -1526,7 +1526,7 @@ els.buyAmount.addEventListener('click', (e) => {
 els.secede.addEventListener('click', showSecession);
 byId('btn-evade').addEventListener('click', evadeTax);
 els.retainerRow.addEventListener('click', onBuyRetainer);
-els.retainerRow.title = 'A private defense agency on call. When a Fed raid runs out the clock, one retainer handles it and you lose nothing. Costs about 5 minutes of income; stack as many as you like. Kept when you secede.';
+els.retainerRow.title = 'A private defense agency on call. When a Fed raid runs out the clock, one retainer handles it and you lose nothing. Costs about 5 minutes of income, plus 25% for each retainer you already hold. Kept when you secede.';
 els.prestige.addEventListener('click', showCities);
 els.prestige.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') {
