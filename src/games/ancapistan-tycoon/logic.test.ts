@@ -516,9 +516,10 @@ describe('sticker sets', () => {
     expect(partial.setIncomeMultiplier).toBe(1);
     s.stickers = allOf('person');
     expect(derive(s).setIncomeMultiplier).toBe(1.25);
-    // 29 stickers: +0.5% each (×1.145), then the set's ×1.25
-    expect(derive(s).incomePerSec).toBeCloseTo(100 * (1 + 29 * BALANCE.stickers.bonusEach) * 1.25);
-    expect(partial.incomePerSec).toBeCloseTo(100 * (1 + 28 * BALANCE.stickers.bonusEach));
+    // n stickers: +0.5% each, then the set's ×1.25
+    const n = allOf('person').length;
+    expect(derive(s).incomePerSec).toBeCloseTo(100 * (1 + n * BALANCE.stickers.bonusEach) * 1.25);
+    expect(partial.incomePerSec).toBeCloseTo(100 * (1 + (n - 1) * BALANCE.stickers.bonusEach));
   });
 
   it('quotes boost clicks, items add crit chance', () => {

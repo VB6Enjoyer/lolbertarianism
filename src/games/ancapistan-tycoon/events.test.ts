@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, CHRISTMAS, EVENTS, PRESENT_EFFECTS, STICKERS } from './data.ts';
-import { eventsOn, gameDate, isEventActive, seasonKey } from './events.ts';
+import { existsSync } from 'node:fs';
+import { BALANCE, CHRISTMAS, EVENTS, GOLDEN_EFFECTS, PIZZA_EFFECT, PRESENT_EFFECTS, STICKERS } from './data.ts';
+import { eventsOn, gameDate, isEventActive, seasonKey, setDateOverride } from './events.ts';
 import {
   buySticker,
   catchGolden,
@@ -12,11 +13,13 @@ import {
   goldenDelayMultiplier,
   newState,
   pickGoldenEffect,
+  priceOfSticker,
   raidChance,
   raidEvadeBonus,
   secede,
   stickerCost,
   stickerForSale,
+  unlockAchievements,
 } from './logic.ts';
 import { normalize } from './save.ts';
 
@@ -144,5 +147,101 @@ describe('event saves', () => {
       'christmas-2026',
       'fed-birthday-2026',
     ]);
+  });
+});
+
+describe('birthdays and anniversaries', () => {
+  const dates: [string, number, number][] = [
+    ['birthday-menger', 2, 23],
+    ['birthday-rothbard', 3, 2],
+    ['birthday-hayek', 5, 8],
+    ['birthday-bastiat', 6, 30],
+    ['birthday-ronpaul', 8, 20],
+    ['birthday-hoppe', 9, 2],
+    ['birthday-mises', 9, 29],
+    ['bitcoin-genesis', 1, 3],
+    ['liberland-day', 4, 13],
+    ['pizza-day', 5, 22],
+    ['nixon-shock', 8, 15],
+  ];
+
+  it('each runs on its day only', () => {
+    for (const [id, m, d] of dates) {
+      expect(eventsOn(day(m, d)).map((e) => e.id), id).toContain(id);
+      expect(eventsOn(day(m, d + 1)).map((e) => e.id), id).not.toContain(id);
+    }
+  });
+
+  it('every event image exists', () => {
+    for (const e of EVENTS) {
+      if (e.popup.image) expect(existsSync(`public/vidya/${e.popup.image}`), e.popup.image).toBe(true);
+    }
+  });
+
+  it('birthdays: +10% income and the person\'s sticker is free to claim', () => {
+    const s = newState();
+    s.owned = { 2: 100 };
+    expect(derive(s, day(3, 2).getTime()).incomePerSec).toBeCloseTo(derive(s, day(3, 3).getTime()).incomePerSec * 1.1);
+    expect(priceOfSticker(s, 'rothbard', day(3, 2).getTime())).toBe(0);
+    expect(priceOfSticker(s, 'rothbard', day(3, 3).getTime())).toBeGreaterThan(0);
+    s.score = 0;
+    expect(buySticker(s, 'rothbard', day(3, 2))).toBe(true);
+    expect(s.stickers).toContain('rothbard');
+  });
+
+  it('Party Animal unlocks at 4 birthdays', () => {
+    const s = newState();
+    s.stats.birthdaysCelebrated = 3;
+    expect(unlockAchievements(s).map((a) => a.id)).not.toContain('party-animal');
+    s.stats.birthdaysCelebrated = 4;
+    expect(unlockAchievements(s).map((a) => a.id)).toContain('party-animal');
+  });
+
+  it('Genesis Block: crypto farms earn ×2', () => {
+    const s = newState();
+    s.owned = { 6: 10, 2: 10 }; // 250 + 10
+    expect(derive(s, day(1, 3).getTime()).income).toBe(500 + 10);
+    expect(derive(s, day(1, 4).getTime()).income).toBe(250 + 10);
+  });
+
+  it('Liberland Day: a bonus city when seceding, and the Liberland sticker is free', () => {
+    const s = newState();
+    earn(s, earningsForCities(2));
+    expect(secede(s, day(4, 13))).toBe(3);
+    expect(s.cities).toBe(3);
+    expect(priceOfSticker(s, 'liberland', day(4, 13).getTime())).toBe(0);
+  });
+
+  it('Nixon Shock: Golden Standard suspended, golden rewards halved', () => {
+    const s = newState();
+    s.stickers = [];
+    s.perks = ['su2'];
+    expect(derive(s, day(8, 15).getTime()).clickAmount).toBe(1);
+    expect(derive(s, day(8, 16).getTime()).clickAmount).toBe(2);
+    const T = day(8, 15).getTime();
+    const wallet = GOLDEN_EFFECTS.find((e) => e.id === 'wallet')!;
+    expect(catchGolden(s, wallet, T)).toBeCloseTo(goldenCash(s, T) * 0.5);
+    catchGolden(s, GOLDEN_EFFECTS.find((e) => e.id === 'chainsaw')!, T);
+    expect(derive(s, T + 14_000).clickBuff).toBe(7);
+    expect(derive(s, T + 16_000).clickBuff).toBe(1); // 30s halved to 15s
+  });
+
+  it('Pizza Day: two pizzas pay double cash', () => {
+    const s = newState();
+    s.score = 1e6;
+    const T = day(5, 22).getTime();
+    expect(catchGolden(s, PIZZA_EFFECT, T)).toBeCloseTo(goldenCash(s, T) * 2, -2);
+  });
+
+  it('a preview date set once reaches every rule', () => {
+    const s = newState();
+    s.owned = { 2: 100 };
+    setDateOverride(day(3, 2));
+    try {
+      expect(derive(s).incomePerSec).toBeCloseTo(100 * 1.1);
+      expect(priceOfSticker(s, 'rothbard')).toBe(0);
+    } finally {
+      setDateOverride(null);
+    }
   });
 });
