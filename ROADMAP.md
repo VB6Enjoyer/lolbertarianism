@@ -269,7 +269,13 @@ Noticed along the way, left alone for now:
   stickers (half cash, half duration). Achievement: Closing the Gold Window.
 - New People stickers: Frédéric Bastiat and Thomas Sowell, then Gary Becker, Milton
   Friedman, Peter Boettke, Richard Cantillon, Martín de Azpilicueta, Juan de
-  Mariana, Gustave de Molinari and Friedrich von Wieser (39 people in all).
+  Mariana, Gustave de Molinari and Friedrich von Wieser, then Samuel Edward
+  Konkin III (40 people in all).
+- 📚 Books: 82 book-cover stickers in their own tab (titles and authors in
+  `books.ts`, covers in `public/vidya/img/books/`, originals in `art/books/`).
+  Completing them all grants Library of Liberty (clicks ×1.5). With 170 regular
+  stickers the price ladder is gentler (+13% per purchase instead of +28%), and
+  pacing got ~17% faster: all charters ~21h, Andromeda ~32h for an active player.
 - Events can now carry effects (`EventEffects`: income, per-upgrade income,
   gift sticker, bonus cities, suspended perk, golden theme and payouts).
   `?date=` previews now reach every rule, including income.

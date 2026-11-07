@@ -1,5 +1,7 @@
 // Content and balance for Ancapistan Tycoon. Tweak numbers here, not in the game code.
 
+import { BOOKS } from './books.ts';
+
 export const BALANCE = {
   /** Each owned copy of an upgrade makes the next one this much pricier. */
   costGrowth: 1.15,
@@ -606,7 +608,7 @@ export const CLICK_PHRASES = ['Freedom!', 'My Property!', 'Based', 'No Step!'] a
 // Stickers (the draggable background collage)
 // ---------------------------------------------------------------------------
 
-export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'christmas';
+export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'book' | 'christmas';
 
 export interface StickerData {
   /** Stable id used in saves (the content itself). */
@@ -628,6 +630,7 @@ export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string }
   { id: 'person', label: '🧔 People' },
   { id: 'organization', label: '🏛️ Orgs' },
   { id: 'item', label: '🔫 Items' },
+  { id: 'book', label: '📚 Books' },
   { id: 'christmas', label: '🎄 Christmas' },
 ];
 
@@ -691,7 +694,7 @@ export const STICKERS: readonly StickerData[] = [
     'hazlitt', 'murphy', 'kirzner', 'gordon', 'lewrockwell', 'caplan', 'salerno', 'woods', 'block',
     'bylund', 'nock', 'hansen', 'dfriedman', 'deist', 'hulsmann', 'ammous', 'dilorenzo', 'bagus',
     'jhs', 'milei', 'bastiat', 'sowell', 'becker', 'mfriedman', 'boettke', 'cantillon', 'azpilicueta',
-    'mariana', 'molinari', 'wieser',
+    'mariana', 'molinari', 'wieser', 'konkin',
   ].map((name) => image('person', name)),
   // Organizations
   image('organization', 'misesinstitute'),
@@ -700,6 +703,8 @@ export const STICKERS: readonly StickerData[] = [
   image('item', 'pistol'),
   image('item', 'm249'),
   image('item', 'ak47'),
+  // Books
+  ...BOOKS.map((b): StickerData => ({ id: b.id, type: 'image', category: 'book', content: `img/books/${b.id}.webp`, width: 50 })),
   // Christmas (limited edition)
   christmasImage('ancap-santa'),
   christmasImage('ancap-reindeer'),
@@ -775,6 +780,7 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   mariana: { name: 'Juan de Mariana', note: 'A Treatise on the Alteration of Money' },
   molinari: { name: 'Gustave de Molinari', note: 'The Production of Security' },
   wieser: { name: 'Friedrich von Wieser', note: 'Austrian School, second generation' },
+  konkin: { name: 'Samuel Edward Konkin III', note: 'Agorism' },
   // Organizations
   misesinstitute: { name: 'Mises Institute' },
   liberland: { name: 'Flag of Liberland', note: 'A micronation on the Danube' },
@@ -789,6 +795,8 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   'ancap-rpg7': { name: 'RPG-7 Gift' },
   'ancap-tree': { name: 'Ancap Christmas Tree' },
   'ancap-gingerbread': { name: 'Ancap Gingerbread Man' },
+  // Books: the title, with the author underneath
+  ...Object.fromEntries(BOOKS.map((b) => [b.id, { name: b.title, note: b.author }])),
 };
 
 /** Stickers on sale all year (everything but limited editions). */
@@ -817,6 +825,7 @@ export const STICKER_SETS: readonly StickerSet[] = [
   { category: 'person', icon: '🧔', name: 'Austrian Pantheon', description: 'Income ×1.25.', incomeMultiplier: 1.25 },
   { category: 'organization', icon: '🏛️', name: 'Think Tank Network', description: 'Fed raids happen 25% less often.', raidChance: 0.75 },
   { category: 'item', icon: '🔫', name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
+  { category: 'book', icon: '📚', name: 'Library of Liberty', description: 'Clicks are worth ×1.5. You have read the sacred texts.', clickMultiplier: 1.5 },
   { category: 'christmas', icon: '🎄', name: 'Christmas Spirit', description: 'Income ×1.1, all year round.', incomeMultiplier: 1.1 },
 ];
 
