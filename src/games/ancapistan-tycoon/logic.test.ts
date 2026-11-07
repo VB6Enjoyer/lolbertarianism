@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_LABELS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_LABELS, STICKER_SETS, STICKER_UNLOCKS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
   buyCharter,
@@ -28,6 +28,11 @@ import {
   secede,
   stickerCost,
   unlockAchievements,
+  unlockProgress,
+  unlockStickers,
+  isEarnedSticker,
+  isStickerLocked,
+  stickerForSale,
   upgradeCost,
 } from './logic.ts';
 import { migrateV1, normalize, spentOn } from './save.ts';
@@ -242,12 +247,14 @@ describe('sticker shop', () => {
     const s = newState();
     expect(stickerCost(s)).toBe(BALANCE.stickers.firstCost);
     s.score = Infinity;
-    for (const x of REGULAR_STICKERS) buySticker(s, x.id);
-    expect(s.stickers.length).toBe(REGULAR_STICKERS.length);
+    s.unlockedStickers = Object.keys(STICKER_UNLOCKS);
+    const buyable = REGULAR_STICKERS.filter((x) => !isEarnedSticker(x.id));
+    for (const x of buyable) buySticker(s, x.id);
+    expect(s.stickers.length).toBe(buyable.length);
     // After buying everything, the price "of the next one" is one step past the last.
     s.stickers.pop();
     expect(stickerCost(s) / BALANCE.stickers.lastCost).toBeCloseTo(1, 6);
-    expect(BUYABLE_STICKERS).toBe(REGULAR_STICKERS.length);
+    expect(BUYABLE_STICKERS).toBe(buyable.length);
   });
 
   it('buying deducts the price, needs cash, and each sticker can be bought once', () => {
@@ -287,6 +294,78 @@ describe('sticker shop', () => {
     expect(n.stickers).toContain('hoppe');
     expect(n.stickers).not.toContain('bogus');
     expect(n.showStickers).toBe(false);
+  });
+});
+
+describe('sticker unlocks', () => {
+  const hazlitt = 'book-hazlitt-economics-in-one-lesson';
+
+  it('every unlock rule points at a real sticker and a real upgrade', () => {
+    for (const [id, rule] of Object.entries(STICKER_UNLOCKS)) {
+      expect(STICKERS.some((x) => x.id === id), id).toBe(true);
+      if (rule.secessions === undefined) expect(UPGRADES.some((u) => u.id === rule.upgrade), id).toBe(true);
+    }
+  });
+
+  it('each sticker adds +0.25% income', () => {
+    expect(BALANCE.stickers.bonusEach).toBe(0.0025);
+  });
+
+  it('purchase unlocks: locked until the condition is met, then for sale for good', () => {
+    const s = newState();
+    s.score = Infinity;
+    expect(isStickerLocked(s, 'ak47')).toBe(true);
+    expect(stickerForSale(s, 'ak47')).toBe(false);
+    expect(buySticker(s, 'ak47')).toBe(false);
+    s.owned[3] = 49;
+    expect(unlockStickers(s)).toEqual([]);
+    expect(unlockProgress(s, 'ak47')).toEqual({ have: 49, need: 50 });
+    s.owned[3] = 50;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['ak47']);
+    expect(s.stickers).not.toContain('ak47'); // unlocked for sale, not given away
+    s.owned = {}; // e.g. after seceding
+    expect(stickerForSale(s, 'ak47')).toBe(true);
+    expect(buySticker(s, 'ak47')).toBe(true);
+  });
+
+  it('earned stickers are free, never for sale, and kept through secession', () => {
+    const s = newState();
+    s.score = Infinity;
+    expect(buySticker(s, hazlitt)).toBe(false);
+    s.owned[1] = 100;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual([hazlitt]);
+    expect(s.stickers).toEqual([hazlitt]);
+    expect(stickerCost(s)).toBe(BALANCE.stickers.firstCost); // doesn't push up the price ladder
+    s.runEarnings = s.allTimeEarnings = 1e15;
+    secede(s);
+    expect(s.stickers).toEqual([hazlitt]);
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['liberland']); // first secession
+    expect(unlockStickers(s)).toEqual([]);
+  });
+
+  it('the book ladder and Liberland unlock in order', () => {
+    const s = newState();
+    s.owned[1] = 1000;
+    const books = unlockStickers(s).map((x) => x.id);
+    expect(books).toHaveLength(5);
+    expect(books).toContain('book-mises-human-action');
+    expect(s.stickers).not.toContain('liberland');
+    s.stats.secessions = 1;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['liberland']);
+  });
+
+  it('Cold Storage (all crypto stickers) boosts golden-sticker cash by 25%', () => {
+    const set = STICKER_SETS.find((x) => x.category === 'crypto')!;
+    expect(set.goldenCash).toBe(1.25);
+    const cash = (stickers: string[]) => {
+      const s = newState();
+      s.score = 1e6;
+      s.stickers = stickers;
+      return catchGolden(s, GOLDEN_EFFECTS.find((e) => e.id === 'wallet')!);
+    };
+    const crypto = STICKERS.filter((x) => x.category === 'crypto').map((x) => x.id);
+    // No upgrades, so the payout is click-based and the per-sticker income bonus doesn't move it.
+    expect(cash(crypto) / cash(crypto.slice(1))).toBeCloseTo(1.25, 6);
   });
 });
 

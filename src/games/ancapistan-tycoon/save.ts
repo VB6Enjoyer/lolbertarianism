@@ -1,5 +1,5 @@
 import { createSaveSlot } from '../../shared/storage.ts';
-import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STICKERS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STICKERS, STICKER_UNLOCKS, UPGRADES } from './data.ts';
 import { newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
@@ -63,6 +63,7 @@ export function normalize(raw: Partial<GameState>): GameState {
   state.achievements = ACHIEVEMENTS.map((a) => a.id).filter((id) => unlocked.has(id));
   const owned = new Set(raw.stickers ?? []);
   state.stickers = STICKERS.map((s) => s.id).filter((id) => owned.has(id));
+  state.unlockedStickers = Object.keys(STICKER_UNLOCKS).filter((id) => raw.unlockedStickers?.includes(id));
   state.showStickers = raw.showStickers !== false;
   state.buyAmount = raw.buyAmount === 10 || raw.buyAmount === 'max' ? raw.buyAmount : 1;
   state.charters = CHARTERS.map((c) => c.id).filter((id) => raw.charters?.includes(id));

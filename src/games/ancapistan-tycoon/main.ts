@@ -15,6 +15,7 @@ import {
   STICKER_CATEGORIES,
   STICKER_LABELS,
   STICKER_SETS,
+  STICKER_UNLOCKS,
   UPGRADES,
   type Achievement,
   type Challenge,
@@ -63,6 +64,9 @@ import {
   stickerForSale,
   tick,
   unlockAchievements,
+  unlockProgress,
+  unlockStickers,
+  isStickerLocked,
   type BuyAmount,
   type GameState,
 } from './logic.ts';
@@ -282,6 +286,7 @@ function toast(title: string, detail: string) {
 
 /** Checks achievements, announces new ones and refreshes the UI. */
 function refresh() {
+  announceStickerUnlocks();
   const unlocked = unlockAchievements(state);
   if (unlocked.length) sfx.achievement();
   if (unlocked.length > 3) {
@@ -290,6 +295,28 @@ function refresh() {
     for (const a of unlocked) toast(`${a.icon} Achievement unlocked: ${a.name}`, a.description);
   }
   updateUI();
+}
+
+/** Unlocks stickers whose conditions are now met; earned ones land on screen. */
+function announceStickerUnlocks() {
+  const fresh = unlockStickers(state);
+  if (!fresh.length) return;
+  sfx.sticker();
+  if (fresh.length > 3) {
+    toast(`🔓 ${fresh.length} stickers unlocked!`, 'Open the 🎨 Sticker Shop to see them.');
+    if (state.showStickers) for (const s of fresh) if (STICKER_UNLOCKS[s.id].earned) dropSticker(els.stickers, s.id);
+    return;
+  }
+  for (const s of fresh) {
+    const name = STICKER_LABELS[s.id]?.name ?? s.content;
+    if (STICKER_UNLOCKS[s.id].earned) {
+      toast(`🎁 Sticker earned: ${name}`, `${STICKER_UNLOCKS[s.id].need}. It's yours, free, and stays through secession.`);
+      if (state.showStickers) dropSticker(els.stickers, s.id);
+    } else {
+      toast(`🔓 New sticker for sale: ${name}`, `Unlocked: ${STICKER_UNLOCKS[s.id].need.toLowerCase()}. Find it in the 🎨 Sticker Shop.`);
+    }
+  }
+  if (els.modalBody.querySelector('.sticker-shop')) els.modalBody.replaceChildren(renderStickerShop());
 }
 
 /** Unlocks an achievement the game grants directly (secret or seasonal); no-op if already unlocked. */
@@ -464,7 +491,7 @@ function showStickers() {
   updateEventDecor(); // re-apply today's gift glow
 }
 
-const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+const pct = (n: number) => `${Math.round(n * 10000) / 100}%`;
 
 function shopSummary() {
   const bonus = state.stickers.length * BALANCE.stickers.bonusEach;
@@ -479,13 +506,19 @@ function visibleCategories() {
   return STICKER_CATEGORIES.filter((c) => {
     const inCat = STICKERS.filter((s) => s.category === c.id);
     const seasonal = inCat.some((s) => s.season);
-    return !seasonal || inCat.some((s) => stickerForSale(s.id, today()) || hasSticker(state, s.id));
+    return !seasonal || inCat.some((s) => stickerForSale(state, s.id, today()) || hasSticker(state, s.id));
   });
 }
 
 /** Price label for a sticker card. */
 function stickerPriceLabel(id: string) {
-  if (!stickerForSale(id, today())) return '🎄 Christmas only';
+  const rule = STICKER_UNLOCKS[id];
+  const progress = unlockProgress(state, id);
+  if (rule && progress && (rule.earned || isStickerLocked(state, id)) && !stickerForSale(state, id, today())) {
+    const count = rule.secessions !== undefined ? '' : ` (${Math.min(progress.have, progress.need).toLocaleString('en-US')}/${progress.need.toLocaleString('en-US')})`;
+    return `${rule.earned ? '🎁 Earn it:' : '🔒'} ${rule.need}${count}`;
+  }
+  if (!stickerForSale(state, id, today())) return '🎄 Christmas only';
   if (priceOfSticker(state, id) === 0) return '🎁 Free today!';
   return `Buy · ${money(priceOfSticker(state, id))}`;
 }
@@ -561,7 +594,8 @@ function renderStickerShop(): HTMLElement {
       card.append(caption);
     }
     card.append(el('span', 'sticker-price', owned ? '✔ Owned' : stickerPriceLabel(s.id)));
-    if (owned || !stickerForSale(s.id, today())) {
+    if (STICKER_UNLOCKS[s.id] && !owned && isStickerLocked(state, s.id)) card.classList.add('sticker-locked');
+    if (owned || !stickerForSale(state, s.id, today())) {
       card.disabled = true;
     } else {
       card.dataset.locked = '';

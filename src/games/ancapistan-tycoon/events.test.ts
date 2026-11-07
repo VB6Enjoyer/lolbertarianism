@@ -71,8 +71,8 @@ describe('event dates', () => {
 describe('Christmas stickers', () => {
   it('are for sale only during the event', () => {
     const id = christmasStickers[0].id;
-    expect(stickerForSale(id, day(11, 6))).toBe(false);
-    expect(stickerForSale(id, day(12, 24))).toBe(true);
+    expect(stickerForSale(newState(), id, day(11, 6))).toBe(false);
+    expect(stickerForSale(newState(), id, day(12, 24))).toBe(true);
     const s = newState();
     s.score = 1e9;
     expect(buySticker(s, id, day(11, 6))).toBe(false);

@@ -73,7 +73,7 @@ Noticed along the way, left alone for now:
 - 🎨 Stickers button opens a shop with tabs per category (quotes, emojis,
   flags, people, orgs, items). Every sticker starts locked; all are bought
   one at a time. Reshuffle Stickers appears once you own one.
-- Each owned sticker adds +0.5% to passive income. The price depends only on how
+- Each owned sticker adds +0.25% to passive income (was +0.5% before the books). The price depends only on how
   many you've bought: $10k for the first, ~31% more per purchase, ~$10 trillion
   for the last (`BALANCE.stickers`).
 - The screen shows every sticker you own; a toggle hides them (bonus stays).
@@ -281,6 +281,28 @@ Noticed along the way, left alone for now:
   `?date=` previews now reach every rule, including income.
 - Event popups are at least 480 px wide (so text stays readable next to tall
   portraits) and dialog buttons stick to the bottom on small screens.
+
+### Unlockable stickers ✅
+
+- Per-sticker bonus down to +0.25% to undo the books' pacing boost: Andromeda
+  back to ~40h active / ~90h casual (from ~32h / ~77h).
+- Some stickers have a condition (`STICKER_UNLOCKS`). Once met, they stay
+  unlocked for good (saved in `unlockedStickers`, carried through challenges).
+  - Earned for free: Economics in One Lesson (100 theory books), Our Enemy, the
+    State (250), The Ethics of Liberty (500), Democracy: The God That Failed
+    (750), Human Action (1,000), Liberland flag (first secession). Earned
+    stickers survive secession, don't raise the price ladder, and are earned
+    again in a challenge run once the condition is met there.
+  - For sale once unlocked: AK-47 (50 AK-47s), M249 (200 AK-47s), McNuke
+    (first silo), Antiroad Aktion (10 roads), Gold standard coin (first crypto
+    farm), Bitcoin (50 farms), Solana (100 farms), "I would privatize the sun"
+    (solar system), "Free Market Enjoyer" (invisible hand), "Agorism Now!"
+    (100 lemonade stands).
+- Locked cards show a greyed preview and the requirement with progress, e.g.
+  "🔒 Own 200 AK-47s (60/200)" or "🎁 Earn it: Own 750 theory books".
+  Unlocks get a toast; earned stickers drop on screen.
+- New stickers: Antiroad Aktion (Orgs), Bitcoin and Solana in a new 🪙 Crypto
+  tab. Set bonus 🪙 Cold Storage: golden-sticker cash ×1.25.
 
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.

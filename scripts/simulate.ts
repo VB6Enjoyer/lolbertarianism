@@ -49,8 +49,10 @@ import {
   raidMinScore,
   secede,
   stickerCost,
+  stickerForSale,
   tick,
   unlockAchievements,
+  unlockStickers,
   type GameState,
 } from '../src/games/ancapistan-tycoon/logic.ts';
 
@@ -132,13 +134,14 @@ function options(s: GameState, p: Profile, now: number): Option[] {
     opts.push({ cost: perkCost(s, perk), gain: gainOf((c) => buyPerk(c, perk)), buy: (x) => buyPerk(x, perk) });
   }
   // Stickers: aim at the set closest to completion.
-  // Only sets on sale all year (limited editions aren't available in a simulated year-round run).
-  const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !x.season && !s.stickers.includes(x.id)))
+  // Only stickers for sale now (no limited editions in a simulated year-round run,
+  // no earned or still-locked ones).
+  const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !x.season && !s.stickers.includes(x.id) && stickerForSale(s, x.id)))
     .filter((list) => list.length)
     .sort((a, b) => a.length - b.length)[0];
   if (missing) {
     const id = missing[0].id;
-    // A sticker's own +0.5% is small; count a share of the set bonus it works toward.
+    // A sticker's own bonus is small; count a share of the set bonus it works toward.
     const direct = gainOf((c) => buySticker(c, id));
     const setGain = gainOf((c) => missing.forEach((x) => buySticker(c, x.id))) / missing.length;
     opts.push({ cost: stickerCost(s), gain: Math.max(direct, setGain), buy: (x) => buySticker(x, id) });
@@ -225,6 +228,7 @@ function simulate(p: Profile, challenge?: ChallengeId) {
 
     if (t % DECIDE_EVERY === 0) {
       shop(s, p, now);
+      unlockStickers(s);
       unlockAchievements(s);
       if (!challenge && pendingCities(s) >= Math.max(1, s.cities)) {
         secede(s);
