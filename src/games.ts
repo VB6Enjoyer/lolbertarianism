@@ -1,7 +1,8 @@
 // Single source of truth for the arcade: the homepage cards, the build inputs
 // (vite.config.ts) and the redirects from old URLs all come from this list.
 
-export type GameStatus = 'wip' | 'prototype';
+/** 'released' games get no badge on the homepage. */
+export type GameStatus = 'released' | 'wip' | 'prototype';
 
 export interface Game {
   /** File name in vidya/ (without .html) and URL slug. */
@@ -18,7 +19,7 @@ export const games: Game[] = [
     slug: 'ancapistan-tycoon',
     title: 'Ancapistan Tycoon',
     blurb: 'Click your way to a stateless paradise. Hide your assets when the Fed shows up.',
-    status: 'wip',
+    status: 'released', // v1.0
     legacyPaths: ['ancapistan_tycoon.html'],
   },
   {

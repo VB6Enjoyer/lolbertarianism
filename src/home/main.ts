@@ -6,7 +6,7 @@ import { issueUrl } from '../shared/feedback.ts';
 document.querySelector<HTMLAnchorElement>('#report-bug')!.href = issueUrl('bug', null, navigator.userAgent);
 document.querySelector<HTMLAnchorElement>('#suggest-idea')!.href = issueUrl('idea', null);
 
-const STATUS_LABEL: Record<GameStatus, string> = {
+const STATUS_LABEL: Partial<Record<GameStatus, string>> = {
   wip: 'In progress',
   prototype: 'Prototype',
 };
@@ -38,7 +38,9 @@ for (const game of games) {
   img.loading = 'lazy';
   img.width = 640;
   img.height = 400;
-  media.append(img, el('span', `badge badge--${game.status}`, STATUS_LABEL[game.status]));
+  media.append(img);
+  const label = STATUS_LABEL[game.status];
+  if (label) media.append(el('span', `badge badge--${game.status}`, label));
 
   const body = el('div', 'card__body');
   body.append(el('h2', 'card__title', game.title), el('p', 'card__blurb', game.blurb));
