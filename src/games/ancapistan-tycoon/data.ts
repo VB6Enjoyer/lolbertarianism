@@ -551,6 +551,8 @@ export interface Upgrade {
 }
 
 export const UPGRADES: readonly Upgrade[] = [
+  // Ordered by price: each one more absurd than the last. Ids are permanent (saves,
+  // achievements and unlocks refer to them), so they no longer follow the order.
   { id: 1, name: 'Buy theory book', icon: '📙', baseCost: 15, income: 0, clickBonus: 1, type: 'click', lore: 'It all starts with an idea. Read the sacred texts.' },
   { id: 2, name: 'Unlicensed lemonade stand', icon: '🍋', baseCost: 25, income: 1, clickBonus: 0, type: 'passive', lore: 'Where 6-year-olds learn the state is the enemy.' },
   { id: 3, name: 'Buy AK-47', icon: "<img src='img/ak47.webp'>", baseCost: 800, income: 0, clickBonus: 5, type: 'click', lore: 'An armed society is a polite society. And a profitable one.' },
@@ -558,22 +560,21 @@ export const UPGRADES: readonly Upgrade[] = [
   { id: 5, name: 'Homestead empty land', icon: '🏡', baseCost: 5000, income: 0, clickBonus: 10, type: 'click', lore: "If you mix your labor with it, it's yours. John Locke said so." },
   { id: 6, name: 'Overseas crypto farm', icon: '🪙', baseCost: 10000, income: 25, clickBonus: 0, type: 'passive', lore: 'Somewhere off in South East Asia. Untraceable, unseizable, and unstoppable. The perfect asset for a free individual.' },
   { id: 7, name: 'Invoke the invisible hand', icon: '🖐️', baseCost: 50000, income: 0, clickBonus: 50, type: 'click', lore: "Adam Smith's ghost now guides your clicking finger towards maximum efficiency." },
-  { id: 8, name: 'Privatize roads', icon: '🚧', baseCost: 200000, income: 100, clickBonus: 0, type: 'passive', lore: "Who will build the roads? You will. And you'll charge a toll." },
-  { id: 9, name: 'Hire PMC', icon: '🪖', baseCost: 500000, income: 0, clickBonus: 100, type: 'click', lore: 'Make your life easier and enforce the NAP through a Private Military Contractor.' },
-  { id: 10, name: 'Seasteading platform', icon: '🌊', baseCost: 1000000, income: 500, clickBonus: 0, type: 'passive', lore: 'Escape the clutches of terrestrial governments by building your own nation on the high seas.' },
-  { id: 11, name: 'Recreational McNuke silo', icon: '☢️', baseCost: 10000000, income: 0, clickBonus: 500, type: 'click', lore: 'For defending your property against particularly aggressive trespassers. Or just for fun.' },
-  { id: 12, name: 'Homestead the moon', icon: '🌑', baseCost: 75000000, income: 1000, clickBonus: 0, type: 'passive', lore: 'One small step for man, one giant leap for private property.' },
-  { id: 13, name: 'Interplanetary drug smuggling', icon: '💊', baseCost: 250000000, income: 0, clickBonus: 1000, type: 'click', lore: "The war on drugs doesn't apply in zero gravity." },
-  { id: 14, name: 'Privatize solar system', icon: '🌌', baseCost: 1000000000, income: 10000, clickBonus: 0, type: 'passive', lore: "Why stop at one planet? It's all un-homesteaded real estate." },
-  // Late game
-  { id: 15, name: 'NAP-enforcement orbital railgun', icon: '🛰️', baseCost: 5_000_000_000, income: 0, clickBonus: 10_000, type: 'click', lore: 'Aggression detected. Response delivered from low Earth orbit. No bureaucracy involved.' },
+  { id: 8, name: 'Privatize roads', icon: '🚧', baseCost: 200_000, income: 100, clickBonus: 0, type: 'passive', lore: "Who will build the roads? You will. And you'll charge a toll." },
+  { id: 17, name: 'Physical removal service', icon: '🚪', baseCost: 500_000, income: 0, clickBonus: 100, type: 'click', lore: 'Covenant communities need bouncers. Hoppe already wrote the job description.' },
+  { id: 19, name: 'Lower your time preference', icon: '⏳', baseCost: 1_000_000, income: 0, clickBonus: 150, type: 'click', lore: "Your time preference is so low you're clicking for your great-great-grandchildren's retirement." },
+  { id: 9, name: 'Hire PMC', icon: '🪖', baseCost: 10_000_000, income: 0, clickBonus: 500, type: 'click', lore: 'Make your life easier and enforce the NAP through a Private Military Contractor.' },
+  { id: 10, name: 'Seasteading platform', icon: '🌊', baseCost: 75_000_000, income: 3000, clickBonus: 0, type: 'passive', lore: 'Escape the clutches of terrestrial governments by building your own nation on the high seas.' },
+  { id: 11, name: 'Recreational McNuke silo', icon: '☢️', baseCost: 250_000_000, income: 0, clickBonus: 1000, type: 'click', lore: 'For defending your property against particularly aggressive trespassers. Or just for fun.' },
+  { id: 15, name: 'NAP-enforcement orbital railgun', icon: '🛰️', baseCost: 1_000_000_000, income: 0, clickBonus: 3000, type: 'click', lore: 'Aggression detected. Response delivered from low Earth orbit. No bureaucracy involved.' },
+  { id: 12, name: 'Homestead the moon', icon: '🌑', baseCost: 5_000_000_000, income: 50000, clickBonus: 0, type: 'passive', lore: 'One small step for man, one giant leap for private property.' },
   { id: 16, name: 'Asteroid mining guild', icon: '☄️', baseCost: 25_000_000_000, income: 250_000, clickBonus: 0, type: 'passive', lore: 'Platinum by the megaton. Wait, if gold gets this abundant, what happens to sound money? Keep mining, think later.' },
-  { id: 17, name: 'Physical removal service', icon: '🚪', baseCost: 100_000_000_000, income: 0, clickBonus: 100_000, type: 'click', lore: 'Covenant communities need bouncers. Hoppe already wrote the job description.' },
-  { id: 18, name: 'Dyson sphere toll booth', icon: '☀️', baseCost: 500_000_000_000, income: 4_000_000, clickBonus: 0, type: 'passive', lore: 'You did privatize the sun after all. Photons are now pay-per-view.' },
-  { id: 19, name: 'Lower your time preference', icon: '⏳', baseCost: 2_500_000_000_000, income: 0, clickBonus: 1_000_000, type: 'click', lore: "Your time preference is so low you're clicking for your great-great-grandchildren's retirement." },
+  { id: 13, name: 'Interplanetary drug smuggling', icon: '💊', baseCost: 100_000_000_000, income: 0, clickBonus: 100_000, type: 'click', lore: "The war on drugs doesn't apply in zero gravity." },
+  { id: 14, name: 'Privatize solar system', icon: '🌌', baseCost: 500_000_000_000, income: 4_000_000, clickBonus: 0, type: 'passive', lore: "Why stop at one planet? It's all un-homesteaded real estate." },
+  { id: 18, name: 'Dyson sphere toll booth', icon: '☀️', baseCost: 2_500_000_000_000, income: 15_000_000, clickBonus: 0, type: 'passive', lore: 'You did privatize the sun after all. Photons are now pay-per-view.' },
   { id: 20, name: 'Interstellar free trade zone', icon: '🚀', baseCost: 10_000_000_000_000, income: 60_000_000, clickBonus: 0, type: 'passive', lore: 'No tariffs for light-years in every direction. Customs officers have to bring their own oxygen.' },
-  { id: 21, name: 'Multiverse arbitrage', icon: '🔀', baseCost: 50_000_000_000_000, income: 0, clickBonus: 10_000_000, type: 'click', lore: 'Buy low in a universe with central banks, sell high in one without.' },
-  { id: 22, name: 'Homestead the Andromeda galaxy', icon: '🌀', baseCost: 200_000_000_000_000, income: 1_000_000_000, clickBonus: 0, type: 'passive', lore: '2.5 million light-years from the nearest tax office. Mix your labor with a trillion stars.' },
+  { id: 22, name: 'Homestead the Andromeda galaxy', icon: '🌀', baseCost: 50_000_000_000_000, income: 250_000_000, clickBonus: 0, type: 'passive', lore: '2.5 million light-years from the nearest tax office. Mix your labor with a trillion stars.' },
+  { id: 21, name: 'Multiverse arbitrage', icon: '🔀', baseCost: 200_000_000_000_000, income: 0, clickBonus: 30_000_000, type: 'click', lore: 'Buy low in a universe with central banks, sell high in one without.' },
 ];
 
 // ---------------------------------------------------------------------------
