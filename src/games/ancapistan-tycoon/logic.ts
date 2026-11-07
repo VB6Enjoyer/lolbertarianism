@@ -17,6 +17,7 @@ import {
   PERKS,
   STICKERS,
   STICKER_SETS,
+  STICKER_UNLOCKS,
   UPGRADES,
   type Achievement,
   type AchievementContext,
@@ -29,6 +30,7 @@ import {
   type Perk,
   type SecretAchievementId,
   type StickerCategory,
+  type StickerData,
   type StickerSet,
   type Upgrade,
 } from './data.ts';
@@ -86,8 +88,10 @@ export interface GameState {
   perks: string[];
   /** Unlocked achievement ids. */
   achievements: string[];
-  /** Owned sticker ids (starter stickers included). */
+  /** Owned sticker ids. */
   stickers: string[];
+  /** Stickers whose unlock condition has been met (permanent, see STICKER_UNLOCKS). */
+  unlockedStickers: string[];
   /** Whether owned stickers are drawn on screen (the bonus applies either way). */
   showStickers: boolean;
   /** Shop setting: buy 1, 10 or as many as you can afford. */
@@ -146,6 +150,7 @@ export function newState(): GameState {
     perks: [],
     achievements: [],
     stickers: [],
+    unlockedStickers: [],
     showStickers: true,
     buyAmount: 1,
     buffs: [],
@@ -437,8 +442,11 @@ export function buyPerk(state: GameState, perk: Perk): boolean {
 // Sticker shop
 // ---------------------------------------------------------------------------
 
-/** How many regular stickers can be bought (everything but limited editions). */
-export const BUYABLE_STICKERS = REGULAR_STICKERS.length;
+/** Earned stickers are given, never bought (see STICKER_UNLOCKS). */
+export const isEarnedSticker = (id: string) => !!STICKER_UNLOCKS[id]?.earned;
+
+/** How many regular stickers can be bought (everything but limited editions and earned ones). */
+export const BUYABLE_STICKERS = REGULAR_STICKERS.filter((s) => !isEarnedSticker(s.id)).length;
 
 /** Price growth per purchase, so the first costs `firstCost` and the last `lastCost`. */
 export const STICKER_COST_GROWTH = Math.pow(
@@ -450,7 +458,7 @@ const isSeasonal = (id: string) => !!STICKERS.find((s) => s.id === id)?.season;
 
 /** Price of the next regular sticker. Depends only on how many you've bought, not which one. */
 export function stickerCost(state: GameState): number {
-  const bought = state.stickers.filter((id) => !isSeasonal(id)).length;
+  const bought = state.stickers.filter((id) => !isSeasonal(id) && !isEarnedSticker(id)).length;
   return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought) * challengePriceFactor(state));
 }
 
@@ -470,14 +478,52 @@ export function priceOfSticker(state: GameState, id: string, now = Date.now()): 
   return isSeasonal(id) ? christmasStickerCost(state, now) : stickerCost(state);
 }
 
-/** Whether a sticker is for sale today (limited editions only during their event). */
-export function stickerForSale(id: string, date: Date = calendarDate()): boolean {
+/** Progress toward a sticker's unlock condition, or null if it has none. */
+export function unlockProgress(state: GameState, id: string): { have: number; need: number } | null {
+  const rule = STICKER_UNLOCKS[id];
+  if (!rule) return null;
+  if (rule.secessions !== undefined) return { have: state.stats.secessions, need: rule.secessions };
+  return { have: ownedCount(state, rule.upgrade!), need: rule.count! };
+}
+
+/** Locked: has an unlock condition that hasn't been met yet. */
+export const isStickerLocked = (state: GameState, id: string) =>
+  !!STICKER_UNLOCKS[id] && !state.unlockedStickers.includes(id);
+
+/**
+ * Unlocks every sticker whose condition is now met. Earned stickers are added to
+ * your collection for free (and earned again in a challenge run, which starts
+ * without stickers). Returns the stickers that were just unlocked or earned.
+ */
+export function unlockStickers(state: GameState): StickerData[] {
+  const unlocked: StickerData[] = [];
+  for (const id of Object.keys(STICKER_UNLOCKS)) {
+    const earned = isEarnedSticker(id);
+    const known = state.unlockedStickers.includes(id);
+    if (known && (!earned || hasSticker(state, id))) continue;
+    const p = unlockProgress(state, id)!;
+    if (p.have < p.need) continue;
+    if (!known) state.unlockedStickers.push(id);
+    if (earned) state.stickers.push(id);
+    const data = STICKERS.find((s) => s.id === id);
+    if (data) unlocked.push(data);
+  }
+  return unlocked;
+}
+
+/**
+ * Whether a sticker can be bought today: gifts always (birthdays, Liberland Day);
+ * never earned or still-locked ones; limited editions only during their event.
+ */
+export function stickerForSale(state: GameState, id: string, date: Date = calendarDate()): boolean {
+  if (isGiftSticker(id, date)) return true;
+  if (isEarnedSticker(id) || isStickerLocked(state, id)) return false;
   const season = STICKERS.find((s) => s.id === id)?.season;
   return !season || isEventActive(season, date);
 }
 
 export function buySticker(state: GameState, id: string, date: Date = calendarDate()): boolean {
-  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id) || !stickerForSale(id, date)) return false;
+  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id) || !stickerForSale(state, id, date)) return false;
   const cost = priceOfSticker(state, id, date.getTime());
   if (state.score < cost) return false;
   state.score -= cost;
@@ -494,7 +540,7 @@ export function completedStickerSets(state: GameState): StickerSet[] {
 }
 
 /** Product of a numeric field over the completed sets (1 when none apply). */
-const setProduct = (state: GameState, field: 'goldenDelay' | 'raidChance') =>
+const setProduct = (state: GameState, field: 'goldenDelay' | 'raidChance' | 'goldenCash') =>
   completedStickerSets(state).reduce((m, set) => m * (set[field] ?? 1), 1);
 
 // ---------------------------------------------------------------------------
@@ -538,7 +584,11 @@ export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.n
   if (PRESENT_EFFECTS.includes(effect)) state.stats.presentsOpened++;
   let cash = 0;
   if (effect.cash) {
-    cash = goldenCash(state, now) * (effect.cashMultiplier ?? 1) * eventEffects(calendarDate(now)).goldenCashMultiplier;
+    cash =
+      goldenCash(state, now) *
+      (effect.cashMultiplier ?? 1) *
+      eventEffects(calendarDate(now)).goldenCashMultiplier *
+      setProduct(state, 'goldenCash');
     earn(state, cash);
   }
   if (effect.durationSec > 0) {
@@ -652,8 +702,8 @@ export function secede(state: GameState, date: Date = calendarDate()): number {
   state.runEarnings = 0;
   state.owned = {};
   if (!hasCharter(state, 'tenure')) state.perks = [];
-  // Limited-edition stickers always stay; the rest only with Collector's Exemption.
-  if (!hasCharter(state, 'sticker-license')) state.stickers = state.stickers.filter(isSeasonal);
+  // Limited-edition and earned stickers always stay; the rest only with Collector's Exemption.
+  if (!hasCharter(state, 'sticker-license')) state.stickers = state.stickers.filter((id) => isSeasonal(id) || isEarnedSticker(id));
   state.buffs = [];
   state.stats.secessions++;
   applyRunStart(state);

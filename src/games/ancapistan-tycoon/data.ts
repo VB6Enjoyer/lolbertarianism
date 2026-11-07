@@ -38,7 +38,7 @@ export const BALANCE = {
   bonusPerAchievement: 0.01,
   stickers: {
     /** Passive income (CPS) bonus per sticker owned. */
-    bonusEach: 0.005,
+    bonusEach: 0.0025,
     /** Price of the first sticker you buy… */
     firstCost: 10_000,
     /** …and of the last one. Prices in between grow by the same factor each purchase. */
@@ -608,7 +608,7 @@ export const CLICK_PHRASES = ['Freedom!', 'My Property!', 'Based', 'No Step!'] a
 // Stickers (the draggable background collage)
 // ---------------------------------------------------------------------------
 
-export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'book' | 'christmas';
+export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'crypto' | 'book' | 'christmas';
 
 export interface StickerData {
   /** Stable id used in saves (the content itself). */
@@ -630,6 +630,7 @@ export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string }
   { id: 'person', label: '🧔 People' },
   { id: 'organization', label: '🏛️ Orgs' },
   { id: 'item', label: '🔫 Items' },
+  { id: 'crypto', label: '🪙 Crypto' },
   { id: 'book', label: '📚 Books' },
   { id: 'christmas', label: '🎄 Christmas' },
 ];
@@ -699,10 +700,14 @@ export const STICKERS: readonly StickerData[] = [
   // Organizations
   image('organization', 'misesinstitute'),
   image('organization', 'liberland'),
+  image('organization', 'antiroad-aktion'),
   // Items
   image('item', 'pistol'),
   image('item', 'm249'),
   image('item', 'ak47'),
+  // Crypto
+  image('crypto', 'bitcoin'),
+  image('crypto', 'solana'),
   // Books
   ...BOOKS.map((b): StickerData => ({ id: b.id, type: 'image', category: 'book', content: `img/books/${b.id}.webp`, width: 50 })),
   // Christmas (limited edition)
@@ -784,6 +789,9 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   // Organizations
   misesinstitute: { name: 'Mises Institute' },
   liberland: { name: 'Flag of Liberland', note: 'A micronation on the Danube' },
+  'antiroad-aktion': { name: 'Antiroad Aktion' },
+  bitcoin: { name: 'Bitcoin' },
+  solana: { name: 'Solana' },
   // Items
   pistol: { name: 'Pistol' },
   m249: { name: 'M249 machine gun' },
@@ -797,6 +805,43 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   'ancap-gingerbread': { name: 'Ancap Gingerbread Man' },
   // Books: the title, with the author underneath
   ...Object.fromEntries(BOOKS.map((b) => [b.id, { name: b.title, note: b.author }])),
+};
+
+/**
+ * Stickers you have to unlock. `earned` stickers are given to you for free when
+ * the condition is met (and kept through secession); the rest become available
+ * to buy. Once unlocked, a sticker stays unlocked for good.
+ */
+export interface StickerUnlock {
+  /** Own at least `count` of this upgrade… */
+  upgrade?: number;
+  count?: number;
+  /** …or have seceded at least this many times. */
+  secessions?: number;
+  earned?: boolean;
+  /** The requirement in plain words, for the locked card. */
+  need: string;
+}
+
+export const STICKER_UNLOCKS: Readonly<Record<string, StickerUnlock>> = {
+  // Earned books: read enough theory and they find you
+  'book-hazlitt-economics-in-one-lesson': { upgrade: 1, count: 100, earned: true, need: 'Own 100 theory books' },
+  'book-nock-our-enemy-the-state': { upgrade: 1, count: 250, earned: true, need: 'Own 250 theory books' },
+  'book-rothbard-the-ethics-of-liberty': { upgrade: 1, count: 500, earned: true, need: 'Own 500 theory books' },
+  'book-hoppe-democracy-the-god-that-failed': { upgrade: 1, count: 750, earned: true, need: 'Own 750 theory books' },
+  'book-mises-human-action': { upgrade: 1, count: 1000, earned: true, need: 'Own 1,000 theory books' },
+  liberland: { secessions: 1, earned: true, need: 'Secede for the first time' },
+  // For sale once you've earned the right
+  ak47: { upgrade: 3, count: 50, need: 'Own 50 AK-47s' },
+  m249: { upgrade: 3, count: 200, need: 'Own 200 AK-47s' },
+  '☢️': { upgrade: 11, count: 1, need: 'Own a Recreational McNuke silo' },
+  'antiroad-aktion': { upgrade: 8, count: 10, need: 'Privatize 10 roads' },
+  '🪙': { upgrade: 6, count: 1, need: 'Own an overseas crypto farm' },
+  bitcoin: { upgrade: 6, count: 50, need: 'Own 50 overseas crypto farms' },
+  solana: { upgrade: 6, count: 100, need: 'Own 100 overseas crypto farms' },
+  'I would privatize the sun': { upgrade: 14, count: 1, need: 'Privatize the solar system' },
+  'Free Market Enjoyer': { upgrade: 7, count: 1, need: 'Invoke the invisible hand' },
+  'Agorism Now!': { upgrade: 2, count: 100, need: 'Own 100 unlicensed lemonade stands' },
 };
 
 /** Stickers on sale all year (everything but limited editions). */
@@ -816,6 +861,8 @@ export interface StickerSet {
   goldenDelay?: number;
   /** Multiplies the odds of a raid. */
   raidChance?: number;
+  /** Multiplies golden-sticker cash. */
+  goldenCash?: number;
 }
 
 export const STICKER_SETS: readonly StickerSet[] = [
@@ -825,6 +872,7 @@ export const STICKER_SETS: readonly StickerSet[] = [
   { category: 'person', icon: '🧔', name: 'Austrian Pantheon', description: 'Income ×1.25.', incomeMultiplier: 1.25 },
   { category: 'organization', icon: '🏛️', name: 'Think Tank Network', description: 'Fed raids happen 25% less often.', raidChance: 0.75 },
   { category: 'item', icon: '🔫', name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
+  { category: 'crypto', icon: '🪙', name: 'Cold Storage', description: 'Golden-sticker cash ×1.25.', goldenCash: 1.25 },
   { category: 'book', icon: '📚', name: 'Library of Liberty', description: 'Clicks are worth ×1.5. You have read the sacred texts.', clickMultiplier: 1.5 },
   { category: 'christmas', icon: '🎄', name: 'Christmas Spirit', description: 'Income ×1.1, all year round.', incomeMultiplier: 1.1 },
 ];

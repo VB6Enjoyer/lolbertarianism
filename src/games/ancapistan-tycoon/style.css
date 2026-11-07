@@ -712,6 +712,15 @@ h1 {
     color: green;
 }
 
+/* Locked until a condition is met: greyed preview, requirement in place of a price. */
+.sticker-card.sticker-locked .sticker-preview {
+    filter: grayscale(1) opacity(0.45);
+}
+
+.sticker-card.sticker-locked .sticker-price {
+    color: #555;
+}
+
 /* Shop previews reuse the sticker look, but sit still inside the card. */
 .sticker.sticker-preview {
     position: static;
