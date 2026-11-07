@@ -8,7 +8,18 @@ const byId = new Map(STICKERS.map((s) => [s.id, s]));
 function fill(el: HTMLElement, data: StickerData, randomSize: boolean) {
   if (data.type === 'text') {
     el.classList.add('text');
-    el.innerText = data.content;
+    // One line per \n; a line wrapped in *asterisks* is shown in italics.
+    data.content.split('\n').forEach((line, i) => {
+      if (i) el.append(document.createElement('br'));
+      const italic = /^\*(.+)\*$/.exec(line);
+      if (italic) {
+        const em = document.createElement('em');
+        em.textContent = italic[1];
+        el.append(em);
+      } else {
+        el.append(line);
+      }
+    });
   } else if (data.type === 'emoji') {
     el.classList.add('img-rep');
     el.innerText = data.content;

@@ -483,6 +483,8 @@ export function unlockProgress(state: GameState, id: string): { have: number; ne
   const rule = STICKER_UNLOCKS[id];
   if (!rule) return null;
   if (rule.secessions !== undefined) return { have: state.stats.secessions, need: rule.secessions };
+  if (rule.raidsEvaded !== undefined) return { have: state.stats.raidsEvaded + state.stats.raidsAutoEvaded, need: rule.raidsEvaded };
+  if (rule.challenge !== undefined) return { have: state.completedChallenges.includes(rule.challenge) ? 1 : 0, need: 1 };
   return { have: ownedCount(state, rule.upgrade!), need: rule.count! };
 }
 
@@ -504,6 +506,8 @@ export function unlockStickers(state: GameState): StickerData[] {
     const p = unlockProgress(state, id)!;
     if (p.have < p.need) continue;
     if (!known) state.unlockedStickers.push(id);
+    // Already owned (bought before it became an earned sticker): nothing to announce.
+    if (earned && hasSticker(state, id)) continue;
     if (earned) state.stickers.push(id);
     const data = STICKERS.find((s) => s.id === id);
     if (data) unlocked.push(data);

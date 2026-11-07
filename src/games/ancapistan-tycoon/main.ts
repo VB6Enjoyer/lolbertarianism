@@ -515,7 +515,7 @@ function stickerPriceLabel(id: string) {
   const rule = STICKER_UNLOCKS[id];
   const progress = unlockProgress(state, id);
   if (rule && progress && (rule.earned || isStickerLocked(state, id)) && !stickerForSale(state, id, today())) {
-    const count = rule.secessions !== undefined ? '' : ` (${Math.min(progress.have, progress.need).toLocaleString('en-US')}/${progress.need.toLocaleString('en-US')})`;
+    const count = progress.need <= 1 ? '' : ` (${Math.min(progress.have, progress.need).toLocaleString('en-US')}/${progress.need.toLocaleString('en-US')})`;
     return `${rule.earned ? '🎁 Earn it:' : '🔒'} ${rule.need}${count}`;
   }
   if (!stickerForSale(state, id, today())) return '🎄 Christmas only';
@@ -1045,7 +1045,10 @@ function spawnGolden() {
   }
   const present = christmas();
   const theme = present ? undefined : eventEffects(today()).goldenTheme; // pizza or fiat
-  const pool = state.stickers.length ? state.stickers : STICKERS.map((s) => s.id);
+  // Limited editions only look the part during their event (presents cover Christmas).
+  const offSeason = (id: string) => !!STICKERS.find((s) => s.id === id)?.season;
+  const owned = state.stickers.filter((id) => !offSeason(id));
+  const pool = owned.length ? owned : STICKERS.filter((s) => !s.season).map((s) => s.id);
   const btn = el('button', `golden-sticker${present ? ' present' : ''}${theme ? ` ${theme}` : ''}`);
   btn.setAttribute('aria-label', present ? 'A Christmas present! Click it' : theme === 'pizza' ? 'A pizza! Click it' : 'Golden sticker! Click it');
   if (present) btn.append(stickerPreview('ancap-gift'));
