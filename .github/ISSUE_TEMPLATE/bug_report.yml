@@ -1,0 +1,60 @@
+name: 🐞 Bug report
+description: Something in a game is broken, wrong, or looks off.
+title: '[Bug] '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! The more specific you are, the faster it gets fixed.
+  # Keep these options in sync with src/games.ts (a test checks it).
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Ancapistan Tycoon
+        - Austrian Economics Simulator
+        - Libertarian Fight Club
+        - "Eminem's Human Action"
+        - Kindergarten Property Defender
+        - The Road to Liberty
+        - Basic Economics Trainer
+        - JUST GETTING STARTED 😈
+        - The arcade (homepage)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen again?
+      description: The steps that lead to the bug, if you know them.
+      placeholder: |
+        1. Buy 10 AK-47s
+        2. Secede
+        3. …
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      description: Filled in for you if you came from the in-game button.
+      placeholder: e.g. Firefox on Windows, Safari on iPhone
+  - type: textarea
+    id: save
+    attributes:
+      label: Save code (optional)
+      description: In Ancapistan Tycoon, 📊 Stats → 💾 Save / Load gives you a code that lets us load your exact game.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      description: Drag images here.

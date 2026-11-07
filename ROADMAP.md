@@ -363,6 +363,16 @@ Noticed along the way, left alone for now:
   now "let a raid run out the clock" (raids no longer last a minute).
 - The simulator lets slow reactions time out (the casual player reacts in 10s).
 
+### Bug reports and ideas ✅
+
+- GitHub issue forms in `.github/ISSUE_TEMPLATE/`: 🐞 Bug report (game,
+  what happened, steps, browser, optional save code, screenshots) and 💡
+  Feature idea. Labeled `bug` / `enhancement`.
+- Every game page gets a 🐞 button above the ← that opens both links in a new
+  tab, prefilled with the game, a title and the browser (`src/shared/feedback.ts`).
+  The homepage footer has the same two links.
+- A test keeps the forms' game list in sync with `src/games.ts`.
+
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.
 - Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.
