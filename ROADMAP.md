@@ -405,7 +405,7 @@ Ideas for later:
 - Was broken: the road was a CSS 3D plane tilted the wrong way (it covered the
   sky), objects never lined up with it, and Marx was something to avoid.
 - Now a pseudo-3D canvas racer (OutRun-style segments) in TypeScript: endless
-  curvy, hilly road (\`logic.ts\` rules, \`render.ts\` drawing, \`main.ts\` glue).
+  curvy, hilly road (`logic.ts` rules, `render.ts` drawing, `main.ts` glue).
 - Based on the meme: run over Marx (points, a speed boost and a combo) while
   the cops chase you; their distance shows in the rearview mirror (with Hoppe),
   and they catch you if IRS checkpoints, traffic or the grass slow you down too
