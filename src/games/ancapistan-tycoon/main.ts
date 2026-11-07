@@ -90,7 +90,7 @@ import {
   type ChallengeWin,
 } from './challenges.ts';
 import { calendarDate, eventEffects, eventsOn, gameDate, isEventActive, seasonKey, setDateOverride } from './events.ts';
-import { pickHeadline, type NewsContext } from './news.ts';
+import { newlyUnlockedHeadlines, pickHeadline, type NewsContext } from './news.ts';
 import { formatPlaytime } from './stats.ts';
 import { clearSave, exportSave, importSave, loadState, saveState } from './save.ts';
 import { setMuted, sfx } from './sfx.ts';
@@ -1440,13 +1440,19 @@ function newsContext(): NewsContext {
     raidsEvaded: state.stats.raidsEvaded,
     goldenClicks: state.stats.goldenClicks,
     clicks: state.stats.clicks,
+    raidsLost: state.stats.raidsLost,
+    newestCity: state.foundedCities.at(-1)?.name ?? null,
+    challengesWon: state.completedChallenges,
     events: eventsOn(today()).map((e) => e.id),
+    unlocked: state.unlockedHeadlines,
   };
 }
 
 /** Shows the next headline: it scrolls across once, then the next one starts. */
 function nextHeadline() {
-  els.newsText.textContent = pickHeadline(newsContext(), recentHeadlines, Math.random());
+  const context = newsContext();
+  state.unlockedHeadlines.push(...newlyUnlockedHeadlines(context)); // remembered for good
+  els.newsText.textContent = pickHeadline(context, recentHeadlines, Math.random());
   if (reducedMotion.matches || !els.newsText.animate) {
     els.newsText.style.transform = 'none';
     setTimeout(nextHeadline, 9000);

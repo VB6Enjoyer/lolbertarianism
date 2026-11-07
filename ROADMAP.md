@@ -379,6 +379,16 @@ Noticed along the way, left alone for now:
   The homepage footer has the same two links.
 - A test keeps the forms' game list in sync with `src/games.ts`.
 
+### More headlines, unlocked for good ✅
+
+- 37 new headlines (102 in all): 31 always-on submissions, plus ones for the
+  invisible hand, McNuke, Multiverse arbitrage, a lost raid, your newest city
+  (by name) and winning Communism Mode.
+- Progress headlines now use `unlock` instead of `when`: once their condition
+  is met they stay in rotation for good (saved in `unlockedHeadlines`, carried
+  through challenges), so seceding no longer hides them. Event headlines keep
+  `when` and only run on their dates.
+
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.
 - Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.

@@ -78,6 +78,7 @@ export function normalize(raw: Partial<GameState>): GameState {
     .filter((c) => c && typeof c.name === 'string' && cleanCityName(c.name))
     .map((c) => ({ name: cleanCityName(c.name), cities: Math.max(1, int(c.cities)), founded: num(c.founded) }));
   state.retainers = int(raw.retainers);
+  state.unlockedHeadlines = [...new Set((Array.isArray(raw.unlockedHeadlines) ? raw.unlockedHeadlines : []).filter((k): k is string => typeof k === 'string' && k.length > 0 && k.length <= 300))];
   // Raid penalties are kept (a reload shouldn't lift them); golden boosts are not.
   state.buffs = (Array.isArray(raw.buffs) ? raw.buffs : [])
     .filter((b) => b && RAID_PENALTY_EFFECTS.some((e) => e.id === b.effectId) && num(b.endsAt) > 0)

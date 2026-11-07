@@ -124,6 +124,8 @@ export interface GameState {
   foundedCities: FoundedCity[];
   /** DRO retainers: each one absorbs a raid that runs out the clock. Kept through secession. */
   retainers: number;
+  /** News headlines unlocked so far (they stay in the ticker for good). */
+  unlockedHeadlines: string[];
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -177,6 +179,7 @@ export function newState(): GameState {
     seenEvents: [],
     foundedCities: [],
     retainers: 0,
+    unlockedHeadlines: [],
     stats: newStats(),
     lastSaved: 0,
   };

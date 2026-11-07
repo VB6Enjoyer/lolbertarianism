@@ -41,6 +41,7 @@ export function enterChallenge(state: GameState, id: ChallengeId): GameState | n
   run.completedChallenges = [...state.completedChallenges];
   run.bestChallengeTimes = { ...state.bestChallengeTimes };
   run.seenEvents = [...state.seenEvents];
+  run.unlockedHeadlines = [...state.unlockedHeadlines];
   run.unlockedStickers = [...state.unlockedStickers];
   run.sound = state.sound;
   run.showStickers = state.showStickers;
@@ -64,6 +65,7 @@ export function leaveChallenge(state: GameState, now = Date.now()): GameState {
   main.completedChallenges = [...state.completedChallenges];
   main.bestChallengeTimes = { ...state.bestChallengeTimes };
   main.seenEvents = [...new Set([...main.seenEvents, ...state.seenEvents])];
+  main.unlockedHeadlines = [...new Set([...main.unlockedHeadlines, ...state.unlockedHeadlines])];
   main.unlockedStickers = [...new Set([...main.unlockedStickers, ...state.unlockedStickers])];
   main.sound = state.sound;
   main.showStickers = state.showStickers;
