@@ -5,6 +5,8 @@ import { BOOKS } from './books.ts';
 export const BALANCE = {
   /** Each owned copy of an upgrade makes the next one this much pricier. */
   costGrowth: 1.15,
+  /** Selling an upgrade refunds this share of what the last copy cost. */
+  sellRefund: 0.5,
   critMultiplier: 5,
   /** Chance per click of a meme phrase floating up. */
   phraseChance: 0.1,
@@ -709,7 +711,7 @@ export const STICKERS: readonly StickerData[] = [
     'hazlitt', 'murphy', 'kirzner', 'gordon', 'lewrockwell', 'caplan', 'salerno', 'woods', 'block',
     'bylund', 'nock', 'hansen', 'dfriedman', 'deist', 'hulsmann', 'ammous', 'dilorenzo', 'bagus',
     'jhs', 'milei', 'bastiat', 'sowell', 'becker', 'mfriedman', 'boettke', 'cantillon', 'azpilicueta',
-    'mariana', 'molinari', 'wieser', 'konkin',
+    'mariana', 'molinari', 'wieser', 'konkin', 'spooner',
   ].map((name) => image('person', name)),
   // Organizations
   image('organization', 'misesinstitute'),
@@ -800,6 +802,7 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   molinari: { name: 'Gustave de Molinari', note: 'The Production of Security' },
   wieser: { name: 'Friedrich von Wieser', note: 'Austrian School, second generation' },
   konkin: { name: 'Samuel Edward Konkin III', note: 'Agorism' },
+  spooner: { name: 'Lysander Spooner', note: 'No Treason' },
   // Organizations
   misesinstitute: { name: 'Mises Institute' },
   liberland: { name: 'Flag of Liberland', note: 'A micronation on the Danube' },
@@ -1040,6 +1043,10 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'speedrun-hyperinflation', icon: '🔥', name: 'Spend It Before It Melts', description: 'Win Hyperinflation Mode in under an hour.' },
   { id: 'all-challenges', icon: '🌍', name: 'Tried Every System', description: 'Win every challenge. Turns out the market was right.', check: (c) => c.challengesCompleted >= 4 },
 
+  // Granted by main.ts, which times your clicks.
+  { id: 'click-frenzy', icon: '⚡', name: 'High-Frequency Trader', description: 'Click 10 times in one second.' },
+  { id: 'click-marathon', icon: '🏭', name: 'Voluntary Sweatshop', description: 'Click 100 times in one minute. You agreed to the terms.' },
+
   // Secret achievements: granted by main.ts when the player does something specific.
   ...([
     { id: 'civil-disobedience', icon: '🪧', name: 'Civil Disobedience', description: 'Left a Fed raid on screen for a whole minute. Thoreau would be proud.', hint: 'Sometimes the best response to the State is no response at all.' },
@@ -1053,6 +1060,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     { id: 'make-up-your-mind', icon: '🔇', name: 'Make Up Your Mind', description: 'Toggled the sound 10 times in a row.', hint: 'On, off, on, off…' },
     { id: 'say-it', icon: '⌨️', name: 'Say It With Me', description: 'Typed "taxation is theft". Correct.', hint: 'Type the first commandment.' },
     { id: 'exit-liquidity', icon: '🫗', name: 'Exit Liquidity', description: 'Seceded with less than $1 in your pocket.', hint: 'Leave with nothing but your principles.' },
+    { id: 'hodl', icon: '💎', name: 'HODL', description: 'Held the snake down for 10 seconds straight. Diamond hands.', hint: "Diamond hands. Don't let go." },
+    { id: 'viennese-trinity', icon: '🎻', name: 'The Viennese Trinity', description: 'Had Menger, Böhm-Bawerk and Wieser on screen at the same time. The first Austrians, reunited.', hint: 'The founder and his two heirs, in the same café.' },
+    { id: 'rothbard-shelf', icon: '📚', name: 'Mr. Libertarian\'s Bookshelf', description: 'Had 5 Rothbard books on screen at the same time.', hint: 'One man wrote a library. Show five of his books at once.' },
+    { id: 'family-feud', icon: '🥊', name: 'Family Feud', description: 'Had Milei and Hoppe on screen at the same time. Awkward.', hint: 'Seat the chainsaw next to his harshest Austrian critic.' },
+    { id: 'chicago-boys', icon: '🌬️', name: 'Chicago Boys', description: 'Had Sowell, both Friedmans, Caplan and Becker on screen at the same time.', hint: 'Five economists the Austrians love to argue with.' },
+    { id: 'forerunners', icon: '🕯️', name: 'The Forerunners', description: 'Had Spooner, Bastiat, Cantillon, Molinari, Mariana and Azpilicueta on screen at the same time.', hint: 'Six thinkers who were libertarians before the word existed.' },
     { id: 'zero-time-preference', icon: '🧘', name: 'Time Preference: Zero', description: "Didn't click the snake for 10 minutes while making $1M/sec.", hint: 'Patience. A lot of it. While rich.' },
   ] as const).map((a) => ({ ...a, secret: true })),
 ];
@@ -1069,7 +1082,50 @@ export type SecretAchievementId =
   | 'make-up-your-mind'
   | 'say-it'
   | 'exit-liquidity'
-  | 'zero-time-preference';
+  | 'zero-time-preference'
+  | 'hodl'
+  | 'viennese-trinity'
+  | 'rothbard-shelf'
+  | 'family-feud'
+  | 'chicago-boys'
+  | 'forerunners';
 
 /** The phrase that unlocks "Say It With Me" when typed. */
 export const SECRET_PHRASE = 'taxation is theft';
+
+/**
+ * Secret achievements for having certain stickers on screen together: at least
+ * `need` of `ids` (all of them if `need` is left out).
+ */
+export const STICKER_COMBOS: readonly { achievement: SecretAchievementId; ids: readonly string[]; need?: number }[] = [
+  { achievement: 'viennese-trinity', ids: ['menger', 'bohmbawerk', 'wieser'] },
+  { achievement: 'rothbard-shelf', ids: BOOKS.filter((b) => b.author.includes('Rothbard')).map((b) => b.id), need: 5 },
+  { achievement: 'family-feud', ids: ['milei', 'hoppe'] },
+  { achievement: 'chicago-boys', ids: ['sowell', 'mfriedman', 'dfriedman', 'caplan', 'becker'] },
+  { achievement: 'forerunners', ids: ['spooner', 'bastiat', 'cantillon', 'molinari', 'mariana', 'azpilicueta'] },
+];
+
+// ---------------------------------------------------------------------------
+// City names: suggestions for the 🎲 button when you secede
+// ---------------------------------------------------------------------------
+
+export const CITY_NAMES = {
+  /** Combined with a pattern: "Rothbard" + "{}ia" = "Rothbardia". */
+  roots: [
+    'Rothbard', 'Hayek', 'Mises', 'Hoppe', 'Menger', 'Bastiat', 'Spooner', 'Hazlitt', 'Kirzner', 'Konkin',
+    'Molinari', 'Kinsella', 'Nock', 'Cantillon', 'Mariana', 'Sowell', 'Friedman', 'Salerno', 'Block', 'Bylund',
+    'Tucker', 'Hülsmann', 'Huerta', 'Boettke', 'Wieser', 'Woods', 'Caplan', 'Locke', 'Paine', 'Thoreau',
+  ],
+  /** `{}` is the root. A root ending in "e" drops it before "ia" (Hoppia, not Hoppeia). */
+  patterns: [
+    '{}ia', '{}ia', '{}borough', '{}ville', '{}burg', '{}stadt', '{}stan', '{}topia', '{}polis', 'New {}',
+    'Port {}', '{} Springs', '{} Heights', 'Free City of {}ia', '{}haven', 'Fort {}', '{} Gulch', 'Lake {}',
+  ],
+  /** Names that stand on their own. */
+  whole: [
+    'Ancapistan', 'Agoria', 'Praxeopolis', 'Catallaxy Bay', 'Covenantville', 'Liberstadt', 'Terra Nullius',
+    'Sound Money Springs', 'Taxfree-on-Sea', 'Port NAP', 'Homestead Heights', 'Low Time Preference',
+    'Lower Laissez-Faire', 'Upper Laissez-Faire', 'Free Rider Falls', 'Spontaneous Order', 'Hard Money Hollow',
+    'Gadsden', 'Exit Strategy', 'Galt\'s Gulch', 'Voluntaryville', 'Polycentric Springs', 'Unlicensed Acres',
+  ],
+} as const;

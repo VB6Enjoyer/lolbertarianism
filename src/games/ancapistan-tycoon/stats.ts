@@ -66,6 +66,7 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Raids evaded', `${count(st.raidsEvaded)} by hand, ${count(st.raidsAutoEvaded)} by shell companies`],
         ['Stickers dragged', count(st.stickersDragged)],
         ['Sticker reshuffles', count(st.reshuffles)],
+        ['Upgrades sold', count(st.upgradesSold)],
         ['Welcome-back payouts', count(st.offlineCollected)],
       ],
     },
@@ -74,6 +75,7 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
       rows: [
         ['Free Private Cities', `${count(state.cities)} (${count(citiesAvailable(state))} unspent)`],
         ['Secessions', count(st.secessions)],
+        ['Newest city', state.foundedCities.at(-1)?.name ?? 'None yet'],
         ['Charters', `${state.charters.length} / ${CHARTERS.length}`],
         ['Achievements', `${state.achievements.length} / ${ACHIEVEMENTS.length}`],
         ['Stickers', `${REGULAR_STICKERS.filter((s) => state.stickers.includes(s.id)).length} / ${REGULAR_STICKERS.length}`],

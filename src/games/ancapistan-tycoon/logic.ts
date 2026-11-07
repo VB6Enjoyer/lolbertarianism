@@ -11,6 +11,7 @@ import {
   CHARTERS,
   CHARTER_VALUES,
   CHRISTMAS,
+  CITY_NAMES,
   GOLDEN_EFFECTS,
   PRESENT_EFFECTS,
   REGULAR_STICKERS,
@@ -18,6 +19,7 @@ import {
   STICKERS,
   STICKER_SETS,
   STICKER_UNLOCKS,
+  STICKER_COMBOS,
   UPGRADES,
   type Achievement,
   type AchievementContext,
@@ -57,6 +59,8 @@ export interface Stats {
   firstPlayed: number;
   /** Challenge runs: purchases that failed, and clicks requisitioned. */
   failedPurchases: number;
+  /** Upgrades sold back. */
+  upgradesSold: number;
   requisitionedClicks: number;
   /** Christmas presents opened. */
   presentsOpened: number;
@@ -112,6 +116,8 @@ export interface GameState {
   activeChallenge: { id: ChallengeId; main: GameState } | null;
   /** Event seasons whose popup was already shown, e.g. "christmas-2026". */
   seenEvents: string[];
+  /** One entry per secession: the city you named and how many cities it brought. */
+  foundedCities: FoundedCity[];
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -134,6 +140,7 @@ export function newStats(): Stats {
     biggestClick: 0,
     firstPlayed: 0,
     failedPurchases: 0,
+    upgradesSold: 0,
     requisitionedClicks: 0,
     presentsOpened: 0,
     birthdaysCelebrated: 0,
@@ -160,6 +167,7 @@ export function newState(): GameState {
     bestChallengeTimes: {},
     activeChallenge: null,
     seenEvents: [],
+    foundedCities: [],
     stats: newStats(),
     lastSaved: 0,
   };
@@ -430,6 +438,46 @@ export function buyUpgrade(state: GameState, upgrade: Upgrade, roll = Math.rando
   return { count, failed: false };
 }
 
+/**
+ * How many copies you can sell: all of them, except the ones a challenge handed
+ * you at the start (State property can't be sold).
+ */
+export function sellableCount(state: GameState, upgrade: Upgrade): number {
+  const given = challengeRules(state).startWith?.[upgrade.id] ?? 0;
+  return Math.max(0, ownedCount(state, upgrade.id) - given);
+}
+
+/**
+ * What selling would do for the current amount (×1, ×10, or everything for MAX):
+ * each copy refunds half of what it would cost to buy back right now.
+ */
+export function sellQuote(state: GameState, upgrade: Upgrade): { count: number; refund: number } {
+  const owned = ownedCount(state, upgrade.id);
+  const sellable = sellableCount(state, upgrade);
+  const count = state.buyAmount === 'max' ? sellable : Math.min(state.buyAmount, sellable);
+  const m = upgradePriceMultiplier(state);
+  let refund = 0;
+  for (let i = 1; i <= count; i++) refund += Math.floor(upgradeCost(upgrade, owned - i, m) * BALANCE.sellRefund);
+  return { count, refund };
+}
+
+/** Sells the quoted copies. The refund is cash, not earnings (it doesn't count toward cities). Returns how many were sold. */
+export function sellUpgrade(state: GameState, upgrade: Upgrade): number {
+  const { count, refund } = sellQuote(state, upgrade);
+  if (!count) return 0;
+  state.owned[upgrade.id] = ownedCount(state, upgrade.id) - count;
+  if (!state.owned[upgrade.id]) delete state.owned[upgrade.id];
+  state.score += refund;
+  state.stats.upgradesSold += count;
+  return count;
+}
+
+/** The sticker-combo secret achievements met by the stickers on screen. */
+export function stickerCombos(onScreen: Iterable<string>): SecretAchievementId[] {
+  const shown = new Set(onScreen);
+  return STICKER_COMBOS.filter((c) => c.ids.filter((id) => shown.has(id)).length >= (c.need ?? c.ids.length)).map((c) => c.achievement);
+}
+
 export function buyPerk(state: GameState, perk: Perk): boolean {
   const cost = perkCost(state, perk);
   if (state.score < cost || hasPerk(state, perk.id)) return false;
@@ -694,7 +742,34 @@ export function pendingCities(state: GameState): number {
  * (plus bought stickers and perks, with the right charters). Returns how many
  * cities were gained (0 means you couldn't secede yet and nothing changed).
  */
-export function secede(state: GameState, date: Date = calendarDate()): number {
+export interface FoundedCity {
+  name: string;
+  /** Cities gained by that secession (the named one and any that came with it). */
+  cities: number;
+  /** Epoch ms. */
+  founded: number;
+}
+
+export const CITY_NAME_MAX = 40;
+
+/** Cleans up a typed city name: trimmed, single spaces, at most CITY_NAME_MAX characters. */
+export const cleanCityName = (name: string) => name.replace(/\s+/g, ' ').trim().slice(0, CITY_NAME_MAX).trim();
+
+/** A random city name ("Rothbardia", "Port Hayek", "Catallaxy Bay"). `rng` returns numbers in [0, 1). */
+export function randomCityName(rng: () => number = Math.random): string {
+  const pickOne = <T>(list: readonly T[]) => list[Math.floor(rng() * list.length)];
+  if (rng() < 0.25) return pickOne(CITY_NAMES.whole);
+  const root = pickOne(CITY_NAMES.roots);
+  const pattern = pickOne(CITY_NAMES.patterns);
+  const stem = pattern.includes('{}ia') && root.endsWith('e') ? root.slice(0, -1) : root;
+  return pattern.replace('{}', stem);
+}
+
+/**
+ * Secedes: trades this run for new cities. `name` names the city you found
+ * (a random one if it's blank). Returns how many cities you gained.
+ */
+export function secede(state: GameState, date: Date = calendarDate(), name = ''): number {
   if (state.activeChallenge) return 0; // no seceding from a challenge: win it or abandon it
   const pending = pendingCities(state);
   if (pending < 1) return 0;
@@ -710,6 +785,7 @@ export function secede(state: GameState, date: Date = calendarDate()): number {
   if (!hasCharter(state, 'sticker-license')) state.stickers = state.stickers.filter((id) => isSeasonal(id) || isEarnedSticker(id));
   state.buffs = [];
   state.stats.secessions++;
+  state.foundedCities.push({ name: cleanCityName(name) || randomCityName(), cities: gained, founded: date.getTime() });
   applyRunStart(state);
   return gained;
 }

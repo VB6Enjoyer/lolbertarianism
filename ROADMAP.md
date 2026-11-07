@@ -328,6 +328,23 @@ Noticed along the way, left alone for now:
   all charters ~25h / ~69h. Minarchist Mode got easier (active win ~58m,
   was ~1h 16m) because its free PMC now sits at the $10M tier.
 
+### City names, selling and more achievements ✅
+
+- Seceding asks you to name your new city (prefilled with a random name; 🎲
+  rolls another: Rothbardia, Port Hayek, Catallaxy Bay…, `CITY_NAMES`). Click
+  the city count to see every city you founded, numbered by secession. Cities
+  from before the registry show up as unnamed. Saved in `foundedCities`.
+- Sell upgrades: a Buy | Sell switch above the shop. Each copy refunds half of
+  what it would cost to buy back now (`BALANCE.sellRefund`); ×1, ×10 or ALL.
+  Refunds are cash, not earnings, so they don't count toward cities. Copies a
+  challenge hands you (Minarchist's PMC) can't be sold. Stats count them.
+- Achievements: ⚡ High-Frequency Trader (10 clicks in a second), 🏭 Voluntary
+  Sweatshop (100 in a minute). Secret: 💎 HODL (hold the snake 10 seconds),
+  and five for stickers on screen together (`STICKER_COMBOS`): 🎻 The Viennese
+  Trinity, 📚 Mr. Libertarian's Bookshelf (5 Rothbard books), 🥊 Family Feud
+  (Milei + Hoppe), 🌬️ Chicago Boys, 🕯️ The Forerunners.
+- New People sticker: Lysander Spooner (41 people).
+
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.
 - Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.

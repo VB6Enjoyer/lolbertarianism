@@ -1,6 +1,6 @@
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STICKERS, STICKER_UNLOCKS, UPGRADES } from './data.ts';
-import { newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
+import { cleanCityName, newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
  * Save history:
@@ -74,6 +74,9 @@ export function normalize(raw: Partial<GameState>): GameState {
     const t = raw.bestChallengeTimes?.[id];
     if (typeof t === 'number' && Number.isFinite(t) && t >= 0) state.bestChallengeTimes[id] = Math.floor(t);
   }
+  state.foundedCities = (Array.isArray(raw.foundedCities) ? raw.foundedCities : [])
+    .filter((c) => c && typeof c.name === 'string' && cleanCityName(c.name))
+    .map((c) => ({ name: cleanCityName(c.name), cities: Math.max(1, int(c.cities)), founded: num(c.founded) }));
   state.seenEvents = (raw.seenEvents ?? []).filter((k): k is string => typeof k === 'string' && /^[a-z-]+-\d{4}$/.test(k));
   // A challenge in progress keeps the empire it set aside (cleaned up the same way).
   const active = raw.activeChallenge;

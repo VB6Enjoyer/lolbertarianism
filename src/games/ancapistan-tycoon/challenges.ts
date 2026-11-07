@@ -20,6 +20,7 @@ const CARRIED_STATS: (keyof Stats)[] = [
   'requisitionedClicks',
   'presentsOpened',
   'birthdaysCelebrated',
+  'upgradesSold',
 ];
 
 /**

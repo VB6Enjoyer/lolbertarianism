@@ -29,6 +29,11 @@ import {
   stickerCost,
   unlockAchievements,
   unlockProgress,
+  sellQuote,
+  sellUpgrade,
+  randomCityName,
+  cleanCityName,
+  stickerCombos,
   unlockStickers,
   isEarnedSticker,
   isStickerLocked,
@@ -413,6 +418,114 @@ describe('sticker unlocks', () => {
     const crypto = STICKERS.filter((x) => x.category === 'crypto').map((x) => x.id);
     // No upgrades, so the payout is click-based and the per-sticker income bonus doesn't move it.
     expect(cash(crypto) / cash(crypto.slice(1))).toBeCloseTo(1.25, 6);
+  });
+});
+
+describe('selling upgrades', () => {
+  const land = () => upgrade(5);
+
+  it('refunds half of what the last copy cost', () => {
+    const s = newState();
+    s.owned[5] = 1;
+    expect(sellQuote(s, land())).toEqual({ count: 1, refund: 2500 }); // bought for $5,000
+    expect(sellUpgrade(s, land())).toBe(1);
+    expect(s.score).toBe(2500);
+    expect(s.owned[5]).toBeUndefined();
+    expect(s.stats.upgradesSold).toBe(1);
+    expect(sellUpgrade(s, land())).toBe(0);
+  });
+
+  it('×10 sells the ten newest copies; MAX sells everything', () => {
+    const s = newState();
+    s.owned[5] = 12;
+    s.buyAmount = 10;
+    let expected = 0;
+    for (let i = 11; i >= 2; i--) expected += Math.floor(upgradeCost(land(), i) / 2);
+    expect(sellQuote(s, land())).toEqual({ count: 10, refund: expected });
+    s.buyAmount = 'max';
+    expect(sellQuote(s, land()).count).toBe(12);
+    s.buyAmount = 10;
+    s.owned[5] = 3;
+    expect(sellQuote(s, land()).count).toBe(3);
+  });
+
+  it('refunds are cash, not earnings, so they never count toward cities', () => {
+    const s = newState();
+    s.owned[5] = 50;
+    s.buyAmount = 'max';
+    sellUpgrade(s, land());
+    expect(s.score).toBeGreaterThan(0);
+    expect(s.runEarnings).toBe(0);
+    expect(s.allTimeEarnings).toBe(0);
+  });
+
+  it("buying then selling always loses money (no free lunch)", () => {
+    const s = newState();
+    s.score = 1e9;
+    s.buyAmount = 10;
+    buyUpgrade(s, land());
+    sellUpgrade(s, land());
+    expect(s.score).toBeLessThan(1e9);
+    expect(s.score).toBeGreaterThan(1e9 - bulkCost(land(), 0, 10));
+  });
+});
+
+describe('city names', () => {
+  it('secession names the city, or picks one if left blank', () => {
+    const s = newState();
+    s.runEarnings = s.allTimeEarnings = 1e9;
+    const gained = secede(s, new Date(2026, 10, 10), '  Rothbardia   del   Norte ');
+    expect(s.foundedCities).toEqual([{ name: 'Rothbardia del Norte', cities: gained, founded: new Date(2026, 10, 10).getTime() }]);
+    s.runEarnings = s.allTimeEarnings = 1e12;
+    secede(s, new Date(2026, 10, 11), '   ');
+    expect(s.foundedCities[1].name.length).toBeGreaterThan(0);
+  });
+
+  it('names are capped at 40 characters', () => {
+    expect(cleanCityName('x'.repeat(60))).toHaveLength(40);
+  });
+
+  it('random names come from the lists, and roots ending in "e" drop it before "ia"', () => {
+    const seq = (...values: number[]) => () => values.shift()!;
+    // 0.5 skips the whole-name list; then root #4 (Hoppe) and pattern #0 ("{}ia")
+    expect(randomCityName(seq(0.5, 3 / 30, 0))).toBe('Hoppia');
+    expect(randomCityName(seq(0.5, 0, 0))).toBe('Rothbardia');
+    expect(randomCityName(seq(0.1, 0))).toBe('Ancapistan');
+    for (let i = 0; i < 200; i++) expect(randomCityName().length).toBeGreaterThan(2);
+  });
+
+  it('saves keep valid city names only', () => {
+    const raw = { foundedCities: [{ name: 'Hayekia', cities: 3, founded: 5 }, { name: '' }, { nope: 1 }, { name: 'x'.repeat(50), cities: -2, founded: 'soon' }] };
+    expect(normalize(raw as never).foundedCities).toEqual([
+      { name: 'Hayekia', cities: 3, founded: 5 },
+      { name: 'x'.repeat(40), cities: 1, founded: 0 },
+    ]);
+    expect(normalize({}).foundedCities).toEqual([]);
+  });
+});
+
+describe('sticker combos', () => {
+  it('need every sticker of the combo on screen', () => {
+    expect(stickerCombos(['menger', 'bohmbawerk'])).toEqual([]);
+    expect(stickerCombos(['menger', 'bohmbawerk', 'wieser', 'rothbard'])).toEqual(['viennese-trinity']);
+    expect(stickerCombos(['milei', 'hoppe'])).toEqual(['family-feud']);
+    expect(stickerCombos(['sowell', 'mfriedman', 'dfriedman', 'caplan', 'becker'])).toEqual(['chicago-boys']);
+    expect(stickerCombos(['spooner', 'bastiat', 'cantillon', 'molinari', 'mariana', 'azpilicueta'])).toEqual(['forerunners']);
+  });
+
+  it('five Rothbard books make a shelf', () => {
+    const rothbard = STICKERS.filter((x) => x.category === 'book' && x.id.startsWith('book-rothbard-')).map((x) => x.id);
+    expect(stickerCombos(rothbard.slice(0, 4))).toEqual([]);
+    expect(stickerCombos(rothbard.slice(0, 5))).toEqual(['rothbard-shelf']);
+  });
+
+  it('every combo sticker exists, and every combo is a secret achievement', () => {
+    for (const id of ['menger', 'bohmbawerk', 'wieser', 'milei', 'hoppe', 'sowell', 'mfriedman', 'dfriedman', 'caplan', 'becker', 'spooner', 'bastiat', 'cantillon', 'molinari', 'mariana', 'azpilicueta']) {
+      expect(STICKERS.some((x) => x.id === id), id).toBe(true);
+    }
+    for (const id of ['viennese-trinity', 'rothbard-shelf', 'family-feud', 'chicago-boys', 'forerunners', 'hodl']) {
+      expect(ACHIEVEMENTS.find((a) => a.id === id)?.secret, id).toBe(true);
+    }
   });
 });
 

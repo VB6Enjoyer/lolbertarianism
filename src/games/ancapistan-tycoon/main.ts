@@ -16,6 +16,7 @@ import {
   STICKER_LABELS,
   STICKER_SETS,
   STICKER_UNLOCKS,
+  STICKER_COMBOS,
   UPGRADES,
   type Achievement,
   type Challenge,
@@ -59,6 +60,12 @@ import {
   raidMinScore,
   raidsBlocked,
   secede,
+  sellQuote,
+  sellUpgrade,
+  ownedCount,
+  randomCityName,
+  CITY_NAME_MAX,
+  stickerCombos,
   secretDateAchievements,
   stickerCost,
   stickerForSale,
@@ -132,6 +139,11 @@ let statsOpen = false;
 /** For secret achievements: when the current raid started, and when the snake was last clicked. */
 let raidStartedAt = 0;
 let lastClickAt = Date.now();
+/** Shop mode: buying or selling upgrades (not saved). */
+let sellMode = false;
+/** Timestamps of recent clicks (last minute), for the click-speed achievements. */
+let recentClicks: number[] = [];
+let holdTimer: ReturnType<typeof setTimeout> | undefined;
 
 // `?date=YYYY-MM-DD` previews events on any day: every date-based rule follows it.
 if (/[?&]date=\d{4}-\d{2}-\d{2}/.test(location.search)) setDateOverride(gameDate());
@@ -230,15 +242,26 @@ function updateUI() {
   for (const u of UPGRADES) {
     const btn = document.getElementById(`btn-${u.id}`);
     if (!btn) continue;
+    const price = btn.querySelector('.item-cost');
+    if (sellMode) {
+      const { count, refund } = sellQuote(state, u);
+      btn.classList.toggle('disabled', !count);
+      btn.classList.remove('banned');
+      const label = ownedCount(state, u.id) ? '🏛️ State property: not for sale' : 'None to sell';
+      if (price) price.textContent = count ? `Sell${count > 1 ? ` ×${count}` : ''} · +${money(refund)}` : label;
+      continue;
+    }
     const banned = bannedReason(state, u);
     const { count, cost } = purchaseQuote(state, u);
     btn.classList.toggle('disabled', !!banned || state.score < cost);
     btn.classList.toggle('banned', !!banned);
-    const price = btn.querySelector('.item-cost');
     if (price) price.textContent = banned ?? (count > 1 ? `×${count} · ${money(cost)}` : money(cost));
   }
+  els.shop.classList.toggle('selling', sellMode);
   for (const b of els.buyAmount.querySelectorAll<HTMLElement>('button')) {
-    b.classList.toggle('active', b.dataset.amount === String(state.buyAmount));
+    if (b.dataset.mode) b.classList.toggle('active', (b.dataset.mode === 'sell') === sellMode);
+    else b.classList.toggle('active', b.dataset.amount === String(state.buyAmount));
+    if (b.dataset.amount === 'max') b.textContent = sellMode ? 'ALL' : 'MAX';
   }
   renderBuffs();
 
@@ -418,6 +441,37 @@ function paragraph(text: string, className = '') {
   return el('p', className, text);
 }
 
+/** The cities you founded, newest first. */
+function showCities() {
+  const body = el('div', 'city-list-wrap');
+  const named = state.foundedCities.reduce((n, c) => n + c.cities, 0);
+  const older = state.cities - named;
+  if (!state.cities) {
+    body.append(paragraph('No Free Private Cities yet. Secede to found your first one, and give it a name.'));
+  } else {
+    body.append(paragraph(`${state.cities} Free Private ${state.cities === 1 ? 'City' : 'Cities'}, founded over ${state.stats.secessions} secessions.`, 'fine-print'));
+    const list = el('ol', 'city-list');
+    list.reversed = true;
+    list.start = Math.max(state.stats.secessions, state.foundedCities.length); // numbered by secession
+    for (const c of [...state.foundedCities].reverse()) {
+      const item = el('li', 'city-item');
+      const date = c.founded ? new Date(c.founded).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      item.append(
+        el('span', 'city-item-name', `🏙️ ${c.name}`),
+        el('span', 'city-item-meta', [date && `Founded ${date}`, c.cities > 1 ? `+${c.cities} cities` : ''].filter(Boolean).join(' · ')),
+      );
+      list.append(item);
+    }
+    if (older > 0) {
+      const item = el('li', 'city-item older');
+      item.append(el('span', 'city-item-name', `🏚️ ${older} unnamed ${older === 1 ? 'city' : 'cities'}`), el('span', 'city-item-meta', 'Founded before the city registry'));
+      list.append(item);
+    }
+    body.append(list);
+  }
+  openModal('🏙️ Your Free Private Cities', body, [{ label: 'Close' }]);
+}
+
 function showSecession() {
   const pending = pendingCities(state);
   const body = el('div');
@@ -445,6 +499,33 @@ function showSecession() {
     ),
     paragraph(`You'll found ${pending === 1 ? `Free Private City #${cityNumber}` : `${pending} new Free Private Cities`}:`),
     el('div', 'big-number', `+${pending} 🏙️ = +${Math.round(pending * BALANCE.secession.bonusPerCity * 100)}% income`),
+  );
+  const nameRow = el('div', 'city-name-row');
+  const nameLabel = el('label', 'city-name-label', pending === 1 ? 'Name your new city:' : 'Name your new capital:');
+  const nameInput = el('input', 'city-name-input');
+  nameInput.id = 'city-name';
+  nameLabel.htmlFor = 'city-name';
+  nameInput.maxLength = CITY_NAME_MAX;
+  nameInput.value = randomCityName();
+  nameInput.autocomplete = 'off';
+  const dice = el('button', 'city-dice', '🎲');
+  dice.type = 'button';
+  dice.title = 'Suggest another name';
+  dice.setAttribute('aria-label', 'Suggest another name');
+  dice.addEventListener('click', () => {
+    nameInput.value = randomCityName();
+    nameInput.focus();
+  });
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    closeModal();
+    onSecede(nameInput.value);
+  });
+  nameRow.append(nameInput, dice);
+  body.append(
+    nameLabel,
+    nameRow,
     paragraph(
       `You leave behind your ${money(state.score)}, every upgrade` +
         (hasCharter(state, 'tenure') ? '' : ', every special upgrade') +
@@ -458,8 +539,10 @@ function showSecession() {
   );
   openModal('🏴 Declaration of Independence', body, [
     { label: 'Not yet', secondary: true },
-    { label: 'SECEDE!', onClick: onSecede },
+    { label: 'SECEDE!', onClick: () => onSecede(nameInput.value) },
   ]);
+  nameInput.focus({ preventScroll: true });
+  nameInput.select();
 }
 
 function showWelcomeBack(seconds: number, amount: number) {
@@ -1092,9 +1175,32 @@ function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
 // Actions
 // ---------------------------------------------------------------------------
 
+/** Click-speed achievements: 10 clicks in a second, 100 in a minute. */
+function trackClickSpeed(now: number) {
+  recentClicks = recentClicks.filter((t) => now - t < 60_000);
+  recentClicks.push(now);
+  if (recentClicks.filter((t) => now - t < 1000).length >= 10) unlockSecret('click-frenzy');
+  if (recentClicks.length >= 100) unlockSecret('click-marathon');
+}
+
+/** Sticker-combo secrets: checks the stickers actually on screen right now. */
+function checkStickerCombos() {
+  if (!state.showStickers) return;
+  const pending = STICKER_COMBOS.filter((c) => !state.achievements.includes(c.achievement));
+  if (!pending.length) return;
+  const visible = (id: string) =>
+    [...els.stickers.querySelectorAll<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)].some((s) => {
+      const r = s.getBoundingClientRect();
+      return r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
+    });
+  const onScreen = [...new Set(pending.flatMap((c) => c.ids))].filter((id) => state.stickers.includes(id) && visible(id));
+  for (const id of stickerCombos(onScreen)) unlockSecret(id);
+}
+
 function onClickMain(x: number, y: number) {
   if (raidActive) return;
   lastClickAt = Date.now();
+  trackClickSpeed(lastClickAt);
   const { amount, crit, requisitioned } = click(state, Math.random());
   if (requisitioned) {
     spawnFloater(x, y, 'REQUISITIONED! ☭', '#c0392b');
@@ -1115,7 +1221,23 @@ function onClickMain(x: number, y: number) {
   refresh();
 }
 
+function onSellUpgrade(id: number) {
+  const upgrade = UPGRADES.find((u) => u.id === id)!;
+  const { refund } = sellQuote(state, upgrade);
+  const sold = sellUpgrade(state, upgrade);
+  if (!sold) return;
+  const { x, y } = center();
+  spawnFloater(x, y, `SOLD${sold > 1 ? ` ×${sold}` : ''}! +${money(refund)}`, '#d35400');
+  sfx.purchase();
+  renderShop();
+  refresh();
+}
+
 function onBuyUpgrade(id: number) {
+  if (sellMode) {
+    onSellUpgrade(id);
+    return;
+  }
   const upgrade = UPGRADES.find((u) => u.id === id)!;
   const { count: bought, failed } = buyUpgrade(state, upgrade);
   const { x, y } = center();
@@ -1142,10 +1264,10 @@ function onBuyPerk(id: string) {
   refresh();
 }
 
-function onSecede() {
+function onSecede(name = '') {
   const broke = state.score < 1;
   const liberland = isEventActive('liberland-day', today());
-  const gained = secede(state, today());
+  const gained = secede(state, today(), name);
   if (!gained) return;
   if (liberland) unlockSecret('terra-nullius');
   if (broke) unlockSecret('exit-liquidity');
@@ -1155,6 +1277,7 @@ function onSecede() {
   showStickers();
   const { x, y } = center();
   spawnFloater(x, y, `INDEPENDENCE! +${gained} 🏙️`, 'black');
+  toast(`🏙️ Welcome to ${state.foundedCities.at(-1)!.name}!`, 'Your new Free Private City. See them all by clicking the city count.');
   sfx.secede();
   refresh();
 }
@@ -1162,6 +1285,7 @@ function onSecede() {
 function gameLoop() {
   tick(state, raidActive);
   checkTimedSecrets();
+  checkStickerCombos();
   const win = checkChallengeWin(state);
   if (win) {
     finishChallenge(win);
@@ -1306,6 +1430,13 @@ els.eventChip.addEventListener('click', () => {
 byId('btn-abandon').addEventListener('click', confirmAbandonChallenge);
 byId('btn-stickers').addEventListener('click', showStickerShop);
 els.buyAmount.addEventListener('click', (e) => {
+  const mode = (e.target as HTMLElement).closest<HTMLElement>('button[data-mode]');
+  if (mode) {
+    sellMode = mode.dataset.mode === 'sell';
+    els.buyAmount.setAttribute('aria-label', sellMode ? 'How many to sell' : 'How many to buy');
+    updateUI();
+    return;
+  }
   const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-amount]');
   if (!btn) return;
   const v = btn.dataset.amount;
@@ -1314,6 +1445,23 @@ els.buyAmount.addEventListener('click', (e) => {
 });
 els.secede.addEventListener('click', showSecession);
 byId('btn-evade').addEventListener('click', evadeTax);
+els.prestige.addEventListener('click', showCities);
+els.prestige.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    showCities();
+  }
+});
+
+// HODL: hold the snake down for 10 seconds.
+els.mainBtn.addEventListener('pointerdown', () => {
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => unlockSecret('hodl'), 10_000);
+});
+for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+  els.mainBtn.addEventListener(type, () => clearTimeout(holdTimer));
+}
+els.mainBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // long-press on phones
 
 els.modal.addEventListener('click', (e) => {
   if (e.target === els.modal) closeModal();
@@ -1324,6 +1472,7 @@ document.addEventListener('keydown', (e) => {
 
 enableStickerDragging(els.stickers, (sticker) => {
   state.stats.stickersDragged++;
+  setTimeout(checkStickerCombos, 900); // once the sticker has settled
   if (sticker.dataset.id === 'rothbard') {
     // Stickers ease into place (0.8s), so check once Rothbard has settled.
     setTimeout(() => {

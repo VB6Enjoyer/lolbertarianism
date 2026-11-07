@@ -775,6 +775,110 @@ h1 {
     background: var(--ancap-yellow);
 }
 
+/* Buy | Sell switch: one pill split in two. */
+.buy-mode {
+    display: inline-flex;
+    margin-right: auto;
+}
+
+.buy-mode button:first-child {
+    border-radius: 999px 0 0 999px;
+    border-right-width: 1px;
+}
+
+.buy-mode button:last-child {
+    border-radius: 0 999px 999px 0;
+    border-left-width: 1px;
+}
+
+.buy-mode button[data-mode='sell'].active {
+    background: #e67e22;
+    color: white;
+}
+
+/* Selling: rows get an orange edge so you don't sell by accident. */
+#shop-list.selling .shop-item:not(.disabled) {
+    border-color: #e67e22;
+}
+
+#shop-list.selling .item-cost {
+    color: #d35400;
+}
+
+.prestige-line {
+    cursor: pointer;
+}
+
+.prestige-line:hover {
+    filter: brightness(1.05);
+    text-decoration: underline;
+}
+
+/* Secession: name your city. */
+.city-name-label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+}
+
+.city-name-row {
+    display: flex;
+    gap: 8px;
+    margin: 6px 0 12px;
+}
+
+.city-name-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    font: inherit;
+    font-weight: bold;
+}
+
+.city-dice {
+    padding: 0 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    background: var(--ancap-yellow);
+    font-size: 1.3em;
+    cursor: pointer;
+}
+
+.city-dice:hover {
+    transform: rotate(-12deg);
+}
+
+/* Your cities */
+.city-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0 0 0 2.2em;
+    text-align: left;
+}
+
+.city-item {
+    padding: 6px 0;
+    border-bottom: 1px dashed #ccc;
+}
+
+.city-item-name {
+    display: block;
+    font-weight: bold;
+}
+
+.city-item-meta {
+    font-size: 0.8em;
+    color: #666;
+}
+
+.city-item.older {
+    list-style: none;
+    color: #666;
+}
+
 .buff-bar {
     display: flex;
     flex-wrap: wrap;
