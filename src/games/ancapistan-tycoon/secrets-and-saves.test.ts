@@ -6,8 +6,8 @@ import { exportSave, importSave, normalize } from './save.ts';
 const secrets = ACHIEVEMENTS.filter((a) => a.secret);
 
 describe('secret achievements', () => {
-  it('there are 12, each with a hint and no automatic condition', () => {
-    expect(secrets).toHaveLength(12);
+  it('there are 18, each with a hint and no automatic condition', () => {
+    expect(secrets).toHaveLength(18);
     for (const a of secrets) {
       expect(a.hint, a.id).toBeTruthy();
       expect(a.check, a.id).toBeUndefined();

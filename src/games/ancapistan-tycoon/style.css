@@ -322,6 +322,45 @@ h1 {
     box-shadow: 0 0 20px red;
 }
 
+.raid-timer {
+    position: relative;
+    height: 26px;
+    margin: 0 auto 10px;
+    max-width: 320px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 999px;
+    background: #fdd;
+    overflow: hidden;
+}
+
+.raid-timer-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #c0392b, #e74c3c);
+    transition: width 0.1s linear;
+}
+
+.raid-timer-text {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: var(--ancap-black);
+}
+
+.raid-stakes {
+    max-width: 360px;
+    margin: 0 auto 14px;
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #c0392b;
+}
+
+.raid-stakes.covered {
+    color: #1e6fb8;
+}
+
 .btn-evade {
     background: var(--ancap-black);
     color: var(--ancap-yellow);
@@ -712,6 +751,15 @@ h1 {
     color: green;
 }
 
+/* Locked until a condition is met: greyed preview, requirement in place of a price. */
+.sticker-card.sticker-locked .sticker-preview {
+    filter: grayscale(1) opacity(0.45);
+}
+
+.sticker-card.sticker-locked .sticker-price {
+    color: #555;
+}
+
 /* Shop previews reuse the sticker look, but sit still inside the card. */
 .sticker.sticker-preview {
     position: static;
@@ -766,6 +814,110 @@ h1 {
     background: var(--ancap-yellow);
 }
 
+/* Buy | Sell switch: one pill split in two. */
+.buy-mode {
+    display: inline-flex;
+    margin-right: auto;
+}
+
+.buy-mode button:first-child {
+    border-radius: 999px 0 0 999px;
+    border-right-width: 1px;
+}
+
+.buy-mode button:last-child {
+    border-radius: 0 999px 999px 0;
+    border-left-width: 1px;
+}
+
+.buy-mode button[data-mode='sell'].active {
+    background: #e67e22;
+    color: white;
+}
+
+/* Selling: rows get an orange edge so you don't sell by accident. */
+#shop-list.selling .shop-item:not(.disabled) {
+    border-color: #e67e22;
+}
+
+#shop-list.selling .item-cost {
+    color: #d35400;
+}
+
+.prestige-line {
+    cursor: pointer;
+}
+
+.prestige-line:hover {
+    filter: brightness(1.05);
+    text-decoration: underline;
+}
+
+/* Secession: name your city. */
+.city-name-label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+}
+
+.city-name-row {
+    display: flex;
+    gap: 8px;
+    margin: 6px 0 12px;
+}
+
+.city-name-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    font: inherit;
+    font-weight: bold;
+}
+
+.city-dice {
+    padding: 0 12px;
+    border: 2px solid var(--ancap-black);
+    border-radius: 8px;
+    background: var(--ancap-yellow);
+    font-size: 1.3em;
+    cursor: pointer;
+}
+
+.city-dice:hover {
+    transform: rotate(-12deg);
+}
+
+/* Your cities */
+.city-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0 0 0 2.2em;
+    text-align: left;
+}
+
+.city-item {
+    padding: 6px 0;
+    border-bottom: 1px dashed #ccc;
+}
+
+.city-item-name {
+    display: block;
+    font-weight: bold;
+}
+
+.city-item-meta {
+    font-size: 0.8em;
+    color: #666;
+}
+
+.city-item.older {
+    list-style: none;
+    color: #666;
+}
+
 .buff-bar {
     display: flex;
     flex-wrap: wrap;
@@ -785,6 +937,33 @@ h1 {
     border: 2px solid #c9a100;
     font-size: 0.8rem;
     font-weight: bold;
+}
+
+.buff-chip.penalty {
+    background: #fdecea;
+    border-color: #c0392b;
+    color: #c0392b;
+}
+
+/* DRO retainer: a single buy row above the upgrades. */
+.retainer-row {
+    font: inherit;
+    text-align: left;
+    color: inherit;
+    border-style: dashed;
+    background: #eef6ff;
+}
+
+.retainer-row .item-name {
+    display: block;
+    font-weight: bold;
+}
+
+.retainer-owned {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #1e6fb8;
+    white-space: nowrap;
 }
 
 .golden-sticker {
@@ -1409,7 +1588,7 @@ body[data-challenge='hyperinflation'] .panel {
 .event-popup-image {
     display: block;
     max-width: 100%;
-    max-height: 55vh;
+    max-height: 45vh;
     margin: 0 auto 12px;
     border: 3px solid var(--ancap-black);
     border-radius: 10px;
@@ -1502,4 +1681,35 @@ body.christmas .main-btn-wrap {
     font-size: 0.65em;
     color: #666;
     font-style: italic;
+}
+
+/* Birthdays and anniversaries */
+.sticker.gift-glow {
+    filter: drop-shadow(0 0 10px gold) drop-shadow(0 0 4px gold) !important;
+}
+
+.golden-sticker .golden-emoji {
+    font-size: 46px;
+    line-height: 1;
+}
+
+.golden-sticker.fiat {
+    background: radial-gradient(circle, #f4fff2, #b6d7a8);
+    border-color: #4f7a3a;
+    filter: grayscale(0.2) drop-shadow(0 0 8px #6aa84f);
+}
+
+.golden-sticker.pizza {
+    background: radial-gradient(circle, #fff8e1, #ffcc80);
+    border-color: #d35400;
+    filter: drop-shadow(0 0 12px #e67e22);
+}
+
+/* Dialog buttons stay in view when the content needs scrolling (tall event popups on phones). */
+.modal-actions {
+    position: sticky;
+    bottom: -20px;
+    margin: 0 -24px -20px;
+    padding: 8px 24px 12px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 30%);
 }

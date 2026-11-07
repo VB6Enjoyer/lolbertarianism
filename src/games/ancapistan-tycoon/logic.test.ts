@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_LABELS, STICKER_SETS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, BALANCE, CHARTERS, CHARTER_VALUES, GOLDEN_EFFECTS, PERKS, REGULAR_STICKERS, STICKERS, STICKER_LABELS, STICKER_SETS, STICKER_UNLOCKS, UPGRADES } from './data.ts';
 import {
   activeBuffs,
   buyCharter,
@@ -28,6 +28,20 @@ import {
   secede,
   stickerCost,
   unlockAchievements,
+  unlockProgress,
+  sellQuote,
+  raidSeconds,
+  resolveRaidTimeout,
+  retainerCost,
+  buyRetainer,
+  sellUpgrade,
+  randomCityName,
+  cleanCityName,
+  stickerCombos,
+  unlockStickers,
+  isEarnedSticker,
+  isStickerLocked,
+  stickerForSale,
   upgradeCost,
 } from './logic.ts';
 import { migrateV1, normalize, spentOn } from './save.ts';
@@ -242,12 +256,14 @@ describe('sticker shop', () => {
     const s = newState();
     expect(stickerCost(s)).toBe(BALANCE.stickers.firstCost);
     s.score = Infinity;
-    for (const x of REGULAR_STICKERS) buySticker(s, x.id);
-    expect(s.stickers.length).toBe(REGULAR_STICKERS.length);
+    s.unlockedStickers = Object.keys(STICKER_UNLOCKS);
+    const buyable = REGULAR_STICKERS.filter((x) => !isEarnedSticker(x.id));
+    for (const x of buyable) buySticker(s, x.id);
+    expect(s.stickers.length).toBe(buyable.length);
     // After buying everything, the price "of the next one" is one step past the last.
     s.stickers.pop();
     expect(stickerCost(s) / BALANCE.stickers.lastCost).toBeCloseTo(1, 6);
-    expect(BUYABLE_STICKERS).toBe(REGULAR_STICKERS.length);
+    expect(BUYABLE_STICKERS).toBe(buyable.length);
   });
 
   it('buying deducts the price, needs cash, and each sticker can be bought once', () => {
@@ -287,6 +303,339 @@ describe('sticker shop', () => {
     expect(n.stickers).toContain('hoppe');
     expect(n.stickers).not.toContain('bogus');
     expect(n.showStickers).toBe(false);
+  });
+});
+
+describe('sticker unlocks', () => {
+  const hazlitt = 'book-hazlitt-economics-in-one-lesson';
+
+  it('every unlock rule points at a real sticker and a real upgrade', () => {
+    for (const [id, rule] of Object.entries(STICKER_UNLOCKS)) {
+      expect(STICKERS.some((x) => x.id === id), id).toBe(true);
+      if (rule.upgrade !== undefined) expect(UPGRADES.some((u) => u.id === rule.upgrade), id).toBe(true);
+      else expect(rule.secessions ?? rule.raidsEvaded ?? rule.challenge, id).toBeDefined();
+    }
+  });
+
+  it('each sticker adds +0.25% income', () => {
+    expect(BALANCE.stickers.bonusEach).toBe(0.0025);
+  });
+
+  it('purchase unlocks: locked until the condition is met, then for sale for good', () => {
+    const s = newState();
+    s.score = Infinity;
+    expect(isStickerLocked(s, 'ak47')).toBe(true);
+    expect(stickerForSale(s, 'ak47')).toBe(false);
+    expect(buySticker(s, 'ak47')).toBe(false);
+    s.owned[3] = 49;
+    expect(unlockStickers(s)).toEqual([]);
+    expect(unlockProgress(s, 'ak47')).toEqual({ have: 49, need: 50 });
+    s.owned[3] = 50;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['ak47']);
+    expect(s.stickers).not.toContain('ak47'); // unlocked for sale, not given away
+    s.owned = {}; // e.g. after seceding
+    expect(stickerForSale(s, 'ak47')).toBe(true);
+    expect(buySticker(s, 'ak47')).toBe(true);
+  });
+
+  it('earned stickers are free, never for sale, and kept through secession', () => {
+    const s = newState();
+    s.score = Infinity;
+    expect(buySticker(s, hazlitt)).toBe(false);
+    s.owned[1] = 100;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual([hazlitt]);
+    expect(s.stickers).toEqual([hazlitt]);
+    expect(stickerCost(s)).toBe(BALANCE.stickers.firstCost); // doesn't push up the price ladder
+    s.runEarnings = s.allTimeEarnings = 1e15;
+    secede(s);
+    expect(s.stickers).toEqual([hazlitt]);
+    expect(unlockStickers(s).map((x) => x.id).sort()).toEqual(['book-oppenheimer-the-state', 'liberland']); // first secession
+    expect(unlockStickers(s)).toEqual([]);
+  });
+
+  it('the book ladder and Liberland unlock in order', () => {
+    const s = newState();
+    s.owned[1] = 1000;
+    const books = unlockStickers(s).map((x) => x.id);
+    expect(books).toHaveLength(5);
+    expect(books).toContain('book-mises-human-action');
+    expect(s.stickers).not.toContain('liberland');
+    s.stats.secessions = 1;
+    expect(unlockStickers(s).map((x) => x.id).sort()).toEqual(['book-oppenheimer-the-state', 'liberland']);
+    s.stats.secessions = 5;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['book-rothbard-anatomy-of-the-state']);
+  });
+
+  it('winning the Communism challenge earns The Gulag Archipelago', () => {
+    const s = newState();
+    const gulag = 'book-solzhenitsyn-the-gulag-archipelago';
+    expect(unlockProgress(s, gulag)).toEqual({ have: 0, need: 1 });
+    s.completedChallenges = ['communism'];
+    expect(unlockStickers(s).map((x) => x.id)).toEqual([gulag]);
+    expect(s.stickers).toContain(gulag);
+  });
+
+  it('End! The! Fed! goes on sale after 100 dodged raids (by hand or by shell company)', () => {
+    const s = newState();
+    s.stats.raidsEvaded = 60;
+    s.stats.raidsAutoEvaded = 39;
+    expect(unlockStickers(s)).toEqual([]);
+    s.stats.raidsAutoEvaded = 40;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['End! The! Fed!']);
+    expect(s.stickers).toEqual([]);
+  });
+
+  it('physical removal goes on sale after 10 physical removal services', () => {
+    const s = newState();
+    s.owned[17] = 10;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['🚁']);
+  });
+
+  it('an earned sticker you had already bought is not given twice', () => {
+    const s = newState();
+    s.stickers = ['book-oppenheimer-the-state'];
+    s.stats.secessions = 1;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['liberland']);
+    expect(s.stickers.filter((id) => id === 'book-oppenheimer-the-state')).toHaveLength(1);
+  });
+
+  it('Bookworm: every earned book', () => {
+    const s = newState();
+    s.owned[1] = 1000;
+    s.stats.secessions = 5;
+    unlockStickers(s);
+    expect(unlockAchievements(s).map((a) => a.id)).not.toContain('bookworm');
+    s.completedChallenges = ['communism'];
+    unlockStickers(s);
+    expect(unlockAchievements(s).map((a) => a.id)).toContain('bookworm');
+  });
+
+  it('Cold Storage (all crypto stickers) boosts golden-sticker cash by 25%', () => {
+    const set = STICKER_SETS.find((x) => x.category === 'crypto')!;
+    expect(set.goldenCash).toBe(1.25);
+    const cash = (stickers: string[]) => {
+      const s = newState();
+      s.score = 1e6;
+      s.stickers = stickers;
+      return catchGolden(s, GOLDEN_EFFECTS.find((e) => e.id === 'wallet')!);
+    };
+    const crypto = STICKERS.filter((x) => x.category === 'crypto').map((x) => x.id);
+    // No upgrades, so the payout is click-based and the per-sticker income bonus doesn't move it.
+    expect(cash(crypto) / cash(crypto.slice(1))).toBeCloseTo(1.25, 6);
+  });
+});
+
+describe('raid timer and penalties', () => {
+  it('give between 1 and 30 seconds', () => {
+    expect(raidSeconds(0)).toBe(BALANCE.raid.minSeconds);
+    expect(raidSeconds(0.9999)).toBe(BALANCE.raid.maxSeconds);
+    expect(BALANCE.raid.minSeconds).toBe(1);
+    expect(BALANCE.raid.maxSeconds).toBe(30);
+  });
+
+  it('a retainer absorbs a timed-out raid and nothing is lost', () => {
+    const s = newState();
+    s.score = 1e6;
+    s.owned[5] = 3;
+    s.retainers = 2;
+    expect(resolveRaidTimeout(s, 0, 0)).toEqual({ kind: 'retainer' });
+    expect(s.retainers).toBe(1);
+    expect(s.score).toBe(1e6);
+    expect(s.owned[5]).toBe(3);
+    expect(s.stats.raidsHandled).toBe(1);
+    expect(s.stats.raidsLost).toBe(0);
+  });
+
+  it('without one, the Fed takes 20% of your cash, a building, or puts you under a penalty', () => {
+    const fresh = () => {
+      const s = newState();
+      s.score = 1e6;
+      s.owned = { 5: 2 };
+      return s;
+    };
+    // Options in order: cash, asset freeze, capital controls, building
+    const cash = fresh();
+    expect(resolveRaidTimeout(cash, 0, 0)).toEqual({ kind: 'cash', amount: 200_000 });
+    expect(cash.score).toBe(800_000);
+    expect(cash.stats.raidsLost).toBe(1);
+
+    const freeze = fresh();
+    freeze.owned[2] = 10;
+    const out = resolveRaidTimeout(freeze, 0.3, 0, 0);
+    expect(out.kind === 'penalty' && out.effect.id).toBe('asset-freeze');
+    expect(derive(freeze, 1000).incomePerSec).toBeCloseTo(derive({ ...freeze, buffs: [] }, 1000).incomePerSec * 0.5, 6);
+    expect(derive(freeze, 601_000).incomePerSec).toBeCloseTo(derive({ ...freeze, buffs: [] }, 601_000).incomePerSec, 6); // over after 10 minutes
+
+    const controls = fresh();
+    const out2 = resolveRaidTimeout(controls, 0.6, 0, 0);
+    expect(out2.kind === 'penalty' && out2.effect.id).toBe('capital-controls');
+    expect(derive(controls, 1000).clickAmount).toBeCloseTo(derive({ ...controls, buffs: [] }, 1000).clickAmount * 0.5, 6);
+
+    const seized = fresh();
+    const out3 = resolveRaidTimeout(seized, 0.99, 0);
+    expect(out3.kind === 'building' && out3.upgrade.id).toBe(5);
+    expect(seized.owned[5]).toBe(1);
+  });
+
+  it('the same penalty twice restarts its clock instead of stacking', () => {
+    const s = newState();
+    s.owned = { 5: 5 };
+    resolveRaidTimeout(s, 0.3, 0, 0);
+    resolveRaidTimeout(s, 0.3, 0, 100_000);
+    expect(s.buffs).toEqual([{ effectId: 'asset-freeze', endsAt: 700_000 }]);
+  });
+
+  it('with no buildings, the building option is off the table', () => {
+    const s = newState();
+    s.score = 100;
+    for (const roll of [0, 0.4, 0.7, 0.99]) expect(resolveRaidTimeout(s, roll, 0).kind).not.toBe('building');
+  });
+});
+
+describe('DRO retainers', () => {
+  it('cost 5 minutes of income, at least $1,000, and stack', () => {
+    const s = newState();
+    expect(retainerCost(s, 0)).toBe(BALANCE.raid.retainerMinCost);
+    s.owned[2] = 1000;
+    const perSec = derive(s, 0).incomePerSec;
+    expect(retainerCost(s, 0)).toBe(Math.ceil(perSec * 300));
+    s.score = retainerCost(s, 0) * 2;
+    expect(buyRetainer(s, 0)).toBe(true);
+    expect(buyRetainer(s, 0)).toBe(true);
+    expect(buyRetainer(s, 0)).toBe(false);
+    expect(s.retainers).toBe(2);
+  });
+
+  it('ignore temporary boosts and penalties when pricing', () => {
+    const s = newState();
+    s.owned[2] = 1000;
+    const before = retainerCost(s, 0);
+    resolveRaidTimeout(s, 0.3, 0, 0); // asset freeze
+    expect(retainerCost(s, 1000)).toBe(before);
+  });
+
+  it('are kept when you secede', () => {
+    const s = newState();
+    s.retainers = 3;
+    s.runEarnings = s.allTimeEarnings = 1e9;
+    secede(s);
+    expect(s.retainers).toBe(3);
+  });
+
+  it('and raid penalties survive a save, while golden boosts do not', () => {
+    const later = Date.now() + 60_000;
+    const raw = { retainers: 4, buffs: [{ effectId: 'asset-freeze', endsAt: later }, { effectId: 'bull-run', endsAt: later }, { effectId: 'fake', endsAt: later }] };
+    const s = normalize(raw as never);
+    expect(s.retainers).toBe(4);
+    expect(s.buffs).toEqual([{ effectId: 'asset-freeze', endsAt: later }]);
+  });
+});
+
+describe('selling upgrades', () => {
+  const land = () => upgrade(5);
+
+  it('refunds half of what the last copy cost', () => {
+    const s = newState();
+    s.owned[5] = 1;
+    expect(sellQuote(s, land())).toEqual({ count: 1, refund: 2500 }); // bought for $5,000
+    expect(sellUpgrade(s, land())).toBe(1);
+    expect(s.score).toBe(2500);
+    expect(s.owned[5]).toBeUndefined();
+    expect(s.stats.upgradesSold).toBe(1);
+    expect(sellUpgrade(s, land())).toBe(0);
+  });
+
+  it('×10 sells the ten newest copies; MAX sells everything', () => {
+    const s = newState();
+    s.owned[5] = 12;
+    s.buyAmount = 10;
+    let expected = 0;
+    for (let i = 11; i >= 2; i--) expected += Math.floor(upgradeCost(land(), i) / 2);
+    expect(sellQuote(s, land())).toEqual({ count: 10, refund: expected });
+    s.buyAmount = 'max';
+    expect(sellQuote(s, land()).count).toBe(12);
+    s.buyAmount = 10;
+    s.owned[5] = 3;
+    expect(sellQuote(s, land()).count).toBe(3);
+  });
+
+  it('refunds are cash, not earnings, so they never count toward cities', () => {
+    const s = newState();
+    s.owned[5] = 50;
+    s.buyAmount = 'max';
+    sellUpgrade(s, land());
+    expect(s.score).toBeGreaterThan(0);
+    expect(s.runEarnings).toBe(0);
+    expect(s.allTimeEarnings).toBe(0);
+  });
+
+  it("buying then selling always loses money (no free lunch)", () => {
+    const s = newState();
+    s.score = 1e9;
+    s.buyAmount = 10;
+    buyUpgrade(s, land());
+    sellUpgrade(s, land());
+    expect(s.score).toBeLessThan(1e9);
+    expect(s.score).toBeGreaterThan(1e9 - bulkCost(land(), 0, 10));
+  });
+});
+
+describe('city names', () => {
+  it('secession names the city, or picks one if left blank', () => {
+    const s = newState();
+    s.runEarnings = s.allTimeEarnings = 1e9;
+    const gained = secede(s, new Date(2026, 10, 10), '  Rothbardia   del   Norte ');
+    expect(s.foundedCities).toEqual([{ name: 'Rothbardia del Norte', cities: gained, founded: new Date(2026, 10, 10).getTime() }]);
+    s.runEarnings = s.allTimeEarnings = 1e12;
+    secede(s, new Date(2026, 10, 11), '   ');
+    expect(s.foundedCities[1].name.length).toBeGreaterThan(0);
+  });
+
+  it('names are capped at 40 characters', () => {
+    expect(cleanCityName('x'.repeat(60))).toHaveLength(40);
+  });
+
+  it('random names come from the lists, and roots ending in "e" drop it before "ia"', () => {
+    const seq = (...values: number[]) => () => values.shift()!;
+    // 0.5 skips the whole-name list; then root #4 (Hoppe) and pattern #0 ("{}ia")
+    expect(randomCityName(seq(0.5, 3 / 30, 0))).toBe('Hoppia');
+    expect(randomCityName(seq(0.5, 0, 0))).toBe('Rothbardia');
+    expect(randomCityName(seq(0.1, 0))).toBe('Ancapistan');
+    for (let i = 0; i < 200; i++) expect(randomCityName().length).toBeGreaterThan(2);
+  });
+
+  it('saves keep valid city names only', () => {
+    const raw = { foundedCities: [{ name: 'Hayekia', cities: 3, founded: 5 }, { name: '' }, { nope: 1 }, { name: 'x'.repeat(50), cities: -2, founded: 'soon' }] };
+    expect(normalize(raw as never).foundedCities).toEqual([
+      { name: 'Hayekia', cities: 3, founded: 5 },
+      { name: 'x'.repeat(40), cities: 1, founded: 0 },
+    ]);
+    expect(normalize({}).foundedCities).toEqual([]);
+  });
+});
+
+describe('sticker combos', () => {
+  it('need every sticker of the combo on screen', () => {
+    expect(stickerCombos(['menger', 'bohmbawerk'])).toEqual([]);
+    expect(stickerCombos(['menger', 'bohmbawerk', 'wieser', 'rothbard'])).toEqual(['viennese-trinity']);
+    expect(stickerCombos(['milei', 'hoppe'])).toEqual(['family-feud']);
+    expect(stickerCombos(['sowell', 'mfriedman', 'dfriedman', 'caplan', 'becker'])).toEqual(['chicago-boys']);
+    expect(stickerCombos(['spooner', 'bastiat', 'cantillon', 'molinari', 'mariana', 'azpilicueta'])).toEqual(['forerunners']);
+  });
+
+  it('five Rothbard books make a shelf', () => {
+    const rothbard = STICKERS.filter((x) => x.category === 'book' && x.id.startsWith('book-rothbard-')).map((x) => x.id);
+    expect(stickerCombos(rothbard.slice(0, 4))).toEqual([]);
+    expect(stickerCombos(rothbard.slice(0, 5))).toEqual(['rothbard-shelf']);
+  });
+
+  it('every combo sticker exists, and every combo is a secret achievement', () => {
+    for (const id of ['menger', 'bohmbawerk', 'wieser', 'milei', 'hoppe', 'sowell', 'mfriedman', 'dfriedman', 'caplan', 'becker', 'spooner', 'bastiat', 'cantillon', 'molinari', 'mariana', 'azpilicueta']) {
+      expect(STICKERS.some((x) => x.id === id), id).toBe(true);
+    }
+    for (const id of ['viennese-trinity', 'rothbard-shelf', 'family-feud', 'chicago-boys', 'forerunners', 'hodl']) {
+      expect(ACHIEVEMENTS.find((a) => a.id === id)?.secret, id).toBe(true);
+    }
   });
 });
 
@@ -483,20 +832,22 @@ describe('charters (prestige shop)', () => {
 });
 
 describe('upgrade list', () => {
-  it('has unique ids, rising prices and alternates click/passive', () => {
+  it('has unique ids and rising prices, ending with Multiverse arbitrage', () => {
     expect(new Set(UPGRADES.map((u) => u.id)).size).toBe(UPGRADES.length);
-    for (let i = 1; i < UPGRADES.length; i++) {
-      expect(UPGRADES[i].baseCost).toBeGreaterThan(UPGRADES[i - 1].baseCost);
-      expect(UPGRADES[i].type).not.toBe(UPGRADES[i - 1].type);
+    for (let i = 1; i < UPGRADES.length; i++) expect(UPGRADES[i].baseCost).toBeGreaterThan(UPGRADES[i - 1].baseCost);
+    expect(UPGRADES.at(-1)!.name).toBe('Multiverse arbitrage');
+  });
+
+  it('each passive pays back its price no faster than the cheaper ones', () => {
+    const passives = UPGRADES.filter((u) => u.type === 'passive');
+    for (let i = 1; i < passives.length; i++) {
+      expect(passives[i].income / passives[i].baseCost, passives[i].name).toBeLessThanOrEqual(passives[i - 1].income / passives[i - 1].baseCost);
     }
   });
 
-  it('late-game passives pay back their price at a similar rate to Privatize solar system', () => {
-    const rate = (id: number) => upgrade(id).income / upgrade(id).baseCost;
-    for (const id of [16, 18, 20, 22]) {
-      expect(rate(id)).toBeGreaterThanOrEqual(rate(14) * 0.4);
-      expect(rate(id)).toBeLessThanOrEqual(rate(14) * 1.01);
-    }
+  it('each click upgrade adds more per click than the cheaper ones', () => {
+    const clicks = UPGRADES.filter((u) => u.type === 'click');
+    for (let i = 1; i < clicks.length; i++) expect(clicks[i].clickBonus, clicks[i].name).toBeGreaterThan(clicks[i - 1].clickBonus);
   });
 });
 
@@ -516,9 +867,10 @@ describe('sticker sets', () => {
     expect(partial.setIncomeMultiplier).toBe(1);
     s.stickers = allOf('person');
     expect(derive(s).setIncomeMultiplier).toBe(1.25);
-    // 29 stickers: +0.5% each (×1.145), then the set's ×1.25
-    expect(derive(s).incomePerSec).toBeCloseTo(100 * (1 + 29 * BALANCE.stickers.bonusEach) * 1.25);
-    expect(partial.incomePerSec).toBeCloseTo(100 * (1 + 28 * BALANCE.stickers.bonusEach));
+    // n stickers: +0.5% each, then the set's ×1.25
+    const n = allOf('person').length;
+    expect(derive(s).incomePerSec).toBeCloseTo(100 * (1 + n * BALANCE.stickers.bonusEach) * 1.25);
+    expect(partial.incomePerSec).toBeCloseTo(100 * (1 + (n - 1) * BALANCE.stickers.bonusEach));
   });
 
   it('quotes boost clicks, items add crit chance', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EVENTS } from './data.ts';
 import { HEADLINES, eligibleHeadlines, headlineText, pickHeadline, type NewsContext } from './news.ts';
 
 const ctx = (over: Partial<NewsContext> = {}, owned: Record<number, number> = {}): NewsContext => ({
@@ -17,7 +18,7 @@ const ctx = (over: Partial<NewsContext> = {}, owned: Record<number, number> = {}
 });
 
 const everything = ctx(
-  { allTimeEarnings: 1e15, incomePerSec: 1e9, cities: 20, charters: 5, stickers: 77, secessions: 9, raidsEvaded: 12, goldenClicks: 30, clicks: 50_000, events: ['christmas', 'fed-birthday'] },
+  { allTimeEarnings: 1e15, incomePerSec: 1e9, cities: 20, charters: 5, stickers: 77, secessions: 9, raidsEvaded: 12, goldenClicks: 30, clicks: 50_000, events: EVENTS.map((e) => e.id) },
   Object.fromEntries(Array.from({ length: 22 }, (_, i) => [i + 1, 10])),
 );
 

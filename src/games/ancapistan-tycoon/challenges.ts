@@ -19,6 +19,10 @@ const CARRIED_STATS: (keyof Stats)[] = [
   'failedPurchases',
   'requisitionedClicks',
   'presentsOpened',
+  'birthdaysCelebrated',
+  'upgradesSold',
+  'raidsHandled',
+  'raidsLost',
 ];
 
 /**
@@ -37,6 +41,7 @@ export function enterChallenge(state: GameState, id: ChallengeId): GameState | n
   run.completedChallenges = [...state.completedChallenges];
   run.bestChallengeTimes = { ...state.bestChallengeTimes };
   run.seenEvents = [...state.seenEvents];
+  run.unlockedStickers = [...state.unlockedStickers];
   run.sound = state.sound;
   run.showStickers = state.showStickers;
   run.buyAmount = state.buyAmount;
@@ -59,6 +64,7 @@ export function leaveChallenge(state: GameState, now = Date.now()): GameState {
   main.completedChallenges = [...state.completedChallenges];
   main.bestChallengeTimes = { ...state.bestChallengeTimes };
   main.seenEvents = [...new Set([...main.seenEvents, ...state.seenEvents])];
+  main.unlockedStickers = [...new Set([...main.unlockedStickers, ...state.unlockedStickers])];
   main.sound = state.sound;
   main.showStickers = state.showStickers;
   main.buyAmount = state.buyAmount;

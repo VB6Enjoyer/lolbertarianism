@@ -1,7 +1,7 @@
 // Game rules as pure functions over a plain state object. No DOM in here,
 // so everything can be unit-tested (see logic.test.ts).
 
-import { isEventActive } from './events.ts';
+import { calendarDate, eventEffects, isEventActive } from './events.ts';
 import {
   ACHIEVEMENTS,
   ALL_GOLDEN_EFFECTS,
@@ -11,12 +11,16 @@ import {
   CHARTERS,
   CHARTER_VALUES,
   CHRISTMAS,
+  CITY_NAMES,
   GOLDEN_EFFECTS,
   PRESENT_EFFECTS,
+  RAID_PENALTY_EFFECTS,
   REGULAR_STICKERS,
   PERKS,
   STICKERS,
   STICKER_SETS,
+  STICKER_UNLOCKS,
+  STICKER_COMBOS,
   UPGRADES,
   type Achievement,
   type AchievementContext,
@@ -29,6 +33,7 @@ import {
   type Perk,
   type SecretAchievementId,
   type StickerCategory,
+  type StickerData,
   type StickerSet,
   type Upgrade,
 } from './data.ts';
@@ -55,9 +60,16 @@ export interface Stats {
   firstPlayed: number;
   /** Challenge runs: purchases that failed, and clicks requisitioned. */
   failedPurchases: number;
+  /** Upgrades sold back. */
+  upgradesSold: number;
+  /** Raids that ran out the clock: handled by a retainer, or lost. */
+  raidsHandled: number;
+  raidsLost: number;
   requisitionedClicks: number;
   /** Christmas presents opened. */
   presentsOpened: number;
+  /** Different birthday events played on. */
+  birthdaysCelebrated: number;
 }
 
 /** A timed golden-sticker boost. Not saved: boosts end when the tab closes. */
@@ -84,8 +96,10 @@ export interface GameState {
   perks: string[];
   /** Unlocked achievement ids. */
   achievements: string[];
-  /** Owned sticker ids (starter stickers included). */
+  /** Owned sticker ids. */
   stickers: string[];
+  /** Stickers whose unlock condition has been met (permanent, see STICKER_UNLOCKS). */
+  unlockedStickers: string[];
   /** Whether owned stickers are drawn on screen (the bonus applies either way). */
   showStickers: boolean;
   /** Shop setting: buy 1, 10 or as many as you can afford. */
@@ -106,6 +120,10 @@ export interface GameState {
   activeChallenge: { id: ChallengeId; main: GameState } | null;
   /** Event seasons whose popup was already shown, e.g. "christmas-2026". */
   seenEvents: string[];
+  /** One entry per secession: the city you named and how many cities it brought. */
+  foundedCities: FoundedCity[];
+  /** DRO retainers: each one absorbs a raid that runs out the clock. Kept through secession. */
+  retainers: number;
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -128,8 +146,12 @@ export function newStats(): Stats {
     biggestClick: 0,
     firstPlayed: 0,
     failedPurchases: 0,
+    upgradesSold: 0,
+    raidsHandled: 0,
+    raidsLost: 0,
     requisitionedClicks: 0,
     presentsOpened: 0,
+    birthdaysCelebrated: 0,
   };
 }
 
@@ -143,6 +165,7 @@ export function newState(): GameState {
     perks: [],
     achievements: [],
     stickers: [],
+    unlockedStickers: [],
     showStickers: true,
     buyAmount: 1,
     buffs: [],
@@ -152,6 +175,8 @@ export function newState(): GameState {
     bestChallengeTimes: {},
     activeChallenge: null,
     seenEvents: [],
+    foundedCities: [],
+    retainers: 0,
     stats: newStats(),
     lastSaved: 0,
   };
@@ -246,11 +271,12 @@ export interface Derived {
 }
 
 export function derive(state: GameState, now = Date.now()): Derived {
+  const fx = eventEffects(calendarDate(now));
   let clickValue = 1;
   let income = 0;
   for (const u of UPGRADES) {
     const n = ownedCount(state, u.id);
-    if (u.type === 'passive') income += u.income * n;
+    if (u.type === 'passive') income += u.income * n * (fx.upgradeIncome[u.id] ?? 1);
     else clickValue += u.clickBonus * n;
   }
 
@@ -260,7 +286,7 @@ export function derive(state: GameState, now = Date.now()): Derived {
   let incomeToClickPercent = 0;
   let raidEvasionChance = 0;
   for (const p of PERKS) {
-    if (!hasPerk(state, p.id)) continue;
+    if (!hasPerk(state, p.id) || fx.suspendedPerks.includes(p.id)) continue;
     switch (p.effect) {
       case 'crit':
         critChance += p.value;
@@ -309,7 +335,8 @@ export function derive(state: GameState, now = Date.now()): Derived {
 
   if (hasReward(state, 'communism')) clickMultiplier *= CHALLENGE_REWARDS.communismClicks;
 
-  const grossIncome = income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff;
+  const grossIncome =
+    income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff * fx.incomeMultiplier;
   const tax = taxRate(state, grossIncome);
 
   return {
@@ -420,6 +447,46 @@ export function buyUpgrade(state: GameState, upgrade: Upgrade, roll = Math.rando
   return { count, failed: false };
 }
 
+/**
+ * How many copies you can sell: all of them, except the ones a challenge handed
+ * you at the start (State property can't be sold).
+ */
+export function sellableCount(state: GameState, upgrade: Upgrade): number {
+  const given = challengeRules(state).startWith?.[upgrade.id] ?? 0;
+  return Math.max(0, ownedCount(state, upgrade.id) - given);
+}
+
+/**
+ * What selling would do for the current amount (×1, ×10, or everything for MAX):
+ * each copy refunds half of what it would cost to buy back right now.
+ */
+export function sellQuote(state: GameState, upgrade: Upgrade): { count: number; refund: number } {
+  const owned = ownedCount(state, upgrade.id);
+  const sellable = sellableCount(state, upgrade);
+  const count = state.buyAmount === 'max' ? sellable : Math.min(state.buyAmount, sellable);
+  const m = upgradePriceMultiplier(state);
+  let refund = 0;
+  for (let i = 1; i <= count; i++) refund += Math.floor(upgradeCost(upgrade, owned - i, m) * BALANCE.sellRefund);
+  return { count, refund };
+}
+
+/** Sells the quoted copies. The refund is cash, not earnings (it doesn't count toward cities). Returns how many were sold. */
+export function sellUpgrade(state: GameState, upgrade: Upgrade): number {
+  const { count, refund } = sellQuote(state, upgrade);
+  if (!count) return 0;
+  state.owned[upgrade.id] = ownedCount(state, upgrade.id) - count;
+  if (!state.owned[upgrade.id]) delete state.owned[upgrade.id];
+  state.score += refund;
+  state.stats.upgradesSold += count;
+  return count;
+}
+
+/** The sticker-combo secret achievements met by the stickers on screen. */
+export function stickerCombos(onScreen: Iterable<string>): SecretAchievementId[] {
+  const shown = new Set(onScreen);
+  return STICKER_COMBOS.filter((c) => c.ids.filter((id) => shown.has(id)).length >= (c.need ?? c.ids.length)).map((c) => c.achievement);
+}
+
 export function buyPerk(state: GameState, perk: Perk): boolean {
   const cost = perkCost(state, perk);
   if (state.score < cost || hasPerk(state, perk.id)) return false;
@@ -432,8 +499,11 @@ export function buyPerk(state: GameState, perk: Perk): boolean {
 // Sticker shop
 // ---------------------------------------------------------------------------
 
-/** How many regular stickers can be bought (everything but limited editions). */
-export const BUYABLE_STICKERS = REGULAR_STICKERS.length;
+/** Earned stickers are given, never bought (see STICKER_UNLOCKS). */
+export const isEarnedSticker = (id: string) => !!STICKER_UNLOCKS[id]?.earned;
+
+/** How many regular stickers can be bought (everything but limited editions and earned ones). */
+export const BUYABLE_STICKERS = REGULAR_STICKERS.filter((s) => !isEarnedSticker(s.id)).length;
 
 /** Price growth per purchase, so the first costs `firstCost` and the last `lastCost`. */
 export const STICKER_COST_GROWTH = Math.pow(
@@ -445,7 +515,7 @@ const isSeasonal = (id: string) => !!STICKERS.find((s) => s.id === id)?.season;
 
 /** Price of the next regular sticker. Depends only on how many you've bought, not which one. */
 export function stickerCost(state: GameState): number {
-  const bought = state.stickers.filter((id) => !isSeasonal(id)).length;
+  const bought = state.stickers.filter((id) => !isSeasonal(id) && !isEarnedSticker(id)).length;
   return Math.ceil(BALANCE.stickers.firstCost * Math.pow(STICKER_COST_GROWTH, bought) * challengePriceFactor(state));
 }
 
@@ -456,19 +526,65 @@ export function christmasStickerCost(state: GameState, now = Date.now()): number
   return Math.ceil(Math.max(CHRISTMAS.minStickerCost, derive(state, now).incomePerSec * CHRISTMAS.stickerIncomeSeconds));
 }
 
+/** Whether a sticker is free today (birthdays and anniversaries gift one). */
+export const isGiftSticker = (id: string, date: Date = calendarDate()) => eventEffects(date).giftStickers.includes(id);
+
 /** What a given sticker costs right now. */
 export function priceOfSticker(state: GameState, id: string, now = Date.now()): number {
+  if (isGiftSticker(id, calendarDate(now))) return 0;
   return isSeasonal(id) ? christmasStickerCost(state, now) : stickerCost(state);
 }
 
-/** Whether a sticker is for sale today (limited editions only during their event). */
-export function stickerForSale(id: string, date = new Date()): boolean {
+/** Progress toward a sticker's unlock condition, or null if it has none. */
+export function unlockProgress(state: GameState, id: string): { have: number; need: number } | null {
+  const rule = STICKER_UNLOCKS[id];
+  if (!rule) return null;
+  if (rule.secessions !== undefined) return { have: state.stats.secessions, need: rule.secessions };
+  if (rule.raidsEvaded !== undefined) return { have: state.stats.raidsEvaded + state.stats.raidsAutoEvaded, need: rule.raidsEvaded };
+  if (rule.challenge !== undefined) return { have: state.completedChallenges.includes(rule.challenge) ? 1 : 0, need: 1 };
+  return { have: ownedCount(state, rule.upgrade!), need: rule.count! };
+}
+
+/** Locked: has an unlock condition that hasn't been met yet. */
+export const isStickerLocked = (state: GameState, id: string) =>
+  !!STICKER_UNLOCKS[id] && !state.unlockedStickers.includes(id);
+
+/**
+ * Unlocks every sticker whose condition is now met. Earned stickers are added to
+ * your collection for free (and earned again in a challenge run, which starts
+ * without stickers). Returns the stickers that were just unlocked or earned.
+ */
+export function unlockStickers(state: GameState): StickerData[] {
+  const unlocked: StickerData[] = [];
+  for (const id of Object.keys(STICKER_UNLOCKS)) {
+    const earned = isEarnedSticker(id);
+    const known = state.unlockedStickers.includes(id);
+    if (known && (!earned || hasSticker(state, id))) continue;
+    const p = unlockProgress(state, id)!;
+    if (p.have < p.need) continue;
+    if (!known) state.unlockedStickers.push(id);
+    // Already owned (bought before it became an earned sticker): nothing to announce.
+    if (earned && hasSticker(state, id)) continue;
+    if (earned) state.stickers.push(id);
+    const data = STICKERS.find((s) => s.id === id);
+    if (data) unlocked.push(data);
+  }
+  return unlocked;
+}
+
+/**
+ * Whether a sticker can be bought today: gifts always (birthdays, Liberland Day);
+ * never earned or still-locked ones; limited editions only during their event.
+ */
+export function stickerForSale(state: GameState, id: string, date: Date = calendarDate()): boolean {
+  if (isGiftSticker(id, date)) return true;
+  if (isEarnedSticker(id) || isStickerLocked(state, id)) return false;
   const season = STICKERS.find((s) => s.id === id)?.season;
   return !season || isEventActive(season, date);
 }
 
-export function buySticker(state: GameState, id: string, date = new Date()): boolean {
-  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id) || !stickerForSale(id, date)) return false;
+export function buySticker(state: GameState, id: string, date: Date = calendarDate()): boolean {
+  if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id) || !stickerForSale(state, id, date)) return false;
   const cost = priceOfSticker(state, id, date.getTime());
   if (state.score < cost) return false;
   state.score -= cost;
@@ -485,7 +601,7 @@ export function completedStickerSets(state: GameState): StickerSet[] {
 }
 
 /** Product of a numeric field over the completed sets (1 when none apply). */
-const setProduct = (state: GameState, field: 'goldenDelay' | 'raidChance') =>
+const setProduct = (state: GameState, field: 'goldenDelay' | 'raidChance' | 'goldenCash') =>
   completedStickerSets(state).reduce((m, set) => m * (set[field] ?? 1), 1);
 
 // ---------------------------------------------------------------------------
@@ -529,26 +645,33 @@ export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.n
   if (PRESENT_EFFECTS.includes(effect)) state.stats.presentsOpened++;
   let cash = 0;
   if (effect.cash) {
-    cash = goldenCash(state, now) * (effect.cashMultiplier ?? 1);
+    cash =
+      goldenCash(state, now) *
+      (effect.cashMultiplier ?? 1) *
+      eventEffects(calendarDate(now)).goldenCashMultiplier *
+      setProduct(state, 'goldenCash');
     earn(state, cash);
   }
   if (effect.durationSec > 0) {
     // Catching the same boost again restarts its timer instead of stacking.
     state.buffs = state.buffs.filter((b) => b.effectId !== effect.id);
-    const duration = effect.durationSec * (hasCharter(state, 'long-bull') ? CHARTER_VALUES.longBullDuration : 1);
+    const duration =
+      effect.durationSec *
+      (hasCharter(state, 'long-bull') ? CHARTER_VALUES.longBullDuration : 1) *
+      eventEffects(calendarDate(now)).goldenDurationMultiplier;
     state.buffs.push({ effectId: effect.id, endsAt: now + duration * 1000 });
   }
   return cash;
 }
 
 /** Multiplier on the wait between golden stickers (presents come sooner at Christmas). */
-export const goldenDelayMultiplier = (state: GameState, date = new Date()) =>
+export const goldenDelayMultiplier = (state: GameState, date: Date = calendarDate()) =>
   (hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1) *
   setProduct(state, 'goldenDelay') *
   (isEventActive('christmas', date) ? CHRISTMAS.presentDelay : 1);
 
 /** Odds of a raid at each raid check. */
-export const raidChance = (state: GameState, date = new Date()) =>
+export const raidChance = (state: GameState, date: Date = calendarDate()) =>
   Math.min(
     1,
     (isEventActive('fed-birthday', date) ? CHRISTMAS.fedBirthdayRaids : 1) *
@@ -560,9 +683,67 @@ export const raidChance = (state: GameState, date = new Date()) =>
   );
 
 /** What dodging a raid pays: a flat bonus, or a minute of income on the Fed's birthday. */
-export function raidEvadeBonus(state: GameState, date = new Date()): number {
+export function raidEvadeBonus(state: GameState, date: Date = calendarDate()): number {
   if (!isEventActive('fed-birthday', date)) return BALANCE.raid.evadeBonus;
   return Math.max(BALANCE.raid.evadeBonus, derive(state, date.getTime()).incomePerSec * CHRISTMAS.fedBirthdayCakeSeconds);
+}
+
+/** Seconds you get to hide your assets in a raid. `roll` is a random number in [0, 1). */
+export const raidSeconds = (roll: number) =>
+  Math.round(BALANCE.raid.minSeconds + roll * (BALANCE.raid.maxSeconds - BALANCE.raid.minSeconds));
+
+/** A DRO retainer costs about 5 minutes of income (with a floor, and challenge inflation). */
+export function retainerCost(state: GameState, now = Date.now()): number {
+  const base = Math.max(BALANCE.raid.retainerMinCost, derive({ ...state, buffs: [] }, now).incomePerSec * BALANCE.raid.retainerSeconds);
+  return Math.ceil(base * challengePriceFactor(state));
+}
+
+export function buyRetainer(state: GameState, now = Date.now()): boolean {
+  const cost = retainerCost(state, now);
+  if (state.score < cost) return false;
+  state.score -= cost;
+  state.retainers++;
+  return true;
+}
+
+/** What happened when a raid ran out the clock. */
+export type RaidOutcome =
+  | { kind: 'retainer' }
+  | { kind: 'cash'; amount: number }
+  | { kind: 'penalty'; effect: GoldenEffect }
+  | { kind: 'building'; upgrade: Upgrade };
+
+/**
+ * A raid ran out the clock. A retainer absorbs it; otherwise the Fed takes one of:
+ * a share of your cash, a timed penalty (income or clicks halved), or one random
+ * building. `roll` picks the penalty and `roll2` the building, both in [0, 1).
+ */
+export function resolveRaidTimeout(state: GameState, roll: number, roll2: number, now = Date.now()): RaidOutcome {
+  if (state.retainers > 0) {
+    state.retainers--;
+    state.stats.raidsHandled++;
+    return { kind: 'retainer' };
+  }
+  state.stats.raidsLost++;
+  const buildings = UPGRADES.filter((u) => ownedCount(state, u.id) > 0);
+  const options: ('cash' | 'building' | GoldenEffect)[] = ['cash', ...RAID_PENALTY_EFFECTS];
+  if (buildings.length) options.push('building');
+  const pick = options[Math.min(options.length - 1, Math.floor(roll * options.length))];
+  if (pick === 'cash') {
+    const amount = Math.floor(state.score * BALANCE.raid.cashLoss);
+    state.score -= amount;
+    return { kind: 'cash', amount };
+  }
+  if (pick === 'building') {
+    const upgrade = buildings[Math.min(buildings.length - 1, Math.floor(roll2 * buildings.length))];
+    state.owned[upgrade.id]--;
+    if (!state.owned[upgrade.id]) delete state.owned[upgrade.id];
+    return { kind: 'building', upgrade };
+  }
+  // Same penalty twice: the clock restarts rather than stacking.
+  state.buffs = state.buffs.filter((b) => b.effectId !== pick.id);
+  state.buffs.push({ effectId: pick.id, endsAt: now + pick.durationSec * 1000 });
+  return { kind: 'penalty', effect: pick };
 }
 
 /** Cash needed before raids start (Communism audits you from the start). */
@@ -628,10 +809,38 @@ export function pendingCities(state: GameState): number {
  * (plus bought stickers and perks, with the right charters). Returns how many
  * cities were gained (0 means you couldn't secede yet and nothing changed).
  */
-export function secede(state: GameState): number {
+export interface FoundedCity {
+  name: string;
+  /** Cities gained by that secession (the named one and any that came with it). */
+  cities: number;
+  /** Epoch ms. */
+  founded: number;
+}
+
+export const CITY_NAME_MAX = 40;
+
+/** Cleans up a typed city name: trimmed, single spaces, at most CITY_NAME_MAX characters. */
+export const cleanCityName = (name: string) => name.replace(/\s+/g, ' ').trim().slice(0, CITY_NAME_MAX).trim();
+
+/** A random city name ("Rothbardia", "Port Hayek", "Catallaxy Bay"). `rng` returns numbers in [0, 1). */
+export function randomCityName(rng: () => number = Math.random): string {
+  const pickOne = <T>(list: readonly T[]) => list[Math.floor(rng() * list.length)];
+  if (rng() < 0.25) return pickOne(CITY_NAMES.whole);
+  const root = pickOne(CITY_NAMES.roots);
+  const pattern = pickOne(CITY_NAMES.patterns);
+  const stem = pattern.includes('{}ia') && root.endsWith('e') ? root.slice(0, -1) : root;
+  return pattern.replace('{}', stem);
+}
+
+/**
+ * Secedes: trades this run for new cities. `name` names the city you found
+ * (a random one if it's blank). Returns how many cities you gained.
+ */
+export function secede(state: GameState, date: Date = calendarDate(), name = ''): number {
   if (state.activeChallenge) return 0; // no seceding from a challenge: win it or abandon it
-  const gained = pendingCities(state);
-  if (gained < 1) return 0;
+  const pending = pendingCities(state);
+  if (pending < 1) return 0;
+  const gained = pending + eventEffects(date).secessionBonusCities; // Liberland Day founds one more
   state.stats.bestRunEarnings = Math.max(state.stats.bestRunEarnings, state.runEarnings);
   state.stats.runSeconds = 0;
   state.cities += gained;
@@ -639,10 +848,11 @@ export function secede(state: GameState): number {
   state.runEarnings = 0;
   state.owned = {};
   if (!hasCharter(state, 'tenure')) state.perks = [];
-  // Limited-edition stickers always stay; the rest only with Collector's Exemption.
-  if (!hasCharter(state, 'sticker-license')) state.stickers = state.stickers.filter(isSeasonal);
+  // Limited-edition and earned stickers always stay; the rest only with Collector's Exemption.
+  if (!hasCharter(state, 'sticker-license')) state.stickers = state.stickers.filter((id) => isSeasonal(id) || isEarnedSticker(id));
   state.buffs = [];
   state.stats.secessions++;
+  state.foundedCities.push({ name: cleanCityName(name) || randomCityName(), cities: gained, founded: date.getTime() });
   applyRunStart(state);
   return gained;
 }

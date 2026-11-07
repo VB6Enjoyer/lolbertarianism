@@ -54,7 +54,7 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Stickers', times(d.stickerMultiplier)],
         ['Sticker sets', `${times(d.setIncomeMultiplier)} income, ${times(d.setClickMultiplier)} clicks`],
         ['Special upgrades', times(d.passiveMultiplier)],
-        ['Golden boosts', boosts.length ? boosts.map(({ effect }) => `${effect.icon} ${effect.name}`).join(', ') : 'None active'],
+        ['Active effects', boosts.length ? boosts.map(({ effect }) => `${effect.icon} ${effect.name}`).join(', ') : 'None active'],
       ],
     },
     {
@@ -64,8 +64,11 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Critical clicks', st.clicks ? `${count(st.crits)} (${pct(st.crits / st.clicks)})` : '0'],
         ['Golden stickers caught', count(st.goldenClicks)],
         ['Raids evaded', `${count(st.raidsEvaded)} by hand, ${count(st.raidsAutoEvaded)} by shell companies`],
+        ['Raids timed out', `${count(st.raidsHandled)} handled by retainers, ${count(st.raidsLost)} lost`],
+        ['DRO retainers', count(state.retainers)],
         ['Stickers dragged', count(st.stickersDragged)],
         ['Sticker reshuffles', count(st.reshuffles)],
+        ['Upgrades sold', count(st.upgradesSold)],
         ['Welcome-back payouts', count(st.offlineCollected)],
       ],
     },
@@ -74,6 +77,7 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
       rows: [
         ['Free Private Cities', `${count(state.cities)} (${count(citiesAvailable(state))} unspent)`],
         ['Secessions', count(st.secessions)],
+        ['Newest city', state.foundedCities.at(-1)?.name ?? 'None yet'],
         ['Charters', `${state.charters.length} / ${CHARTERS.length}`],
         ['Achievements', `${state.achievements.length} / ${ACHIEVEMENTS.length}`],
         ['Stickers', `${REGULAR_STICKERS.filter((s) => state.stickers.includes(s.id)).length} / ${REGULAR_STICKERS.length}`],

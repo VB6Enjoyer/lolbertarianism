@@ -41,7 +41,7 @@
 
             <div class="score-display">$<span id="score">0</span></div>
             <div class="sub-score">$<span id="income">0</span> / sec</div>
-            <div class="prestige-line" id="prestige-line" hidden></div>
+            <div class="prestige-line" id="prestige-line" role="button" tabindex="0" title="See your cities" hidden></div>
             <div class="buff-bar" id="buff-bar" aria-live="polite"></div>
 
             <div class="main-btn-wrap">
@@ -76,8 +76,19 @@
             <div id="special-upgrades-container">
                 <!-- Special upgrades injected here -->
             </div>
+            <button class="shop-item retainer-row" id="retainer-row" type="button" hidden>
+                <span class="item-icon">🛡️</span>
+                <span class="item-info">
+                    <span class="item-name">Hire a DRO retainer</span>
+                    <span class="item-cost" id="retainer-cost"></span>
+                </span>
+                <span class="retainer-owned" id="retainer-owned"></span>
+            </button>
             <div class="buy-amount" id="buy-amount" role="group" aria-label="How many to buy">
-                <span>Buy:</span>
+                <span class="buy-mode">
+                    <button data-mode="buy" class="active">Buy</button>
+                    <button data-mode="sell">Sell</button>
+                </span>
                 <button data-amount="1">×1</button>
                 <button data-amount="10">×10</button>
                 <button data-amount="max">MAX</button>
@@ -94,6 +105,11 @@
             <h1 id="raid-title">🚨 THE FED IS HERE! 🚨</h1>
             <p id="raid-text">They want to audit your crypto wallet!</p>
             <p style="font-size: 40px;">👮‍♂️🚔📉</p>
+            <div class="raid-timer" id="raid-timer" aria-live="off">
+                <div class="raid-timer-fill" id="raid-timer-fill"></div>
+                <span class="raid-timer-text" id="raid-timer-text"></span>
+            </div>
+            <p class="raid-stakes" id="raid-stakes"></p>
             <button class="btn-evade" id="btn-evade">HIDE ASSETS!</button>
         </div>
     </div>

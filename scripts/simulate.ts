@@ -15,6 +15,7 @@
 //   BALANCE='{"secession":{"root":3}}' npm run simulate
 
 import { enterChallenge } from '../src/games/ancapistan-tycoon/challenges.ts';
+import { setDateOverride } from '../src/games/ancapistan-tycoon/events.ts';
 import {
   BALANCE,
   CHALLENGES,
@@ -46,10 +47,14 @@ import {
   purchaseQuote,
   raidChance,
   raidMinScore,
+  raidSeconds,
+  resolveRaidTimeout,
   secede,
   stickerCost,
+  stickerForSale,
   tick,
   unlockAchievements,
+  unlockStickers,
   type GameState,
 } from '../src/games/ancapistan-tycoon/logic.ts';
 
@@ -96,6 +101,9 @@ function rng(seed: number) {
 }
 let random = rng(42);
 
+// Simulate on an ordinary day with no events, so results don't depend on today's date.
+setDateOverride(new Date(2026, 10, 10));
+
 /** Money per second from income plus clicking, crits and requisitioned clicks included. */
 function rate(s: GameState, p: Profile, now: number): number {
   const d = derive(s, now);
@@ -128,13 +136,14 @@ function options(s: GameState, p: Profile, now: number): Option[] {
     opts.push({ cost: perkCost(s, perk), gain: gainOf((c) => buyPerk(c, perk)), buy: (x) => buyPerk(x, perk) });
   }
   // Stickers: aim at the set closest to completion.
-  // Only sets on sale all year (limited editions aren't available in a simulated year-round run).
-  const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !x.season && !s.stickers.includes(x.id)))
+  // Only stickers for sale now (no limited editions in a simulated year-round run,
+  // no earned or still-locked ones).
+  const missing = STICKER_SETS.map((set) => STICKERS.filter((x) => x.category === set.category && !x.season && !s.stickers.includes(x.id) && stickerForSale(s, x.id)))
     .filter((list) => list.length)
     .sort((a, b) => a.length - b.length)[0];
   if (missing) {
     const id = missing[0].id;
-    // A sticker's own +0.5% is small; count a share of the set bonus it works toward.
+    // A sticker's own bonus is small; count a share of the set bonus it works toward.
     const direct = gainOf((c) => buySticker(c, id));
     const setGain = gainOf((c) => missing.forEach((x) => buySticker(c, x.id))) / missing.length;
     opts.push({ cost: stickerCost(s), gain: Math.max(direct, setGain), buy: (x) => buySticker(x, id) });
@@ -164,6 +173,13 @@ interface Milestone {
   at?: number;
 }
 
+/** An upgrade's base price, short: "$2.5T". */
+function price(id: number): string {
+  const cost = UPGRADES.find((u) => u.id === id)!.baseCost;
+  const [div, unit] = cost >= 1e12 ? [1e12, 'T'] : cost >= 1e9 ? [1e9, 'B'] : [1e6, 'M'];
+  return `$${cost / div}${unit}`;
+}
+
 function normalMilestones(): Milestone[] {
   return [
     { label: 'Earn $1,000', test: (x) => x.allTimeEarnings >= 1e3 },
@@ -171,14 +187,15 @@ function normalMilestones(): Milestone[] {
     { label: 'First bought sticker', test: (x) => x.stickers.length > 0 },
     { label: `Earn $${(earningsForCities(1) / 1e6).toLocaleString()}M (first city possible)`, test: (x) => x.allTimeEarnings >= earningsForCities(1) },
     { label: 'First secession', test: (x) => x.stats.secessions >= 1 },
-    { label: 'Privatize solar system', test: (x) => ownedCount(x, 14) > 0 },
     { label: '10 Free Private Cities', test: (x) => x.cities >= 10 },
-    { label: 'First late-game upgrade ($5B)', test: (x) => ownedCount(x, 15) > 0 },
+    { label: `Orbital railgun (${price(15)})`, test: (x) => ownedCount(x, 15) > 0 },
     { label: 'First sticker set', test: (x) => STICKER_SETS.some((set) => STICKERS.filter((y) => y.category === set.category).every((y) => x.stickers.includes(y.id))) },
     { label: '25 Free Private Cities', test: (x) => x.cities >= 25 },
-    { label: 'Dyson sphere ($500B)', test: (x) => ownedCount(x, 18) > 0 },
+    { label: `Privatize solar system (${price(14)})`, test: (x) => ownedCount(x, 14) > 0 },
+    { label: `Dyson sphere (${price(18)})`, test: (x) => ownedCount(x, 18) > 0 },
     { label: 'All 11 charters (55 cities)', test: (x) => x.charters.length === CHARTERS.length },
-    { label: 'Andromeda ($200T)', test: (x) => ownedCount(x, 22) > 0 },
+    { label: `Andromeda (${price(22)})`, test: (x) => ownedCount(x, 22) > 0 },
+    { label: `Multiverse arbitrage (${price(21)})`, test: (x) => ownedCount(x, 21) > 0 },
     { label: `All ${REGULAR_STICKERS.length} stickers in one run`, test: (x) => REGULAR_STICKERS.every((y) => x.stickers.includes(y.id)) },
   ];
 }
@@ -209,8 +226,15 @@ function simulate(p: Profile, challenge?: ChallengeId) {
 
     if (t % RAID_EVERY === 0 && s.score >= raidMinScore(s) && random() < raidChance(s)) {
       if (random() >= derive(s, now).raidEvasionChance) {
-        frozenUntil = now + p.raidReaction * 1000;
-        s.stats.raidsEvaded++;
+        // The raid gives 1-30 seconds; a slow reaction lets it run out the clock.
+        const seconds = raidSeconds(random());
+        if (p.raidReaction < seconds) {
+          frozenUntil = now + p.raidReaction * 1000;
+          s.stats.raidsEvaded++;
+        } else {
+          frozenUntil = now + seconds * 1000;
+          resolveRaidTimeout(s, random(), random(), now);
+        }
       }
     }
     if (now >= nextGolden) {
@@ -221,6 +245,7 @@ function simulate(p: Profile, challenge?: ChallengeId) {
 
     if (t % DECIDE_EVERY === 0) {
       shop(s, p, now);
+      unlockStickers(s);
       unlockAchievements(s);
       if (!challenge && pendingCities(s) >= Math.max(1, s.cities)) {
         secede(s);
@@ -259,12 +284,12 @@ if (CHALLENGE_MODE) {
     const results = PROFILES.map((p) => ({ p, ...simulate(p, c.id) }));
     table(`${c.icon} ${c.name}: goal $${c.goal.toLocaleString()}, speedrun under ${fmtTime(c.speedrunSec)}`, results);
     const [active] = results;
-    console.log(`  (active player: ${active.s.stats.failedPurchases} failed purchases, ${active.s.stats.requisitionedClicks} requisitioned clicks, ${active.s.stats.raidsEvaded} raids)`);
+    console.log(`  (active player: ${active.s.stats.failedPurchases} failed purchases, ${active.s.stats.requisitionedClicks} requisitioned clicks, ${active.s.stats.raidsEvaded} raids evaded, ${active.s.stats.raidsLost} lost)`);
   }
 } else {
   const results = PROFILES.map((p) => ({ p, ...simulate(p) }));
   table(`Ancapistan Tycoon balance simulation (open-game time, max ${MAX_HOURS}h)`, results);
   for (const { p, s } of results) {
-    console.log(`\n${p.name} at the end: ${s.cities} cities, ${s.stats.secessions} secessions, ${s.charters.length} charters, ${s.achievements.length} achievements, ${s.stats.goldenClicks} golden stickers, ${s.stats.raidsEvaded} raids`);
+    console.log(`\n${p.name} at the end: ${s.cities} cities, ${s.stats.secessions} secessions, ${s.charters.length} charters, ${s.achievements.length} achievements, ${s.stats.goldenClicks} golden stickers, ${s.stats.raidsEvaded} raids evaded, ${s.stats.raidsLost} lost`);
   }
 }

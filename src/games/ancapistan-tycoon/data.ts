@@ -1,8 +1,12 @@
 // Content and balance for Ancapistan Tycoon. Tweak numbers here, not in the game code.
 
+import { BOOKS } from './books.ts';
+
 export const BALANCE = {
   /** Each owned copy of an upgrade makes the next one this much pricier. */
   costGrowth: 1.15,
+  /** Selling an upgrade refunds this share of what the last copy cost. */
+  sellRefund: 0.5,
   critMultiplier: 5,
   /** Chance per click of a meme phrase floating up. */
   phraseChance: 0.1,
@@ -13,6 +17,15 @@ export const BALANCE = {
     /** Chance a raid happens at each interval. */
     chance: 0.3,
     evadeBonus: 100,
+    /** Each raid gives you between this many seconds to hide your assets (random). */
+    minSeconds: 1,
+    maxSeconds: 30,
+    /** Civil asset forfeiture: share of your cash taken when a raid times out. */
+    cashLoss: 0.2,
+    /** A DRO retainer costs this many seconds of income… */
+    retainerSeconds: 300,
+    /** …but never less than this. */
+    retainerMinCost: 1000,
   },
   offline: {
     /** Share of passive income earned while the tab is closed. */
@@ -36,7 +49,7 @@ export const BALANCE = {
   bonusPerAchievement: 0.01,
   stickers: {
     /** Passive income (CPS) bonus per sticker owned. */
-    bonusEach: 0.005,
+    bonusEach: 0.0025,
     /** Price of the first sticker you buy… */
     firstCost: 10_000,
     /** …and of the last one. Prices in between grow by the same factor each purchase. */
@@ -267,6 +280,8 @@ export interface GoldenEffect {
   cash?: boolean;
   /** Scales the cash payout (Fiat Coal pays almost nothing). */
   cashMultiplier?: number;
+  /** A raid penalty rather than a reward (shown in red, and kept in saves so a reload can't shake it). */
+  penalty?: boolean;
 }
 
 export const GOLDEN_EFFECTS: readonly GoldenEffect[] = [
@@ -284,14 +299,66 @@ export const PRESENT_EFFECTS: readonly GoldenEffect[] = [
   { id: 'fiat-coal', icon: '🪨', name: 'Fiat Coal', description: 'You were naughty: you voted. Worth almost nothing, just like the dollar.', weight: 1, clickMultiplier: 1, incomeMultiplier: 1, durationSec: 0, cash: true, cashMultiplier: 0.02 },
 ];
 
-/** Every golden reward, so boosts can be looked up whatever handed them out. */
-export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS];
+/** On Bitcoin Pizza Day, golden stickers become pizzas and may hold this. */
+export const PIZZA_EFFECT: GoldenEffect = {
+  id: 'two-pizzas',
+  icon: '🍕',
+  name: 'Two Pizzas for 10,000 BTC',
+  description: 'Laszlo would be proud. Double the usual cash.',
+  weight: 6,
+  clickMultiplier: 1,
+  incomeMultiplier: 1,
+  durationSec: 0,
+  cash: true,
+  cashMultiplier: 2,
+};
+
+/** Timed penalties for letting a Fed raid run out the clock (see RaidOutcome in logic.ts). */
+export const RAID_PENALTY_EFFECTS: readonly GoldenEffect[] = [
+  { id: 'asset-freeze', icon: '🧊', name: 'Asset Freeze', description: 'The Fed froze your accounts. Income ×0.5 for 10 minutes.', weight: 1, clickMultiplier: 1, incomeMultiplier: 0.5, durationSec: 600, penalty: true },
+  { id: 'capital-controls', icon: '🚧', name: 'Capital Controls', description: 'Every transaction needs a permit now. Clicks ×0.5 for 15 minutes.', weight: 1, clickMultiplier: 0.5, incomeMultiplier: 1, durationSec: 900, penalty: true },
+];
+
+/** Every timed effect, so boosts and penalties can be looked up whatever handed them out. */
+export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS, PIZZA_EFFECT, ...RAID_PENALTY_EFFECTS];
 
 // ---------------------------------------------------------------------------
 // Seasonal events
 // ---------------------------------------------------------------------------
 
-export type EventId = 'christmas' | 'fed-birthday';
+export type EventId =
+  | 'christmas'
+  | 'fed-birthday'
+  | 'birthday-menger'
+  | 'birthday-rothbard'
+  | 'birthday-hayek'
+  | 'birthday-bastiat'
+  | 'birthday-ronpaul'
+  | 'birthday-hoppe'
+  | 'birthday-mises'
+  | 'bitcoin-genesis'
+  | 'liberland-day'
+  | 'pizza-day'
+  | 'nixon-shock';
+
+/** What an event changes while it runs. Christmas's presents and Fed raids are handled by name. */
+export interface EventEffects {
+  /** Multiplies all passive income. */
+  incomeMultiplier?: number;
+  /** Multiplies one upgrade's income: upgrade id → multiplier. */
+  upgradeIncome?: Readonly<Record<number, number>>;
+  /** This sticker can be claimed for free today (and glows gold if you own it). */
+  giftSticker?: string;
+  /** Extra cities when seceding today. */
+  secessionBonusCities?: number;
+  /** This special upgrade does nothing today. */
+  suspendPerk?: string;
+  /** How golden stickers look today. */
+  goldenTheme?: 'pizza' | 'fiat';
+  /** Multiplies golden-sticker cash and boost durations today. */
+  goldenCashMultiplier?: number;
+  goldenDurationMultiplier?: number;
+}
 
 export interface GameEvent {
   id: EventId;
@@ -311,9 +378,132 @@ export interface GameEvent {
     when: string;
     features: readonly string[];
   };
+  effects?: EventEffects;
+  /** Granted for playing during the event. */
+  achievement?: string;
+  /** Birthdays count toward Party Animal. */
+  birthday?: boolean;
+}
+
+/** A one-day birthday event for a sticker person. */
+function birthday(
+  person: string,
+  name: string,
+  born: string,
+  knownFor: string,
+  month: number,
+  day: number,
+  shortName = name.split(' ').at(-1),
+): GameEvent {
+  return {
+    id: `birthday-${person}` as EventId,
+    icon: '🎂',
+    name: `${shortName}'s Birthday`,
+    start: [month, day],
+    end: [month, day],
+    birthday: true,
+    popup: {
+      image: `img/event-${person}.webp`,
+      imageAlt: `${name} in a party hat`,
+      title: `🎂 Happy Birthday, ${name}!`,
+      message: `${name} was born on ${born}. ${knownFor}`,
+      when: 'All day today:',
+      features: [
+        `🎁 ${shortName}'s sticker is free to claim in the 🎨 Stickers shop (and glows gold if you already own it).`,
+        '🎉 +10% income all day: the party pays for itself.',
+        `🏆 Play today for the "Happy Birthday, ${shortName}" achievement.`,
+      ],
+    },
+    effects: { incomeMultiplier: 1.1, giftSticker: person },
+    achievement: `birthday-${person}`,
+  };
 }
 
 export const EVENTS: readonly GameEvent[] = [
+  birthday('menger', 'Carl Menger', 'February 23, 1840', 'He founded the Austrian School with Principles of Economics.', 2, 23),
+  birthday('rothbard', 'Murray Rothbard', 'March 2, 1926', 'Mr. Libertarian himself: For a New Liberty, Man, Economy, and State.', 3, 2),
+  birthday('hayek', 'F. A. Hayek', 'May 8, 1899', 'The Road to Serfdom, and a Nobel Prize for proving central planners can\'t know enough.', 5, 8),
+  birthday('bastiat', 'Frédéric Bastiat', 'June 30, 1801', 'The Law, the broken window, and the candlemakers\' petition against the sun.', 6, 30),
+  birthday('ronpaul', 'Ron Paul', 'August 20, 1935', 'End the Fed. It\'s happening.', 8, 20, 'Ron Paul'),
+  birthday('hoppe', 'Hans-Hermann Hoppe', 'September 2, 1949', 'Democracy: The God That Failed, and the argumentation ethics nobody can argue against.', 9, 2),
+  birthday('mises', 'Ludwig von Mises', 'September 29, 1881', 'Human Action, and the reason central planning can\'t calculate.', 9, 29),
+  {
+    id: 'bitcoin-genesis',
+    icon: '₿',
+    name: 'Bitcoin Genesis Block',
+    start: [1, 3],
+    end: [1, 3],
+    popup: {
+      image: 'img/event-bitcoin-genesis.webp',
+      imageAlt: 'An anarcho-capitalist flag with the Bitcoin logo',
+      title: '₿ Happy Birthday, Bitcoin!',
+      message: 'On January 3, 2009, Satoshi Nakamoto mined the Genesis Block, with a newspaper headline embedded inside: "Chancellor on brink of second bailout for banks."',
+      when: 'All day today:',
+      features: ['🪙 Overseas crypto farms earn ×2.', '🏆 Play today for the "Chancellor on Brink of Second Bailout" achievement.'],
+    },
+    effects: { upgradeIncome: { 6: 2 } },
+    achievement: 'event-bitcoin-genesis',
+  },
+  {
+    id: 'liberland-day',
+    icon: '🇱🇮',
+    name: 'Liberland Day',
+    start: [4, 13],
+    end: [4, 13],
+    popup: {
+      image: 'img/event-liberland.webp',
+      imageAlt: 'The flag of Liberland waving',
+      title: '🇱🇮 Happy Liberland Day!',
+      message: 'On April 13, 2015, the Free Republic of Liberland was proclaimed on a patch of unclaimed land by the Danube.',
+      when: 'All day today:',
+      features: [
+        '🎁 The Liberland sticker is free to claim in the 🎨 Stickers shop.',
+        '🏙️ Secede today and found one bonus Free Private City.',
+        '🏆 Secede today for the "Terra Nullius" achievement.',
+      ],
+    },
+    effects: { giftSticker: 'liberland', secessionBonusCities: 1 },
+  },
+  {
+    id: 'pizza-day',
+    icon: '🍕',
+    name: 'Bitcoin Pizza Day',
+    start: [5, 22],
+    end: [5, 22],
+    popup: {
+      image: 'img/event-pizza-day.webp',
+      imageAlt: 'Bitcoin Pizza Day, May 22',
+      title: '🍕 Happy Bitcoin Pizza Day!',
+      message: 'On May 22, 2010, Laszlo Hanyecz paid 10,000 BTC for two pizzas: the first real-world Bitcoin purchase. Best meal ever, or most expensive?',
+      when: 'All day today:',
+      features: [
+        '🍕 Golden stickers become pizzas, and may hold "Two Pizzas for 10,000 BTC": double the usual cash.',
+        '🏆 Catch a pizza for the "Most Expensive Lunch in History" achievement.',
+      ],
+    },
+    effects: { goldenTheme: 'pizza' },
+  },
+  {
+    id: 'nixon-shock',
+    icon: '💵',
+    name: 'Nixon Shock',
+    start: [8, 15],
+    end: [8, 15],
+    popup: {
+      image: 'img/event-nixon-shock.webp',
+      imageAlt: 'The Nixon Shock: the death of the gold standard, August 15, 1971',
+      title: '💵 The Nixon Shock',
+      message: 'On August 15, 1971, Richard Nixon "temporarily" closed the gold window. It\'s still closed.',
+      when: 'All day today, in mourning:',
+      features: [
+        '⛔ Your Golden Standard special upgrade is suspended.',
+        '💵 Golden stickers are fiat stickers: half the cash, boosts last half as long.',
+        '🏆 Play through it for the "Closing the Gold Window" achievement.',
+      ],
+    },
+    effects: { suspendPerk: 'su2', goldenTheme: 'fiat', goldenCashMultiplier: 0.5, goldenDurationMultiplier: 0.5 },
+    achievement: 'event-nixon-shock',
+  },
   {
     id: 'christmas',
     icon: '🎄',
@@ -380,6 +570,8 @@ export interface Upgrade {
 }
 
 export const UPGRADES: readonly Upgrade[] = [
+  // Ordered by price: each one more absurd than the last. Ids are permanent (saves,
+  // achievements and unlocks refer to them), so they no longer follow the order.
   { id: 1, name: 'Buy theory book', icon: '📙', baseCost: 15, income: 0, clickBonus: 1, type: 'click', lore: 'It all starts with an idea. Read the sacred texts.' },
   { id: 2, name: 'Unlicensed lemonade stand', icon: '🍋', baseCost: 25, income: 1, clickBonus: 0, type: 'passive', lore: 'Where 6-year-olds learn the state is the enemy.' },
   { id: 3, name: 'Buy AK-47', icon: "<img src='img/ak47.webp'>", baseCost: 800, income: 0, clickBonus: 5, type: 'click', lore: 'An armed society is a polite society. And a profitable one.' },
@@ -387,22 +579,21 @@ export const UPGRADES: readonly Upgrade[] = [
   { id: 5, name: 'Homestead empty land', icon: '🏡', baseCost: 5000, income: 0, clickBonus: 10, type: 'click', lore: "If you mix your labor with it, it's yours. John Locke said so." },
   { id: 6, name: 'Overseas crypto farm', icon: '🪙', baseCost: 10000, income: 25, clickBonus: 0, type: 'passive', lore: 'Somewhere off in South East Asia. Untraceable, unseizable, and unstoppable. The perfect asset for a free individual.' },
   { id: 7, name: 'Invoke the invisible hand', icon: '🖐️', baseCost: 50000, income: 0, clickBonus: 50, type: 'click', lore: "Adam Smith's ghost now guides your clicking finger towards maximum efficiency." },
-  { id: 8, name: 'Privatize roads', icon: '🚧', baseCost: 200000, income: 100, clickBonus: 0, type: 'passive', lore: "Who will build the roads? You will. And you'll charge a toll." },
-  { id: 9, name: 'Hire PMC', icon: '🪖', baseCost: 500000, income: 0, clickBonus: 100, type: 'click', lore: 'Make your life easier and enforce the NAP through a Private Military Contractor.' },
-  { id: 10, name: 'Seasteading platform', icon: '🌊', baseCost: 1000000, income: 500, clickBonus: 0, type: 'passive', lore: 'Escape the clutches of terrestrial governments by building your own nation on the high seas.' },
-  { id: 11, name: 'Recreational McNuke silo', icon: '☢️', baseCost: 10000000, income: 0, clickBonus: 500, type: 'click', lore: 'For defending your property against particularly aggressive trespassers. Or just for fun.' },
-  { id: 12, name: 'Homestead the moon', icon: '🌑', baseCost: 75000000, income: 1000, clickBonus: 0, type: 'passive', lore: 'One small step for man, one giant leap for private property.' },
-  { id: 13, name: 'Interplanetary drug smuggling', icon: '💊', baseCost: 250000000, income: 0, clickBonus: 1000, type: 'click', lore: "The war on drugs doesn't apply in zero gravity." },
-  { id: 14, name: 'Privatize solar system', icon: '🌌', baseCost: 1000000000, income: 10000, clickBonus: 0, type: 'passive', lore: "Why stop at one planet? It's all un-homesteaded real estate." },
-  // Late game
-  { id: 15, name: 'NAP-enforcement orbital railgun', icon: '🛰️', baseCost: 5_000_000_000, income: 0, clickBonus: 10_000, type: 'click', lore: 'Aggression detected. Response delivered from low Earth orbit. No bureaucracy involved.' },
+  { id: 8, name: 'Privatize roads', icon: '🚧', baseCost: 200_000, income: 100, clickBonus: 0, type: 'passive', lore: "Who will build the roads? You will. And you'll charge a toll." },
+  { id: 17, name: 'Physical removal service', icon: '🚪', baseCost: 500_000, income: 0, clickBonus: 100, type: 'click', lore: 'Covenant communities need bouncers. Hoppe already wrote the job description.' },
+  { id: 19, name: 'Lower your time preference', icon: '⏳', baseCost: 1_000_000, income: 0, clickBonus: 150, type: 'click', lore: "Your time preference is so low you're clicking for your great-great-grandchildren's retirement." },
+  { id: 9, name: 'Hire PMC', icon: '🪖', baseCost: 10_000_000, income: 0, clickBonus: 500, type: 'click', lore: 'Make your life easier and enforce the NAP through a Private Military Contractor.' },
+  { id: 10, name: 'Seasteading platform', icon: '🌊', baseCost: 75_000_000, income: 3000, clickBonus: 0, type: 'passive', lore: 'Escape the clutches of terrestrial governments by building your own nation on the high seas.' },
+  { id: 11, name: 'Recreational McNuke silo', icon: '☢️', baseCost: 250_000_000, income: 0, clickBonus: 1000, type: 'click', lore: 'For defending your property against particularly aggressive trespassers. Or just for fun.' },
+  { id: 15, name: 'NAP-enforcement orbital railgun', icon: '🛰️', baseCost: 1_000_000_000, income: 0, clickBonus: 3000, type: 'click', lore: 'Aggression detected. Response delivered from low Earth orbit. No bureaucracy involved.' },
+  { id: 12, name: 'Homestead the moon', icon: '🌑', baseCost: 5_000_000_000, income: 50000, clickBonus: 0, type: 'passive', lore: 'One small step for man, one giant leap for private property.' },
   { id: 16, name: 'Asteroid mining guild', icon: '☄️', baseCost: 25_000_000_000, income: 250_000, clickBonus: 0, type: 'passive', lore: 'Platinum by the megaton. Wait, if gold gets this abundant, what happens to sound money? Keep mining, think later.' },
-  { id: 17, name: 'Physical removal service', icon: '🚪', baseCost: 100_000_000_000, income: 0, clickBonus: 100_000, type: 'click', lore: 'Covenant communities need bouncers. Hoppe already wrote the job description.' },
-  { id: 18, name: 'Dyson sphere toll booth', icon: '☀️', baseCost: 500_000_000_000, income: 4_000_000, clickBonus: 0, type: 'passive', lore: 'You did privatize the sun after all. Photons are now pay-per-view.' },
-  { id: 19, name: 'Lower your time preference', icon: '⏳', baseCost: 2_500_000_000_000, income: 0, clickBonus: 1_000_000, type: 'click', lore: "Your time preference is so low you're clicking for your great-great-grandchildren's retirement." },
+  { id: 13, name: 'Interplanetary drug smuggling', icon: '💊', baseCost: 100_000_000_000, income: 0, clickBonus: 100_000, type: 'click', lore: "The war on drugs doesn't apply in zero gravity." },
+  { id: 14, name: 'Privatize solar system', icon: '🌌', baseCost: 500_000_000_000, income: 4_000_000, clickBonus: 0, type: 'passive', lore: "Why stop at one planet? It's all un-homesteaded real estate." },
+  { id: 18, name: 'Dyson sphere toll booth', icon: '☀️', baseCost: 2_500_000_000_000, income: 15_000_000, clickBonus: 0, type: 'passive', lore: 'You did privatize the sun after all. Photons are now pay-per-view.' },
   { id: 20, name: 'Interstellar free trade zone', icon: '🚀', baseCost: 10_000_000_000_000, income: 60_000_000, clickBonus: 0, type: 'passive', lore: 'No tariffs for light-years in every direction. Customs officers have to bring their own oxygen.' },
-  { id: 21, name: 'Multiverse arbitrage', icon: '🔀', baseCost: 50_000_000_000_000, income: 0, clickBonus: 10_000_000, type: 'click', lore: 'Buy low in a universe with central banks, sell high in one without.' },
-  { id: 22, name: 'Homestead the Andromeda galaxy', icon: '🌀', baseCost: 200_000_000_000_000, income: 1_000_000_000, clickBonus: 0, type: 'passive', lore: '2.5 million light-years from the nearest tax office. Mix your labor with a trillion stars.' },
+  { id: 22, name: 'Homestead the Andromeda galaxy', icon: '🌀', baseCost: 50_000_000_000_000, income: 250_000_000, clickBonus: 0, type: 'passive', lore: '2.5 million light-years from the nearest tax office. Mix your labor with a trillion stars.' },
+  { id: 21, name: 'Multiverse arbitrage', icon: '🔀', baseCost: 200_000_000_000_000, income: 0, clickBonus: 30_000_000, type: 'click', lore: 'Buy low in a universe with central banks, sell high in one without.' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -437,7 +628,7 @@ export const CLICK_PHRASES = ['Freedom!', 'My Property!', 'Based', 'No Step!'] a
 // Stickers (the draggable background collage)
 // ---------------------------------------------------------------------------
 
-export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'christmas';
+export type StickerCategory = 'quote' | 'emoji' | 'html' | 'person' | 'organization' | 'item' | 'crypto' | 'book' | 'christmas';
 
 export interface StickerData {
   /** Stable id used in saves (the content itself). */
@@ -459,6 +650,8 @@ export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string }
   { id: 'person', label: '🧔 People' },
   { id: 'organization', label: '🏛️ Orgs' },
   { id: 'item', label: '🔫 Items' },
+  { id: 'crypto', label: '🪙 Crypto' },
+  { id: 'book', label: '📚 Books' },
   { id: 'christmas', label: '🎄 Christmas' },
 ];
 
@@ -499,6 +692,19 @@ export const STICKERS: readonly StickerData[] = [
   quote('Tu ne cede malis sed contra audentior ito'),
   quote('The best government is no government at all'),
   quote('Why not try freedom?'),
+  quote('Tax the Poor!'),
+  quote('Trespassers will be nuked'),
+  quote('Landlords of the world, unite!'),
+  quote('Low Time Preference Enjoyer'),
+  quote('Peace, Property, Freedom.'),
+  quote("If socialists understood economics, they wouldn't be socialists"),
+  quote('Live free or die'),
+  quote('That government is best which governs least'),
+  quote('Praxeology Enjoyer'),
+  quote('Man Acts\n*Bottom Text*'), // a line in *asterisks* is shown in italics
+  quote('My other car is a Hayekian business cycle'),
+  quote('Market Failure? Skill Issue'),
+  quote('My favorite salad? Lettuce alone!'),
   // Emotes
   emoji('🐍'), // Gadsden
   emoji('💉'),
@@ -521,15 +727,22 @@ export const STICKERS: readonly StickerData[] = [
     'rothbard', 'hoppe', 'mises', 'kinsella', 'tucker', 'hayek', 'ronpaul', 'menger', 'bohmbawerk',
     'hazlitt', 'murphy', 'kirzner', 'gordon', 'lewrockwell', 'caplan', 'salerno', 'woods', 'block',
     'bylund', 'nock', 'hansen', 'dfriedman', 'deist', 'hulsmann', 'ammous', 'dilorenzo', 'bagus',
-    'jhs', 'milei',
+    'jhs', 'milei', 'bastiat', 'sowell', 'becker', 'mfriedman', 'boettke', 'cantillon', 'azpilicueta',
+    'mariana', 'molinari', 'wieser', 'konkin', 'spooner',
   ].map((name) => image('person', name)),
   // Organizations
   image('organization', 'misesinstitute'),
   image('organization', 'liberland'),
+  image('organization', 'antiroad-aktion'),
   // Items
   image('item', 'pistol'),
   image('item', 'm249'),
   image('item', 'ak47'),
+  // Crypto
+  image('crypto', 'bitcoin'),
+  image('crypto', 'solana'),
+  // Books
+  ...BOOKS.map((b): StickerData => ({ id: b.id, type: 'image', category: 'book', content: `img/books/${b.id}.webp`, width: 50 })),
   // Christmas (limited edition)
   christmasImage('ancap-santa'),
   christmasImage('ancap-reindeer'),
@@ -595,9 +808,24 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   bagus: { name: 'Philipp Bagus', note: 'The Tragedy of the Euro' },
   jhs: { name: 'Jesús Huerta de Soto', note: 'Money, Bank Credit, and Economic Cycles' },
   milei: { name: 'Javier Milei', note: 'President of Argentina' },
+  bastiat: { name: 'Frédéric Bastiat', note: 'The Law' },
+  sowell: { name: 'Thomas Sowell', note: 'Basic Economics' },
+  becker: { name: 'Gary Becker', note: 'The Economic Approach to Human Behavior' },
+  mfriedman: { name: 'Milton Friedman', note: 'Capitalism and Freedom' },
+  boettke: { name: 'Peter Boettke', note: 'Austrian economist at George Mason' },
+  cantillon: { name: 'Richard Cantillon', note: 'Essay on the Nature of Trade in General' },
+  azpilicueta: { name: 'Martín de Azpilicueta', note: 'School of Salamanca' },
+  mariana: { name: 'Juan de Mariana', note: 'A Treatise on the Alteration of Money' },
+  molinari: { name: 'Gustave de Molinari', note: 'The Production of Security' },
+  wieser: { name: 'Friedrich von Wieser', note: 'Austrian School, second generation' },
+  konkin: { name: 'Samuel Edward Konkin III', note: 'Agorism' },
+  spooner: { name: 'Lysander Spooner', note: 'No Treason' },
   // Organizations
   misesinstitute: { name: 'Mises Institute' },
   liberland: { name: 'Flag of Liberland', note: 'A micronation on the Danube' },
+  'antiroad-aktion': { name: 'Antiroad Aktion' },
+  bitcoin: { name: 'Bitcoin' },
+  solana: { name: 'Solana' },
   // Items
   pistol: { name: 'Pistol' },
   m249: { name: 'M249 machine gun' },
@@ -609,7 +837,58 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   'ancap-rpg7': { name: 'RPG-7 Gift' },
   'ancap-tree': { name: 'Ancap Christmas Tree' },
   'ancap-gingerbread': { name: 'Ancap Gingerbread Man' },
+  // Books: the title, with the author underneath
+  ...Object.fromEntries(BOOKS.map((b) => [b.id, { name: b.title, note: b.author }])),
 };
+
+/**
+ * Stickers you have to unlock. `earned` stickers are given to you for free when
+ * the condition is met (and kept through secession); the rest become available
+ * to buy. Once unlocked, a sticker stays unlocked for good.
+ */
+export interface StickerUnlock {
+  /** Own at least `count` of this upgrade… */
+  upgrade?: number;
+  count?: number;
+  /** …or have seceded at least this many times… */
+  secessions?: number;
+  /** …or have dodged this many Fed raids (by hand or through shell companies)… */
+  raidsEvaded?: number;
+  /** …or have won this challenge. */
+  challenge?: ChallengeId;
+  earned?: boolean;
+  /** The requirement in plain words, for the locked card. */
+  need: string;
+}
+
+export const STICKER_UNLOCKS: Readonly<Record<string, StickerUnlock>> = {
+  // Earned books: read enough theory and they find you
+  'book-hazlitt-economics-in-one-lesson': { upgrade: 1, count: 100, earned: true, need: 'Own 100 theory books' },
+  'book-nock-our-enemy-the-state': { upgrade: 1, count: 250, earned: true, need: 'Own 250 theory books' },
+  'book-rothbard-the-ethics-of-liberty': { upgrade: 1, count: 500, earned: true, need: 'Own 500 theory books' },
+  'book-hoppe-democracy-the-god-that-failed': { upgrade: 1, count: 750, earned: true, need: 'Own 750 theory books' },
+  'book-mises-human-action': { upgrade: 1, count: 1000, earned: true, need: 'Own 1,000 theory books' },
+  'book-oppenheimer-the-state': { secessions: 1, earned: true, need: 'Secede for the first time' },
+  'book-rothbard-anatomy-of-the-state': { secessions: 5, earned: true, need: 'Secede 5 times' },
+  'book-solzhenitsyn-the-gulag-archipelago': { challenge: 'communism', earned: true, need: 'Win the Communism challenge' },
+  liberland: { secessions: 1, earned: true, need: 'Secede for the first time' },
+  // For sale once you've earned the right
+  ak47: { upgrade: 3, count: 50, need: 'Own 50 AK-47s' },
+  m249: { upgrade: 3, count: 200, need: 'Own 200 AK-47s' },
+  '☢️': { upgrade: 11, count: 1, need: 'Own a Recreational McNuke silo' },
+  'antiroad-aktion': { upgrade: 8, count: 10, need: 'Privatize 10 roads' },
+  '🪙': { upgrade: 6, count: 1, need: 'Own an overseas crypto farm' },
+  bitcoin: { upgrade: 6, count: 50, need: 'Own 50 overseas crypto farms' },
+  solana: { upgrade: 6, count: 100, need: 'Own 100 overseas crypto farms' },
+  'I would privatize the sun': { upgrade: 14, count: 1, need: 'Privatize the solar system' },
+  'Free Market Enjoyer': { upgrade: 7, count: 1, need: 'Invoke the invisible hand' },
+  'Agorism Now!': { upgrade: 2, count: 100, need: 'Own 100 unlicensed lemonade stands' },
+  '🚁': { upgrade: 17, count: 10, need: 'Hire 10 physical removal services' },
+  'End! The! Fed!': { raidsEvaded: 100, need: 'Dodge 100 Fed raids' },
+};
+
+/** Books you can't buy, only earn (for the Bookworm achievement). */
+export const EARNED_BOOKS = Object.keys(STICKER_UNLOCKS).filter((id) => id.startsWith('book-') && STICKER_UNLOCKS[id].earned);
 
 /** Stickers on sale all year (everything but limited editions). */
 export const REGULAR_STICKERS: readonly StickerData[] = STICKERS.filter((s) => !s.season);
@@ -628,6 +907,8 @@ export interface StickerSet {
   goldenDelay?: number;
   /** Multiplies the odds of a raid. */
   raidChance?: number;
+  /** Multiplies golden-sticker cash. */
+  goldenCash?: number;
 }
 
 export const STICKER_SETS: readonly StickerSet[] = [
@@ -637,6 +918,8 @@ export const STICKER_SETS: readonly StickerSet[] = [
   { category: 'person', icon: '🧔', name: 'Austrian Pantheon', description: 'Income ×1.25.', incomeMultiplier: 1.25 },
   { category: 'organization', icon: '🏛️', name: 'Think Tank Network', description: 'Fed raids happen 25% less often.', raidChance: 0.75 },
   { category: 'item', icon: '🔫', name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
+  { category: 'crypto', icon: '🪙', name: 'Cold Storage', description: 'Golden-sticker cash ×1.25.', goldenCash: 1.25 },
+  { category: 'book', icon: '📚', name: 'Library of Liberty', description: 'Clicks are worth ×1.5. You have read the sacred texts.', clickMultiplier: 1.5 },
   { category: 'christmas', icon: '🎄', name: 'Christmas Spirit', description: 'Income ×1.1, all year round.', incomeMultiplier: 1.1 },
 ];
 
@@ -675,6 +958,7 @@ export interface AchievementContext {
     goldenClicks: number;
     playSeconds: number;
     presentsOpened: number;
+    birthdaysCelebrated: number;
   };
 }
 
@@ -733,6 +1017,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > 0 },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
   { id: 'sticker-sets-3', icon: '🗂️', name: 'Completionist Tendencies', description: 'Complete 3 sticker sets in one run.', check: (c) => c.stickerSetsComplete >= 3 },
+  { id: 'bookworm', icon: '🐛', name: 'Bookworm', description: 'Earn every book that money can\'t buy.', check: (c) => EARNED_BOOKS.every((id) => c.ownsSticker(id)) },
   { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => REGULAR_STICKERS.every((s) => c.ownsSticker(s.id)) },
   { id: 'charter-1', icon: '📜', name: 'We the Sovereign Individual', description: 'Sign your first charter.', check: (c) => c.chartersOwned >= 1 },
   { id: 'charter-all', icon: '🗽', name: 'Constitution? I Hardly Know Her', description: 'Sign every charter.', check: (c) => c.chartersOwned >= CHARTERS.length },
@@ -748,6 +1033,20 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'party-pooper', icon: '🎂', name: 'Party Pooper', description: "Dodge a Fed raid on the Fed's birthday (December 23)." },
   { id: 'hoppe-new-year', icon: '🥂', name: 'A Hoppe New Year', description: 'Play on January 1.' },
 
+  // Birthdays and anniversaries (granted for playing on the day, unless noted)
+  { id: 'birthday-menger', icon: '🎂', name: 'Happy Birthday, Menger', description: "Play on February 23, Carl Menger's birthday." },
+  { id: 'birthday-rothbard', icon: '🎂', name: 'Happy Birthday, Rothbard', description: "Play on March 2, Murray Rothbard's birthday." },
+  { id: 'birthday-hayek', icon: '🎂', name: 'Happy Birthday, Hayek', description: "Play on May 8, F. A. Hayek's birthday." },
+  { id: 'birthday-bastiat', icon: '🎂', name: 'Happy Birthday, Bastiat', description: "Play on June 30, Frédéric Bastiat's birthday." },
+  { id: 'birthday-ronpaul', icon: '🎂', name: 'Happy Birthday, Ron Paul', description: "Play on August 20, Ron Paul's birthday." },
+  { id: 'birthday-hoppe', icon: '🎂', name: 'Happy Birthday, Hoppe', description: "Play on September 2, Hans-Hermann Hoppe's birthday." },
+  { id: 'birthday-mises', icon: '🎂', name: 'Happy Birthday, Mises', description: "Play on September 29, Ludwig von Mises's birthday." },
+  { id: 'party-animal', icon: '🥳', name: 'Party Animal', description: 'Celebrate 4 different birthdays.', check: (c) => c.stats.birthdaysCelebrated >= 4 },
+  { id: 'event-bitcoin-genesis', icon: '₿', name: 'Chancellor on Brink of Second Bailout', description: "Play on January 3, Bitcoin's birthday." },
+  { id: 'terra-nullius', icon: '🇱🇮', name: 'Terra Nullius', description: 'Secede on Liberland Day (April 13).' },
+  { id: 'pizza-day', icon: '🍕', name: 'Most Expensive Lunch in History', description: 'Catch a pizza on Bitcoin Pizza Day (May 22).' },
+  { id: 'event-nixon-shock', icon: '💵', name: 'Closing the Gold Window', description: 'Play on August 15, the anniversary of the Nixon Shock.' },
+
   // Challenge runs: winning and speedrun achievements are granted when you win.
   { id: 'challenge-minarchist', icon: '⚖️', name: 'Night Watchman', description: 'Win Minarchist Mode.' },
   { id: 'speedrun-minarchist', icon: '⏱️', name: 'Limited Government, Unlimited Hustle', description: 'Win Minarchist Mode in under an hour.' },
@@ -761,9 +1060,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'speedrun-hyperinflation', icon: '🔥', name: 'Spend It Before It Melts', description: 'Win Hyperinflation Mode in under an hour.' },
   { id: 'all-challenges', icon: '🌍', name: 'Tried Every System', description: 'Win every challenge. Turns out the market was right.', check: (c) => c.challengesCompleted >= 4 },
 
+  { id: 'lawyer-up', icon: '🛡️', name: 'Lawyer Up', description: 'Let a DRO retainer handle a Fed raid for you. Your agency, your rules.' },
+  { id: 'raid-lost', icon: '🚔', name: 'Should Have Hidden It', description: 'Lose something to a Fed raid. It happens to the best of us.' },
+  // Granted by main.ts, which times your clicks.
+  { id: 'click-frenzy', icon: '⚡', name: 'High-Frequency Trader', description: 'Click 10 times in one second.' },
+  { id: 'click-marathon', icon: '🏭', name: 'Voluntary Sweatshop', description: 'Click 100 times in one minute. You agreed to the terms.' },
+
   // Secret achievements: granted by main.ts when the player does something specific.
   ...([
-    { id: 'civil-disobedience', icon: '🪧', name: 'Civil Disobedience', description: 'Left a Fed raid on screen for a whole minute. Thoreau would be proud.', hint: 'Sometimes the best response to the State is no response at all.' },
+    { id: 'civil-disobedience', icon: '🪧', name: 'Civil Disobedience', description: 'Let a Fed raid run out the clock. Thoreau would be proud.', hint: 'Sometimes the best response to the State is no response at all.' },
     { id: 'student-and-teacher', icon: '🎓', name: 'Student and Teacher', description: 'Dragged Rothbard onto Mises. The seminar is back in session.', hint: 'Put the student next to the teacher.' },
     { id: 'afuera', icon: '🪚', name: '¡AFUERA!', description: "Caught Milei's Chainsaw with Milei himself on screen.", hint: 'A certain Argentine, and a certain power tool.' },
     { id: 'brussels-effect', icon: '🇪🇺', name: 'Brussels Effect', description: 'Made the crossed-out EU flag your very first sticker.', hint: 'Be the first to leave the Union.' },
@@ -774,6 +1079,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     { id: 'make-up-your-mind', icon: '🔇', name: 'Make Up Your Mind', description: 'Toggled the sound 10 times in a row.', hint: 'On, off, on, off…' },
     { id: 'say-it', icon: '⌨️', name: 'Say It With Me', description: 'Typed "taxation is theft". Correct.', hint: 'Type the first commandment.' },
     { id: 'exit-liquidity', icon: '🫗', name: 'Exit Liquidity', description: 'Seceded with less than $1 in your pocket.', hint: 'Leave with nothing but your principles.' },
+    { id: 'hodl', icon: '💎', name: 'HODL', description: 'Held the snake down for 10 seconds straight. Diamond hands.', hint: "Diamond hands. Don't let go." },
+    { id: 'viennese-trinity', icon: '🎻', name: 'The Viennese Trinity', description: 'Had Menger, Böhm-Bawerk and Wieser on screen at the same time. The first Austrians, reunited.', hint: 'The founder and his two heirs, in the same café.' },
+    { id: 'rothbard-shelf', icon: '📚', name: 'Mr. Libertarian\'s Bookshelf', description: 'Had 5 Rothbard books on screen at the same time.', hint: 'One man wrote a library. Show five of his books at once.' },
+    { id: 'family-feud', icon: '🥊', name: 'Family Feud', description: 'Had Milei and Hoppe on screen at the same time. Awkward.', hint: 'Seat the chainsaw next to his harshest Austrian critic.' },
+    { id: 'chicago-boys', icon: '🌬️', name: 'Chicago Boys', description: 'Had Sowell, both Friedmans, Caplan and Becker on screen at the same time.', hint: 'Five economists the Austrians love to argue with.' },
+    { id: 'forerunners', icon: '🕯️', name: 'The Forerunners', description: 'Had Spooner, Bastiat, Cantillon, Molinari, Mariana and Azpilicueta on screen at the same time.', hint: 'Six thinkers who were libertarians before the word existed.' },
     { id: 'zero-time-preference', icon: '🧘', name: 'Time Preference: Zero', description: "Didn't click the snake for 10 minutes while making $1M/sec.", hint: 'Patience. A lot of it. While rich.' },
   ] as const).map((a) => ({ ...a, secret: true })),
 ];
@@ -790,7 +1101,50 @@ export type SecretAchievementId =
   | 'make-up-your-mind'
   | 'say-it'
   | 'exit-liquidity'
-  | 'zero-time-preference';
+  | 'zero-time-preference'
+  | 'hodl'
+  | 'viennese-trinity'
+  | 'rothbard-shelf'
+  | 'family-feud'
+  | 'chicago-boys'
+  | 'forerunners';
 
 /** The phrase that unlocks "Say It With Me" when typed. */
 export const SECRET_PHRASE = 'taxation is theft';
+
+/**
+ * Secret achievements for having certain stickers on screen together: at least
+ * `need` of `ids` (all of them if `need` is left out).
+ */
+export const STICKER_COMBOS: readonly { achievement: SecretAchievementId; ids: readonly string[]; need?: number }[] = [
+  { achievement: 'viennese-trinity', ids: ['menger', 'bohmbawerk', 'wieser'] },
+  { achievement: 'rothbard-shelf', ids: BOOKS.filter((b) => b.author.includes('Rothbard')).map((b) => b.id), need: 5 },
+  { achievement: 'family-feud', ids: ['milei', 'hoppe'] },
+  { achievement: 'chicago-boys', ids: ['sowell', 'mfriedman', 'dfriedman', 'caplan', 'becker'] },
+  { achievement: 'forerunners', ids: ['spooner', 'bastiat', 'cantillon', 'molinari', 'mariana', 'azpilicueta'] },
+];
+
+// ---------------------------------------------------------------------------
+// City names: suggestions for the 🎲 button when you secede
+// ---------------------------------------------------------------------------
+
+export const CITY_NAMES = {
+  /** Combined with a pattern: "Rothbard" + "{}ia" = "Rothbardia". */
+  roots: [
+    'Rothbard', 'Hayek', 'Mises', 'Hoppe', 'Menger', 'Bastiat', 'Spooner', 'Hazlitt', 'Kirzner', 'Konkin',
+    'Molinari', 'Kinsella', 'Nock', 'Cantillon', 'Mariana', 'Sowell', 'Friedman', 'Salerno', 'Block', 'Bylund',
+    'Tucker', 'Hülsmann', 'Huerta', 'Boettke', 'Wieser', 'Woods', 'Caplan', 'Locke', 'Paine', 'Thoreau',
+  ],
+  /** `{}` is the root. A root ending in "e" drops it before "ia" (Hoppia, not Hoppeia). */
+  patterns: [
+    '{}ia', '{}ia', '{}borough', '{}ville', '{}burg', '{}stadt', '{}stan', '{}topia', '{}polis', 'New {}',
+    'Port {}', '{} Springs', '{} Heights', 'Free City of {}ia', '{}haven', 'Fort {}', '{} Gulch', 'Lake {}',
+  ],
+  /** Names that stand on their own. */
+  whole: [
+    'Ancapistan', 'Agoria', 'Praxeopolis', 'Catallaxy Bay', 'Covenantville', 'Liberstadt', 'Terra Nullius',
+    'Sound Money Springs', 'Taxfree-on-Sea', 'Port NAP', 'Homestead Heights', 'Low Time Preference',
+    'Lower Laissez-Faire', 'Upper Laissez-Faire', 'Free Rider Falls', 'Spontaneous Order', 'Hard Money Hollow',
+    'Gadsden', 'Exit Strategy', 'Galt\'s Gulch', 'Voluntaryville', 'Polycentric Springs', 'Unlicensed Acres',
+  ],
+} as const;

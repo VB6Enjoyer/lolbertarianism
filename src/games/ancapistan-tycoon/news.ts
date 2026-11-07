@@ -56,6 +56,19 @@ export const HEADLINES: readonly Headline[] = [
   { text: 'Fed celebrates its birthday by printing itself a cake. Cake now worth 3% less.', when: (c) => c.events.includes('fed-birthday') },
   { text: 'Woodrow Wilson\'s ghost spotted at Fed birthday party, asks for "just one more" war.', when: (c) => c.events.includes('fed-birthday') },
 
+  // Birthdays and anniversaries
+  { text: 'Carl Menger turns another year older. Value of his birthday cake: subjective.', when: (c) => c.events.includes('birthday-menger') },
+  { text: "Mr. Libertarian's birthday: party held without permits, cake homesteaded on arrival.", when: (c) => c.events.includes('birthday-rothbard') },
+  { text: "Hayek's birthday party organized by spontaneous order. No planner, somehow still great.", when: (c) => c.events.includes('birthday-hayek') },
+  { text: "Bastiat's birthday: candlemakers petition to ban the sun during the celebration.", when: (c) => c.events.includes('birthday-bastiat') },
+  { text: "Ron Paul's birthday: crowd chants \"It's happening!\" Nobody is sure what, but it is.", when: (c) => c.events.includes('birthday-ronpaul') },
+  { text: "Hoppe's birthday party enforces a strict covenant. Communists remain outside, eating no cake.", when: (c) => c.events.includes('birthday-hoppe') },
+  { text: 'Mises Day: economists everywhere attempt economic calculation of the cake. Only the market succeeds.', when: (c) => c.events.includes('birthday-mises') },
+  { text: 'Bitcoin turns another year older. Bankers still on brink of next bailout.', when: (c) => c.events.includes('bitcoin-genesis') },
+  { text: "Liberland celebrates its founding. Croatia's border police celebrate by not noticing.", when: (c) => c.events.includes('liberland-day') },
+  { text: 'Pizza Day: local man orders two pizzas, pays in sats, feels a strange sense of dread.', when: (c) => c.events.includes('pizza-day') },
+  { text: 'Nixon Shock anniversary: the "temporary" closure of the gold window turns another year old.', when: (c) => c.events.includes('nixon-shock') },
+
   // Early game
   { text: 'Health inspector issues 14 citations to child\'s lemonade stand. Child issues 15.', when: (c) => c.owned(2) >= 1 },
   { text: 'Unlicensed lemonade stands now outnumber licensed ones 40 to 1. "The free market is sour," says regulator.', when: (c) => c.owned(2) >= 10 },

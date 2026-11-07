@@ -71,9 +71,9 @@ Noticed along the way, left alone for now:
 ### Sticker shop ✅
 
 - 🎨 Stickers button opens a shop with tabs per category (quotes, emojis,
-  flags, people, orgs, items). Every sticker starts locked; all 77 are bought
+  flags, people, orgs, items). Every sticker starts locked; all are bought
   one at a time. Reshuffle Stickers appears once you own one.
-- Each owned sticker adds +0.5% to passive income. The price depends only on how
+- Each owned sticker adds +0.25% to passive income (was +0.5% before the books). The price depends only on how
   many you've bought: $10k for the first, ~31% more per purchase, ~$10 trillion
   for the last (`BALANCE.stickers`).
 - The screen shows every sticker you own; a toggle hides them (bonus stays).
@@ -252,11 +252,121 @@ Noticed along the way, left alone for now:
 - Full-size source art lives in `art/christmas/` (not deployed); the game uses
   480 px WebP copies in `public/vidya/img/`.
 
+### Birthdays and anniversaries ✅
+
+- 🎂 Birthdays (one day each): Menger Feb 23, Rothbard Mar 2, Hayek May 8,
+  Bastiat Jun 30, Ron Paul Aug 20, Hoppe Sep 2, Mises Sep 29. A popup with the
+  party-hat portrait, their sticker free to claim (and glowing gold if owned),
+  +10% income all day, a headline and a "Happy Birthday" achievement. Party
+  Animal for celebrating 4 different birthdays.
+- ₿ Bitcoin Genesis Block (Jan 3): crypto farms ×2. Achievement: Chancellor on
+  Brink of Second Bailout.
+- 🇱🇮 Liberland Day (Apr 13): animated flag popup, the Liberland sticker free,
+  and seceding founds one bonus city. Achievement: Terra Nullius.
+- 🍕 Bitcoin Pizza Day (May 22): golden stickers become pizzas that may hold
+  Two Pizzas for 10,000 BTC (double cash). Achievement: Most Expensive Lunch in History.
+- 💵 Nixon Shock (Aug 15): Golden Standard suspended; golden stickers become fiat
+  stickers (half cash, half duration). Achievement: Closing the Gold Window.
+- New People stickers: Frédéric Bastiat and Thomas Sowell, then Gary Becker, Milton
+  Friedman, Peter Boettke, Richard Cantillon, Martín de Azpilicueta, Juan de
+  Mariana, Gustave de Molinari and Friedrich von Wieser, then Samuel Edward
+  Konkin III (40 people in all).
+- 📚 Books: 82 book-cover stickers in their own tab (titles and authors in
+  `books.ts`, covers in `public/vidya/img/books/`, originals in `art/books/`).
+  Completing them all grants Library of Liberty (clicks ×1.5). With 170 regular
+  stickers the price ladder is gentler (+13% per purchase instead of +28%), and
+  pacing got ~17% faster: all charters ~21h, Andromeda ~32h for an active player.
+- Events can now carry effects (`EventEffects`: income, per-upgrade income,
+  gift sticker, bonus cities, suspended perk, golden theme and payouts).
+  `?date=` previews now reach every rule, including income.
+- Event popups are at least 480 px wide (so text stays readable next to tall
+  portraits) and dialog buttons stick to the bottom on small screens.
+
+### Unlockable stickers ✅
+
+- Per-sticker bonus down to +0.25% to undo the books' pacing boost: Andromeda
+  back to ~40h active / ~90h casual (from ~32h / ~77h).
+- Some stickers have a condition (`STICKER_UNLOCKS`). Once met, they stay
+  unlocked for good (saved in `unlockedStickers`, carried through challenges).
+  - Earned for free: Economics in One Lesson (100 theory books), Our Enemy, the
+    State (250), The Ethics of Liberty (500), Democracy: The God That Failed
+    (750), Human Action (1,000), Liberland flag (first secession). Earned
+    stickers survive secession, don't raise the price ladder, and are earned
+    again in a challenge run once the condition is met there.
+  - For sale once unlocked: AK-47 (50 AK-47s), M249 (200 AK-47s), McNuke
+    (first silo), Antiroad Aktion (10 roads), Gold standard coin (first crypto
+    farm), Bitcoin (50 farms), Solana (100 farms), "I would privatize the sun"
+    (solar system), "Free Market Enjoyer" (invisible hand), "Agorism Now!"
+    (100 lemonade stands).
+- Locked cards show a greyed preview and the requirement with progress, e.g.
+  "🔒 Own 200 AK-47s (60/200)" or "🎁 Earn it: Own 750 theory books".
+  Unlocks get a toast; earned stickers drop on screen.
+- New stickers: Antiroad Aktion (Orgs), Bitcoin and Solana in a new 🪙 Crypto
+  tab. Set bonus 🪙 Cold Storage: golden-sticker cash ×1.25.
+- More earned books: The State (first secession), Anatomy of the State (5th
+  secession), The Gulag Archipelago (win the Communism challenge). Achievement
+  🐛 Bookworm: earn every book money can't buy (`EARNED_BOOKS`).
+- More for-sale unlocks: 🚁 Physical removal (10 physical removal services),
+  "End! The! Fed!" (dodge 100 Fed raids, by hand or by shell company).
+- 13 new quotes (41 in all). A quote can span lines (`\n`), and a line in
+  `*asterisks*` is shown in italics ("Man Acts / *Bottom Text*").
+- Fix: golden stickers no longer look like Christmas stickers outside the event.
+
+### Upgrade order by absurdity ✅
+
+- The 22 upgrades are re-ordered so each is more absurd than the last: Physical
+  removal and Lower your time preference come right after the roads, the
+  orbital railgun after the McNuke silo, and Multiverse arbitrage is now the
+  final upgrade (Andromeda just before it). Prices keep the same 22 tiers
+  ($15 → $200T); each upgrade takes the tier of its new slot, with payouts
+  interpolated from the old click and passive curves. Ids don't change, so
+  saves, achievements and unlocks still point at the same upgrades.
+- Click and passive no longer alternate. Tests now check that prices rise,
+  every click upgrade beats the cheaper ones, and no passive pays back faster
+  than a cheaper one.
+- Pacing: the $200T upgrade at ~38h active / ~88h casual (was ~42h / ~95h);
+  all charters ~25h / ~69h. Minarchist Mode got easier (active win ~58m,
+  was ~1h 16m) because its free PMC now sits at the $10M tier.
+
+### City names, selling and more achievements ✅
+
+- Seceding asks you to name your new city (prefilled with a random name; 🎲
+  rolls another: Rothbardia, Port Hayek, Catallaxy Bay…, `CITY_NAMES`). Click
+  the city count to see every city you founded, numbered by secession. Cities
+  from before the registry show up as unnamed. Saved in `foundedCities`.
+- Sell upgrades: a Buy | Sell switch above the shop. Each copy refunds half of
+  what it would cost to buy back now (`BALANCE.sellRefund`); ×1, ×10 or ALL.
+  Refunds are cash, not earnings, so they don't count toward cities. Copies a
+  challenge hands you (Minarchist's PMC) can't be sold. Stats count them.
+- Achievements: ⚡ High-Frequency Trader (10 clicks in a second), 🏭 Voluntary
+  Sweatshop (100 in a minute). Secret: 💎 HODL (hold the snake 10 seconds),
+  and five for stickers on screen together (`STICKER_COMBOS`): 🎻 The Viennese
+  Trinity, 📚 Mr. Libertarian's Bookshelf (5 Rothbard books), 🥊 Family Feud
+  (Milei + Hoppe), 🌬️ Chicago Boys, 🕯️ The Forerunners.
+- New People sticker: Lysander Spooner (41 people).
+
+### Raids with a timer, penalties and DRO retainers ✅
+
+- Before: an ignored raid had no timer; it froze income until you clicked
+  "Hide assets", forever if you were away.
+- Now each raid gives 1-30 seconds (random), with a countdown bar. Income stays
+  frozen until it ends. If time runs out, the Fed takes one of (equal odds):
+  💸 20% of your cash, 🏚️ one random building, 🧊 Asset Freeze (income ×0.5
+  for 10 min) or 🚧 Capital Controls (clicks ×0.5 for 15 min). Repeat
+  penalties restart their clock instead of stacking, show as red chips, and
+  survive a reload (golden boosts still don't).
+- 🛡️ DRO retainer: a row above the upgrades. Costs 5 minutes of income (min
+  $1,000), stacks, and is kept when you secede. A raid that runs out the clock
+  uses one up and you lose nothing; hiding your assets yourself keeps it.
+  The raid popup says whether you're covered.
+- Achievements: 🛡️ Lawyer Up, 🚔 Should Have Hidden It. Civil Disobedience is
+  now "let a raid run out the clock" (raids no longer last a minute).
+- The simulator lets slow reactions time out (the casual player reacts in 10s).
+
 Ideas for later:
-- More seasonal events: birthdays (Rothbard Mar 2, Mises Sep 29, Hayek May 8,
-  Ron Paul Aug 20, Hoppe Sep 2, Milei Oct 22, Menger Feb 23, Bastiat Jun 30)
-  and anniversaries (Bitcoin Genesis Block Jan 3, Pizza Day May 22, Liberland
-  Day Apr 13, Nixon Shock Aug 15). Each needs at least a popup image.
+- Javier Milei's birthday (Oct 22): needs a popup image.
+- Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.
+- A New Year's Eve countdown in the news ticker.
 
 ## Phase 5: The rest, one at a time
 
