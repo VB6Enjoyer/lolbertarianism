@@ -6,7 +6,9 @@ import {
   CHALLENGES,
   CHARTERS,
   CLICK_PHRASES,
+  GOLDEN_EFFECTS,
   PERKS,
+  PIZZA_EFFECT,
   PRESENT_EFFECTS,
   SECRET_PHRASE,
   STICKERS,
@@ -72,7 +74,7 @@ import {
   leaveChallenge,
   type ChallengeWin,
 } from './challenges.ts';
-import { eventsOn, gameDate, isEventActive, seasonKey } from './events.ts';
+import { calendarDate, eventEffects, eventsOn, gameDate, isEventActive, seasonKey, setDateOverride } from './events.ts';
 import { pickHeadline, type NewsContext } from './news.ts';
 import { formatPlaytime } from './stats.ts';
 import { clearSave, exportSave, importSave, loadState, saveState } from './save.ts';
@@ -127,8 +129,11 @@ let statsOpen = false;
 let raidStartedAt = 0;
 let lastClickAt = Date.now();
 
+// `?date=YYYY-MM-DD` previews events on any day: every date-based rule follows it.
+if (/[?&]date=\d{4}-\d{2}-\d{2}/.test(location.search)) setDateOverride(gameDate());
+
 /** The game's "today": the real date, or the `?date=YYYY-MM-DD` preview date. */
-const today = () => gameDate();
+const today = () => calendarDate();
 const christmas = () => isEventActive('christmas', today());
 
 // ---------------------------------------------------------------------------
@@ -193,10 +198,15 @@ function renderPerks() {
     div.innerHTML = `
       <div class="special-upgrade-icon">${p.icon}</div>
       <div class="special-upgrade-name">${p.name}</div>
-      <div class="special-upgrade-cost">${owned ? '✔ Owned' : money(perkCost(state, p))}</div>
+      <div class="special-upgrade-cost">${owned ? perkOwnedLabel(p.id) : money(perkCost(state, p))}</div>
     `;
     els.perks.appendChild(div);
   }
+}
+
+/** "✔ Owned", or "⛔ Suspended today" on the Nixon Shock anniversary. */
+function perkOwnedLabel(id: string) {
+  return eventEffects(today()).suspendedPerks.includes(id) ? '⛔ Suspended today' : '✔ Owned';
 }
 
 function updateUI() {
@@ -211,7 +221,7 @@ function updateUI() {
     const cost = perkCost(state, p);
     btn.classList.toggle('disabled', owned || state.score < cost);
     const price = btn.querySelector('.special-upgrade-cost');
-    if (price && !owned) price.textContent = money(cost); // challenge inflation moves prices
+    if (price) price.textContent = owned ? perkOwnedLabel(p.id) : money(cost); // challenge inflation moves prices
   }
   for (const u of UPGRADES) {
     const btn = document.getElementById(`btn-${u.id}`);
@@ -451,6 +461,7 @@ function showWelcomeBack(seconds: number, amount: number) {
 function showStickers() {
   els.stickers.hidden = !state.showStickers;
   spawnStickers(els.stickers, state.showStickers ? state.stickers : []);
+  updateEventDecor(); // re-apply today's gift glow
 }
 
 const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
@@ -475,6 +486,7 @@ function visibleCategories() {
 /** Price label for a sticker card. */
 function stickerPriceLabel(id: string) {
   if (!stickerForSale(id, today())) return '🎄 Christmas only';
+  if (priceOfSticker(state, id) === 0) return '🎁 Free today!';
   return `Buy · ${money(priceOfSticker(state, id))}`;
 }
 
@@ -592,7 +604,10 @@ function onBuySticker(id: string) {
     sfx.perk();
   }
   if (firstPurchase && id === 'flag-eu-cross') unlockSecret('brussels-effect');
-  if (state.showStickers) dropSticker(els.stickers, id);
+  if (state.showStickers) {
+    dropSticker(els.stickers, id);
+    updateEventDecor();
+  }
   const { x, y } = center();
   spawnFloater(x, y, 'STICKER UNLOCKED!', '#8e44ad');
   sfx.sticker();
@@ -794,9 +809,10 @@ function showEventPopup(event: GameEvent) {
     // Fit the dialog to the picture: its width, unless that won't fit on screen.
     const fit = () => {
       if (!img.naturalWidth) return;
-      const maxH = window.innerHeight * 0.55;
+      const maxH = window.innerHeight * 0.45; // keep the text and button in view
       const shown = Math.min(img.naturalWidth, (img.naturalWidth * maxH) / img.naturalHeight);
-      (els.modalBody.parentElement as HTMLElement).style.width = `min(${Math.round(shown) + 48}px, 100%)`;
+      // Follow the image's width, but never so narrow that the text turns into a tall column.
+      (els.modalBody.parentElement as HTMLElement).style.width = `min(${Math.max(Math.round(shown) + 48, 480)}px, 100%)`;
     };
     if (img.complete) fit();
     else img.addEventListener('load', fit, { once: true });
@@ -816,6 +832,7 @@ function greetEvents() {
     const key = seasonKey(event, date);
     if (state.seenEvents.includes(key)) continue;
     state.seenEvents.push(key);
+    if (event.birthday) state.stats.birthdaysCelebrated++;
     queueModal(() => showEventPopup(event));
   }
   updateEventDecor();
@@ -835,6 +852,11 @@ function updateEventDecor() {
   els.eventChip.textContent = running.map((e) => `${e.icon} ${e.name}`).join(' · ');
 
   if (isChristmas) unlockSecret('murray-christmas');
+  for (const e of running) if (e.achievement) unlockSecret(e.achievement);
+
+  // Today's gift stickers glow gold on screen.
+  const gifts = eventEffects(date).giftStickers;
+  els.stickers.querySelectorAll<HTMLElement>('.sticker').forEach((s) => s.classList.toggle('gift-glow', gifts.includes(s.dataset.id ?? '')));
   if (date.getMonth() === 0 && date.getDate() === 1) unlockSecret('hoppe-new-year');
 }
 
@@ -988,10 +1010,13 @@ function spawnGolden() {
     return;
   }
   const present = christmas();
+  const theme = present ? undefined : eventEffects(today()).goldenTheme; // pizza or fiat
   const pool = state.stickers.length ? state.stickers : STICKERS.map((s) => s.id);
-  const btn = el('button', `golden-sticker${present ? ' present' : ''}`);
-  btn.setAttribute('aria-label', present ? 'A Christmas present! Click it' : 'Golden sticker! Click it');
-  btn.append(present ? stickerPreview('ancap-gift') : stickerPreview(pick(pool)));
+  const btn = el('button', `golden-sticker${present ? ' present' : ''}${theme ? ` ${theme}` : ''}`);
+  btn.setAttribute('aria-label', present ? 'A Christmas present! Click it' : theme === 'pizza' ? 'A pizza! Click it' : 'Golden sticker! Click it');
+  if (present) btn.append(stickerPreview('ancap-gift'));
+  else if (theme) btn.append(el('span', 'golden-emoji', theme === 'pizza' ? '🍕' : '💵'));
+  else btn.append(stickerPreview(pick(pool)));
   btn.style.left = `${40 + Math.random() * (window.innerWidth - 160)}px`;
   btn.style.top = `${40 + Math.random() * (window.innerHeight - 200)}px`;
   btn.style.setProperty('--life', `${BALANCE.golden.lifetimeSec}s`);
@@ -1005,7 +1030,7 @@ function spawnGolden() {
   };
   btn.addEventListener('click', (e) => {
     if (done) return;
-    const effects = present ? PRESENT_EFFECTS : undefined;
+    const effects = present ? PRESENT_EFFECTS : theme === 'pizza' ? [PIZZA_EFFECT, ...GOLDEN_EFFECTS] : undefined;
     onCatchGolden(pickGoldenEffect(Math.random(), effects), e.clientX || window.innerWidth / 2, e.clientY || window.innerHeight / 2);
     finish();
   });
@@ -1017,6 +1042,7 @@ function spawnGolden() {
 function onCatchGolden(effect: GoldenEffect, x: number, y: number) {
   const cash = catchGolden(state, effect);
   sfx.goldenCatch();
+  if (effect === PIZZA_EFFECT) unlockSecret('pizza-day');
   if (effect.id === 'chainsaw' && els.stickers.querySelector('[data-id="milei"]') && !els.stickers.hidden) {
     unlockSecret('afuera');
   }
@@ -1081,8 +1107,10 @@ function onBuyPerk(id: string) {
 
 function onSecede() {
   const broke = state.score < 1;
-  const gained = secede(state);
+  const liberland = isEventActive('liberland-day', today());
+  const gained = secede(state, today());
   if (!gained) return;
+  if (liberland) unlockSecret('terra-nullius');
   if (broke) unlockSecret('exit-liquidity');
   saveState(state);
   renderShop();
@@ -1316,7 +1344,7 @@ greetEvents(); // event popups wait until "Welcome back!" is closed
 save();
 
 setInterval(gameLoop, 1000);
-setInterval(updateEventDecor, 60_000); // events start and end at midnight
+setInterval(greetEvents, 60_000); // events start and end at midnight
 setInterval(tryRaid, BALANCE.raid.intervalMs);
 setInterval(save, BALANCE.saveIntervalMs);
 scheduleGolden();

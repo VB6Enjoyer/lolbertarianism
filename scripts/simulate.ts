@@ -15,6 +15,7 @@
 //   BALANCE='{"secession":{"root":3}}' npm run simulate
 
 import { enterChallenge } from '../src/games/ancapistan-tycoon/challenges.ts';
+import { setDateOverride } from '../src/games/ancapistan-tycoon/events.ts';
 import {
   BALANCE,
   CHALLENGES,
@@ -95,6 +96,9 @@ function rng(seed: number) {
   };
 }
 let random = rng(42);
+
+// Simulate on an ordinary day with no events, so results don't depend on today's date.
+setDateOverride(new Date(2026, 10, 10));
 
 /** Money per second from income plus clicking, crits and requisitioned clicks included. */
 function rate(s: GameState, p: Profile, now: number): number {

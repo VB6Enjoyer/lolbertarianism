@@ -1,7 +1,7 @@
 // Game rules as pure functions over a plain state object. No DOM in here,
 // so everything can be unit-tested (see logic.test.ts).
 
-import { isEventActive } from './events.ts';
+import { calendarDate, eventEffects, isEventActive } from './events.ts';
 import {
   ACHIEVEMENTS,
   ALL_GOLDEN_EFFECTS,
@@ -58,6 +58,8 @@ export interface Stats {
   requisitionedClicks: number;
   /** Christmas presents opened. */
   presentsOpened: number;
+  /** Different birthday events played on. */
+  birthdaysCelebrated: number;
 }
 
 /** A timed golden-sticker boost. Not saved: boosts end when the tab closes. */
@@ -130,6 +132,7 @@ export function newStats(): Stats {
     failedPurchases: 0,
     requisitionedClicks: 0,
     presentsOpened: 0,
+    birthdaysCelebrated: 0,
   };
 }
 
@@ -246,11 +249,12 @@ export interface Derived {
 }
 
 export function derive(state: GameState, now = Date.now()): Derived {
+  const fx = eventEffects(calendarDate(now));
   let clickValue = 1;
   let income = 0;
   for (const u of UPGRADES) {
     const n = ownedCount(state, u.id);
-    if (u.type === 'passive') income += u.income * n;
+    if (u.type === 'passive') income += u.income * n * (fx.upgradeIncome[u.id] ?? 1);
     else clickValue += u.clickBonus * n;
   }
 
@@ -260,7 +264,7 @@ export function derive(state: GameState, now = Date.now()): Derived {
   let incomeToClickPercent = 0;
   let raidEvasionChance = 0;
   for (const p of PERKS) {
-    if (!hasPerk(state, p.id)) continue;
+    if (!hasPerk(state, p.id) || fx.suspendedPerks.includes(p.id)) continue;
     switch (p.effect) {
       case 'crit':
         critChance += p.value;
@@ -309,7 +313,8 @@ export function derive(state: GameState, now = Date.now()): Derived {
 
   if (hasReward(state, 'communism')) clickMultiplier *= CHALLENGE_REWARDS.communismClicks;
 
-  const grossIncome = income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff;
+  const grossIncome =
+    income * passiveMultiplier * stickerMultiplier * setIncomeMultiplier * globalMultiplier * incomeBuff * fx.incomeMultiplier;
   const tax = taxRate(state, grossIncome);
 
   return {
@@ -456,18 +461,22 @@ export function christmasStickerCost(state: GameState, now = Date.now()): number
   return Math.ceil(Math.max(CHRISTMAS.minStickerCost, derive(state, now).incomePerSec * CHRISTMAS.stickerIncomeSeconds));
 }
 
+/** Whether a sticker is free today (birthdays and anniversaries gift one). */
+export const isGiftSticker = (id: string, date: Date = calendarDate()) => eventEffects(date).giftStickers.includes(id);
+
 /** What a given sticker costs right now. */
 export function priceOfSticker(state: GameState, id: string, now = Date.now()): number {
+  if (isGiftSticker(id, calendarDate(now))) return 0;
   return isSeasonal(id) ? christmasStickerCost(state, now) : stickerCost(state);
 }
 
 /** Whether a sticker is for sale today (limited editions only during their event). */
-export function stickerForSale(id: string, date = new Date()): boolean {
+export function stickerForSale(id: string, date: Date = calendarDate()): boolean {
   const season = STICKERS.find((s) => s.id === id)?.season;
   return !season || isEventActive(season, date);
 }
 
-export function buySticker(state: GameState, id: string, date = new Date()): boolean {
+export function buySticker(state: GameState, id: string, date: Date = calendarDate()): boolean {
   if (hasSticker(state, id) || !STICKERS.some((s) => s.id === id) || !stickerForSale(id, date)) return false;
   const cost = priceOfSticker(state, id, date.getTime());
   if (state.score < cost) return false;
@@ -529,26 +538,29 @@ export function catchGolden(state: GameState, effect: GoldenEffect, now = Date.n
   if (PRESENT_EFFECTS.includes(effect)) state.stats.presentsOpened++;
   let cash = 0;
   if (effect.cash) {
-    cash = goldenCash(state, now) * (effect.cashMultiplier ?? 1);
+    cash = goldenCash(state, now) * (effect.cashMultiplier ?? 1) * eventEffects(calendarDate(now)).goldenCashMultiplier;
     earn(state, cash);
   }
   if (effect.durationSec > 0) {
     // Catching the same boost again restarts its timer instead of stacking.
     state.buffs = state.buffs.filter((b) => b.effectId !== effect.id);
-    const duration = effect.durationSec * (hasCharter(state, 'long-bull') ? CHARTER_VALUES.longBullDuration : 1);
+    const duration =
+      effect.durationSec *
+      (hasCharter(state, 'long-bull') ? CHARTER_VALUES.longBullDuration : 1) *
+      eventEffects(calendarDate(now)).goldenDurationMultiplier;
     state.buffs.push({ effectId: effect.id, endsAt: now + duration * 1000 });
   }
   return cash;
 }
 
 /** Multiplier on the wait between golden stickers (presents come sooner at Christmas). */
-export const goldenDelayMultiplier = (state: GameState, date = new Date()) =>
+export const goldenDelayMultiplier = (state: GameState, date: Date = calendarDate()) =>
   (hasCharter(state, 'seed-phrases') ? CHARTER_VALUES.seedPhrasesDelay : 1) *
   setProduct(state, 'goldenDelay') *
   (isEventActive('christmas', date) ? CHRISTMAS.presentDelay : 1);
 
 /** Odds of a raid at each raid check. */
-export const raidChance = (state: GameState, date = new Date()) =>
+export const raidChance = (state: GameState, date: Date = calendarDate()) =>
   Math.min(
     1,
     (isEventActive('fed-birthday', date) ? CHRISTMAS.fedBirthdayRaids : 1) *
@@ -560,7 +572,7 @@ export const raidChance = (state: GameState, date = new Date()) =>
   );
 
 /** What dodging a raid pays: a flat bonus, or a minute of income on the Fed's birthday. */
-export function raidEvadeBonus(state: GameState, date = new Date()): number {
+export function raidEvadeBonus(state: GameState, date: Date = calendarDate()): number {
   if (!isEventActive('fed-birthday', date)) return BALANCE.raid.evadeBonus;
   return Math.max(BALANCE.raid.evadeBonus, derive(state, date.getTime()).incomePerSec * CHRISTMAS.fedBirthdayCakeSeconds);
 }
@@ -628,10 +640,11 @@ export function pendingCities(state: GameState): number {
  * (plus bought stickers and perks, with the right charters). Returns how many
  * cities were gained (0 means you couldn't secede yet and nothing changed).
  */
-export function secede(state: GameState): number {
+export function secede(state: GameState, date: Date = calendarDate()): number {
   if (state.activeChallenge) return 0; // no seceding from a challenge: win it or abandon it
-  const gained = pendingCities(state);
-  if (gained < 1) return 0;
+  const pending = pendingCities(state);
+  if (pending < 1) return 0;
+  const gained = pending + eventEffects(date).secessionBonusCities; // Liberland Day founds one more
   state.stats.bestRunEarnings = Math.max(state.stats.bestRunEarnings, state.runEarnings);
   state.stats.runSeconds = 0;
   state.cities += gained;

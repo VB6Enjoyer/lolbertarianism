@@ -1409,7 +1409,7 @@ body[data-challenge='hyperinflation'] .panel {
 .event-popup-image {
     display: block;
     max-width: 100%;
-    max-height: 55vh;
+    max-height: 45vh;
     margin: 0 auto 12px;
     border: 3px solid var(--ancap-black);
     border-radius: 10px;
@@ -1502,4 +1502,35 @@ body.christmas .main-btn-wrap {
     font-size: 0.65em;
     color: #666;
     font-style: italic;
+}
+
+/* Birthdays and anniversaries */
+.sticker.gift-glow {
+    filter: drop-shadow(0 0 10px gold) drop-shadow(0 0 4px gold) !important;
+}
+
+.golden-sticker .golden-emoji {
+    font-size: 46px;
+    line-height: 1;
+}
+
+.golden-sticker.fiat {
+    background: radial-gradient(circle, #f4fff2, #b6d7a8);
+    border-color: #4f7a3a;
+    filter: grayscale(0.2) drop-shadow(0 0 8px #6aa84f);
+}
+
+.golden-sticker.pizza {
+    background: radial-gradient(circle, #fff8e1, #ffcc80);
+    border-color: #d35400;
+    filter: drop-shadow(0 0 12px #e67e22);
+}
+
+/* Dialog buttons stay in view when the content needs scrolling (tall event popups on phones). */
+.modal-actions {
+    position: sticky;
+    bottom: -20px;
+    margin: 0 -24px -20px;
+    padding: 8px 24px 12px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 30%);
 }

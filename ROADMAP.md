@@ -252,11 +252,32 @@ Noticed along the way, left alone for now:
 - Full-size source art lives in `art/christmas/` (not deployed); the game uses
   480 px WebP copies in `public/vidya/img/`.
 
+### Birthdays and anniversaries ✅
+
+- 🎂 Birthdays (one day each): Menger Feb 23, Rothbard Mar 2, Hayek May 8,
+  Bastiat Jun 30, Ron Paul Aug 20, Hoppe Sep 2, Mises Sep 29. A popup with the
+  party-hat portrait, their sticker free to claim (and glowing gold if owned),
+  +10% income all day, a headline and a "Happy Birthday" achievement. Party
+  Animal for celebrating 4 different birthdays.
+- ₿ Bitcoin Genesis Block (Jan 3): crypto farms ×2. Achievement: Chancellor on
+  Brink of Second Bailout.
+- 🇱🇮 Liberland Day (Apr 13): animated flag popup, the Liberland sticker free,
+  and seceding founds one bonus city. Achievement: Terra Nullius.
+- 🍕 Bitcoin Pizza Day (May 22): golden stickers become pizzas that may hold
+  Two Pizzas for 10,000 BTC (double cash). Achievement: Most Expensive Lunch in History.
+- 💵 Nixon Shock (Aug 15): Golden Standard suspended; golden stickers become fiat
+  stickers (half cash, half duration). Achievement: Closing the Gold Window.
+- New People stickers: Frédéric Bastiat and Thomas Sowell.
+- Events can now carry effects (`EventEffects`: income, per-upgrade income,
+  gift sticker, bonus cities, suspended perk, golden theme and payouts).
+  `?date=` previews now reach every rule, including income.
+- Event popups are at least 480 px wide (so text stays readable next to tall
+  portraits) and dialog buttons stick to the bottom on small screens.
+
 Ideas for later:
-- More seasonal events: birthdays (Rothbard Mar 2, Mises Sep 29, Hayek May 8,
-  Ron Paul Aug 20, Hoppe Sep 2, Milei Oct 22, Menger Feb 23, Bastiat Jun 30)
-  and anniversaries (Bitcoin Genesis Block Jan 3, Pizza Day May 22, Liberland
-  Day Apr 13, Nixon Shock Aug 15). Each needs at least a popup image.
+- Javier Milei's birthday (Oct 22): needs a popup image.
+- Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.
+- A New Year's Eve countdown in the news ticker.
 
 ## Phase 5: The rest, one at a time
 

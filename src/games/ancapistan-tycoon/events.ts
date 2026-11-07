@@ -1,6 +1,20 @@
 // Seasonal events: which ones are running on a given date. Pure date logic, no DOM.
 
-import { EVENTS, type EventId, type GameEvent } from './data.ts';
+import { EVENTS, type EventEffects, type EventId, type GameEvent } from './data.ts';
+
+let dateOverride: Date | null = null;
+
+/** Pretend today is another day (for `?date=` previews). null goes back to the real date. */
+export function setDateOverride(date: Date | null): void {
+  dateOverride = date;
+}
+
+/** The calendar day the game treats as today: the real one, or the preview date at the current time. */
+export function calendarDate(now = Date.now()): Date {
+  const real = new Date(now);
+  if (!dateOverride) return real;
+  return new Date(dateOverride.getFullYear(), dateOverride.getMonth(), dateOverride.getDate(), real.getHours(), real.getMinutes());
+}
 
 const dayOfYear = (month: number, day: number) => month * 100 + day; // 1225 = Dec 25; only used for comparisons
 
@@ -17,7 +31,34 @@ export function eventsOn(date: Date): GameEvent[] {
   return EVENTS.filter((e) => isEventOn(e, date));
 }
 
-export const isEventActive = (id: EventId, date: Date) => eventsOn(date).some((e) => e.id === id);
+export const isEventActive = (id: EventId, date: Date = calendarDate()) => eventsOn(date).some((e) => e.id === id);
+
+/** The effects of every event running on this date, combined. */
+export function eventEffects(date: Date = calendarDate()): Required<Pick<EventEffects, 'incomeMultiplier' | 'goldenCashMultiplier' | 'goldenDurationMultiplier' | 'secessionBonusCities'>> &
+  Pick<EventEffects, 'goldenTheme'> & { upgradeIncome: Record<number, number>; giftStickers: string[]; suspendedPerks: string[] } {
+  const fx = {
+    incomeMultiplier: 1,
+    goldenCashMultiplier: 1,
+    goldenDurationMultiplier: 1,
+    secessionBonusCities: 0,
+    goldenTheme: undefined as EventEffects['goldenTheme'],
+    upgradeIncome: {} as Record<number, number>,
+    giftStickers: [] as string[],
+    suspendedPerks: [] as string[],
+  };
+  for (const { effects: e } of eventsOn(date)) {
+    if (!e) continue;
+    fx.incomeMultiplier *= e.incomeMultiplier ?? 1;
+    fx.goldenCashMultiplier *= e.goldenCashMultiplier ?? 1;
+    fx.goldenDurationMultiplier *= e.goldenDurationMultiplier ?? 1;
+    fx.secessionBonusCities += e.secessionBonusCities ?? 0;
+    fx.goldenTheme ??= e.goldenTheme;
+    for (const [id, m] of Object.entries(e.upgradeIncome ?? {})) fx.upgradeIncome[Number(id)] = (fx.upgradeIncome[Number(id)] ?? 1) * m;
+    if (e.giftSticker) fx.giftStickers.push(e.giftSticker);
+    if (e.suspendPerk) fx.suspendedPerks.push(e.suspendPerk);
+  }
+  return fx;
+}
 
 /**
  * A key for one season of an event, so its popup shows once per season.
@@ -37,7 +78,7 @@ export function seasonKey(event: GameEvent, date: Date): string {
 export function gameDate(search = typeof location === 'undefined' ? '' : location.search): Date {
   const param = new URLSearchParams(search).get('date');
   const match = param?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return new Date();
+  if (!match) return calendarDate();
   const now = new Date();
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), now.getHours(), now.getMinutes());
 }

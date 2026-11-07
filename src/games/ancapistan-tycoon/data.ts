@@ -284,14 +284,60 @@ export const PRESENT_EFFECTS: readonly GoldenEffect[] = [
   { id: 'fiat-coal', icon: '🪨', name: 'Fiat Coal', description: 'You were naughty: you voted. Worth almost nothing, just like the dollar.', weight: 1, clickMultiplier: 1, incomeMultiplier: 1, durationSec: 0, cash: true, cashMultiplier: 0.02 },
 ];
 
+/** On Bitcoin Pizza Day, golden stickers become pizzas and may hold this. */
+export const PIZZA_EFFECT: GoldenEffect = {
+  id: 'two-pizzas',
+  icon: '🍕',
+  name: 'Two Pizzas for 10,000 BTC',
+  description: 'Laszlo would be proud. Double the usual cash.',
+  weight: 6,
+  clickMultiplier: 1,
+  incomeMultiplier: 1,
+  durationSec: 0,
+  cash: true,
+  cashMultiplier: 2,
+};
+
 /** Every golden reward, so boosts can be looked up whatever handed them out. */
-export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS];
+export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS, PIZZA_EFFECT];
 
 // ---------------------------------------------------------------------------
 // Seasonal events
 // ---------------------------------------------------------------------------
 
-export type EventId = 'christmas' | 'fed-birthday';
+export type EventId =
+  | 'christmas'
+  | 'fed-birthday'
+  | 'birthday-menger'
+  | 'birthday-rothbard'
+  | 'birthday-hayek'
+  | 'birthday-bastiat'
+  | 'birthday-ronpaul'
+  | 'birthday-hoppe'
+  | 'birthday-mises'
+  | 'bitcoin-genesis'
+  | 'liberland-day'
+  | 'pizza-day'
+  | 'nixon-shock';
+
+/** What an event changes while it runs. Christmas's presents and Fed raids are handled by name. */
+export interface EventEffects {
+  /** Multiplies all passive income. */
+  incomeMultiplier?: number;
+  /** Multiplies one upgrade's income: upgrade id → multiplier. */
+  upgradeIncome?: Readonly<Record<number, number>>;
+  /** This sticker can be claimed for free today (and glows gold if you own it). */
+  giftSticker?: string;
+  /** Extra cities when seceding today. */
+  secessionBonusCities?: number;
+  /** This special upgrade does nothing today. */
+  suspendPerk?: string;
+  /** How golden stickers look today. */
+  goldenTheme?: 'pizza' | 'fiat';
+  /** Multiplies golden-sticker cash and boost durations today. */
+  goldenCashMultiplier?: number;
+  goldenDurationMultiplier?: number;
+}
 
 export interface GameEvent {
   id: EventId;
@@ -311,9 +357,132 @@ export interface GameEvent {
     when: string;
     features: readonly string[];
   };
+  effects?: EventEffects;
+  /** Granted for playing during the event. */
+  achievement?: string;
+  /** Birthdays count toward Party Animal. */
+  birthday?: boolean;
+}
+
+/** A one-day birthday event for a sticker person. */
+function birthday(
+  person: string,
+  name: string,
+  born: string,
+  knownFor: string,
+  month: number,
+  day: number,
+  shortName = name.split(' ').at(-1),
+): GameEvent {
+  return {
+    id: `birthday-${person}` as EventId,
+    icon: '🎂',
+    name: `${shortName}'s Birthday`,
+    start: [month, day],
+    end: [month, day],
+    birthday: true,
+    popup: {
+      image: `img/event-${person}.webp`,
+      imageAlt: `${name} in a party hat`,
+      title: `🎂 Happy Birthday, ${name}!`,
+      message: `${name} was born on ${born}. ${knownFor}`,
+      when: 'All day today:',
+      features: [
+        `🎁 ${shortName}'s sticker is free to claim in the 🎨 Stickers shop (and glows gold if you already own it).`,
+        '🎉 +10% income all day: the party pays for itself.',
+        `🏆 Play today for the "Happy Birthday, ${shortName}" achievement.`,
+      ],
+    },
+    effects: { incomeMultiplier: 1.1, giftSticker: person },
+    achievement: `birthday-${person}`,
+  };
 }
 
 export const EVENTS: readonly GameEvent[] = [
+  birthday('menger', 'Carl Menger', 'February 23, 1840', 'He founded the Austrian School with Principles of Economics.', 2, 23),
+  birthday('rothbard', 'Murray Rothbard', 'March 2, 1926', 'Mr. Libertarian himself: For a New Liberty, Man, Economy, and State.', 3, 2),
+  birthday('hayek', 'F. A. Hayek', 'May 8, 1899', 'The Road to Serfdom, and a Nobel Prize for proving central planners can\'t know enough.', 5, 8),
+  birthday('bastiat', 'Frédéric Bastiat', 'June 30, 1801', 'The Law, the broken window, and the candlemakers\' petition against the sun.', 6, 30),
+  birthday('ronpaul', 'Ron Paul', 'August 20, 1935', 'End the Fed. It\'s happening.', 8, 20, 'Ron Paul'),
+  birthday('hoppe', 'Hans-Hermann Hoppe', 'September 2, 1949', 'Democracy: The God That Failed, and the argumentation ethics nobody can argue against.', 9, 2),
+  birthday('mises', 'Ludwig von Mises', 'September 29, 1881', 'Human Action, and the reason central planning can\'t calculate.', 9, 29),
+  {
+    id: 'bitcoin-genesis',
+    icon: '₿',
+    name: 'Bitcoin Genesis Block',
+    start: [1, 3],
+    end: [1, 3],
+    popup: {
+      image: 'img/event-bitcoin-genesis.webp',
+      imageAlt: 'An anarcho-capitalist flag with the Bitcoin logo',
+      title: '₿ Happy Birthday, Bitcoin!',
+      message: 'On January 3, 2009, Satoshi Nakamoto mined the Genesis Block, with a newspaper headline embedded inside: "Chancellor on brink of second bailout for banks."',
+      when: 'All day today:',
+      features: ['🪙 Overseas crypto farms earn ×2.', '🏆 Play today for the "Chancellor on Brink of Second Bailout" achievement.'],
+    },
+    effects: { upgradeIncome: { 6: 2 } },
+    achievement: 'event-bitcoin-genesis',
+  },
+  {
+    id: 'liberland-day',
+    icon: '🇱🇮',
+    name: 'Liberland Day',
+    start: [4, 13],
+    end: [4, 13],
+    popup: {
+      image: 'img/event-liberland.webp',
+      imageAlt: 'The flag of Liberland waving',
+      title: '🇱🇮 Happy Liberland Day!',
+      message: 'On April 13, 2015, the Free Republic of Liberland was proclaimed on a patch of unclaimed land by the Danube.',
+      when: 'All day today:',
+      features: [
+        '🎁 The Liberland sticker is free to claim in the 🎨 Stickers shop.',
+        '🏙️ Secede today and found one bonus Free Private City.',
+        '🏆 Secede today for the "Terra Nullius" achievement.',
+      ],
+    },
+    effects: { giftSticker: 'liberland', secessionBonusCities: 1 },
+  },
+  {
+    id: 'pizza-day',
+    icon: '🍕',
+    name: 'Bitcoin Pizza Day',
+    start: [5, 22],
+    end: [5, 22],
+    popup: {
+      image: 'img/event-pizza-day.webp',
+      imageAlt: 'Bitcoin Pizza Day, May 22',
+      title: '🍕 Happy Bitcoin Pizza Day!',
+      message: 'On May 22, 2010, Laszlo Hanyecz paid 10,000 BTC for two pizzas: the first real-world Bitcoin purchase. Best meal ever, or most expensive?',
+      when: 'All day today:',
+      features: [
+        '🍕 Golden stickers become pizzas, and may hold "Two Pizzas for 10,000 BTC": double the usual cash.',
+        '🏆 Catch a pizza for the "Most Expensive Lunch in History" achievement.',
+      ],
+    },
+    effects: { goldenTheme: 'pizza' },
+  },
+  {
+    id: 'nixon-shock',
+    icon: '💵',
+    name: 'Nixon Shock',
+    start: [8, 15],
+    end: [8, 15],
+    popup: {
+      image: 'img/event-nixon-shock.webp',
+      imageAlt: 'The Nixon Shock: the death of the gold standard, August 15, 1971',
+      title: '💵 The Nixon Shock',
+      message: 'On August 15, 1971, Richard Nixon "temporarily" closed the gold window. It\'s still closed.',
+      when: 'All day today, in mourning:',
+      features: [
+        '⛔ Your Golden Standard special upgrade is suspended.',
+        '💵 Golden stickers are fiat stickers: half the cash, boosts last half as long.',
+        '🏆 Play through it for the "Closing the Gold Window" achievement.',
+      ],
+    },
+    effects: { suspendPerk: 'su2', goldenTheme: 'fiat', goldenCashMultiplier: 0.5, goldenDurationMultiplier: 0.5 },
+    achievement: 'event-nixon-shock',
+  },
   {
     id: 'christmas',
     icon: '🎄',
@@ -521,7 +690,7 @@ export const STICKERS: readonly StickerData[] = [
     'rothbard', 'hoppe', 'mises', 'kinsella', 'tucker', 'hayek', 'ronpaul', 'menger', 'bohmbawerk',
     'hazlitt', 'murphy', 'kirzner', 'gordon', 'lewrockwell', 'caplan', 'salerno', 'woods', 'block',
     'bylund', 'nock', 'hansen', 'dfriedman', 'deist', 'hulsmann', 'ammous', 'dilorenzo', 'bagus',
-    'jhs', 'milei',
+    'jhs', 'milei', 'bastiat', 'sowell',
   ].map((name) => image('person', name)),
   // Organizations
   image('organization', 'misesinstitute'),
@@ -595,6 +764,8 @@ export const STICKER_LABELS: Readonly<Record<string, { name: string; note?: stri
   bagus: { name: 'Philipp Bagus', note: 'The Tragedy of the Euro' },
   jhs: { name: 'Jesús Huerta de Soto', note: 'Money, Bank Credit, and Economic Cycles' },
   milei: { name: 'Javier Milei', note: 'President of Argentina' },
+  bastiat: { name: 'Frédéric Bastiat', note: 'The Law' },
+  sowell: { name: 'Thomas Sowell', note: 'Basic Economics' },
   // Organizations
   misesinstitute: { name: 'Mises Institute' },
   liberland: { name: 'Flag of Liberland', note: 'A micronation on the Danube' },
@@ -675,6 +846,7 @@ export interface AchievementContext {
     goldenClicks: number;
     playSeconds: number;
     presentsOpened: number;
+    birthdaysCelebrated: number;
   };
 }
 
@@ -747,6 +919,20 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'christmas-spirit', icon: '🦌', name: 'Ho Ho Homestead', description: 'Collect every Christmas sticker.', check: (c) => c.stickerCategoryComplete('christmas') },
   { id: 'party-pooper', icon: '🎂', name: 'Party Pooper', description: "Dodge a Fed raid on the Fed's birthday (December 23)." },
   { id: 'hoppe-new-year', icon: '🥂', name: 'A Hoppe New Year', description: 'Play on January 1.' },
+
+  // Birthdays and anniversaries (granted for playing on the day, unless noted)
+  { id: 'birthday-menger', icon: '🎂', name: 'Happy Birthday, Menger', description: "Play on February 23, Carl Menger's birthday." },
+  { id: 'birthday-rothbard', icon: '🎂', name: 'Happy Birthday, Rothbard', description: "Play on March 2, Murray Rothbard's birthday." },
+  { id: 'birthday-hayek', icon: '🎂', name: 'Happy Birthday, Hayek', description: "Play on May 8, F. A. Hayek's birthday." },
+  { id: 'birthday-bastiat', icon: '🎂', name: 'Happy Birthday, Bastiat', description: "Play on June 30, Frédéric Bastiat's birthday." },
+  { id: 'birthday-ronpaul', icon: '🎂', name: 'Happy Birthday, Ron Paul', description: "Play on August 20, Ron Paul's birthday." },
+  { id: 'birthday-hoppe', icon: '🎂', name: 'Happy Birthday, Hoppe', description: "Play on September 2, Hans-Hermann Hoppe's birthday." },
+  { id: 'birthday-mises', icon: '🎂', name: 'Happy Birthday, Mises', description: "Play on September 29, Ludwig von Mises's birthday." },
+  { id: 'party-animal', icon: '🥳', name: 'Party Animal', description: 'Celebrate 4 different birthdays.', check: (c) => c.stats.birthdaysCelebrated >= 4 },
+  { id: 'event-bitcoin-genesis', icon: '₿', name: 'Chancellor on Brink of Second Bailout', description: "Play on January 3, Bitcoin's birthday." },
+  { id: 'terra-nullius', icon: '🇱🇮', name: 'Terra Nullius', description: 'Secede on Liberland Day (April 13).' },
+  { id: 'pizza-day', icon: '🍕', name: 'Most Expensive Lunch in History', description: 'Catch a pizza on Bitcoin Pizza Day (May 22).' },
+  { id: 'event-nixon-shock', icon: '💵', name: 'Closing the Gold Window', description: 'Play on August 15, the anniversary of the Nixon Shock.' },
 
   // Challenge runs: winning and speedrun achievements are granted when you win.
   { id: 'challenge-minarchist', icon: '⚖️', name: 'Night Watchman', description: 'Win Minarchist Mode.' },
