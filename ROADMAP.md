@@ -303,6 +303,14 @@ Noticed along the way, left alone for now:
   Unlocks get a toast; earned stickers drop on screen.
 - New stickers: Antiroad Aktion (Orgs), Bitcoin and Solana in a new 🪙 Crypto
   tab. Set bonus 🪙 Cold Storage: golden-sticker cash ×1.25.
+- More earned books: The State (first secession), Anatomy of the State (5th
+  secession), The Gulag Archipelago (win the Communism challenge). Achievement
+  🐛 Bookworm: earn every book money can't buy (`EARNED_BOOKS`).
+- More for-sale unlocks: 🚁 Physical removal (10 physical removal services),
+  "End! The! Fed!" (dodge 100 Fed raids, by hand or by shell company).
+- 13 new quotes (41 in all). A quote can span lines (`\n`), and a line in
+  `*asterisks*` is shown in italics ("Man Acts / *Bottom Text*").
+- Fix: golden stickers no longer look like Christmas stickers outside the event.
 
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.

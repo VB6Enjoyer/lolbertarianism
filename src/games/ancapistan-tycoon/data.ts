@@ -672,6 +672,19 @@ export const STICKERS: readonly StickerData[] = [
   quote('Tu ne cede malis sed contra audentior ito'),
   quote('The best government is no government at all'),
   quote('Why not try freedom?'),
+  quote('Tax the Poor!'),
+  quote('Trespassers will be nuked'),
+  quote('Landlords of the world, unite!'),
+  quote('Low Time Preference Enjoyer'),
+  quote('Peace, Property, Freedom.'),
+  quote("If socialists understood economics, they wouldn't be socialists"),
+  quote('Live free or die'),
+  quote('That government is best which governs least'),
+  quote('Praxeology Enjoyer'),
+  quote('Man Acts\n*Bottom Text*'), // a line in *asterisks* is shown in italics
+  quote('My other car is a Hayekian business cycle'),
+  quote('Market Failure? Skill Issue'),
+  quote('My favorite salad? Lettuce alone!'),
   // Emotes
   emoji('🐍'), // Gadsden
   emoji('💉'),
@@ -816,8 +829,12 @@ export interface StickerUnlock {
   /** Own at least `count` of this upgrade… */
   upgrade?: number;
   count?: number;
-  /** …or have seceded at least this many times. */
+  /** …or have seceded at least this many times… */
   secessions?: number;
+  /** …or have dodged this many Fed raids (by hand or through shell companies)… */
+  raidsEvaded?: number;
+  /** …or have won this challenge. */
+  challenge?: ChallengeId;
   earned?: boolean;
   /** The requirement in plain words, for the locked card. */
   need: string;
@@ -830,6 +847,9 @@ export const STICKER_UNLOCKS: Readonly<Record<string, StickerUnlock>> = {
   'book-rothbard-the-ethics-of-liberty': { upgrade: 1, count: 500, earned: true, need: 'Own 500 theory books' },
   'book-hoppe-democracy-the-god-that-failed': { upgrade: 1, count: 750, earned: true, need: 'Own 750 theory books' },
   'book-mises-human-action': { upgrade: 1, count: 1000, earned: true, need: 'Own 1,000 theory books' },
+  'book-oppenheimer-the-state': { secessions: 1, earned: true, need: 'Secede for the first time' },
+  'book-rothbard-anatomy-of-the-state': { secessions: 5, earned: true, need: 'Secede 5 times' },
+  'book-solzhenitsyn-the-gulag-archipelago': { challenge: 'communism', earned: true, need: 'Win the Communism challenge' },
   liberland: { secessions: 1, earned: true, need: 'Secede for the first time' },
   // For sale once you've earned the right
   ak47: { upgrade: 3, count: 50, need: 'Own 50 AK-47s' },
@@ -842,7 +862,12 @@ export const STICKER_UNLOCKS: Readonly<Record<string, StickerUnlock>> = {
   'I would privatize the sun': { upgrade: 14, count: 1, need: 'Privatize the solar system' },
   'Free Market Enjoyer': { upgrade: 7, count: 1, need: 'Invoke the invisible hand' },
   'Agorism Now!': { upgrade: 2, count: 100, need: 'Own 100 unlicensed lemonade stands' },
+  '🚁': { upgrade: 17, count: 10, need: 'Hire 10 physical removal services' },
+  'End! The! Fed!': { raidsEvaded: 100, need: 'Dodge 100 Fed raids' },
 };
+
+/** Books you can't buy, only earn (for the Bookworm achievement). */
+export const EARNED_BOOKS = Object.keys(STICKER_UNLOCKS).filter((id) => id.startsWith('book-') && STICKER_UNLOCKS[id].earned);
 
 /** Stickers on sale all year (everything but limited editions). */
 export const REGULAR_STICKERS: readonly StickerData[] = STICKERS.filter((s) => !s.season);
@@ -971,6 +996,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'sticker-first', icon: '🏷️', name: 'Brand Ambassador', description: 'Buy your first sticker. Laptop lids everywhere tremble.', check: (c) => c.stickersOwned > 0 },
   { id: 'sticker-people', icon: '🧔', name: 'Hall of Fame', description: 'Own every People sticker. The Mises Institute group chat, complete.', check: (c) => c.stickerCategoryComplete('person') },
   { id: 'sticker-sets-3', icon: '🗂️', name: 'Completionist Tendencies', description: 'Complete 3 sticker sets in one run.', check: (c) => c.stickerSetsComplete >= 3 },
+  { id: 'bookworm', icon: '🐛', name: 'Bookworm', description: 'Earn every book that money can\'t buy.', check: (c) => EARNED_BOOKS.every((id) => c.ownsSticker(id)) },
   { id: 'sticker-all', icon: '🖼️', name: 'Laptop Lid Complete', description: 'Own every sticker. There is no free space left. Homestead elsewhere.', check: (c) => REGULAR_STICKERS.every((s) => c.ownsSticker(s.id)) },
   { id: 'charter-1', icon: '📜', name: 'We the Sovereign Individual', description: 'Sign your first charter.', check: (c) => c.chartersOwned >= 1 },
   { id: 'charter-all', icon: '🗽', name: 'Constitution? I Hardly Know Her', description: 'Sign every charter.', check: (c) => c.chartersOwned >= CHARTERS.length },

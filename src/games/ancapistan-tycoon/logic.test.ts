@@ -303,7 +303,8 @@ describe('sticker unlocks', () => {
   it('every unlock rule points at a real sticker and a real upgrade', () => {
     for (const [id, rule] of Object.entries(STICKER_UNLOCKS)) {
       expect(STICKERS.some((x) => x.id === id), id).toBe(true);
-      if (rule.secessions === undefined) expect(UPGRADES.some((u) => u.id === rule.upgrade), id).toBe(true);
+      if (rule.upgrade !== undefined) expect(UPGRADES.some((u) => u.id === rule.upgrade), id).toBe(true);
+      else expect(rule.secessions ?? rule.raidsEvaded ?? rule.challenge, id).toBeDefined();
     }
   });
 
@@ -339,7 +340,7 @@ describe('sticker unlocks', () => {
     s.runEarnings = s.allTimeEarnings = 1e15;
     secede(s);
     expect(s.stickers).toEqual([hazlitt]);
-    expect(unlockStickers(s).map((x) => x.id)).toEqual(['liberland']); // first secession
+    expect(unlockStickers(s).map((x) => x.id).sort()).toEqual(['book-oppenheimer-the-state', 'liberland']); // first secession
     expect(unlockStickers(s)).toEqual([]);
   });
 
@@ -351,7 +352,53 @@ describe('sticker unlocks', () => {
     expect(books).toContain('book-mises-human-action');
     expect(s.stickers).not.toContain('liberland');
     s.stats.secessions = 1;
+    expect(unlockStickers(s).map((x) => x.id).sort()).toEqual(['book-oppenheimer-the-state', 'liberland']);
+    s.stats.secessions = 5;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['book-rothbard-anatomy-of-the-state']);
+  });
+
+  it('winning the Communism challenge earns The Gulag Archipelago', () => {
+    const s = newState();
+    const gulag = 'book-solzhenitsyn-the-gulag-archipelago';
+    expect(unlockProgress(s, gulag)).toEqual({ have: 0, need: 1 });
+    s.completedChallenges = ['communism'];
+    expect(unlockStickers(s).map((x) => x.id)).toEqual([gulag]);
+    expect(s.stickers).toContain(gulag);
+  });
+
+  it('End! The! Fed! goes on sale after 100 dodged raids (by hand or by shell company)', () => {
+    const s = newState();
+    s.stats.raidsEvaded = 60;
+    s.stats.raidsAutoEvaded = 39;
+    expect(unlockStickers(s)).toEqual([]);
+    s.stats.raidsAutoEvaded = 40;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['End! The! Fed!']);
+    expect(s.stickers).toEqual([]);
+  });
+
+  it('physical removal goes on sale after 10 physical removal services', () => {
+    const s = newState();
+    s.owned[17] = 10;
+    expect(unlockStickers(s).map((x) => x.id)).toEqual(['🚁']);
+  });
+
+  it('an earned sticker you had already bought is not given twice', () => {
+    const s = newState();
+    s.stickers = ['book-oppenheimer-the-state'];
+    s.stats.secessions = 1;
     expect(unlockStickers(s).map((x) => x.id)).toEqual(['liberland']);
+    expect(s.stickers.filter((id) => id === 'book-oppenheimer-the-state')).toHaveLength(1);
+  });
+
+  it('Bookworm: every earned book', () => {
+    const s = newState();
+    s.owned[1] = 1000;
+    s.stats.secessions = 5;
+    unlockStickers(s);
+    expect(unlockAchievements(s).map((a) => a.id)).not.toContain('bookworm');
+    s.completedChallenges = ['communism'];
+    unlockStickers(s);
+    expect(unlockAchievements(s).map((a) => a.id)).toContain('bookworm');
   });
 
   it('Cold Storage (all crypto stickers) boosts golden-sticker cash by 25%', () => {
