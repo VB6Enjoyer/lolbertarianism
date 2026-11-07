@@ -399,3 +399,20 @@ Ideas for later:
 - Port each remaining game to TypeScript when it's actually being worked on.
 - Move an action game (Econ Defender, Kindergarten Defender, Road to Liberty)
   to Phaser or Kaplay only if it outgrows plain canvas/DOM.
+
+### The Road to Liberty: rebuilt ✅
+
+- Was broken: the road was a CSS 3D plane tilted the wrong way (it covered the
+  sky), objects never lined up with it, and Marx was something to avoid.
+- Now a pseudo-3D canvas racer (OutRun-style segments) in TypeScript: endless
+  curvy, hilly road (`logic.ts` rules, `render.ts` drawing, `main.ts` glue).
+- Based on the meme: run over Marx (points, a speed boost and a combo) while
+  the cops chase you; their distance shows in the rearview mirror (with Hoppe),
+  and they catch you if IRS checkpoints, traffic or the grass slow you down too
+  much. 💰 gold for extra points. Rothbard is on the phone in the golden,
+  veiny arm; the air freshener says "I ❤️ Property and freedom".
+- Keyboard (← → / A D, ↓ to brake, P to pause, M to mute), hold-to-steer
+  on touch with an on-screen brake. Engine and siren sounds; best score saved.
+- Marx, cars and roadblocks are drawn with canvas shapes (no Marx image in the
+  repo yet). Tests include an autopilot driver: a careful one outlasts the cops
+  for minutes, an idle one gets busted.
