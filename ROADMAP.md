@@ -48,7 +48,7 @@ Noticed along the way, left alone for now:
   would have shifted colors. Screenshots matched the CDN version pixel for pixel.
   Move to v4 when porting those two games, if wanted.
 
-## Phase 4: Ancapistan Tycoon ✅
+## Phase 4: Ancapistan Tycoon ✅ (v1.0: no longer marked "In progress")
 
 - Ported to TypeScript in `src/games/ancapistan-tycoon/`:
   - `data.ts`: upgrades, perks, stickers, phrases, achievements and every
