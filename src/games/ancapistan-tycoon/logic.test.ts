@@ -609,20 +609,22 @@ describe('charters (prestige shop)', () => {
 });
 
 describe('upgrade list', () => {
-  it('has unique ids, rising prices and alternates click/passive', () => {
+  it('has unique ids and rising prices, ending with Multiverse arbitrage', () => {
     expect(new Set(UPGRADES.map((u) => u.id)).size).toBe(UPGRADES.length);
-    for (let i = 1; i < UPGRADES.length; i++) {
-      expect(UPGRADES[i].baseCost).toBeGreaterThan(UPGRADES[i - 1].baseCost);
-      expect(UPGRADES[i].type).not.toBe(UPGRADES[i - 1].type);
+    for (let i = 1; i < UPGRADES.length; i++) expect(UPGRADES[i].baseCost).toBeGreaterThan(UPGRADES[i - 1].baseCost);
+    expect(UPGRADES.at(-1)!.name).toBe('Multiverse arbitrage');
+  });
+
+  it('each passive pays back its price no faster than the cheaper ones', () => {
+    const passives = UPGRADES.filter((u) => u.type === 'passive');
+    for (let i = 1; i < passives.length; i++) {
+      expect(passives[i].income / passives[i].baseCost, passives[i].name).toBeLessThanOrEqual(passives[i - 1].income / passives[i - 1].baseCost);
     }
   });
 
-  it('late-game passives pay back their price at a similar rate to Privatize solar system', () => {
-    const rate = (id: number) => upgrade(id).income / upgrade(id).baseCost;
-    for (const id of [16, 18, 20, 22]) {
-      expect(rate(id)).toBeGreaterThanOrEqual(rate(14) * 0.4);
-      expect(rate(id)).toBeLessThanOrEqual(rate(14) * 1.01);
-    }
+  it('each click upgrade adds more per click than the cheaper ones', () => {
+    const clicks = UPGRADES.filter((u) => u.type === 'click');
+    for (let i = 1; i < clicks.length; i++) expect(clicks[i].clickBonus, clicks[i].name).toBeGreaterThan(clicks[i - 1].clickBonus);
   });
 });
 

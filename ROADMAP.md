@@ -312,6 +312,22 @@ Noticed along the way, left alone for now:
   `*asterisks*` is shown in italics ("Man Acts / *Bottom Text*").
 - Fix: golden stickers no longer look like Christmas stickers outside the event.
 
+### Upgrade order by absurdity ✅
+
+- The 22 upgrades are re-ordered so each is more absurd than the last: Physical
+  removal and Lower your time preference come right after the roads, the
+  orbital railgun after the McNuke silo, and Multiverse arbitrage is now the
+  final upgrade (Andromeda just before it). Prices keep the same 22 tiers
+  ($15 → $200T); each upgrade takes the tier of its new slot, with payouts
+  interpolated from the old click and passive curves. Ids don't change, so
+  saves, achievements and unlocks still point at the same upgrades.
+- Click and passive no longer alternate. Tests now check that prices rise,
+  every click upgrade beats the cheaper ones, and no passive pays back faster
+  than a cheaper one.
+- Pacing: the $200T upgrade at ~38h active / ~88h casual (was ~42h / ~95h);
+  all charters ~25h / ~69h. Minarchist Mode got easier (active win ~58m,
+  was ~1h 16m) because its free PMC now sits at the $10M tier.
+
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.
 - Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.

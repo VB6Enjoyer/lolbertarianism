@@ -171,6 +171,13 @@ interface Milestone {
   at?: number;
 }
 
+/** An upgrade's base price, short: "$2.5T". */
+function price(id: number): string {
+  const cost = UPGRADES.find((u) => u.id === id)!.baseCost;
+  const [div, unit] = cost >= 1e12 ? [1e12, 'T'] : cost >= 1e9 ? [1e9, 'B'] : [1e6, 'M'];
+  return `$${cost / div}${unit}`;
+}
+
 function normalMilestones(): Milestone[] {
   return [
     { label: 'Earn $1,000', test: (x) => x.allTimeEarnings >= 1e3 },
@@ -178,14 +185,15 @@ function normalMilestones(): Milestone[] {
     { label: 'First bought sticker', test: (x) => x.stickers.length > 0 },
     { label: `Earn $${(earningsForCities(1) / 1e6).toLocaleString()}M (first city possible)`, test: (x) => x.allTimeEarnings >= earningsForCities(1) },
     { label: 'First secession', test: (x) => x.stats.secessions >= 1 },
-    { label: 'Privatize solar system', test: (x) => ownedCount(x, 14) > 0 },
     { label: '10 Free Private Cities', test: (x) => x.cities >= 10 },
-    { label: 'First late-game upgrade ($5B)', test: (x) => ownedCount(x, 15) > 0 },
+    { label: `Orbital railgun (${price(15)})`, test: (x) => ownedCount(x, 15) > 0 },
     { label: 'First sticker set', test: (x) => STICKER_SETS.some((set) => STICKERS.filter((y) => y.category === set.category).every((y) => x.stickers.includes(y.id))) },
     { label: '25 Free Private Cities', test: (x) => x.cities >= 25 },
-    { label: 'Dyson sphere ($500B)', test: (x) => ownedCount(x, 18) > 0 },
+    { label: `Privatize solar system (${price(14)})`, test: (x) => ownedCount(x, 14) > 0 },
+    { label: `Dyson sphere (${price(18)})`, test: (x) => ownedCount(x, 18) > 0 },
     { label: 'All 11 charters (55 cities)', test: (x) => x.charters.length === CHARTERS.length },
-    { label: 'Andromeda ($200T)', test: (x) => ownedCount(x, 22) > 0 },
+    { label: `Andromeda (${price(22)})`, test: (x) => ownedCount(x, 22) > 0 },
+    { label: `Multiverse arbitrage (${price(21)})`, test: (x) => ownedCount(x, 21) > 0 },
     { label: `All ${REGULAR_STICKERS.length} stickers in one run`, test: (x) => REGULAR_STICKERS.every((y) => x.stickers.includes(y.id)) },
   ];
 }
