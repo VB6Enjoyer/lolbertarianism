@@ -17,6 +17,15 @@ export const BALANCE = {
     /** Chance a raid happens at each interval. */
     chance: 0.3,
     evadeBonus: 100,
+    /** Each raid gives you between this many seconds to hide your assets (random). */
+    minSeconds: 1,
+    maxSeconds: 30,
+    /** Civil asset forfeiture: share of your cash taken when a raid times out. */
+    cashLoss: 0.2,
+    /** A DRO retainer costs this many seconds of income… */
+    retainerSeconds: 300,
+    /** …but never less than this. */
+    retainerMinCost: 1000,
   },
   offline: {
     /** Share of passive income earned while the tab is closed. */
@@ -271,6 +280,8 @@ export interface GoldenEffect {
   cash?: boolean;
   /** Scales the cash payout (Fiat Coal pays almost nothing). */
   cashMultiplier?: number;
+  /** A raid penalty rather than a reward (shown in red, and kept in saves so a reload can't shake it). */
+  penalty?: boolean;
 }
 
 export const GOLDEN_EFFECTS: readonly GoldenEffect[] = [
@@ -302,8 +313,14 @@ export const PIZZA_EFFECT: GoldenEffect = {
   cashMultiplier: 2,
 };
 
-/** Every golden reward, so boosts can be looked up whatever handed them out. */
-export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS, PIZZA_EFFECT];
+/** Timed penalties for letting a Fed raid run out the clock (see RaidOutcome in logic.ts). */
+export const RAID_PENALTY_EFFECTS: readonly GoldenEffect[] = [
+  { id: 'asset-freeze', icon: '🧊', name: 'Asset Freeze', description: 'The Fed froze your accounts. Income ×0.5 for 10 minutes.', weight: 1, clickMultiplier: 1, incomeMultiplier: 0.5, durationSec: 600, penalty: true },
+  { id: 'capital-controls', icon: '🚧', name: 'Capital Controls', description: 'Every transaction needs a permit now. Clicks ×0.5 for 15 minutes.', weight: 1, clickMultiplier: 0.5, incomeMultiplier: 1, durationSec: 900, penalty: true },
+];
+
+/** Every timed effect, so boosts and penalties can be looked up whatever handed them out. */
+export const ALL_GOLDEN_EFFECTS: readonly GoldenEffect[] = [...GOLDEN_EFFECTS, ...PRESENT_EFFECTS, PIZZA_EFFECT, ...RAID_PENALTY_EFFECTS];
 
 // ---------------------------------------------------------------------------
 // Seasonal events
@@ -1043,13 +1060,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'speedrun-hyperinflation', icon: '🔥', name: 'Spend It Before It Melts', description: 'Win Hyperinflation Mode in under an hour.' },
   { id: 'all-challenges', icon: '🌍', name: 'Tried Every System', description: 'Win every challenge. Turns out the market was right.', check: (c) => c.challengesCompleted >= 4 },
 
+  { id: 'lawyer-up', icon: '🛡️', name: 'Lawyer Up', description: 'Let a DRO retainer handle a Fed raid for you. Your agency, your rules.' },
+  { id: 'raid-lost', icon: '🚔', name: 'Should Have Hidden It', description: 'Lose something to a Fed raid. It happens to the best of us.' },
   // Granted by main.ts, which times your clicks.
   { id: 'click-frenzy', icon: '⚡', name: 'High-Frequency Trader', description: 'Click 10 times in one second.' },
   { id: 'click-marathon', icon: '🏭', name: 'Voluntary Sweatshop', description: 'Click 100 times in one minute. You agreed to the terms.' },
 
   // Secret achievements: granted by main.ts when the player does something specific.
   ...([
-    { id: 'civil-disobedience', icon: '🪧', name: 'Civil Disobedience', description: 'Left a Fed raid on screen for a whole minute. Thoreau would be proud.', hint: 'Sometimes the best response to the State is no response at all.' },
+    { id: 'civil-disobedience', icon: '🪧', name: 'Civil Disobedience', description: 'Let a Fed raid run out the clock. Thoreau would be proud.', hint: 'Sometimes the best response to the State is no response at all.' },
     { id: 'student-and-teacher', icon: '🎓', name: 'Student and Teacher', description: 'Dragged Rothbard onto Mises. The seminar is back in session.', hint: 'Put the student next to the teacher.' },
     { id: 'afuera', icon: '🪚', name: '¡AFUERA!', description: "Caught Milei's Chainsaw with Milei himself on screen.", hint: 'A certain Argentine, and a certain power tool.' },
     { id: 'brussels-effect', icon: '🇪🇺', name: 'Brussels Effect', description: 'Made the crossed-out EU flag your very first sticker.', hint: 'Be the first to leave the Union.' },

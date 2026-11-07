@@ -14,6 +14,7 @@ import {
   CITY_NAMES,
   GOLDEN_EFFECTS,
   PRESENT_EFFECTS,
+  RAID_PENALTY_EFFECTS,
   REGULAR_STICKERS,
   PERKS,
   STICKERS,
@@ -61,6 +62,9 @@ export interface Stats {
   failedPurchases: number;
   /** Upgrades sold back. */
   upgradesSold: number;
+  /** Raids that ran out the clock: handled by a retainer, or lost. */
+  raidsHandled: number;
+  raidsLost: number;
   requisitionedClicks: number;
   /** Christmas presents opened. */
   presentsOpened: number;
@@ -118,6 +122,8 @@ export interface GameState {
   seenEvents: string[];
   /** One entry per secession: the city you named and how many cities it brought. */
   foundedCities: FoundedCity[];
+  /** DRO retainers: each one absorbs a raid that runs out the clock. Kept through secession. */
+  retainers: number;
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -141,6 +147,8 @@ export function newStats(): Stats {
     firstPlayed: 0,
     failedPurchases: 0,
     upgradesSold: 0,
+    raidsHandled: 0,
+    raidsLost: 0,
     requisitionedClicks: 0,
     presentsOpened: 0,
     birthdaysCelebrated: 0,
@@ -168,6 +176,7 @@ export function newState(): GameState {
     activeChallenge: null,
     seenEvents: [],
     foundedCities: [],
+    retainers: 0,
     stats: newStats(),
     lastSaved: 0,
   };
@@ -677,6 +686,64 @@ export const raidChance = (state: GameState, date: Date = calendarDate()) =>
 export function raidEvadeBonus(state: GameState, date: Date = calendarDate()): number {
   if (!isEventActive('fed-birthday', date)) return BALANCE.raid.evadeBonus;
   return Math.max(BALANCE.raid.evadeBonus, derive(state, date.getTime()).incomePerSec * CHRISTMAS.fedBirthdayCakeSeconds);
+}
+
+/** Seconds you get to hide your assets in a raid. `roll` is a random number in [0, 1). */
+export const raidSeconds = (roll: number) =>
+  Math.round(BALANCE.raid.minSeconds + roll * (BALANCE.raid.maxSeconds - BALANCE.raid.minSeconds));
+
+/** A DRO retainer costs about 5 minutes of income (with a floor, and challenge inflation). */
+export function retainerCost(state: GameState, now = Date.now()): number {
+  const base = Math.max(BALANCE.raid.retainerMinCost, derive({ ...state, buffs: [] }, now).incomePerSec * BALANCE.raid.retainerSeconds);
+  return Math.ceil(base * challengePriceFactor(state));
+}
+
+export function buyRetainer(state: GameState, now = Date.now()): boolean {
+  const cost = retainerCost(state, now);
+  if (state.score < cost) return false;
+  state.score -= cost;
+  state.retainers++;
+  return true;
+}
+
+/** What happened when a raid ran out the clock. */
+export type RaidOutcome =
+  | { kind: 'retainer' }
+  | { kind: 'cash'; amount: number }
+  | { kind: 'penalty'; effect: GoldenEffect }
+  | { kind: 'building'; upgrade: Upgrade };
+
+/**
+ * A raid ran out the clock. A retainer absorbs it; otherwise the Fed takes one of:
+ * a share of your cash, a timed penalty (income or clicks halved), or one random
+ * building. `roll` picks the penalty and `roll2` the building, both in [0, 1).
+ */
+export function resolveRaidTimeout(state: GameState, roll: number, roll2: number, now = Date.now()): RaidOutcome {
+  if (state.retainers > 0) {
+    state.retainers--;
+    state.stats.raidsHandled++;
+    return { kind: 'retainer' };
+  }
+  state.stats.raidsLost++;
+  const buildings = UPGRADES.filter((u) => ownedCount(state, u.id) > 0);
+  const options: ('cash' | 'building' | GoldenEffect)[] = ['cash', ...RAID_PENALTY_EFFECTS];
+  if (buildings.length) options.push('building');
+  const pick = options[Math.min(options.length - 1, Math.floor(roll * options.length))];
+  if (pick === 'cash') {
+    const amount = Math.floor(state.score * BALANCE.raid.cashLoss);
+    state.score -= amount;
+    return { kind: 'cash', amount };
+  }
+  if (pick === 'building') {
+    const upgrade = buildings[Math.min(buildings.length - 1, Math.floor(roll2 * buildings.length))];
+    state.owned[upgrade.id]--;
+    if (!state.owned[upgrade.id]) delete state.owned[upgrade.id];
+    return { kind: 'building', upgrade };
+  }
+  // Same penalty twice: the clock restarts rather than stacking.
+  state.buffs = state.buffs.filter((b) => b.effectId !== pick.id);
+  state.buffs.push({ effectId: pick.id, endsAt: now + pick.durationSec * 1000 });
+  return { kind: 'penalty', effect: pick };
 }
 
 /** Cash needed before raids start (Communism audits you from the start). */

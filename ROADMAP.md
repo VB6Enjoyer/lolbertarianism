@@ -345,6 +345,24 @@ Noticed along the way, left alone for now:
   (Milei + Hoppe), 🌬️ Chicago Boys, 🕯️ The Forerunners.
 - New People sticker: Lysander Spooner (41 people).
 
+### Raids with a timer, penalties and DRO retainers ✅
+
+- Before: an ignored raid had no timer; it froze income until you clicked
+  "Hide assets", forever if you were away.
+- Now each raid gives 1-30 seconds (random), with a countdown bar. Income stays
+  frozen until it ends. If time runs out, the Fed takes one of (equal odds):
+  💸 20% of your cash, 🏚️ one random building, 🧊 Asset Freeze (income ×0.5
+  for 10 min) or 🚧 Capital Controls (clicks ×0.5 for 15 min). Repeat
+  penalties restart their clock instead of stacking, show as red chips, and
+  survive a reload (golden boosts still don't).
+- 🛡️ DRO retainer: a row above the upgrades. Costs 5 minutes of income (min
+  $1,000), stacks, and is kept when you secede. A raid that runs out the clock
+  uses one up and you lose nothing; hiding your assets yourself keeps it.
+  The raid popup says whether you're covered.
+- Achievements: 🛡️ Lawyer Up, 🚔 Should Have Hidden It. Civil Disobedience is
+  now "let a raid run out the clock" (raids no longer last a minute).
+- The simulator lets slow reactions time out (the casual player reacts in 10s).
+
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.
 - Tax Day (Apr 15) and Bitcoin White Paper Day (Oct 31) as full events.

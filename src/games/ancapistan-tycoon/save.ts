@@ -1,5 +1,5 @@
 import { createSaveSlot } from '../../shared/storage.ts';
-import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, STICKERS, STICKER_UNLOCKS, UPGRADES } from './data.ts';
+import { ACHIEVEMENTS, CHALLENGES, CHARTERS, PERKS, RAID_PENALTY_EFFECTS, STICKERS, STICKER_UNLOCKS, UPGRADES } from './data.ts';
 import { cleanCityName, newState, newStats, upgradeCost, type GameState, type Stats } from './logic.ts';
 
 /**
@@ -77,13 +77,17 @@ export function normalize(raw: Partial<GameState>): GameState {
   state.foundedCities = (Array.isArray(raw.foundedCities) ? raw.foundedCities : [])
     .filter((c) => c && typeof c.name === 'string' && cleanCityName(c.name))
     .map((c) => ({ name: cleanCityName(c.name), cities: Math.max(1, int(c.cities)), founded: num(c.founded) }));
+  state.retainers = int(raw.retainers);
+  // Raid penalties are kept (a reload shouldn't lift them); golden boosts are not.
+  state.buffs = (Array.isArray(raw.buffs) ? raw.buffs : [])
+    .filter((b) => b && RAID_PENALTY_EFFECTS.some((e) => e.id === b.effectId) && num(b.endsAt) > 0)
+    .map((b) => ({ effectId: b.effectId, endsAt: num(b.endsAt) }));
   state.seenEvents = (raw.seenEvents ?? []).filter((k): k is string => typeof k === 'string' && /^[a-z-]+-\d{4}$/.test(k));
   // A challenge in progress keeps the empire it set aside (cleaned up the same way).
   const active = raw.activeChallenge;
   if (active && challengeIds.includes(active.id) && active.main && typeof active.main === 'object') {
     state.activeChallenge = { id: active.id, main: normalize({ ...active.main, activeChallenge: null }) };
   }
-  // Golden boosts are never restored from a save.
   const stats = newStats();
   const moneyStats: (keyof Stats)[] = ['bestRunEarnings', 'biggestClick'];
   for (const key of Object.keys(stats) as (keyof Stats)[]) {
@@ -106,10 +110,14 @@ export function loadState(): GameState | null {
   return data ? normalize(data) : null;
 }
 
+/** What gets saved: everything but golden boosts (raid penalties stay). */
+function savable(state: GameState): Partial<GameState> {
+  return { ...state, buffs: state.buffs.filter((b) => RAID_PENALTY_EFFECTS.some((e) => e.id === b.effectId)) };
+}
+
 export function saveState(state: GameState, now = Date.now()): void {
   state.lastSaved = now;
-  const { buffs: _buffs, ...saved } = state; // boosts are not saved
-  slot.save(saved);
+  slot.save(savable(state));
 }
 
 export function clearSave(): void {
@@ -137,7 +145,7 @@ function fromBase64(code: string): string {
 
 /** A text code holding the whole save (golden boosts excluded). */
 export function exportSave(state: GameState): string {
-  const { buffs: _buffs, ...saved } = state;
+  const saved = savable(state);
   return CODE_PREFIX + toBase64(JSON.stringify({ v: SAVE_VERSION, data: saved }));
 }
 

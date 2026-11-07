@@ -30,6 +30,10 @@ import {
   unlockAchievements,
   unlockProgress,
   sellQuote,
+  raidSeconds,
+  resolveRaidTimeout,
+  retainerCost,
+  buyRetainer,
   sellUpgrade,
   randomCityName,
   cleanCityName,
@@ -418,6 +422,112 @@ describe('sticker unlocks', () => {
     const crypto = STICKERS.filter((x) => x.category === 'crypto').map((x) => x.id);
     // No upgrades, so the payout is click-based and the per-sticker income bonus doesn't move it.
     expect(cash(crypto) / cash(crypto.slice(1))).toBeCloseTo(1.25, 6);
+  });
+});
+
+describe('raid timer and penalties', () => {
+  it('give between 1 and 30 seconds', () => {
+    expect(raidSeconds(0)).toBe(BALANCE.raid.minSeconds);
+    expect(raidSeconds(0.9999)).toBe(BALANCE.raid.maxSeconds);
+    expect(BALANCE.raid.minSeconds).toBe(1);
+    expect(BALANCE.raid.maxSeconds).toBe(30);
+  });
+
+  it('a retainer absorbs a timed-out raid and nothing is lost', () => {
+    const s = newState();
+    s.score = 1e6;
+    s.owned[5] = 3;
+    s.retainers = 2;
+    expect(resolveRaidTimeout(s, 0, 0)).toEqual({ kind: 'retainer' });
+    expect(s.retainers).toBe(1);
+    expect(s.score).toBe(1e6);
+    expect(s.owned[5]).toBe(3);
+    expect(s.stats.raidsHandled).toBe(1);
+    expect(s.stats.raidsLost).toBe(0);
+  });
+
+  it('without one, the Fed takes 20% of your cash, a building, or puts you under a penalty', () => {
+    const fresh = () => {
+      const s = newState();
+      s.score = 1e6;
+      s.owned = { 5: 2 };
+      return s;
+    };
+    // Options in order: cash, asset freeze, capital controls, building
+    const cash = fresh();
+    expect(resolveRaidTimeout(cash, 0, 0)).toEqual({ kind: 'cash', amount: 200_000 });
+    expect(cash.score).toBe(800_000);
+    expect(cash.stats.raidsLost).toBe(1);
+
+    const freeze = fresh();
+    freeze.owned[2] = 10;
+    const out = resolveRaidTimeout(freeze, 0.3, 0, 0);
+    expect(out.kind === 'penalty' && out.effect.id).toBe('asset-freeze');
+    expect(derive(freeze, 1000).incomePerSec).toBeCloseTo(derive({ ...freeze, buffs: [] }, 1000).incomePerSec * 0.5, 6);
+    expect(derive(freeze, 601_000).incomePerSec).toBeCloseTo(derive({ ...freeze, buffs: [] }, 601_000).incomePerSec, 6); // over after 10 minutes
+
+    const controls = fresh();
+    const out2 = resolveRaidTimeout(controls, 0.6, 0, 0);
+    expect(out2.kind === 'penalty' && out2.effect.id).toBe('capital-controls');
+    expect(derive(controls, 1000).clickAmount).toBeCloseTo(derive({ ...controls, buffs: [] }, 1000).clickAmount * 0.5, 6);
+
+    const seized = fresh();
+    const out3 = resolveRaidTimeout(seized, 0.99, 0);
+    expect(out3.kind === 'building' && out3.upgrade.id).toBe(5);
+    expect(seized.owned[5]).toBe(1);
+  });
+
+  it('the same penalty twice restarts its clock instead of stacking', () => {
+    const s = newState();
+    s.owned = { 5: 5 };
+    resolveRaidTimeout(s, 0.3, 0, 0);
+    resolveRaidTimeout(s, 0.3, 0, 100_000);
+    expect(s.buffs).toEqual([{ effectId: 'asset-freeze', endsAt: 700_000 }]);
+  });
+
+  it('with no buildings, the building option is off the table', () => {
+    const s = newState();
+    s.score = 100;
+    for (const roll of [0, 0.4, 0.7, 0.99]) expect(resolveRaidTimeout(s, roll, 0).kind).not.toBe('building');
+  });
+});
+
+describe('DRO retainers', () => {
+  it('cost 5 minutes of income, at least $1,000, and stack', () => {
+    const s = newState();
+    expect(retainerCost(s, 0)).toBe(BALANCE.raid.retainerMinCost);
+    s.owned[2] = 1000;
+    const perSec = derive(s, 0).incomePerSec;
+    expect(retainerCost(s, 0)).toBe(Math.ceil(perSec * 300));
+    s.score = retainerCost(s, 0) * 2;
+    expect(buyRetainer(s, 0)).toBe(true);
+    expect(buyRetainer(s, 0)).toBe(true);
+    expect(buyRetainer(s, 0)).toBe(false);
+    expect(s.retainers).toBe(2);
+  });
+
+  it('ignore temporary boosts and penalties when pricing', () => {
+    const s = newState();
+    s.owned[2] = 1000;
+    const before = retainerCost(s, 0);
+    resolveRaidTimeout(s, 0.3, 0, 0); // asset freeze
+    expect(retainerCost(s, 1000)).toBe(before);
+  });
+
+  it('are kept when you secede', () => {
+    const s = newState();
+    s.retainers = 3;
+    s.runEarnings = s.allTimeEarnings = 1e9;
+    secede(s);
+    expect(s.retainers).toBe(3);
+  });
+
+  it('and raid penalties survive a save, while golden boosts do not', () => {
+    const later = Date.now() + 60_000;
+    const raw = { retainers: 4, buffs: [{ effectId: 'asset-freeze', endsAt: later }, { effectId: 'bull-run', endsAt: later }, { effectId: 'fake', endsAt: later }] };
+    const s = normalize(raw as never);
+    expect(s.retainers).toBe(4);
+    expect(s.buffs).toEqual([{ effectId: 'asset-freeze', endsAt: later }]);
   });
 });
 

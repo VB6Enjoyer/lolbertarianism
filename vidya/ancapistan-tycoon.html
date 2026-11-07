@@ -76,6 +76,14 @@
             <div id="special-upgrades-container">
                 <!-- Special upgrades injected here -->
             </div>
+            <button class="shop-item retainer-row" id="retainer-row" type="button" hidden>
+                <span class="item-icon">🛡️</span>
+                <span class="item-info">
+                    <span class="item-name">Hire a DRO retainer</span>
+                    <span class="item-cost" id="retainer-cost"></span>
+                </span>
+                <span class="retainer-owned" id="retainer-owned"></span>
+            </button>
             <div class="buy-amount" id="buy-amount" role="group" aria-label="How many to buy">
                 <span class="buy-mode">
                     <button data-mode="buy" class="active">Buy</button>
@@ -97,6 +105,11 @@
             <h1 id="raid-title">🚨 THE FED IS HERE! 🚨</h1>
             <p id="raid-text">They want to audit your crypto wallet!</p>
             <p style="font-size: 40px;">👮‍♂️🚔📉</p>
+            <div class="raid-timer" id="raid-timer" aria-live="off">
+                <div class="raid-timer-fill" id="raid-timer-fill"></div>
+                <span class="raid-timer-text" id="raid-timer-text"></span>
+            </div>
+            <p class="raid-stakes" id="raid-stakes"></p>
             <button class="btn-evade" id="btn-evade">HIDE ASSETS!</button>
         </div>
     </div>

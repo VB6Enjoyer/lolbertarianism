@@ -322,6 +322,45 @@ h1 {
     box-shadow: 0 0 20px red;
 }
 
+.raid-timer {
+    position: relative;
+    height: 26px;
+    margin: 0 auto 10px;
+    max-width: 320px;
+    border: 3px solid var(--ancap-black);
+    border-radius: 999px;
+    background: #fdd;
+    overflow: hidden;
+}
+
+.raid-timer-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #c0392b, #e74c3c);
+    transition: width 0.1s linear;
+}
+
+.raid-timer-text {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: var(--ancap-black);
+}
+
+.raid-stakes {
+    max-width: 360px;
+    margin: 0 auto 14px;
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #c0392b;
+}
+
+.raid-stakes.covered {
+    color: #1e6fb8;
+}
+
 .btn-evade {
     background: var(--ancap-black);
     color: var(--ancap-yellow);
@@ -898,6 +937,33 @@ h1 {
     border: 2px solid #c9a100;
     font-size: 0.8rem;
     font-weight: bold;
+}
+
+.buff-chip.penalty {
+    background: #fdecea;
+    border-color: #c0392b;
+    color: #c0392b;
+}
+
+/* DRO retainer: a single buy row above the upgrades. */
+.retainer-row {
+    font: inherit;
+    text-align: left;
+    color: inherit;
+    border-style: dashed;
+    background: #eef6ff;
+}
+
+.retainer-row .item-name {
+    display: block;
+    font-weight: bold;
+}
+
+.retainer-owned {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #1e6fb8;
+    white-space: nowrap;
 }
 
 .golden-sticker {

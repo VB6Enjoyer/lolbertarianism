@@ -54,7 +54,7 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Stickers', times(d.stickerMultiplier)],
         ['Sticker sets', `${times(d.setIncomeMultiplier)} income, ${times(d.setClickMultiplier)} clicks`],
         ['Special upgrades', times(d.passiveMultiplier)],
-        ['Golden boosts', boosts.length ? boosts.map(({ effect }) => `${effect.icon} ${effect.name}`).join(', ') : 'None active'],
+        ['Active effects', boosts.length ? boosts.map(({ effect }) => `${effect.icon} ${effect.name}`).join(', ') : 'None active'],
       ],
     },
     {
@@ -64,6 +64,8 @@ export function buildStats(state: GameState, now = Date.now()): StatsSection[] {
         ['Critical clicks', st.clicks ? `${count(st.crits)} (${pct(st.crits / st.clicks)})` : '0'],
         ['Golden stickers caught', count(st.goldenClicks)],
         ['Raids evaded', `${count(st.raidsEvaded)} by hand, ${count(st.raidsAutoEvaded)} by shell companies`],
+        ['Raids timed out', `${count(st.raidsHandled)} handled by retainers, ${count(st.raidsLost)} lost`],
+        ['DRO retainers', count(state.retainers)],
         ['Stickers dragged', count(st.stickersDragged)],
         ['Sticker reshuffles', count(st.reshuffles)],
         ['Upgrades sold', count(st.upgradesSold)],

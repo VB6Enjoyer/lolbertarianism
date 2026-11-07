@@ -47,6 +47,8 @@ import {
   purchaseQuote,
   raidChance,
   raidMinScore,
+  raidSeconds,
+  resolveRaidTimeout,
   secede,
   stickerCost,
   stickerForSale,
@@ -224,8 +226,15 @@ function simulate(p: Profile, challenge?: ChallengeId) {
 
     if (t % RAID_EVERY === 0 && s.score >= raidMinScore(s) && random() < raidChance(s)) {
       if (random() >= derive(s, now).raidEvasionChance) {
-        frozenUntil = now + p.raidReaction * 1000;
-        s.stats.raidsEvaded++;
+        // The raid gives 1-30 seconds; a slow reaction lets it run out the clock.
+        const seconds = raidSeconds(random());
+        if (p.raidReaction < seconds) {
+          frozenUntil = now + p.raidReaction * 1000;
+          s.stats.raidsEvaded++;
+        } else {
+          frozenUntil = now + seconds * 1000;
+          resolveRaidTimeout(s, random(), random(), now);
+        }
       }
     }
     if (now >= nextGolden) {
@@ -275,12 +284,12 @@ if (CHALLENGE_MODE) {
     const results = PROFILES.map((p) => ({ p, ...simulate(p, c.id) }));
     table(`${c.icon} ${c.name}: goal $${c.goal.toLocaleString()}, speedrun under ${fmtTime(c.speedrunSec)}`, results);
     const [active] = results;
-    console.log(`  (active player: ${active.s.stats.failedPurchases} failed purchases, ${active.s.stats.requisitionedClicks} requisitioned clicks, ${active.s.stats.raidsEvaded} raids)`);
+    console.log(`  (active player: ${active.s.stats.failedPurchases} failed purchases, ${active.s.stats.requisitionedClicks} requisitioned clicks, ${active.s.stats.raidsEvaded} raids evaded, ${active.s.stats.raidsLost} lost)`);
   }
 } else {
   const results = PROFILES.map((p) => ({ p, ...simulate(p) }));
   table(`Ancapistan Tycoon balance simulation (open-game time, max ${MAX_HOURS}h)`, results);
   for (const { p, s } of results) {
-    console.log(`\n${p.name} at the end: ${s.cities} cities, ${s.stats.secessions} secessions, ${s.charters.length} charters, ${s.achievements.length} achievements, ${s.stats.goldenClicks} golden stickers, ${s.stats.raidsEvaded} raids`);
+    console.log(`\n${p.name} at the end: ${s.cities} cities, ${s.stats.secessions} secessions, ${s.charters.length} charters, ${s.achievements.length} achievements, ${s.stats.goldenClicks} golden stickers, ${s.stats.raidsEvaded} raids evaded, ${s.stats.raidsLost} lost`);
   }
 }

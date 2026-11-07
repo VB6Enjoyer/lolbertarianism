@@ -64,6 +64,10 @@ import {
   sellUpgrade,
   ownedCount,
   randomCityName,
+  raidSeconds,
+  resolveRaidTimeout,
+  retainerCost,
+  buyRetainer,
   CITY_NAME_MAX,
   stickerCombos,
   secretDateAchievements,
@@ -118,6 +122,12 @@ const els = {
   raidTitle: byId('raid-title'),
   raidText: byId('raid-text'),
   raidButton: byId('btn-evade'),
+  raidTimerFill: byId('raid-timer-fill'),
+  raidTimerText: byId('raid-timer-text'),
+  raidStakes: byId('raid-stakes'),
+  retainerRow: byId<HTMLButtonElement>('retainer-row'),
+  retainerCost: byId('retainer-cost'),
+  retainerOwned: byId('retainer-owned'),
   eventChip: byId<HTMLButtonElement>('event-chip'),
   santaHat: byId('santa-hat'),
   modal: byId('modal'),
@@ -138,6 +148,10 @@ let shopTab: StickerCategory | null = null;
 let statsOpen = false;
 /** For secret achievements: when the current raid started, and when the snake was last clicked. */
 let raidStartedAt = 0;
+/** When the current raid runs out the clock, and the timers counting it down. */
+let raidEndsAt = 0;
+let raidTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
+let raidCountdown: ReturnType<typeof setInterval> | undefined;
 let lastClickAt = Date.now();
 /** Shop mode: buying or selling upgrades (not saved). */
 let sellMode = false;
@@ -258,6 +272,12 @@ function updateUI() {
     if (price) price.textContent = banned ?? (count > 1 ? `×${count} · ${money(cost)}` : money(cost));
   }
   els.shop.classList.toggle('selling', sellMode);
+  const st = state.stats;
+  els.retainerRow.hidden = state.retainers === 0 && state.score < raidMinScore(state) && st.raidsEvaded + st.raidsAutoEvaded + st.raidsLost === 0;
+  const rCost = retainerCost(state);
+  els.retainerCost.textContent = money(rCost);
+  els.retainerRow.classList.toggle('disabled', state.score < rCost);
+  els.retainerOwned.textContent = state.retainers ? `×${state.retainers} on retainer` : 'None yet';
   for (const b of els.buyAmount.querySelectorAll<HTMLElement>('button')) {
     if (b.dataset.mode) b.classList.toggle('active', (b.dataset.mode === 'sell') === sellMode);
     else b.classList.toggle('active', b.dataset.amount === String(state.buyAmount));
@@ -1107,7 +1127,8 @@ function renderBuffs() {
       if (effect.incomeMultiplier !== 1) parts.push(`×${effect.incomeMultiplier} income`);
       if (effect.noRaids) parts.push('no raids');
       const secs = Math.max(0, Math.ceil((endsAt - now) / 1000));
-      const chip = el('span', 'buff-chip', `${effect.icon} ${effect.name}: ${parts.join(', ')} · ${secs}s`);
+      const time = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
+      const chip = el('span', `buff-chip${effect.penalty ? ' penalty' : ''}`, `${effect.icon} ${effect.name}: ${parts.join(', ')} · ${time}`);
       chip.title = effect.description;
       return chip;
     }),
@@ -1297,7 +1318,6 @@ function gameLoop() {
 /** Secret achievements that depend on time passing, or on the date and hour. */
 function checkTimedSecrets() {
   const now = Date.now();
-  if (raidActive && now - raidStartedAt >= 60_000) unlockSecret('civil-disobedience');
   if (now - lastClickAt >= 10 * 60_000 && derive(state, now).incomePerSec >= 1e6) unlockSecret('zero-time-preference');
   for (const id of secretDateAchievements(new Date(now))) unlockSecret(id);
 }
@@ -1315,19 +1335,79 @@ function tryRaid() {
     }
     raidActive = true;
     raidStartedAt = Date.now();
+    const seconds = raidSeconds(Math.random());
+    raidEndsAt = raidStartedAt + seconds * 1000;
+    els.raidStakes.textContent = state.retainers
+      ? `🛡️ If time runs out, ${state.retainers === 1 ? 'your DRO retainer' : `one of your ${state.retainers} DRO retainers`} handles it.`
+      : '⚠️ No DRO retainer! If time runs out, the Fed takes cash, a building, or puts you under penalty.';
+    els.raidStakes.classList.toggle('covered', state.retainers > 0);
+    updateRaidTimer();
+    raidCountdown = setInterval(updateRaidTimer, 100);
+    raidTimeoutTimer = setTimeout(raidTimedOut, seconds * 1000);
     const themed = challengeOf(state)?.raid;
     els.raidTitle.textContent = themed?.title ?? '🚨 THE FED IS HERE! 🚨';
     els.raidText.textContent = themed?.text ?? 'They want to audit your crypto wallet!';
     els.raidButton.textContent = themed?.button ?? 'HIDE ASSETS!';
     els.raid.style.display = 'flex';
     sfx.raid();
-    // Penalty if ignored: income stops until you hide your assets.
+    // Until you hide your assets or time runs out, income is frozen.
   }
 }
 
-function evadeTax() {
+function updateRaidTimer() {
+  const total = raidEndsAt - raidStartedAt;
+  const left = Math.max(0, raidEndsAt - Date.now());
+  els.raidTimerFill.style.width = `${(left / total) * 100}%`;
+  els.raidTimerText.textContent = `${(left / 1000).toFixed(1)}s`;
+}
+
+function endRaid() {
   raidActive = false;
   els.raid.style.display = 'none';
+  clearTimeout(raidTimeoutTimer);
+  clearInterval(raidCountdown);
+}
+
+/** The raid ran out the clock: a retainer handles it, or the Fed takes something. */
+function raidTimedOut() {
+  if (!raidActive) return;
+  endRaid();
+  const outcome = resolveRaidTimeout(state, Math.random(), Math.random());
+  const { x, y } = center();
+  unlockSecret('civil-disobedience');
+  if (outcome.kind === 'retainer') {
+    spawnFloater(x, y, '🛡️ HANDLED BY YOUR DRO!', 'blue');
+    toast('🛡️ Your DRO handled the raid', `Nothing lost. ${state.retainers} retainer${state.retainers === 1 ? '' : 's'} left.`);
+    sfx.evade();
+    unlockSecret('lawyer-up');
+  } else {
+    sfx.raid();
+    unlockSecret('raid-lost');
+    if (outcome.kind === 'cash') {
+      spawnFloater(x, y, `ASSETS SEIZED! -${money(outcome.amount)}`, '#c0392b');
+      toast('💸 Civil asset forfeiture', `The Fed took ${money(outcome.amount)} (${BALANCE.raid.cashLoss * 100}% of your cash). Hire a DRO retainer next time.`);
+    } else if (outcome.kind === 'building') {
+      spawnFloater(x, y, `SEIZED: ${outcome.upgrade.name}!`, '#c0392b');
+      toast('🏚️ Eminent domain', `The Fed seized one "${outcome.upgrade.name}" for the public good. Hire a DRO retainer next time.`);
+      renderShop();
+    } else {
+      spawnFloater(x, y, `${outcome.effect.icon} ${outcome.effect.name.toUpperCase()}!`, '#c0392b');
+      toast(`${outcome.effect.icon} ${outcome.effect.name}`, outcome.effect.description);
+    }
+  }
+  refresh();
+}
+
+function onBuyRetainer() {
+  if (!buyRetainer(state)) return;
+  const { x, y } = center();
+  spawnFloater(x, y, '🛡️ RETAINER SIGNED!', 'blue');
+  sfx.purchase();
+  refresh();
+}
+
+function evadeTax() {
+  endRaid();
   const { x, y } = center();
   const fedBirthday = isEventActive('fed-birthday', today());
   const bonus = raidEvadeBonus(state, today());
@@ -1445,6 +1525,8 @@ els.buyAmount.addEventListener('click', (e) => {
 });
 els.secede.addEventListener('click', showSecession);
 byId('btn-evade').addEventListener('click', evadeTax);
+els.retainerRow.addEventListener('click', onBuyRetainer);
+els.retainerRow.title = 'A private defense agency on call. When a Fed raid runs out the clock, one retainer handles it and you lose nothing. Costs about 5 minutes of income; stack as many as you like. Kept when you secede.';
 els.prestige.addEventListener('click', showCities);
 els.prestige.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') {
