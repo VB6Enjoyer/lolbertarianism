@@ -1,0 +1,40 @@
+name: 💡 Feature idea
+description: A new game, upgrade, sticker, achievement, joke… anything.
+title: '[Idea] '
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The free market of ideas is open. Pitch away.
+  # Keep these options in sync with src/games.ts (a test checks it).
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Ancapistan Tycoon
+        - Austrian Economics Simulator
+        - Libertarian Fight Club
+        - "Eminem's Human Action"
+        - Kindergarten Property Defender
+        - The Road to Liberty
+        - Basic Economics Trainer
+        - JUST GETTING STARTED 😈
+        - The arcade (homepage)
+        - A brand new game
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What should be added or changed? Why would it be fun (or funny)?
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details (optional)
+      description: Names, numbers, images, references, the punchline…

@@ -124,6 +124,8 @@ export interface GameState {
   foundedCities: FoundedCity[];
   /** DRO retainers: each one absorbs a raid that runs out the clock. Kept through secession. */
   retainers: number;
+  /** News headlines unlocked so far (they stay in the ticker for good). */
+  unlockedHeadlines: string[];
   stats: Stats;
   /** Epoch ms of the last save, for offline earnings. 0 = never saved. */
   lastSaved: number;
@@ -177,6 +179,7 @@ export function newState(): GameState {
     seenEvents: [],
     foundedCities: [],
     retainers: 0,
+    unlockedHeadlines: [],
     stats: newStats(),
     lastSaved: 0,
   };
@@ -692,10 +695,13 @@ export function raidEvadeBonus(state: GameState, date: Date = calendarDate()): n
 export const raidSeconds = (roll: number) =>
   Math.round(BALANCE.raid.minSeconds + roll * (BALANCE.raid.maxSeconds - BALANCE.raid.minSeconds));
 
-/** A DRO retainer costs about 5 minutes of income (with a floor, and challenge inflation). */
+/**
+ * A DRO retainer costs about 5 minutes of income (with a floor), ×1.25 for each
+ * one you already hold, plus challenge inflation. Using one up makes the next cheaper.
+ */
 export function retainerCost(state: GameState, now = Date.now()): number {
   const base = Math.max(BALANCE.raid.retainerMinCost, derive({ ...state, buffs: [] }, now).incomePerSec * BALANCE.raid.retainerSeconds);
-  return Math.ceil(base * challengePriceFactor(state));
+  return Math.ceil(base * Math.pow(BALANCE.raid.retainerGrowth, state.retainers) * challengePriceFactor(state));
 }
 
 export function buyRetainer(state: GameState, now = Date.now()): boolean {

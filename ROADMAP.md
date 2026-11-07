@@ -293,9 +293,8 @@ Noticed along the way, left alone for now:
     (750), Human Action (1,000), Liberland flag (first secession). Earned
     stickers survive secession, don't raise the price ladder, and are earned
     again in a challenge run once the condition is met there.
-  - For sale once unlocked: AK-47 (50 AK-47s), M249 (200 AK-47s), McNuke
-    (first silo), Antiroad Aktion (10 roads), Gold standard coin (first crypto
-    farm), Bitcoin (50 farms), Solana (100 farms), "I would privatize the sun"
+  - For sale once unlocked (thresholds raised later, see below): AK-47, M249,
+    McNuke, Antiroad Aktion, Gold standard coin, Bitcoin, Solana, "I would privatize the sun"
     (solar system), "Free Market Enjoyer" (invisible hand), "Agorism Now!"
     (100 lemonade stands).
 - Locked cards show a greyed preview and the requirement with progress, e.g.
@@ -306,7 +305,7 @@ Noticed along the way, left alone for now:
 - More earned books: The State (first secession), Anatomy of the State (5th
   secession), The Gulag Archipelago (win the Communism challenge). Achievement
   🐛 Bookworm: earn every book money can't buy (`EARNED_BOOKS`).
-- More for-sale unlocks: 🚁 Physical removal (10 physical removal services),
+- More for-sale unlocks: 🚁 Physical removal (physical removal services),
   "End! The! Fed!" (dodge 100 Fed raids, by hand or by shell company).
 - 13 new quotes (41 in all). A quote can span lines (`\n`), and a line in
   `*asterisks*` is shown in italics ("Man Acts / *Bottom Text*").
@@ -362,6 +361,33 @@ Noticed along the way, left alone for now:
 - Achievements: 🛡️ Lawyer Up, 🚔 Should Have Hidden It. Civil Disobedience is
   now "let a raid run out the clock" (raids no longer last a minute).
 - The simulator lets slow reactions time out (the casual player reacts in 10s).
+- Retainers get 25% pricier for each one you hold (`BALANCE.raid.retainerGrowth`):
+  10 held ≈ 9× the base price, 20 ≈ 87×, so you can't bank a stack after a long
+  absence and stop checking in. Using one up brings the price back down.
+- Grindier sticker unlocks (own this many): AK-47 100, M249 500, McNuke 100,
+  Antiroad Aktion 100 roads, Gold standard 100 crypto farms, Bitcoin 100 farms,
+  Solana 500 farms, "I would privatize the sun" 50 solar systems, "Free Market
+  Enjoyer" 100 invisible hands, 🚁 Physical removal 100 services.
+
+### Bug reports and ideas ✅
+
+- GitHub issue forms in `.github/ISSUE_TEMPLATE/`: 🐞 Bug report (game,
+  what happened, steps, browser, optional save code, screenshots) and 💡
+  Feature idea. Labeled `bug` / `enhancement`.
+- Every game page gets a 🐞 button above the ← that opens both links in a new
+  tab, prefilled with the game, a title and the browser (`src/shared/feedback.ts`).
+  The homepage footer has the same two links.
+- A test keeps the forms' game list in sync with `src/games.ts`.
+
+### More headlines, unlocked for good ✅
+
+- 37 new headlines (102 in all): 31 always-on submissions, plus ones for the
+  invisible hand, McNuke, Multiverse arbitrage, a lost raid, your newest city
+  (by name) and winning Communism Mode.
+- Progress headlines now use `unlock` instead of `when`: once their condition
+  is met they stay in rotation for good (saved in `unlockedHeadlines`, carried
+  through challenges), so seceding no longer hides them. Event headlines keep
+  `when` and only run on their dates.
 
 Ideas for later:
 - Javier Milei's birthday (Oct 22): needs a popup image.

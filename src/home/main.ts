@@ -1,5 +1,10 @@
 import './style.css';
 import { games, type GameStatus } from '../games.ts';
+import { issueUrl } from '../shared/feedback.ts';
+
+// Feedback links in the footer, prefilled with the browser.
+document.querySelector<HTMLAnchorElement>('#report-bug')!.href = issueUrl('bug', null, navigator.userAgent);
+document.querySelector<HTMLAnchorElement>('#suggest-idea')!.href = issueUrl('idea', null);
 
 const STATUS_LABEL: Record<GameStatus, string> = {
   wip: 'In progress',

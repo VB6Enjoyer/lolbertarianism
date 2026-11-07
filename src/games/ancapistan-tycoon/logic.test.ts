@@ -327,10 +327,10 @@ describe('sticker unlocks', () => {
     expect(isStickerLocked(s, 'ak47')).toBe(true);
     expect(stickerForSale(s, 'ak47')).toBe(false);
     expect(buySticker(s, 'ak47')).toBe(false);
-    s.owned[3] = 49;
+    s.owned[3] = 99;
     expect(unlockStickers(s)).toEqual([]);
-    expect(unlockProgress(s, 'ak47')).toEqual({ have: 49, need: 50 });
-    s.owned[3] = 50;
+    expect(unlockProgress(s, 'ak47')).toEqual({ have: 99, need: 100 });
+    s.owned[3] = 100;
     expect(unlockStickers(s).map((x) => x.id)).toEqual(['ak47']);
     expect(s.stickers).not.toContain('ak47'); // unlocked for sale, not given away
     s.owned = {}; // e.g. after seceding
@@ -385,9 +385,11 @@ describe('sticker unlocks', () => {
     expect(s.stickers).toEqual([]);
   });
 
-  it('physical removal goes on sale after 10 physical removal services', () => {
+  it('physical removal goes on sale after 100 physical removal services', () => {
     const s = newState();
-    s.owned[17] = 10;
+    s.owned[17] = 99;
+    expect(unlockStickers(s)).toEqual([]);
+    s.owned[17] = 100;
     expect(unlockStickers(s).map((x) => x.id)).toEqual(['🚁']);
   });
 
@@ -498,12 +500,26 @@ describe('DRO retainers', () => {
     expect(retainerCost(s, 0)).toBe(BALANCE.raid.retainerMinCost);
     s.owned[2] = 1000;
     const perSec = derive(s, 0).incomePerSec;
-    expect(retainerCost(s, 0)).toBe(Math.ceil(perSec * 300));
-    s.score = retainerCost(s, 0) * 2;
+    const first = Math.ceil(perSec * 300);
+    expect(retainerCost(s, 0)).toBe(first);
+    s.score = first * 2.25; // the first, plus the second at ×1.25
     expect(buyRetainer(s, 0)).toBe(true);
     expect(buyRetainer(s, 0)).toBe(true);
     expect(buyRetainer(s, 0)).toBe(false);
     expect(s.retainers).toBe(2);
+  });
+
+  it('get 25% pricier for each one you hold, and cheaper again as they are used up', () => {
+    const s = newState();
+    s.owned[2] = 1000;
+    const first = retainerCost(s, 0);
+    s.retainers = 10;
+    expect(retainerCost(s, 0) / first).toBeCloseTo(1.25 ** 10, 3); // ~9.3×
+    s.retainers = 20;
+    expect(retainerCost(s, 0) / first).toBeCloseTo(1.25 ** 20, 2); // ~87×
+    resolveRaidTimeout(s, 0, 0);
+    expect(s.retainers).toBe(19);
+    expect(retainerCost(s, 0) / first).toBeCloseTo(1.25 ** 19, 2);
   });
 
   it('ignore temporary boosts and penalties when pricing', () => {
