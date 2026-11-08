@@ -18,15 +18,6 @@
         <div id="pillar-left" class="pillar" aria-hidden="true"></div>
         <div id="pillar-right" class="pillar" aria-hidden="true"></div>
 
-        <!-- HUD -->
-        <div id="hud">
-            <div class="hud-score">$<span id="score">0</span></div>
-            <div class="hud-line">🧔 <span id="marx-count">0</span><span class="hud-label"> Marxes flattened</span> <span id="combo" class="combo" hidden></span></div>
-            <div class="hud-line hud-best">Best: $<span id="best">0</span></div>
-            <div id="powerups" class="powerups"></div>
-            <div class="hud-line hud-border">🏁 <span id="border-name">Liberland</span>: <span id="border-distance">2.5</span> km</div>
-        </div>
-
         <!-- Rearview mirror, hanging from the roof: the cops behind you, and Hoppe -->
         <div id="mirror">
             <div class="mirror-mount" aria-hidden="true"></div>
@@ -46,8 +37,27 @@
 
         <!-- Cockpit -->
         <div id="dashboard">
+            <!-- Trip computer above the wheel: the score and everything else -->
+            <div id="binnacle" aria-live="off">
+                <div class="lcd-row">
+                    <span class="lcd-score">$<span id="score">0</span></span>
+                    <span id="combo" class="lcd-combo">×1</span>
+                </div>
+                <div class="lcd-row lcd-small">
+                    <span title="Commies flattened"><span class="sickle">☭</span> <span id="commie-count">0</span></span>
+                    <span title="Next border">🏁 <span id="border-name">Liberland</span> <span id="border-distance">2.5</span> km</span>
+                    <span class="lcd-best">BEST $<span id="best">0</span></span>
+                </div>
+            </div>
             <div id="cluster" aria-label="Gauges">
                 <svg id="speedo" viewBox="0 0 200 200" role="img" aria-label="Speedometer"></svg>
+                <!-- Warning lights: power-ups and the check-engine light -->
+                <div id="telltales">
+                    <span class="telltale donuts" title="Donuts: cops slowed">🍩<small></small></span>
+                    <span class="telltale killdozer" title="Killdozer: nothing stops you">🚜<small></small></span>
+                    <span class="telltale smoke" title="Smoke screen">💨<small></small></span>
+                    <span class="telltale engine" title="Check engine: your top speed">🔧<small></small></span>
+                </div>
                 <svg id="fuel-gauge" viewBox="0 0 120 120" role="img" aria-label="Fuel gauge"></svg>
             </div>
             <div id="wheel">
@@ -104,9 +114,9 @@
                 <h1>The Road to Liberty</h1>
                 <p class="tagline">The Fed is in your mirror. Marx is in the road. Rothbard is on speakerphone.</p>
                 <ul class="rules">
-                    <li>🧔 <b>Run over Marx</b> for points and a speed boost. Flatten several in a row for a combo.</li>
+                    <li>🧔 <b>Run over commies</b> for points and a speed boost. Marx is everywhere; Engels, Che, Lenin, Mao and Stalin are rarer and worth more. Several in a row make a combo.</li>
                     <li>💰 Grab the gold. ⛽ Grab the jerry cans: run dry and you can only crawl.</li>
-                    <li>🍩 Donuts slow the cops down · 🚜 the Killdozer plows through anything · 💨 a smoke grenade loses them.</li>
+                    <li>🍩 Donuts slow the cops down · 🚜 the Killdozer plows through anything · 💨 a smoke grenade loses them · 🔧 a wrench fixes the car.</li>
                     <li>🚧 Dodge <b>IRS checkpoints</b> and slow traffic, and stay off the grass: they slow you down.</li>
                     <li>🚓 The cops are gaining. If they catch up, you're <b>busted</b>.</li>
                 </ul>
@@ -131,10 +141,11 @@
                 <p id="busted-line">The State caught up with you.</p>
                 <dl class="results">
                     <dt>Net worth</dt><dd>$<span id="final-score">0</span></dd>
-                    <dt>Marxes flattened</dt><dd id="final-marx">0</dd>
+                    <dt>Commies flattened</dt><dd id="final-commies">0</dd>
                     <dt>Distance</dt><dd id="final-distance">0 m</dd>
                     <dt>Best</dt><dd>$<span id="final-best">0</span></dd>
                 </dl>
+                <ul id="final-tally" class="tally"></ul>
                 <p id="new-best" class="new-best" hidden>🏆 New personal best!</p>
                 <button id="restart" type="button" class="big-button">Floor it again</button>
             </div>

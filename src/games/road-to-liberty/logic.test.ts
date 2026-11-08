@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BORDER_NAMES, CONFIG, copSpeed, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
+import { BORDER_NAMES, COMMIES, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
 import { PLAYLIST, shuffledOrder } from './radio.ts';
 import { LINES, pickLine } from './rothbard.ts';
 
@@ -15,8 +15,8 @@ function rng(seed = 1) {
 const idle: Input = { steer: 0, brake: false };
 
 /** Puts one thing just ahead of your bumper, in your lane. */
-function placeAhead(state: GameState, kind: Entity['kind'], x = state.x): Entity {
-  const e: Entity = { id: 999, kind, z: state.position + PLAYER_Z + 50, x, speed: kind === 'traffic' ? 3000 : 0, vx: 0, variant: 0, hit: false };
+function placeAhead(state: GameState, kind: Entity['kind'], x = state.x, variant = 0): Entity {
+  const e: Entity = { id: 999, kind, z: state.position + PLAYER_Z + 50, x, speed: kind === 'traffic' ? 3000 : 0, vx: 0, variant, hit: false };
   state.entities = [e];
   state.nextSpawnZ = Infinity; // no other spawns in the way
   return e;
@@ -36,7 +36,7 @@ function autopilot(s: GameState): Input {
   let target = 0;
   const threat = ahead.find((e) => (e.kind === 'roadblock' || e.kind === 'traffic') && Math.abs(e.x - s.x) < 0.6);
   const can = s.fuel < 0.6 ? ahead.find((e) => e.kind === 'fuel') : undefined;
-  const prize = can ?? ahead.find((e) => e.kind === 'marx' || e.kind === 'gold' || e.kind === 'fuel');
+  const prize = can ?? ahead.find((e) => e.kind === 'commie' || e.kind === 'gold' || e.kind === 'fuel' || e.kind === 'wrench');
   if (threat) target = threat.x > 0 ? threat.x - 0.75 : threat.x + 0.75;
   else if (prize) target = prize.x;
   // Lean into curves to cancel the outward push.
@@ -78,20 +78,39 @@ describe('road to liberty: what you hit', () => {
   it('running over Marx pays, boosts you, and builds a combo', () => {
     const s = newGame();
     s.speed = CONFIG.maxSpeed;
-    placeAhead(s, 'marx');
+    placeAhead(s, 'commie');
     const events = drive(s, 0.2, () => idle);
-    expect(events).toContainEqual({ type: 'marx', points: CONFIG.marxPoints, combo: 1 });
-    expect(s.stats.marxFlattened).toBe(1);
+    expect(events).toContainEqual({ type: 'commie', who: 'marx', points: CONFIG.marxPoints, combo: 1 });
+    expect(s.stats.commies.marx).toBe(1);
     expect(s.boostLeft).toBeGreaterThan(0);
     expect(s.combo).toBe(1 + CONFIG.comboStep);
-    placeAhead(s, 'marx');
-    expect(drive(s, 0.2, () => idle)).toContainEqual({ type: 'marx', points: CONFIG.marxPoints * 1.5, combo: 1.5 });
+    placeAhead(s, 'commie');
+    expect(drive(s, 0.2, () => idle)).toContainEqual({ type: 'commie', who: 'marx', points: CONFIG.marxPoints * 1.5, combo: 1.5 });
   });
 
-  it('missing Marx by a lane does nothing', () => {
+  it('rarer commies are worth more, and each is counted separately', () => {
     const s = newGame();
-    placeAhead(s, 'marx', 0.9);
-    expect(drive(s, 0.3, () => idle).filter((e) => e.type === 'marx')).toEqual([]);
+    s.speed = CONFIG.maxSpeed;
+    const stalin = COMMIES.findIndex((c) => c.id === 'stalin');
+    placeAhead(s, 'commie', s.x, stalin);
+    expect(drive(s, 0.2, () => idle)).toContainEqual({ type: 'commie', who: 'stalin', points: 1500, combo: 1 });
+    expect(s.stats.commies.stalin).toBe(1);
+    expect(totalCommies(s.stats.commies)).toBe(1);
+    for (const c of COMMIES.slice(1)) expect(c.points).toBeGreaterThan(CONFIG.marxPoints);
+  });
+
+  it('Marx is the most common by far; Stalin the rarest', () => {
+    const picks = [...Array(1000).keys()].map((r) => COMMIES[pickCommie(r / 1000)].id);
+    const count = (id: string) => picks.filter((p) => p === id).length;
+    expect(count('marx')).toBeGreaterThan(400);
+    for (const c of COMMIES) expect(count(c.id), c.id).toBeGreaterThan(0);
+    expect(count('stalin')).toBeLessThan(count('engels'));
+  });
+
+  it('missing a commie by a lane does nothing', () => {
+    const s = newGame();
+    placeAhead(s, 'commie', 0.9);
+    expect(drive(s, 0.3, () => idle).filter((e) => e.type === 'commie')).toEqual([]);
   });
 
   it('roadblocks and traffic slow you down and break the combo', () => {
@@ -159,6 +178,64 @@ describe('road to liberty: fuel', () => {
   });
 });
 
+describe('road to liberty: car damage', () => {
+  const center = (st: GameState): Input => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false });
+
+  it('spikes: 10% slower for 5 seconds, and 5% slower for good', () => {
+    const s = newGame();
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'spikes', s.x);
+    drive(s, 0.1, () => idle);
+    expect(speedFactor(s)).toBeCloseTo(0.9 * 0.95, 5);
+    s.nextSpawnZ = Infinity;
+    drive(s, 6, center);
+    expect(s.spikeSlowLeft).toBe(0);
+    expect(s.damage).toBeCloseTo(0.95, 5);
+    expect(s.speed).toBeCloseTo(CONFIG.maxSpeed * 0.95, 0);
+  });
+
+  it('spike damage piles up, down to a floor', () => {
+    const s = newGame();
+    for (let i = 0; i < 30; i++) {
+      s.speed = CONFIG.maxSpeed;
+      placeAhead(s, 'spikes', s.x);
+      drive(s, 0.1, () => idle);
+    }
+    expect(s.damage).toBe(CONFIG.minDamage);
+  });
+
+  it('a cruiser ram halves your top speed for 5 seconds', () => {
+    const s = newGame();
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'cruiser', s.x);
+    expect(drive(s, 0.1, () => idle)).toContainEqual({ type: 'crash', kind: 'cruiser' });
+    expect(speedFactor(s)).toBeCloseTo(0.5, 5);
+    expect(s.speed).toBeLessThanOrEqual(CONFIG.maxSpeed * 0.5 + 1);
+    s.nextSpawnZ = Infinity;
+    drive(s, 5.5, center);
+    expect(speedFactor(s)).toBe(1);
+  });
+
+  it('a wrench fixes everything', () => {
+    const s = newGame();
+    s.damage = 0.7;
+    s.spikeSlowLeft = 3;
+    s.ramSlowLeft = 3;
+    s.speed = CONFIG.maxSpeed * 0.3;
+    placeAhead(s, 'wrench', s.x);
+    expect(drive(s, 0.3, () => idle)).toContainEqual({ type: 'repair' });
+    expect(speedFactor(s)).toBe(1);
+  });
+
+  it('wrenches are rare, and turn up more when the car is hurt', () => {
+    const count = (hurt: boolean) => [...Array(2000).keys()].filter((r) => pickKind(r / 2000, 120, 1, hurt) === 'wrench').length;
+    expect(count(false)).toBeGreaterThan(0);
+    expect(count(false)).toBeLessThan(20);
+    expect(count(true)).toBeGreaterThan(count(false) * 2);
+    expect([...Array(500).keys()].some((r) => pickKind(r / 500, 20) === 'wrench')).toBe(false);
+  });
+});
+
 describe('road to liberty: borders', () => {
   it('every 2.5 km: a bonus, the cops pushed back, and some fuel', () => {
     const s = newGame();
@@ -205,7 +282,7 @@ describe('road to liberty: aggressive cops', () => {
     placeAhead(t, 'spikes', -0.3);
     t.x = -0.6;
     expect(drive(t, 0.2, () => idle)).toContainEqual({ type: 'crash', kind: 'spikes' });
-    expect(t.speed).toBeLessThan(CONFIG.maxSpeed * 0.5);
+    expect(t.spikeSlowLeft).toBeGreaterThan(0);
   });
 
   it('a cruiser ahead swerves toward you', () => {
@@ -367,7 +444,13 @@ describe('road to liberty: Rothbard', () => {
 });
 
 describe('road to liberty: the chase', () => {
-  it('the cops get faster, but never as fast as you', () => {
+  it('the cops get faster over time and with every km, eventually outpacing you', () => {
+    expect(copSpeed(240, 0)).toBeLessThan(copSpeed(240, 10_000));
+    expect(copSpeed(600, 30_000)).toBeGreaterThan(CONFIG.maxSpeed);
+    expect(copSpeed(10_000, 1e9)).toBe(CONFIG.maxSpeed * CONFIG.copSpeedCap);
+  });
+
+  it('early on the cops are slower than you', () => {
     expect(copSpeed(0)).toBeLessThan(copSpeed(120));
     expect(copSpeed(10_000)).toBeLessThan(CONFIG.maxSpeed);
   });
@@ -380,12 +463,12 @@ describe('road to liberty: the chase', () => {
     expect(s.over).toBe(true);
   });
 
-  it('a decent driver outruns the cops for a good while and flattens plenty of Marxes', () => {
+  it('a decent driver outruns the cops for a good while and flattens plenty of commies', () => {
     for (const seed of [1, 2, 3]) {
       const s = newGame();
       drive(s, 120, autopilot, rng(seed));
       expect(s.over, `seed ${seed}`).toBe(false);
-      expect(s.stats.marxFlattened, `seed ${seed}`).toBeGreaterThan(10);
+      expect(totalCommies(s.stats.commies), `seed ${seed}`).toBeGreaterThan(10);
     }
   });
 

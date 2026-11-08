@@ -19,7 +19,7 @@ export const CONFIG = {
 
   /** Top speed in world units per second (about 240 km/h on the speedometer). */
   maxSpeed: 12_000,
-  /** Boosted top speed after flattening Marx. */
+  /** Boosted top speed after flattening a commie. */
   boostSpeed: 15_000,
   boostSeconds: 2,
   accel: 5_000,
@@ -43,17 +43,21 @@ export const CONFIG = {
   /** Cop speed as a share of your top speed: starts here… */
   copSpeedStart: 0.72,
   /** …and creeps up to this over copRampSeconds. */
-  copSpeedMax: 0.96,
+  copSpeedMax: 0.92,
+  /** …and keeps climbing with distance: this much more per km driven, up to the cap. */
+  copSpeedPerKm: 0.005,
+  copSpeedCap: 1.05,
   copRampSeconds: 240,
   /** Seconds before the first roadblocks show up. */
   roadblocksAfter: 20,
 
   /** Points. */
+  /** Points for Marx; rarer commies are worth more (see COMMIES). */
   marxPoints: 500,
   goldPoints: 150,
   /** Points per meter driven. */
   pointsPerMeter: 1,
-  /** Each Marx in a row (without hitting anything bad) adds this to the multiplier. */
+  /** Each commie in a row (without hitting anything bad) adds this to the multiplier. */
   comboStep: 0.5,
 
   /** A full tank lasts this many seconds at top speed (less driving slowly drains less). */
@@ -80,8 +84,22 @@ export const CONFIG = {
   /** …and the duty-free shop tops up your tank. */
   borderFuel: 0.25,
 
-  /** Power-ups show up after this many seconds. */
+  /** Power-ups show up after this many seconds, this often (relative weight each). */
   powerUpsAfter: 25,
+  powerUpWeight: 0.13,
+
+  /** Spike strips: top speed ×0.9 for 5 s, and 5% off for good (down to 50%). */
+  spikeSlow: 0.9,
+  spikeSlowSeconds: 5,
+  spikeDamage: 0.95,
+  minDamage: 0.5,
+  /** Getting rammed by a cruiser: top speed halved for 5 s. */
+  ramSlow: 0.5,
+  ramSlowSeconds: 5,
+  /** 🔧 Wrench: rare; a bit less rare when the car is hurt. */
+  wrenchAfter: 40,
+  wrenchWeight: 0.08,
+  wrenchWeightHurt: 0.3,
   /** 🍩 Donuts: the cops slow to this share of their speed, for this long. */
   donutSlowdown: 0.55,
   donutSeconds: 10,
@@ -173,10 +191,44 @@ export function heightAt(i: number): number {
 // State
 // ---------------------------------------------------------------------------
 
-export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | PowerUp | Scenery;
+export type CommieId = 'marx' | 'engels' | 'lenin' | 'stalin' | 'mao' | 'che';
 
-export type PowerUp = 'donuts' | 'killdozer' | 'smoke';
-export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke'];
+export interface Commie {
+  id: CommieId;
+  name: string;
+  points: number;
+  /** Relative odds among commies. */
+  weight: number;
+}
+
+/** Marx is everywhere; the rest are rarer and worth more. */
+export const COMMIES: readonly Commie[] = [
+  { id: 'marx', name: 'Marx', points: 500, weight: 12 },
+  { id: 'engels', name: 'Engels', points: 700, weight: 3 },
+  { id: 'che', name: 'Che', points: 900, weight: 2.5 },
+  { id: 'lenin', name: 'Lenin', points: 1000, weight: 2 },
+  { id: 'mao', name: 'Mao', points: 1200, weight: 1.5 },
+  { id: 'stalin', name: 'Stalin', points: 1500, weight: 1 },
+];
+
+/** Picks which commie, by weight. `roll` in [0, 1). */
+export function pickCommie(roll: number): number {
+  const total = COMMIES.reduce((sum, c) => sum + c.weight, 0);
+  let r = roll * total;
+  for (let i = 0; i < COMMIES.length; i++) {
+    r -= COMMIES[i].weight;
+    if (r < 0) return i;
+  }
+  return 0;
+}
+
+export const emptyTally = (): Record<CommieId, number> => ({ marx: 0, engels: 0, lenin: 0, stalin: 0, mao: 0, che: 0 });
+export const totalCommies = (tally: Record<CommieId, number>) => Object.values(tally).reduce((a, b) => a + b, 0);
+
+export type EntityKind = 'commie' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | PowerUp | Scenery;
+
+export type PowerUp = 'donuts' | 'killdozer' | 'smoke' | 'wrench';
+export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke', 'wrench'];
 
 /** Things by the side of the road. Never in your way (they stand beyond where you can drive). */
 export type Scenery = 'billboard' | 'house' | 'bar' | 'gas-station' | 'diner' | 'barn';
@@ -190,7 +242,7 @@ export interface Entity {
   z: number;
   /** Lateral position; -1..1 is the road. */
   x: number;
-  /** Own speed: traffic drives forward, Marx wanders sideways. */
+  /** Own speed: traffic drives forward, commies wander sideways. */
   speed: number;
   vx: number;
   /** For drawing: which car color, which roadblock sign, etc. */
@@ -200,7 +252,7 @@ export interface Entity {
 
 /** Half widths, in road widths, for collisions. */
 export const HALF_WIDTH: Record<EntityKind, number> = {
-  marx: 0.18,
+  commie: 0.18,
   fuel: 0.13,
   gold: 0.12,
   traffic: 0.22,
@@ -213,6 +265,7 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
   donuts: 0.16,
   killdozer: 0.16,
   smoke: 0.16,
+  wrench: 0.16,
   billboard: 0,
   house: 0,
   bar: 0,
@@ -223,7 +276,8 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
 export const CAR_HALF_WIDTH = 0.2;
 
 export interface GameStats {
-  marxFlattened: number;
+  /** How many of each commie you ran over. */
+  commies: Record<CommieId, number>;
   gold: number;
   crashes: number;
   meters: number;
@@ -239,7 +293,7 @@ export interface GameState {
   /** Seconds since the start. */
   time: number;
   score: number;
-  /** Score multiplier from flattening Marxes in a row. */
+  /** Score multiplier from flattening commies in a row. */
   combo: number;
   boostLeft: number;
   /** Seconds of screen shake / slowdown flash left after a crash. */
@@ -258,6 +312,11 @@ export interface GameState {
   donutsLeft: number;
   killdozerLeft: number;
   smokeLeft: number;
+  /** Lasting damage from spike strips: your top speed is multiplied by this (1 = like new). */
+  damage: number;
+  /** Seconds left of the spike and ram slowdowns. */
+  spikeSlowLeft: number;
+  ramSlowLeft: number;
   /** Where the next roadside scenery goes. */
   nextSceneryZ: number;
   over: boolean;
@@ -271,14 +330,15 @@ export interface Input {
 
 /** What happened during an update, so main.ts can play sounds and show text. */
 export type GameEvent =
-  | { type: 'marx'; points: number; combo: number }
+  | { type: 'commie'; who: CommieId; points: number; combo: number }
+  | { type: 'repair' }
   | { type: 'gold'; points: number }
   | { type: 'crash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser' }
   | { type: 'warning'; kind: 'spikes' | 'cruiser' }
   | { type: 'border'; name: string; bonus: number; index: number }
   | { type: 'nightfall' }
   | { type: 'rain' }
-  | { type: 'power-up'; kind: PowerUp }
+  | { type: 'power-up'; kind: Exclude<PowerUp, 'wrench'> }
   | { type: 'smash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser'; points: number }
   | { type: 'fuel' }
   | { type: 'low-fuel' }
@@ -299,13 +359,16 @@ export function newGame(): GameState {
     entities: [],
     nextSpawnZ: CONFIG.segmentLength * 40,
     nextId: 1,
-    stats: { marxFlattened: 0, gold: 0, crashes: 0, meters: 0 },
+    stats: { commies: emptyTally(), gold: 0, crashes: 0, meters: 0 },
     fuel: 1,
     nextBorderZ: CONFIG.borderEvery,
     bordersCrossed: 0,
     donutsLeft: 0,
     killdozerLeft: 0,
     smokeLeft: 0,
+    damage: 1,
+    spikeSlowLeft: 0,
+    ramSlowLeft: 0,
     nextSceneryZ: CONFIG.segmentLength * 10,
     over: false,
   };
@@ -313,10 +376,16 @@ export function newGame(): GameState {
 
 export const segmentIndex = (z: number) => Math.floor(z / CONFIG.segmentLength);
 
-/** Cop speed right now (units per second). */
-export function copSpeed(time: number): number {
+/** Cop speed right now (units per second): it ramps up over the first minutes, then keeps climbing with distance. */
+export function copSpeed(time: number, meters = 0): number {
   const t = Math.min(1, time / CONFIG.copRampSeconds);
-  return CONFIG.maxSpeed * (CONFIG.copSpeedStart + (CONFIG.copSpeedMax - CONFIG.copSpeedStart) * t);
+  const share = CONFIG.copSpeedStart + (CONFIG.copSpeedMax - CONFIG.copSpeedStart) * t + (meters / 1000) * CONFIG.copSpeedPerKm;
+  return CONFIG.maxSpeed * Math.min(CONFIG.copSpeedCap, share);
+}
+
+/** What your top speed is multiplied by right now: lasting damage and any slowdowns. */
+export function speedFactor(state: GameState): number {
+  return state.damage * (state.spikeSlowLeft > 0 ? CONFIG.spikeSlow : 1) * (state.ramSlowLeft > 0 ? CONFIG.ramSlow : 1);
 }
 
 /** Speedometer reading. */
@@ -327,16 +396,17 @@ export const kmh = (speed: number) => Math.round((speed / UNITS_PER_METER) * 3.6
 // ---------------------------------------------------------------------------
 
 /** Picks what to place next. `roll` in [0, 1). Roadblocks only after the warm-up; more jerry cans when you're low. */
-export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
+export function pickKind(roll: number, time: number, fuel = 1, hurt = false): EntityKind {
   const weights: [EntityKind, number][] = [
-    ['marx', 4],
+    ['commie', 4],
     ['gold', 3],
     ['fuel', fuel < CONFIG.lowFuel ? 3 : fuel < 0.6 ? 1 : 0.4],
     ['traffic', 3],
     ['roadblock', time >= CONFIG.roadblocksAfter ? 2 + Math.min(2, time / 120) : 0],
     ['spikes', time >= CONFIG.spikesAfter ? 0.7 + Math.min(0.8, time / 300) : 0],
     ['cruiser', time >= CONFIG.cruisersAfter ? 0.5 + Math.min(0.8, time / 300) : 0],
-    ...POWER_UPS.map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? 0.25 : 0]),
+    ...(['donuts', 'killdozer', 'smoke'] as const).map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? CONFIG.powerUpWeight : 0]),
+    ['wrench', time < CONFIG.wrenchAfter ? 0 : hurt ? CONFIG.wrenchWeightHurt : CONFIG.wrenchWeight],
   ];
   const total = weights.reduce((sum, [, w]) => sum + w, 0);
   let r = roll * total;
@@ -344,7 +414,7 @@ export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
     r -= w;
     if (r < 0) return kind;
   }
-  return 'marx';
+  return 'commie';
 }
 
 /** Gap to the next spawn: things get denser as time goes on. */
@@ -355,7 +425,7 @@ export function spawnSpacing(time: number, roll: number): number {
 }
 
 function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
-  const kind = pickKind(rng(), state.time, state.fuel);
+  const kind = pickKind(rng(), state.time, state.fuel, state.damage < 0.9);
   const lane = [-0.6, 0, 0.6][Math.floor(rng() * 3)];
   const x =
     kind === 'roadblock' ? lane * 0.9
@@ -372,9 +442,9 @@ function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
     z: state.nextSpawnZ,
     x,
     speed,
-    // Marx sits in his armchair; some of the chairs have wheels and drift across the road.
-    vx: kind === 'marx' && rng() < 0.5 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.2) : 0,
-    variant: Math.floor(rng() * 4),
+    // Marx sits in his armchair (some chairs have wheels and drift); the others stroll across.
+    vx: kind === 'commie' && rng() < 0.6 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.22) : 0,
+    variant: kind === 'commie' ? pickCommie(rng()) : Math.floor(rng() * 4),
     hit: false,
   };
   state.entities.push(entity);
@@ -395,6 +465,8 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   state.donutsLeft = Math.max(0, state.donutsLeft - dt);
   state.killdozerLeft = Math.max(0, state.killdozerLeft - dt);
   state.smokeLeft = Math.max(0, state.smokeLeft - dt);
+  state.spikeSlowLeft = Math.max(0, state.spikeSlowLeft - dt);
+  state.ramSlowLeft = Math.max(0, state.ramSlowLeft - dt);
   state.crashLeft = Math.max(0, state.crashLeft - dt);
 
   // Speed: always on the gas unless braking.
@@ -404,7 +476,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   if (fuelBefore >= CONFIG.lowFuel && state.fuel < CONFIG.lowFuel) events.push({ type: 'low-fuel' });
   if (fuelBefore > 0 && state.fuel === 0) events.push({ type: 'out-of-gas' });
 
-  const top = state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed : state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed;
+  const top = (state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed : state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed) * speedFactor(state);
   if (input.brake) state.speed -= CONFIG.brake * dt;
   else if (state.speed < top) state.speed = Math.min(top, state.speed + CONFIG.accel * dt);
   else state.speed = Math.max(top, state.speed - CONFIG.coast * dt);
@@ -451,7 +523,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   for (const e of state.entities) {
     const prevZ = e.z;
     e.z += e.speed * dt;
-    if (e.kind === 'marx' && !e.hit) {
+    if (e.kind === 'commie' && !e.hit) {
       e.x += e.vx * dt;
       if (Math.abs(e.x) > 0.9) {
         e.x = Math.sign(e.x) * 0.9;
@@ -473,7 +545,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel' || POWER_UPS.includes(e.kind as PowerUp))));
 
   // The chase.
-  state.copGap += (state.speed - copSpeed(state.time) * (state.donutsLeft > 0 ? CONFIG.donutSlowdown : 1)) * dt;
+  state.copGap += (state.speed - copSpeed(state.time, state.stats.meters) * (state.donutsLeft > 0 ? CONFIG.donutSlowdown : 1)) * dt;
   state.copGap = Math.min(CONFIG.copMaxGap, state.copGap);
   if (state.copGap <= 0) {
     state.copGap = 0;
@@ -514,11 +586,12 @@ function collide(state: GameState, e: Entity): GameEvent[] {
     case 'diner':
     case 'barn':
       return [];
-    case 'marx': {
-      const points = Math.round(CONFIG.marxPoints * state.combo);
+    case 'commie': {
+      const who = COMMIES[e.variant] ?? COMMIES[0];
+      const points = Math.round(who.points * state.combo);
       state.score += points;
-      state.stats.marxFlattened++;
-      const event: GameEvent = { type: 'marx', points, combo: state.combo };
+      state.stats.commies[who.id]++;
+      const event: GameEvent = { type: 'commie', who: who.id, points, combo: state.combo };
       state.combo += CONFIG.comboStep;
       state.boostLeft = CONFIG.boostSeconds;
       return [event];
@@ -541,12 +614,20 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       state.speed *= 0.25;
       return crashed(state, 'roadblock');
     case 'spikes':
-      state.speed *= 0.4;
+      // Slower for a while, and a little slower for good.
+      state.spikeSlowLeft = CONFIG.spikeSlowSeconds;
+      state.damage = Math.max(CONFIG.minDamage, state.damage * CONFIG.spikeDamage);
       return crashed(state, 'spikes');
     case 'cruiser':
-      state.speed = Math.min(state.speed, e.speed * 0.5);
+      state.ramSlowLeft = CONFIG.ramSlowSeconds;
+      state.speed = Math.min(state.speed, CONFIG.maxSpeed * speedFactor(state));
       e.x += e.x >= state.x ? 0.7 : -0.7;
       return crashed(state, 'cruiser');
+    case 'wrench':
+      state.damage = 1;
+      state.spikeSlowLeft = 0;
+      state.ramSlowLeft = 0;
+      return [{ type: 'repair' }];
     case 'border': {
       const index = state.bordersCrossed++;
       const bonus = CONFIG.borderBonus * state.bordersCrossed;

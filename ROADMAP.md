@@ -452,3 +452,17 @@ Ideas for later:
 - Roadside scenery (`scenery.ts`): billboards with 12 slogans, houses (some
   with a Gadsden flag), saloons with neon signs, Free Market Fuel stations,
   diners and raw-milk barns, set back beyond where you can drive.
+- Commies: Marx is joined by Engels ($700), Che ($900), Lenin ($1,000), Mao
+  ($1,200) and Stalin ($1,500), rarer the more they're worth (`COMMIES`).
+  Each gets his own Rothbard lines; the busted screen shows a tally.
+- Car damage: spike strips slow you 10% for 5 s and knock 5% off your top
+  speed for good (down to 50%); a cruiser ram halves your top speed for 5 s.
+  🔧 Wrench (rare, less rare when you're hurt, Böhm-Bawerk brand) repairs
+  everything.
+- Harder: power-ups about half as common, and the cops keep speeding up with
+  every km (0.5% of your top speed per km, up to 105%), so after ~5 minutes
+  they outrun an undamaged car. Automated driver: careful 3–3¾ min, sloppy 2–3.
+- The HUD moved into the car: a green LCD trip computer above the wheel (score,
+  combo, commies, next border, best) and 2×2 warning lights between the
+  gauges (donuts, Killdozer, smoke with seconds left; check engine with your
+  top speed %).

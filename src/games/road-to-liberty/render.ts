@@ -2,7 +2,7 @@
 // segment is projected to the screen as a trapezoid, nearest last, and sprites
 // are drawn back to front on top, clipped behind hills.
 
-import { borderName, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
+import { borderName, COMMIES, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
 import { drawScenery, SCENERY_SIZE } from './scenery.ts';
 
 interface Point {
@@ -25,7 +25,8 @@ const LANE_DIVIDERS = [-1 / 3, 1 / 3];
 
 /** Sprite sizes in world units (width, height). */
 const SIZE: Record<EntityKind, [number, number]> = {
-  marx: [860, 1070],
+  /** Marx seated; the standing commies use COMMIE_HEIGHT and their photo's proportions. */
+  commie: [860, 1070],
   gold: [380, 380],
   fuel: [330, 400],
   spikes: [2000, 160],
@@ -34,6 +35,7 @@ const SIZE: Record<EntityKind, [number, number]> = {
   donuts: [520, 450],
   killdozer: [700, 450],
   smoke: [330, 450],
+  wrench: [620, 380],
   ...SCENERY_SIZE,
   traffic: [900, 620],
   roadblock: [1400, 760],
@@ -44,20 +46,35 @@ const ROADBLOCK_SIGNS = ['IRS CHECKPOINT', 'TOLL: 40% OF ALL', 'PERMIT REQUIRED'
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** Marx in his armchair (public/vidya/img/marx.webp). Until it loads, he's drawn with shapes. */
-const marxImage = new Image();
-marxImage.src = `${import.meta.env.BASE_URL}vidya/img/marx.webp`;
-const marxReady = () => marxImage.complete && marxImage.naturalWidth > 0;
+/** The commies' photos (public/vidya/img/<id>.webp): Marx in his armchair, the rest standing. */
+const COMMIE_IMAGES = COMMIES.map((c) => {
+  const image = new Image();
+  image.src = `${import.meta.env.BASE_URL}vidya/img/${c.id}.webp`;
+  return image;
+});
+const imageReady = (image: HTMLImageElement) => image.complete && image.naturalWidth > 0;
+/** Standing commies are this tall in world units (about a person next to the road's width). */
+const COMMIE_HEIGHT = 1000;
+
+/** A commie's size in world units: Marx's chair is wide; the others follow their photo. */
+function commieSize(variant: number): [number, number] {
+  if (variant === 0) return SIZE.commie;
+  const image = COMMIE_IMAGES[variant];
+  const ratio = image && imageReady(image) ? image.naturalWidth / image.naturalHeight : 0.37;
+  return [COMMIE_HEIGHT * ratio, COMMIE_HEIGHT];
+}
 
 /** Power-up pictures, with an emoji stand-in until they load, and a glow color each. */
 const POWER_UP_LOOK: Record<PowerUp, { image: HTMLImageElement; emoji: string; glow: string }> = {
   donuts: { image: new Image(), emoji: '🍩', glow: 'rgba(255, 128, 171, 0.45)' },
   killdozer: { image: new Image(), emoji: '🚜', glow: 'rgba(255, 193, 7, 0.45)' },
   smoke: { image: new Image(), emoji: '💨', glow: 'rgba(176, 190, 197, 0.55)' },
+  wrench: { image: new Image(), emoji: '🔧', glow: 'rgba(129, 212, 250, 0.5)' },
 };
 POWER_UP_LOOK.donuts.image.src = `${import.meta.env.BASE_URL}vidya/img/donuts.webp`;
 POWER_UP_LOOK.killdozer.image.src = `${import.meta.env.BASE_URL}vidya/img/killdozer.webp`;
 POWER_UP_LOOK.smoke.image.src = `${import.meta.env.BASE_URL}vidya/img/smoke-grenade.webp`;
+POWER_UP_LOOK.wrench.image.src = `${import.meta.env.BASE_URL}vidya/img/wrench.webp`;
 
 /** A power-up floating over the road: a pulsing glow and its picture. */
 function drawPowerUp(ctx: CanvasRenderingContext2D, kind: PowerUp, x: number, y: number, w: number, h: number, time: number, id: number) {
@@ -267,8 +284,8 @@ function drawMarx(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.restore();
 }
 
-/** The photo version: a shadow, then Marx and his chair, rocking a little. */
-function drawMarxPhoto(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number, id: number) {
+/** The photo version: a shadow, then the commie (and Marx's chair), swaying a little. */
+function drawCommiePhoto(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, w: number, h: number, time: number, id: number) {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
@@ -276,9 +293,9 @@ function drawMarxPhoto(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.fill();
   ctx.translate(x, y);
   ctx.rotate(Math.sin(time * 2 + id) * 0.02);
-  const ratio = marxImage.naturalWidth / marxImage.naturalHeight;
+  const ratio = image.naturalWidth / image.naturalHeight;
   const drawW = h * ratio;
-  ctx.drawImage(marxImage, -drawW / 2, -h, drawW, h);
+  ctx.drawImage(image, -drawW / 2, -h, drawW, h);
   ctx.restore();
 }
 
@@ -527,6 +544,7 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
     case 'donuts':
     case 'killdozer':
     case 'smoke':
+    case 'wrench':
       if (!e.hit) drawPowerUp(ctx, e.kind, x, y, w, h, time, e.id);
       return;
     case 'spikes':
@@ -538,10 +556,13 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
     case 'border':
       drawBorder(ctx, x, y, w, h, e.variant, roadHalf);
       return;
-    case 'marx':
+    case 'commie': {
       if (e.hit) return;
-      if (marxReady()) drawMarxPhoto(ctx, x, y, w, h, time, e.id);
+      const image = COMMIE_IMAGES[e.variant];
+      if (image && imageReady(image)) drawCommiePhoto(ctx, image, x, y, w, h, time, e.id);
       else drawMarx(ctx, x, y, w * 0.6, h * 0.93, time, e.id);
+      return;
+    }
       return;
     case 'fuel':
       drawFuel(ctx, x, y, w, h, time, e.id);
@@ -673,7 +694,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
     const scale = lerp(seg.p1.scale, seg.p2.scale, t);
     const sx = lerp(seg.p1.x, seg.p2.x, t) + scale * e.x * CONFIG.roadWidth * (width / 2);
     const sy = lerp(seg.p1.y, seg.p2.y, t);
-    const [ww, wh] = SIZE[e.kind];
+    const [ww, wh] = e.kind === 'commie' ? commieSize(e.variant) : SIZE[e.kind];
     const w = scale * ww * (width / 2);
     const h = scale * wh * (width / 2);
     if (w < 2 || sy - h > seg.clip) continue;
