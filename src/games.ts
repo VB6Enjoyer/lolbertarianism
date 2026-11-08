@@ -54,7 +54,7 @@ export const games: Game[] = [
     slug: 'road-to-liberty',
     title: 'The Road to Liberty',
     blurb: 'Run over Marx, dodge IRS checkpoints, and outrun the cops with Rothbard on speakerphone.',
-    status: 'prototype',
+    status: 'released', // v1.0
     legacyPaths: ['The Road to Liberty.html'],
   },
   {

@@ -537,3 +537,5 @@ Ideas for later:
 - Share (`share.ts`): copy the run as text, or a 1200×630 card with the photo
   finish, score, commies, distance, landscape and car (the share sheet on
   phones, a download elsewhere).
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
+  with a new screenshot.
