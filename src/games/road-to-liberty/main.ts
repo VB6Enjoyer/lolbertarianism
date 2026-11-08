@@ -5,6 +5,7 @@ import { createSaveSlot } from '../../shared/storage.ts';
 import { currentTerritory, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
+import { buyUpgrade, MAX_LEVEL, nextCost, normalizeLevels, UPGRADES, type GarageLevels, type UpgradeId } from './garage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeLifetime, normalizeUnlocked, Tracker, type Lifetime } from './achievements.ts';
 import { cleanInitials, insertScore, legendName, normalizeScores, qualifies, type ScoreEntry } from './scoreboard.ts';
 import { buildGauges } from './gauges.ts';
@@ -62,6 +63,15 @@ const els = {
   toasts: byId('achievement-toasts'),
   runAchievements: byId('run-achievements'),
   runAchievementsList: byId('run-achievements-list'),
+  nos: document.querySelector<HTMLElement>('.nos')!,
+  nosFill: byId('nos-fill'),
+  nosLabel: byId('nos-label'),
+  nosButton: byId<HTMLButtonElement>('nos-button'),
+  bossBanner: byId('boss-banner'),
+  garage: byId('garage'),
+  garageGrid: byId('garage-grid'),
+  garageSavings: byId('garage-savings'),
+  savingsLine: byId('savings-line'),
   scoresList: byId('scores-list'),
   finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
@@ -87,6 +97,10 @@ interface Save {
   /** Unlocked achievement ids, and the counters some of them need. */
   achievements: string[];
   lifetime: Lifetime;
+  /** Garage: money to spend, all money ever saved, and the car's upgrade levels. */
+  savings: number;
+  savingsEarned: number;
+  garage: GarageLevels;
 }
 
 const slot = createSaveSlot<Save>({ game: 'road-to-liberty', version: 1 });
@@ -99,6 +113,9 @@ const save: Save = {
   initials: typeof saved?.initials === 'string' ? cleanInitials(saved.initials) : '',
   achievements: [...normalizeUnlocked(saved?.achievements)],
   lifetime: normalizeLifetime(saved?.lifetime),
+  savings: Math.max(0, Math.floor(Number(saved?.savings) || 0)),
+  savingsEarned: Math.max(0, Math.floor(Number(saved?.savingsEarned) || 0)),
+  garage: normalizeLevels(saved?.garage),
 };
 
 // ---------------------------------------------------------------------------
@@ -165,6 +182,9 @@ const sfx = {
   busted() {
     [784, 659, 523, 392].forEach((hz, i) => playTone(note(hz, 0.22, 0.08), i * 0.2));
   },
+  nitro() {
+    playTone({ wave: 'sawtooth', duration: 0.6, frequency: [[0, 80], [0.6, 400, 'exp']], gain: [[0, 0.08], [0.6, 0.001, 'exp']] });
+  },
   achievement() {
     [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
   },
@@ -197,13 +217,18 @@ let touchBrake = false;
 /** Smoothed steering, so keyboard taps ease in instead of snapping. */
 let steer = 0;
 
+/** Set when the nitro key or button is pressed; used once by the next update. */
+let nitroQueued = false;
+
 function readInput(dt: number): Input {
   let target = 0;
   if (keys.has('ArrowLeft') || keys.has('a')) target -= 1;
   if (keys.has('ArrowRight') || keys.has('d')) target += 1;
   if (pointerSteer !== null) target = pointerSteer;
   steer += (target - steer) * Math.min(1, dt * 10);
-  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s') };
+  const nitro = nitroQueued;
+  nitroQueued = false;
+  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s'), nitro };
 }
 
 const STEER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'a', 'd', 's', 'w', ' ']);
@@ -213,6 +238,10 @@ document.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (STEER_KEYS.has(key) && mode === 'playing') e.preventDefault();
+  if ((key === ' ' || key === 'Shift') && mode === 'playing') {
+    nitroQueued = true;
+    return;
+  }
   if (key === 'p' || key === 'Escape') {
     if (mode === 'playing') pause();
     else if (mode === 'paused') resume();
@@ -222,7 +251,7 @@ document.addEventListener('keydown', (e) => {
     toggleMute();
     return;
   }
-  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden) {
+  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden && els.garage.hidden) {
     e.preventDefault();
     if (mode === 'paused') resume();
     else startGame();
@@ -261,6 +290,11 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
     els.brake.classList.remove('pressed');
   });
 }
+
+els.nosButton.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (mode === 'playing') nitroQueued = true;
+});
 
 function toggleMute() {
   save.muted = !save.muted;
@@ -354,7 +388,7 @@ const START_TIME = Math.max(0, Number(new URLSearchParams(location.search).get('
 function startGame() {
   // Leaving the busted screen without saving still records the score (with your last initials).
   if (pendingScore) commitScore(els.initials.value);
-  state = newGame();
+  state = newGame(save.garage);
   state.time = START_TIME;
   skyOffset = 0;
   steer = 0;
@@ -436,7 +470,13 @@ function bust() {
     els.highRank.textContent = `#${rank + 1}`;
     els.initials.value = save.initials;
   }
+  // The run's earnings go into your garage savings.
+  save.savings += score;
+  save.savingsEarned += score;
+  slot.save(save);
+  els.savingsLine.textContent = `+$${score.toLocaleString('en-US')} to your savings (now $${save.savings.toLocaleString('en-US')}). Spend it in the 🔧 Garage.`;
   announce(tracker.endRun(state, rank));
+  announce(tracker.checkGarage(save.garage, save.savingsEarned));
   els.runAchievements.hidden = runUnlocked.length === 0;
   els.runAchievementsList.replaceChildren(
     ...runUnlocked.map((id) => {
@@ -563,6 +603,69 @@ function renderAchievements() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// The Free Market Garage
+// ---------------------------------------------------------------------------
+
+/** Which screen to go back to when leaving the garage. */
+let garageReturn: HTMLElement = els.title;
+
+function renderGarage() {
+  els.garageSavings.textContent = save.savings.toLocaleString('en-US');
+  els.garageGrid.replaceChildren(
+    ...UPGRADES.map((u) => {
+      const level = save.garage[u.id];
+      const cost = nextCost(save.garage, u.id);
+      const item = document.createElement('div');
+      item.className = 'garage-item';
+      const title = document.createElement('h3');
+      title.textContent = `${u.icon} ${u.name}`;
+      const desc = document.createElement('p');
+      desc.textContent = u.description;
+      const pips = document.createElement('div');
+      pips.className = 'pips';
+      pips.title = `Level ${level} of ${MAX_LEVEL}`;
+      for (let i = 0; i < MAX_LEVEL; i++) {
+        const pip = document.createElement('i');
+        if (i < level) pip.className = 'on';
+        pips.append(pip);
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = cost === null ? 'MAXED OUT' : `Buy level ${level + 1} · $${cost.toLocaleString('en-US')}`;
+      button.disabled = cost === null || save.savings < cost;
+      button.addEventListener('click', () => onBuyUpgrade(u.id));
+      item.append(title, desc, pips, button);
+      return item;
+    }),
+  );
+}
+
+function onBuyUpgrade(id: UpgradeId) {
+  const left = buyUpgrade(save.garage, id, save.savings);
+  if (left === null) return;
+  save.savings = left;
+  slot.save(save);
+  play('powerUp');
+  renderGarage();
+  announce(tracker.checkGarage(save.garage, save.savingsEarned));
+}
+
+function openGarage(from: HTMLElement) {
+  garageReturn = from;
+  renderGarage();
+  from.hidden = true;
+  els.garage.hidden = false;
+  byId('hide-garage').focus();
+}
+
+byId('show-garage').addEventListener('click', () => openGarage(els.title));
+byId('busted-garage').addEventListener('click', () => openGarage(els.busted));
+byId('hide-garage').addEventListener('click', () => {
+  els.garage.hidden = true;
+  garageReturn.hidden = false;
+});
+
 byId('show-achievements').addEventListener('click', () => {
   renderAchievements();
   els.title.hidden = true;
@@ -635,6 +738,7 @@ const CRASH_TEXT = {
   traffic: 'SLOWPOKE!',
   spikes: 'SPIKE STRIP! TIRES SHREDDED!',
   cruiser: 'RAMMED BY A CRUISER!',
+  tank: 'BRAKE-CHECKED BY A TANK!',
 } as const;
 
 function handle(events: GameEvent[]) {
@@ -651,6 +755,30 @@ function handle(events: GameEvent[]) {
         say(e.who !== 'marx' ? e.who : e.combo >= 2 ? 'combo' : 'marx', state.time);
         break;
       }
+      case 'nitro':
+        play('nitro');
+        flash('rgba(0, 229, 255, 0.35)');
+        floater('🔥 NITRO!', '#80d8ff', 0.4);
+        say('nitro', state.time);
+        break;
+      case 'nitro-ready':
+        play('coin');
+        floater('NOS READY · SPACE TO FIRE', '#80d8ff', 0.3);
+        break;
+      case 'boss':
+        play('crash');
+        floater(e.kind === 'helicopter' ? '🚁 IRS AIR SUPPORT INBOUND!' : '🪖 A TANK! SURVIVE 30 SECONDS!', '#ff5252', 0.3);
+        say(e.kind === 'helicopter' ? 'boss-helicopter' : 'boss-tank', state.time);
+        break;
+      case 'boss-drop':
+        play('smash');
+        break;
+      case 'boss-survived':
+        play('border');
+        flash('rgba(255, 255, 255, 0.45)');
+        floater(e.smashed ? `🚜 TANK FLATTENED! +$${e.bonus.toLocaleString('en-US')}` : `BOSS SURVIVED! +$${e.bonus.toLocaleString('en-US')}`, '#b9f6ca', 0.35);
+        say(e.smashed ? 'boss-smashed' : 'boss-survived', state.time);
+        break;
       case 'biome':
         floater(`ENTERING ${e.name.toUpperCase()}`, '#ffffff', 0.3);
         say(e.id, state.time);
@@ -730,6 +858,17 @@ function updateHud() {
   els.score.textContent = Math.floor(state.score).toLocaleString('en-US');
   els.commies.textContent = String(totalCommies(state.stats.commies));
   els.combo.classList.toggle('on', state.combo > 1);
+  const ready = state.nitro >= 1 && state.nitroLeft === 0;
+  els.nosFill.style.width = `${(state.nitroLeft > 0 ? state.nitroLeft / state.car.nitroSeconds : state.nitro) * 100}%`;
+  els.nos.classList.toggle('ready', ready);
+  els.nosButton.classList.toggle('ready', ready);
+  const nosText = state.nitroLeft > 0 ? 'BURNING' : ready ? 'READY ⎵' : '';
+  if (els.nosLabel.textContent !== nosText) els.nosLabel.textContent = nosText;
+  els.bossBanner.hidden = !state.boss;
+  if (state.boss) {
+    const text = `${state.boss.kind === 'helicopter' ? '🚁 IRS AIR SUPPORT' : '🪖 TANK'} · SURVIVE ${Math.ceil(state.boss.left)}s`;
+    if (els.bossBanner.textContent !== text) els.bossBanner.textContent = text;
+  }
   els.combo.textContent = `×${state.combo}`;
   els.best.textContent = Math.max(save.best, Math.floor(mode === 'playing' ? state.score : 0)).toLocaleString('en-US');
   gauges.setSpeed(kmh(state.speed));

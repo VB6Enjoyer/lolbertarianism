@@ -4,6 +4,7 @@
 
 import { environment, speedFactor, totalCommies, UNITS_PER_METER, type GameEvent, type GameState } from './logic.ts';
 import type { BiomeId } from './biomes.ts';
+import { MAX_LEVEL, totalLevels, UPGRADES, type GarageLevels } from './garage.ts';
 
 export interface Achievement {
   id: string;
@@ -35,6 +36,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'mechanic', icon: '🔧', name: 'Austrian Mechanic', description: 'Repair the car when it can only do 70% or less.' },
   { id: 'fumes', icon: '⛽', name: 'Running on Principle', description: 'Run out of gas and live to find a jerry can.' },
   { id: 'storm', icon: '🌧️', name: 'Dark and Stormy', description: 'Drive through a storm at night.' },
+  { id: 'nitro', icon: '🔥', name: 'Hold My NOS', description: 'Fire your first nitro.' },
+  { id: 'nitro-5', icon: '🚀', name: 'Supply-Side Boost', description: 'Fire the nitro 5 times in one run.' },
+  { id: 'heli', icon: '🚁', name: 'Air Superiority', description: 'Survive IRS Air Support.' },
+  { id: 'tank', icon: '🪖', name: 'Tank You Very Much', description: 'Survive the tank.' },
+  { id: 'heemeyer', icon: '🚜', name: "Heemeyer's Revenge", description: 'Flatten the tank with the Killdozer.' },
+  { id: 'garage-first', icon: '🔧', name: 'First Capital Good', description: 'Buy your first upgrade in the garage.' },
+  { id: 'garage-max', icon: '🏎️', name: 'Fully Loaded', description: 'Max out an upgrade.' },
+  { id: 'garage-all', icon: '⚙️', name: 'Roundabout Production', description: 'Max out every upgrade in the garage.' },
+  { id: 'savings-1m', icon: '💼', name: 'Capital Accumulation', description: 'Save $1,000,000 in total.' },
   { id: 'hall-of-fame', icon: '🏆', name: 'Hall of Fame', description: 'Make the high-score table.' },
   { id: 'top', icon: '👑', name: 'Out-Rothbarding Rothbard', description: 'Take first place on the high-score table.' },
   { id: 'busts-10', icon: '🚔', name: 'Repeat Offender', description: 'Get busted 10 times.' },
@@ -119,6 +129,14 @@ export class Tracker {
         case 'border':
           add('border');
           break;
+        case 'nitro':
+          add('nitro');
+          if (state.nitroUsed >= 5) add('nitro-5');
+          break;
+        case 'boss-survived':
+          add(e.kind === 'helicopter' ? 'heli' : 'tank');
+          if (e.smashed) add('heemeyer');
+          break;
         case 'biome':
           this.biomes.add(e.id);
           if (e.id === 'snow') add('snow');
@@ -146,6 +164,16 @@ export class Tracker {
 
     this.lastGap = state.copGap;
     this.lastFactor = speedFactor(state);
+    return found;
+  }
+
+  /** Garage achievements: call after buying something, and at the end of each run. */
+  checkGarage(levels: GarageLevels, savingsEarned: number): string[] {
+    const found: string[] = [];
+    if (totalLevels(levels) > 0) this.unlock('garage-first', found);
+    if (UPGRADES.some((u) => levels[u.id] >= MAX_LEVEL)) this.unlock('garage-max', found);
+    if (UPGRADES.every((u) => levels[u.id] >= MAX_LEVEL)) this.unlock('garage-all', found);
+    if (savingsEarned >= 1_000_000) this.unlock('savings-1m', found);
     return found;
   }
 

@@ -121,6 +121,32 @@ describe('achievements', () => {
     expect(tracker.endRun(state, -1)).toEqual(expect.arrayContaining(['busts-10', 'lifetime-500']));
   });
 
+  it('nitro: the first burn, and five in one run', () => {
+    const { tracker, state } = setup();
+    state.nitroUsed = 1;
+    expect(tick(tracker, state, [{ type: 'nitro' }])).toEqual(['nitro']);
+    state.nitroUsed = 5;
+    expect(tick(tracker, state, [{ type: 'nitro' }])).toEqual(['nitro-5']);
+  });
+
+  it('bosses: surviving each one, and flattening the tank', () => {
+    const { tracker, state } = setup();
+    expect(tick(tracker, state, [{ type: 'boss-survived', kind: 'helicopter', bonus: 3000, smashed: false }])).toEqual(['heli']);
+    expect(tick(tracker, state, [{ type: 'boss-survived', kind: 'tank', bonus: 12000, smashed: true }])).toEqual(['tank', 'heemeyer']);
+  });
+
+  it('the garage: first upgrade, one maxed, all maxed, a million saved', () => {
+    const { tracker } = setup();
+    const levels = { tires: 0, tank: 0, turbo: 0, nitro: 0, armor: 0, jammer: 0 };
+    expect(tracker.checkGarage(levels, 0)).toEqual([]);
+    levels.tires = 1;
+    expect(tracker.checkGarage(levels, 0)).toEqual(['garage-first']);
+    levels.tires = 3;
+    expect(tracker.checkGarage(levels, 0)).toEqual(['garage-max']);
+    for (const k of Object.keys(levels) as (keyof typeof levels)[]) levels[k] = 3;
+    expect(tracker.checkGarage(levels, 1_000_000)).toEqual(['garage-all', 'savings-1m']);
+  });
+
   it('saves are cleaned up', () => {
     expect([...normalizeUnlocked(['stalin', 'nope', 3])]).toEqual(['stalin']);
     expect(normalizeLifetime({ busts: '4', commies: -2 })).toEqual({ busts: 4, commies: 0 });

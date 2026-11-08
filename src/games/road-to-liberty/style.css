@@ -368,6 +368,140 @@ body {
     color: #ffeb3b;
 }
 
+/* Nitro gauge on the LCD */
+.nos {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 11px;
+    color: #80d8ff;
+}
+
+.nos-bar {
+    flex: 1;
+    height: 7px;
+    border: 1px solid #2a5a7a;
+    border-radius: 4px;
+    background: #061018;
+    overflow: hidden;
+}
+
+.nos-bar i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, #0288d1, #80d8ff);
+}
+
+.nos.ready .nos-bar i {
+    background: linear-gradient(90deg, #00e5ff, #ffffff);
+    animation: blink 0.4s infinite alternate;
+}
+
+.nos-label {
+    min-width: 5.5em;
+    text-align: right;
+    font-weight: bold;
+}
+
+/* The boss countdown, under the mirror */
+.boss-banner {
+    margin-top: 4px;
+    padding: 3px 12px;
+    border: 2px solid #ff5252;
+    border-radius: 999px;
+    background: rgba(80, 0, 0, 0.85);
+    color: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    animation: blink 0.6s infinite alternate;
+}
+
+.boss-banner[hidden] {
+    display: none;
+}
+
+/* Garage */
+.savings {
+    margin: 0 0 12px;
+    font-size: 18px;
+}
+
+.savings b {
+    color: #8dff8d;
+}
+
+.garage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 0 0 16px;
+    text-align: left;
+}
+
+.garage-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    border: 2px solid #3a3a3a;
+    border-radius: 8px;
+    background: #161616;
+}
+
+.garage-item h3 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--gold-light);
+}
+
+.garage-item p {
+    margin: 0;
+    font-size: 12px;
+    color: #bbb;
+}
+
+.pips {
+    display: flex;
+    gap: 4px;
+}
+
+.pips i {
+    width: 22px;
+    height: 8px;
+    border-radius: 3px;
+    background: #333;
+}
+
+.pips i.on {
+    background: #8dff8d;
+    box-shadow: 0 0 6px rgba(141, 255, 141, 0.6);
+}
+
+.garage-item button {
+    margin-top: 4px;
+    padding: 6px 10px;
+    border: 2px solid var(--gold-dark);
+    border-radius: 6px;
+    background: var(--gold);
+    color: #111;
+    font: bold 14px 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.garage-item button:disabled {
+    background: #333;
+    border-color: #444;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.savings-line {
+    color: #8dff8d;
+    font-weight: bold;
+}
+
 .sickle {
     font-family: 'Segoe UI Symbol', 'Noto Sans Symbols', 'DejaVu Sans', system-ui, sans-serif;
 }
@@ -802,6 +936,26 @@ body {
     cursor: pointer;
 }
 
+#nos-button {
+    position: absolute;
+    right: 112px;
+    bottom: 18px;
+    display: none;
+    width: 70px;
+    height: 70px;
+    border: 3px solid #000;
+    border-radius: 50%;
+    background: radial-gradient(#4fc3f7, #01579b);
+    color: #fff;
+    font: bold 16px 'Courier New', monospace;
+    z-index: 12;
+}
+
+#nos-button.ready {
+    box-shadow: 0 0 16px #00e5ff;
+    animation: blink 0.4s infinite alternate;
+}
+
 #brake {
     right: 16px;
     bottom: 18px;
@@ -833,7 +987,8 @@ body {
 
 /* Touch screens get an on-screen brake pedal. */
 @media (pointer: coarse) {
-    #brake {
+    #brake,
+    #nos-button {
         display: block;
     }
 }

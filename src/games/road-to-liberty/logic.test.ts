@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BORDER_NAMES, COMMIES, currentTerritory, START_TERRITORY, heightAt, weatherSlip, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
 import { PLAYLIST, shuffledOrder } from './radio.ts';
+import { buyUpgrade, carStats, nextCost, normalizeLevels, stockCar } from './garage.ts';
 import { BIOME_LENGTH, BIOMES, biomeAt, sceneryBiome } from './biomes.ts';
 import { LINES, pickLine } from './rothbard.ts';
 
@@ -35,15 +36,17 @@ function autopilot(s: GameState): Input {
   const bumper = s.position + PLAYER_Z;
   const ahead = s.entities.filter((e) => !e.hit && e.z > bumper && e.z < bumper + 4000).sort((a, b) => a.z - b.z);
   let target = 0;
-  const threat = ahead.find((e) => (e.kind === 'roadblock' || e.kind === 'traffic') && Math.abs(e.x - s.x) < 0.6);
+  const threats = ['roadblock', 'traffic', 'spikes', 'cruiser', 'tank'];
+  const near = s.entities.filter((e) => !e.hit && e.z > bumper && e.z < bumper + (e.kind === 'tank' ? 9000 : 4000));
+  const threat = near.find((e) => threats.includes(e.kind) && Math.abs(e.x - s.x) < (e.kind === 'spikes' ? 0.8 : 0.6));
   const can = s.fuel < 0.6 ? ahead.find((e) => e.kind === 'fuel') : undefined;
   const prize = can ?? ahead.find((e) => e.kind === 'commie' || e.kind === 'gold' || e.kind === 'fuel' || e.kind === 'wrench');
-  if (threat) target = threat.x > 0 ? threat.x - 0.75 : threat.x + 0.75;
+  if (threat) target = threat.kind === 'spikes' ? (threat.x < 0 ? 0.6 : -0.6) : threat.x > 0 ? threat.x - 0.75 : threat.x + 0.75;
   else if (prize) target = prize.x;
   // Lean into curves to cancel the outward push.
   const curve = curveAt(Math.floor(bumper / CONFIG.segmentLength));
   const steer = Math.max(-1, Math.min(1, (target - s.x) * 4 + curve * 0.08));
-  return { steer, brake: false };
+  return { steer, brake: false, nitro: s.nitro >= 1 };
 }
 
 describe('road to liberty: driving', () => {
@@ -516,6 +519,139 @@ describe('road to liberty: biomes', () => {
     s.position = BIOME_LENGTH - PLAYER_Z - 20_000;
     const events = drive(s, 3, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
     expect(events).toContainEqual({ type: 'biome', id: 'desert', name: 'the Desert' });
+  });
+});
+
+describe('road to liberty: nitro', () => {
+  it('fills as you flatten commies (gold fills it less), then fires on demand', () => {
+    const s = newGame();
+    s.speed = CONFIG.maxSpeed;
+    for (let i = 0; i < 3; i++) {
+      placeAhead(s, 'commie');
+      drive(s, 0.15, () => idle);
+    }
+    expect(s.nitro).toBeCloseTo(0.75, 5);
+    placeAhead(s, 'gold');
+    drive(s, 0.15, () => idle);
+    expect(s.nitro).toBeCloseTo(0.85, 5);
+    placeAhead(s, 'commie');
+    expect(drive(s, 0.15, () => idle)).toContainEqual({ type: 'nitro-ready' });
+    expect(update(s, { steer: 0, brake: false, nitro: true }, 0.016)).toContainEqual({ type: 'nitro' });
+    expect(s.nitro).toBe(0);
+    expect(s.nitroLeft).toBeGreaterThan(2.9);
+  });
+
+  it('a burn takes you past your normal top speed, and does nothing with an empty bottle', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.nitro = 1;
+    s.speed = CONFIG.maxSpeed;
+    update(s, { steer: 0, brake: false, nitro: true }, 0.016);
+    drive(s, 2, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(s.speed).toBeGreaterThan(CONFIG.boostSpeed);
+    expect(update(s, { steer: 0, brake: false, nitro: true }, 0.016)).not.toContainEqual({ type: 'nitro' });
+  });
+});
+
+describe('road to liberty: boss chases', () => {
+  const center = (st: GameState): Input => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false });
+  /** Drives into the next landscape so a boss shows up. */
+  const meetBoss = (s: GameState) => {
+    s.copGap = Infinity;
+    s.nextSpawnZ = Infinity;
+    s.nextBorderZ = Infinity;
+    s.position = BIOME_LENGTH * (s.bossesMet + 1) - PLAYER_Z - 30_000;
+    return drive(s, 3, center);
+  };
+
+  it('a new landscape brings a boss: the helicopter first, then the tank', () => {
+    const s = newGame();
+    expect(meetBoss(s)).toContainEqual({ type: 'boss', kind: 'helicopter' });
+    s.boss = null;
+    expect(meetBoss(s)).toContainEqual({ type: 'boss', kind: 'tank' });
+    expect(s.entities.some((e) => e.kind === 'tank')).toBe(true);
+  });
+
+  it('the helicopter drops checkpoints and spikes in your lane', () => {
+    const s = newGame();
+    meetBoss(s);
+    s.entities = [];
+    const events = drive(s, 6, center);
+    expect(events.filter((e) => e.type === 'boss-drop').length).toBeGreaterThanOrEqual(2);
+    expect(s.entities.some((e) => e.kind === 'roadblock' || e.kind === 'spikes')).toBe(true);
+  });
+
+  it('surviving 30 seconds pays a bonus and holds the cops back', () => {
+    const s = newGame();
+    meetBoss(s);
+    s.copGap = 10_000;
+    s.boss!.left = 0.05;
+    const score = s.score;
+    const events = drive(s, 0.2, center);
+    expect(events).toContainEqual({ type: 'boss-survived', kind: 'helicopter', bonus: CONFIG.bossBonus, smashed: false });
+    expect(s.score).toBeGreaterThan(score + CONFIG.bossBonus - 1);
+    expect(s.boss).toBeNull();
+    expect(s.bossesSurvived).toBe(1);
+  });
+
+  it('the tank brake-checks you if you stay in its lane', () => {
+    const s = newGame();
+    meetBoss(s);
+    s.boss = null;
+    meetBoss(s); // the tank
+    s.speed = CONFIG.maxSpeed;
+    const events = drive(s, 8, (st) => ({ steer: Math.max(-1, Math.min(1, ((st.boss ? st.boss.x : 0) - st.x) * 4)), brake: false }));
+    expect(events).toContainEqual({ type: 'crash', kind: 'tank' });
+    expect(s.entities.some((e) => e.kind === 'tank')).toBe(true); // still chasing
+  });
+
+  it('...but the Killdozer flattens it, for double the bonus', () => {
+    const s = newGame();
+    meetBoss(s);
+    s.boss = null;
+    meetBoss(s);
+    s.killdozerLeft = 30;
+    const events = drive(s, 8, (st) => ({ steer: Math.max(-1, Math.min(1, ((st.boss ? st.boss.x : 0) - st.x) * 4)), brake: false }));
+    const won = events.find((e) => e.type === 'boss-survived');
+    expect(won && won.type === 'boss-survived' && won.smashed).toBe(true);
+    expect(s.entities.some((e) => e.kind === 'tank')).toBe(false);
+  });
+});
+
+describe('road to liberty: the garage', () => {
+  it('the stock car matches the base rules', () => {
+    const car = carStats();
+    expect(car.spikeDamage).toBe(CONFIG.spikeDamage);
+    expect(car.spikeSlow).toBe(CONFIG.spikeSlow);
+    expect(car.fuelSeconds).toBe(CONFIG.fuelSeconds);
+    expect(car.ramSlow).toBe(CONFIG.ramSlow);
+    expect(newGame().copGap).toBe(CONFIG.copStartGap);
+  });
+
+  it('upgrades cost more each level, need the savings, and stop at level 3', () => {
+    const levels = stockCar();
+    expect(buyUpgrade(levels, 'jammer', 5_000)).toBeNull();
+    expect(buyUpgrade(levels, 'jammer', 50_000)).toBe(40_000);
+    expect(nextCost(levels, 'jammer')).toBe(30_000);
+    levels.jammer = 3;
+    expect(nextCost(levels, 'jammer')).toBeNull();
+    expect(buyUpgrade(levels, 'jammer', 1e9)).toBeNull();
+  });
+
+  it('upgrades change the car: a head start, a bigger tank, more top speed', () => {
+    const levels = { ...stockCar(), jammer: 2, tank: 3, turbo: 3 };
+    const s = newGame(levels);
+    expect(s.copGap).toBe(CONFIG.copStartGap + 60 * 180);
+    expect(s.car.fuelSeconds).toBe(140);
+    s.nextSpawnZ = Infinity;
+    s.copGap = Infinity;
+    drive(s, 5, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(s.speed).toBeCloseTo(CONFIG.maxSpeed * 1.09, 0);
+  });
+
+  it('saves are cleaned up', () => {
+    expect(normalizeLevels({ tires: 9, tank: -1, turbo: '2', bogus: 3 })).toEqual({ ...stockCar(), tires: 3, turbo: 2 });
+    expect(normalizeLevels(null)).toEqual(stockCar());
   });
 });
 

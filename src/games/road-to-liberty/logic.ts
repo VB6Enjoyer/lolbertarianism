@@ -7,6 +7,7 @@
 // only moves things and decides what happens.
 
 import { biomeAt, blendNumber, sceneryBiome, type BiomeId, type NatureKind } from './biomes.ts';
+import { carStats, type CarStats, type GarageLevels } from './garage.ts';
 
 export const CONFIG = {
   /** World units per road segment. */
@@ -23,6 +24,22 @@ export const CONFIG = {
   maxSpeed: 12_000,
   /** Boosted top speed after flattening a commie. */
   boostSpeed: 15_000,
+  /** 🔥 Nitro: top speed while it burns. Gold fills the bottle this share of what a commie does. */
+  nitroSpeed: 17_000,
+  nitroGoldShare: 0.4,
+
+  /** Boss chases (one per new landscape): how long they last, and the reward for surviving. */
+  bossSeconds: 30,
+  bossBonus: 3000,
+  /** Surviving puts the cops this much further back (40 m). */
+  bossPushback: 40 * 180,
+  /** The helicopter drops something in your lane this often (seconds). */
+  heliDropEvery: 2.4,
+  /** The tank brake-checks you: its distance ahead swings between these (world units) every few seconds. */
+  tankNear: 600,
+  tankFar: 8000,
+  tankCycle: 5,
+  tankSteer: 0.2,
   boostSeconds: 2,
   accel: 5_000,
   brake: 12_000,
@@ -247,7 +264,24 @@ export function pickCommie(roll: number): number {
 export const emptyTally = (): Record<CommieId, number> => ({ marx: 0, engels: 0, lenin: 0, stalin: 0, mao: 0, che: 0 });
 export const totalCommies = (tally: Record<CommieId, number>) => Object.values(tally).reduce((a, b) => a + b, 0);
 
-export type EntityKind = 'commie' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | PowerUp | Scenery;
+export type EntityKind = 'commie' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | 'tank' | PowerUp | Scenery;
+
+export type BossKind = 'helicopter' | 'tank';
+
+export interface Boss {
+  kind: BossKind;
+  /** Seconds left to survive. */
+  left: number;
+  /** Seconds to the helicopter's next drop; the tank's brake-check phase. */
+  timer: number;
+  /** Where it hovers / drives, -1..1 (the helicopter follows you, a little late). */
+  x: number;
+  /** After the tank hits you, a moment before it can again. */
+  cooldown: number;
+}
+
+/** Kinds of crash (what you hit). */
+export type CrashKind = 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'tank';
 
 export type PowerUp = 'donuts' | 'killdozer' | 'smoke' | 'wrench';
 export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke', 'wrench'];
@@ -285,6 +319,7 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
   /** A spike strip covers two lanes: the third one is the way out. */
   spikes: 0.5,
   cruiser: 0.22,
+  tank: 0.34,
   /** Borders span the whole road (crossing one doesn't depend on where you are). */
   border: 99,
   donuts: 0.16,
@@ -357,6 +392,16 @@ export interface GameState {
   nextSceneryZ: number;
   /** The landscape you're in (for "entering the desert"). */
   biome: BiomeId;
+  /** The car as upgraded in the garage. */
+  car: CarStats;
+  /** 🔥 Nitro bottle, 0..1 (full = ready), and seconds left of a burn. */
+  nitro: number;
+  nitroLeft: number;
+  nitroUsed: number;
+  /** The boss chasing you right now, if any; and how many you've met and survived. */
+  boss: Boss | null;
+  bossesMet: number;
+  bossesSurvived: number;
   over: boolean;
 }
 
@@ -364,6 +409,8 @@ export interface Input {
   /** -1 (full left) to 1 (full right). */
   steer: number;
   brake: boolean;
+  /** Fire the nitro (if the bottle's full). */
+  nitro?: boolean;
 }
 
 /** What happened during an update, so main.ts can play sounds and show text. */
@@ -372,7 +419,12 @@ export type GameEvent =
   | { type: 'repair' }
   | { type: 'biome'; id: BiomeId; name: string }
   | { type: 'gold'; points: number }
-  | { type: 'crash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser' }
+  | { type: 'crash'; kind: CrashKind }
+  | { type: 'nitro' }
+  | { type: 'nitro-ready' }
+  | { type: 'boss'; kind: BossKind }
+  | { type: 'boss-drop' }
+  | { type: 'boss-survived'; kind: BossKind; bonus: number; smashed: boolean }
   | { type: 'warning'; kind: 'spikes' | 'cruiser' }
   | { type: 'border'; name: string; bonus: number; index: number }
   | { type: 'nightfall' }
@@ -384,12 +436,14 @@ export type GameEvent =
   | { type: 'out-of-gas' }
   | { type: 'busted' };
 
-export function newGame(): GameState {
+/** A fresh run, with the car as upgraded in the garage. */
+export function newGame(garage?: GarageLevels): GameState {
+  const car = carStats(garage);
   return {
     position: 0,
     speed: CONFIG.maxSpeed * 0.5,
     x: 0,
-    copGap: CONFIG.copStartGap,
+    copGap: CONFIG.copStartGap + car.headStart * UNITS_PER_METER,
     time: 0,
     score: 0,
     combo: 1,
@@ -410,6 +464,13 @@ export function newGame(): GameState {
     ramSlowLeft: 0,
     nextSceneryZ: CONFIG.segmentLength * 10,
     biome: 'fields',
+    car,
+    nitro: 0,
+    nitroLeft: 0,
+    nitroUsed: 0,
+    boss: null,
+    bossesMet: 0,
+    bossesSurvived: 0,
     over: false,
   };
 }
@@ -425,7 +486,7 @@ export function copSpeed(time: number, meters = 0): number {
 
 /** What your top speed is multiplied by right now: lasting damage and any slowdowns. */
 export function speedFactor(state: GameState): number {
-  return state.damage * (state.spikeSlowLeft > 0 ? CONFIG.spikeSlow : 1) * (state.ramSlowLeft > 0 ? CONFIG.ramSlow : 1);
+  return state.damage * (state.spikeSlowLeft > 0 ? state.car.spikeSlow : 1) * (state.ramSlowLeft > 0 ? state.car.ramSlow : 1);
 }
 
 /** Speedometer reading. */
@@ -512,11 +573,24 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   // Speed: always on the gas unless braking.
   // Fuel drains with speed (a little even when crawling).
   const fuelBefore = state.fuel;
-  state.fuel = Math.max(0, state.fuel - (dt / CONFIG.fuelSeconds) * Math.max(0.3, state.speed / CONFIG.maxSpeed));
+  state.fuel = Math.max(0, state.fuel - (dt / state.car.fuelSeconds) * Math.max(0.3, state.speed / CONFIG.maxSpeed));
   if (fuelBefore >= CONFIG.lowFuel && state.fuel < CONFIG.lowFuel) events.push({ type: 'low-fuel' });
   if (fuelBefore > 0 && state.fuel === 0) events.push({ type: 'out-of-gas' });
 
-  const top = (state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed : state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed) * speedFactor(state);
+  // Nitro: fire it when the bottle's full.
+  state.nitroLeft = Math.max(0, state.nitroLeft - dt);
+  if (input.nitro && state.nitro >= 1 && state.nitroLeft === 0 && state.fuel > 0) {
+    state.nitro = 0;
+    state.nitroLeft = state.car.nitroSeconds;
+    state.nitroUsed++;
+    events.push({ type: 'nitro' });
+  }
+  const base =
+    state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed
+    : state.nitroLeft > 0 ? CONFIG.nitroSpeed
+    : state.boostLeft > 0 ? CONFIG.boostSpeed
+    : CONFIG.maxSpeed;
+  const top = base * state.car.topSpeed * speedFactor(state);
   if (input.brake) state.speed -= CONFIG.brake * dt;
   else if (state.speed < top) state.speed = Math.min(top, state.speed + CONFIG.accel * dt);
   else state.speed = Math.max(top, state.speed - CONFIG.coast * dt);
@@ -537,6 +611,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   if (landscape.id !== state.biome) {
     state.biome = landscape.id;
     events.push({ type: 'biome', id: landscape.id, name: landscape.name });
+    startBoss(state, events);
   }
   const speedShare = state.speed / CONFIG.maxSpeed;
   const before = state.position + PLAYER_Z;
@@ -585,7 +660,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
       const toward = Math.sign(state.x - e.x) * Math.min(Math.abs(state.x - e.x), CONFIG.cruiserSteer * dt);
       e.x = Math.max(-0.9, Math.min(0.9, e.x + toward));
     }
-    if (e.hit || isScenery(e.kind)) continue;
+    if (e.hit || isScenery(e.kind) || e.kind === 'tank') continue; // the tank is handled by the boss code
     // Did it go from ahead of your bumper to behind it this frame? (Traffic moves too.)
     const crossed = prevZ >= before && e.z <= after;
     if (!crossed ||Math.abs(e.x - state.x) > HALF_WIDTH[e.kind] + CAR_HALF_WIDTH) continue;
@@ -593,6 +668,8 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     events.push(...collide(state, e));
   }
   state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel' || POWER_UPS.includes(e.kind as PowerUp))));
+
+  if (state.boss) updateBoss(state, dt, after, rng, events);
 
   // The chase.
   state.copGap += (state.speed - copSpeed(state.time, state.stats.meters) * (state.donutsLeft > 0 ? CONFIG.donutSlowdown : 1)) * dt;
@@ -635,10 +712,11 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       const points = Math.round(who.points * state.combo);
       state.score += points;
       state.stats.commies[who.id]++;
-      const event: GameEvent = { type: 'commie', who: who.id, points, combo: state.combo };
+      const events: GameEvent[] = [{ type: 'commie', who: who.id, points, combo: state.combo }];
       state.combo += CONFIG.comboStep;
+      fillNitro(state, state.car.nitroPerCommie, events);
       state.boostLeft = CONFIG.boostSeconds;
-      return [event];
+      return events;
     }
     case 'fuel':
       state.fuel = Math.min(1, state.fuel + CONFIG.fuelCan);
@@ -647,7 +725,9 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       const points = Math.round(CONFIG.goldPoints * state.combo);
       state.score += points;
       state.stats.gold++;
-      return [{ type: 'gold', points }];
+      const events: GameEvent[] = [{ type: 'gold', points }];
+      fillNitro(state, state.car.nitroPerCommie * CONFIG.nitroGoldShare, events);
+      return events;
     }
     case 'traffic':
       // Rear-ended a slowpoke: you drop to their speed (minus a bit) and they get shoved aside.
@@ -655,18 +735,20 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       e.x += e.x >= state.x ? 0.6 : -0.6;
       return crashed(state, 'traffic');
     case 'roadblock':
-      state.speed *= 0.25;
+      state.speed *= state.car.crashKeep;
       return crashed(state, 'roadblock');
     case 'spikes':
       // Slower for a while, and a little slower for good.
       state.spikeSlowLeft = CONFIG.spikeSlowSeconds;
-      state.damage = Math.max(CONFIG.minDamage, state.damage * CONFIG.spikeDamage);
+      state.damage = Math.max(CONFIG.minDamage, state.damage * state.car.spikeDamage);
       return crashed(state, 'spikes');
     case 'cruiser':
       state.ramSlowLeft = CONFIG.ramSlowSeconds;
       state.speed = Math.min(state.speed, CONFIG.maxSpeed * speedFactor(state));
       e.x += e.x >= state.x ? 0.7 : -0.7;
       return crashed(state, 'cruiser');
+    case 'tank':
+      return []; // handled in updateBoss
     case 'wrench':
       state.damage = 1;
       state.spikeSlowLeft = 0;
@@ -689,7 +771,94 @@ export function metersToBorder(state: GameState): number {
   return Math.max(0, (next - (state.position + PLAYER_Z)) / UNITS_PER_METER);
 }
 
-function crashed(state: GameState, kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser'): GameEvent[] {
+function fillNitro(state: GameState, amount: number, events: GameEvent[]) {
+  if (state.nitro >= 1) return;
+  state.nitro = Math.min(1, state.nitro + amount);
+  if (state.nitro >= 1) events.push({ type: 'nitro-ready' });
+}
+
+// ---------------------------------------------------------------------------
+// Boss chases: one per new landscape, alternating helicopter and tank
+// ---------------------------------------------------------------------------
+
+function startBoss(state: GameState, events: GameEvent[]) {
+  if (state.boss) return;
+  const kind: BossKind = state.bossesMet % 2 === 0 ? 'helicopter' : 'tank';
+  state.bossesMet++;
+  state.boss = { kind, left: CONFIG.bossSeconds, timer: kind === 'helicopter' ? 1.5 : 0, x: state.x, cooldown: 0 };
+  if (kind === 'tank') {
+    state.entities.push({ id: state.nextId++, kind: 'tank', z: state.position + PLAYER_Z + CONFIG.tankFar * 2, x: 0, speed: 0, vx: 0, variant: 0, hit: false });
+  }
+  events.push({ type: 'boss', kind });
+}
+
+function endBoss(state: GameState, smashed: boolean, events: GameEvent[]) {
+  const boss = state.boss!;
+  state.boss = null;
+  state.bossesSurvived++;
+  const bonus = CONFIG.bossBonus * state.bossesSurvived * (smashed ? 2 : 1);
+  state.score += bonus;
+  state.copGap = Math.min(CONFIG.copMaxGap, state.copGap + CONFIG.bossPushback);
+  state.entities = state.entities.filter((e) => e.kind !== 'tank');
+  events.push({ type: 'boss-survived', kind: boss.kind, bonus, smashed });
+}
+
+function updateBoss(state: GameState, dt: number, bumper: number, rng: () => number, events: GameEvent[]) {
+  const boss = state.boss!;
+  boss.left -= dt;
+  boss.cooldown = Math.max(0, boss.cooldown - dt);
+  if (boss.left <= 0) {
+    endBoss(state, false, events);
+    return;
+  }
+  if (boss.kind === 'helicopter') {
+    // Hovers ahead, following you a little late, and drops trouble in your lane.
+    boss.x += Math.sign(state.x - boss.x) * Math.min(Math.abs(state.x - boss.x), 0.6 * dt);
+    boss.timer -= dt;
+    if (boss.timer <= 0) {
+      boss.timer = CONFIG.heliDropEvery;
+      const spikes = rng() < 0.4;
+      const lane = Math.max(-0.6, Math.min(0.6, Math.round(state.x / 0.6) * 0.6));
+      state.entities.push({
+        id: state.nextId++,
+        kind: spikes ? 'spikes' : 'roadblock',
+        z: bumper + 14_000,
+        x: spikes ? (lane <= 0 ? -0.3 : 0.3) : lane * 0.9,
+        speed: 0,
+        vx: 0,
+        variant: Math.floor(rng() * 4),
+        hit: false,
+      });
+      events.push({ type: 'boss-drop' });
+    }
+    return;
+  }
+  // The tank: stays ahead of you, swinging close (a brake check) and back, swerving to block you.
+  const tank = state.entities.find((e) => e.kind === 'tank');
+  if (!tank) return;
+  boss.timer += dt;
+  const swing = 0.5 + 0.5 * Math.cos((boss.timer / CONFIG.tankCycle) * Math.PI * 2);
+  const ahead = CONFIG.tankNear + (CONFIG.tankFar - CONFIG.tankNear) * swing;
+  // It keeps pace with you, easing into its spot (it arrives from far ahead at the start).
+  tank.z += state.speed * dt;
+  tank.z += (bumper + ahead - tank.z) * Math.min(1, dt * 3);
+  tank.x += Math.sign(state.x - tank.x) * Math.min(Math.abs(state.x - tank.x), CONFIG.tankSteer * dt);
+  tank.x = Math.max(-0.7, Math.min(0.7, tank.x));
+  boss.x = tank.x;
+  const close = tank.z - bumper < CONFIG.tankNear + 500;
+  if (close && boss.cooldown === 0 && Math.abs(tank.x - state.x) < HALF_WIDTH.tank + CAR_HALF_WIDTH) {
+    if (state.killdozerLeft > 0) {
+      endBoss(state, true, events); // the Killdozer wins
+      return;
+    }
+    boss.cooldown = 1.5;
+    state.speed *= Math.max(0.5, state.car.crashKeep); // a brake check, not a wall
+    state.damage = Math.max(CONFIG.minDamage, state.damage * 0.95);
+    events.push(...crashed(state, 'tank'));
+  }
+}
+
+function crashed(state: GameState, kind: CrashKind): GameEvent[] {
   state.combo = 1;
   state.boostLeft = 0;
   state.crashLeft = 0.6;

@@ -489,3 +489,16 @@ Ideas for later:
   crash-free, repairs, running dry, a night storm, the high-score table, and
   lifetime ones (10 busts, 500 commies). Pop-ups during the run, a list on
   the busted screen, and a "🏅 Achievements" screen on the title.
+- Boss chases: each new landscape brings one for 30 s, alternating 🚁 IRS Air
+  Support (drops checkpoints and spikes in your lane; searchlight at night) and
+  a 🪖 tank (stays ahead, brake-checks you, swerves to block). Surviving pays a
+  growing bonus and holds the cops back 40 m; a Killdozer flattens the tank for
+  double. Countdown banner under the mirror.
+- 🔥 Nitro: commies (and a little gold) fill a NOS gauge on the LCD; Space or
+  Shift (or the NOS button on touch screens) fires it for a burst past top speed.
+- 🔧 Free Market Garage (`garage.ts`): every run's earnings go into savings.
+  Six upgrades, three levels each: Run-Flat Tires, Long-Range Tank, Austrian
+  Turbo, Bigger NOS Bottle, Bull Bar, Radar Jammer. From the title or the busted
+  screen. Automated driver: stock car ~2½–5 min, fully upgraded 4–14 min.
+- 9 more achievements (35 in all): nitro, bosses, Heemeyer's Revenge, and the
+  garage (first upgrade, one maxed, all maxed, $1M saved).
