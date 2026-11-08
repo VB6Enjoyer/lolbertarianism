@@ -137,6 +137,12 @@ export const BORDER_NAMES = [
 
 export const borderName = (index: number) => BORDER_NAMES[index % BORDER_NAMES.length];
 
+/** Where you start, before the first border. */
+export const START_TERRITORY = 'Statist Territory';
+
+/** The place you're in right now: the last border you crossed (the gate ahead names the next one). */
+export const currentTerritory = (bordersCrossed: number) => (bordersCrossed > 0 ? borderName(bordersCrossed - 1) : START_TERRITORY);
+
 // ---------------------------------------------------------------------------
 // Time of day and weather (a fixed cycle, so every run sees them in the same order)
 // ---------------------------------------------------------------------------

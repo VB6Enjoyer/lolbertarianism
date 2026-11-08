@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BORDER_NAMES, COMMIES, heightAt, weatherSlip, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
+import { BORDER_NAMES, COMMIES, currentTerritory, START_TERRITORY, heightAt, weatherSlip, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
 import { PLAYLIST, shuffledOrder } from './radio.ts';
 import { BIOME_LENGTH, BIOMES, biomeAt, sceneryBiome } from './biomes.ts';
 import { LINES, pickLine } from './rothbard.ts';
@@ -238,6 +238,26 @@ describe('road to liberty: car damage', () => {
 });
 
 describe('road to liberty: borders', () => {
+  it('the gate ahead, the crossing message and the dashboard all name the same place', () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    s.nextSpawnZ = Infinity;
+    expect(currentTerritory(s.bordersCrossed)).toBe(START_TERRITORY);
+    for (let k = 0; k < 3; k++) {
+      // Drive up to the next gate: it's on the road, and it names where you're going.
+      s.position = (k + 1) * CONFIG.borderEvery - PLAYER_Z - 50_000;
+      s.nextBorderZ = (k + 1) * CONFIG.borderEvery;
+      s.entities = [];
+      update(s, idle, 0.01);
+      const gate = s.entities.find((e) => e.kind === 'border')!;
+      expect(BORDER_NAMES[gate.variant]).toBe(BORDER_NAMES[k]);
+      const events = drive(s, 6, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+      const crossing = events.find((e) => e.type === 'border');
+      expect(crossing && crossing.type === 'border' && crossing.name).toBe(BORDER_NAMES[k]);
+      expect(currentTerritory(s.bordersCrossed)).toBe(BORDER_NAMES[k]); // you're now in the place on the sign
+    }
+  });
+
   it('every 2.5 km: a bonus, the cops pushed back, and some fuel', () => {
     const s = newGame();
     s.nextSpawnZ = Infinity;

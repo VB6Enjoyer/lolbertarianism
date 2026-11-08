@@ -473,3 +473,12 @@ Ideas for later:
   (white ground, snowy pines, snowmen, ski lodges, snow instead of rain and a
   little ice all the time); the mountains (snow-capped peaks, pines, boulders,
   log cabins, steeper hills and sharper bends). Then around again.
+- Fix: the dashboard now shows where you are (📍, starting in "Statist
+  Territory") and the distance to the next gate; the gate names where you're
+  going, so crossing "WELCOME TO ZUG" puts Zug on the dashboard. Long names are
+  cut off with "…" instead of overflowing the display.
+- High scores (`scoreboard.ts`): an arcade table of ten, saved in
+  localStorage, starting with the legends (MNR, LVM, HHH, FAH, RON, SEK, FCB,
+  WEB, HSH, LYS; hover for the full name). Make the table and you enter three
+  initials (remembered for next time); your row is highlighted. On the title
+  screen behind "🏆 High scores".

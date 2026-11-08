@@ -2,9 +2,10 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { borderName, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { currentTerritory, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
+import { cleanInitials, insertScore, legendName, normalizeScores, qualifies, type ScoreEntry } from './scoreboard.ts';
 import { buildGauges } from './gauges.ts';
 import { copCloseness, renderMirror } from './mirror.ts';
 import { render } from './render.ts';
@@ -49,6 +50,12 @@ const els = {
   bustedLine: byId('busted-line'),
   finalScore: byId('final-score'),
   finalCommies: byId('final-commies'),
+  initialsForm: byId<HTMLFormElement>('initials-form'),
+  initials: byId<HTMLInputElement>('initials'),
+  highRank: byId('high-rank'),
+  bustedScores: byId('busted-scores'),
+  scores: byId('scores'),
+  scoresList: byId('scores-list'),
   finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
   finalBest: byId('final-best'),
@@ -67,6 +74,9 @@ interface Save {
   best: number;
   bestMarx: number;
   muted: boolean;
+  /** The high-score table, and the initials you used last. */
+  scores: ScoreEntry[];
+  initials: string;
 }
 
 const slot = createSaveSlot<Save>({ game: 'road-to-liberty', version: 1 });
@@ -75,6 +85,8 @@ const save: Save = {
   best: Math.max(0, Number(saved?.best) || 0),
   bestMarx: Math.max(0, Number(saved?.bestMarx) || 0),
   muted: saved?.muted === true,
+  scores: normalizeScores(saved?.scores),
+  initials: typeof saved?.initials === 'string' ? cleanInitials(saved.initials) : '',
 };
 
 // ---------------------------------------------------------------------------
@@ -182,6 +194,8 @@ function readInput(dt: number): Input {
 const STEER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'a', 'd', 's', 'w', ' ']);
 
 document.addEventListener('keydown', (e) => {
+  // Typing your initials: let the text box have the keys.
+  if (e.target instanceof HTMLInputElement) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (STEER_KEYS.has(key) && mode === 'playing') e.preventDefault();
   if (key === 'p' || key === 'Escape') {
@@ -193,7 +207,7 @@ document.addEventListener('keydown', (e) => {
     toggleMute();
     return;
   }
-  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat) {
+  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden) {
     e.preventDefault();
     if (mode === 'paused') resume();
     else startGame();
@@ -323,6 +337,8 @@ let skyOffset = 0;
 const START_TIME = Math.max(0, Number(new URLSearchParams(location.search).get('time')) || 0);
 
 function startGame() {
+  // Leaving the busted screen without saving still records the score (with your last initials).
+  if (pendingScore) commitScore(els.initials.value);
   state = newGame();
   state.time = START_TIME;
   skyOffset = 0;
@@ -393,12 +409,90 @@ function bust() {
   els.finalDistance.textContent = `${Math.floor(state.stats.meters).toLocaleString('en-US')} m`;
   els.finalBest.textContent = save.best.toLocaleString('en-US');
   els.newBest.hidden = !isBest;
+  // Made the high-score table? Ask for initials before showing it.
+  pendingScore = qualifies(save.scores, score)
+    ? { initials: save.initials || 'AAA', score, commies: totalCommies(state.stats.commies), meters: Math.floor(state.stats.meters) }
+    : null;
+  els.initialsForm.hidden = !pendingScore;
+  if (pendingScore) {
+    const rank = insertScore(save.scores, pendingScore).rank;
+    els.highRank.textContent = `#${rank + 1}`;
+    els.initials.value = save.initials;
+  }
+  renderScores(els.bustedScores, save.scores);
   setTimeout(() => {
     if (mode !== 'busted') return;
     els.busted.hidden = false;
-    document.getElementById('restart')?.focus();
+    (pendingScore ? els.initials : document.getElementById('restart'))?.focus();
   }, 900);
 }
+
+// ---------------------------------------------------------------------------
+// High scores
+// ---------------------------------------------------------------------------
+
+/** A run that made the table, waiting for its initials. */
+let pendingScore: ScoreEntry | null = null;
+
+function renderScores(list: HTMLElement, scores: readonly ScoreEntry[], highlight = -1) {
+  list.replaceChildren(
+    ...scores.map((entry, i) => {
+      const li = document.createElement('li');
+      li.className = `${entry.legend ? 'legend' : ''}${i === highlight ? ' mine' : ''}`.trim();
+      const initials = document.createElement('span');
+      initials.className = 'initials';
+      initials.textContent = entry.initials;
+      const who = entry.legend ? legendName(entry.initials) : null;
+      if (who) initials.title = who;
+      const points = document.createElement('span');
+      points.className = 'points';
+      points.textContent = `$${entry.score.toLocaleString('en-US')}`;
+      if (!entry.legend) {
+        const detail = document.createElement('small');
+        detail.textContent = `☭ ${entry.commies} · ${(entry.meters / 1000).toFixed(1)} km`;
+        points.append(detail);
+      }
+      li.append(initials, points);
+      return li;
+    }),
+  );
+}
+
+/** Saves the waiting run with these initials (or the last ones used) and shows where it landed. */
+function commitScore(rawInitials: string) {
+  if (!pendingScore) return;
+  const initials = cleanInitials(rawInitials || save.initials || 'AAA');
+  const { scores, rank } = insertScore(save.scores, { ...pendingScore, initials });
+  pendingScore = null;
+  save.scores = scores;
+  save.initials = initials;
+  slot.save(save);
+  els.initialsForm.hidden = true;
+  renderScores(els.bustedScores, save.scores, rank);
+}
+
+els.initialsForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  commitScore(els.initials.value);
+  byId('restart').focus();
+});
+// Letters only, shown in capitals as you type.
+els.initials.addEventListener('input', () => {
+  const clean = els.initials.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  if (els.initials.value !== clean) els.initials.value = clean;
+});
+
+byId('show-scores').addEventListener('click', () => {
+  renderScores(els.scoresList, save.scores);
+  els.title.hidden = true;
+  els.scores.hidden = false;
+  byId('hide-scores').focus();
+});
+byId('hide-scores').addEventListener('click', () => {
+  els.scores.hidden = true;
+  els.title.hidden = false;
+  byId('start').focus();
+});
 
 byId('start').addEventListener('click', startGame);
 byId('restart').addEventListener('click', startGame);
@@ -552,7 +646,11 @@ function updateHud() {
   const meters = Math.max(0, state.copGap / UNITS_PER_METER);
   els.lights.style.opacity = String(0.05 + copCloseness(state.copGap) * 0.55);
   els.copDistance.textContent = String(Math.round(meters));
-  els.borderName.textContent = borderName(state.bordersCrossed);
+  const place = currentTerritory(state.bordersCrossed);
+  if (els.borderName.textContent !== place) {
+    els.borderName.textContent = place;
+    els.borderName.parentElement!.title = place;
+  }
   // Warning lights: lit while a power-up runs (seconds left underneath), blinking at the end.
   const light = (el: HTMLElement, left: number, label = left > 0 ? `${Math.ceil(left)}s` : '') => {
     el.classList.toggle('on', left > 0);
