@@ -15,9 +15,11 @@ export function copCloseness(copGap: number): number {
 /** Draws the mirror view. (width, height) in CSS pixels. */
 export function renderMirror(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState): void {
   const horizon = height * 0.36;
-  // The road behind bends the other way from the road ahead.
+  // The road behind bends the other way from the road ahead. It sits right of
+  // center: Hoppe's face takes up the left of the mirror.
   const curve = curveAt(segmentIndex(state.position + PLAYER_Z));
-  const vanishX = width / 2 - curve * width * 0.04;
+  const centerX = width * 0.66;
+  const vanishX = centerX - curve * width * 0.04;
 
   const sky = ctx.createLinearGradient(0, 0, 0, horizon);
   sky.addColorStop(0, '#6fa8dc');
@@ -39,8 +41,8 @@ export function renderMirror(ctx: CanvasRenderingContext2D, width: number, heigh
   ctx.beginPath();
   ctx.moveTo(vanishX - 1, horizon);
   ctx.lineTo(vanishX + 1, horizon);
-  ctx.lineTo(width / 2 + roadBottom, height);
-  ctx.lineTo(width / 2 - roadBottom, height);
+  ctx.lineTo(centerX + roadBottom, height);
+  ctx.lineTo(centerX - roadBottom, height);
   ctx.closePath();
   ctx.fill();
 
@@ -49,7 +51,7 @@ export function renderMirror(ctx: CanvasRenderingContext2D, width: number, heigh
     const s = 1 / (1 + z / 1800);
     return {
       s,
-      x: vanishX + (width / 2 - vanishX) * s + x * roadBottom * s,
+      x: vanishX + (centerX - vanishX) * s + x * roadBottom * s,
       y: horizon + (height - horizon) * s,
     };
   };

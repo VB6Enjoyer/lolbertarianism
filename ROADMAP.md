@@ -423,5 +423,7 @@ Ideas for later:
   moved left with a golden hand on it, behind it an analog speedometer and a
   fuel gauge, plus a Liberty FM radio. The mirror is a canvas: the road behind
   streams away and the cop car is drawn head-on, growing as it closes in.
+  Hoppe fills the left of the mirror in close-up, like the meme
+  (`hoppe-up-close.webp`, original in `art/road-to-liberty/`).
 - Fuel: a tank lasts ~80 s flat out, ⛽ jerry cans refill 40% (more of them
   when you're low), and an empty tank caps you at half speed.

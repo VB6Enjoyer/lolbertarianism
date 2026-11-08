@@ -184,13 +184,17 @@ body {
     }
 }
 
+/* Up close, like the meme: his face fills the left of the mirror, cropped by the frame. */
 #hoppe {
     position: absolute;
-    left: 4%;
-    bottom: -6px;
-    height: 92px;
-    width: auto;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    left: -3%;
+    top: 50%;
+    width: 46%;
+    height: 150%;
+    object-fit: cover;
+    object-position: 50% 35%;
+    transform: translateY(-46%);
+    filter: drop-shadow(4px 0 6px rgba(0, 0, 0, 0.45));
 }
 
 .glare {
@@ -850,10 +854,6 @@ body {
 
     #mirror-glass {
         height: 66px;
-    }
-
-    #hoppe {
-        height: 70px;
     }
 
     #ornament {
