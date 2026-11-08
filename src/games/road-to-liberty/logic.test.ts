@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIG, copSpeed, curveAt, kmh, newGame, pickKind, PLAYER_Z, update, type Entity, type GameState, type Input } from './logic.ts';
+import { BORDER_NAMES, CONFIG, copSpeed, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
+import { PLAYLIST, shuffledOrder } from './radio.ts';
+import { LINES, pickLine } from './rothbard.ts';
 
 /** A seeded random number generator, so runs are repeatable. */
 function rng(seed = 1) {
@@ -126,6 +128,7 @@ describe('road to liberty: fuel', () => {
   it('drains as you drive; a full tank lasts about 80 seconds flat out', () => {
     const s = newGame();
     s.nextSpawnZ = Infinity;
+    s.nextBorderZ = Infinity; // borders top up the tank
     s.speed = CONFIG.maxSpeed;
     drive(s, 40, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
     expect(s.fuel).toBeCloseTo(0.5, 1);
@@ -153,6 +156,213 @@ describe('road to liberty: fuel', () => {
   it('cans turn up more often when you are low', () => {
     const share = (fuel: number) => [...Array(1000).keys()].filter((r) => pickKind(r / 1000, 60, fuel) === 'fuel').length;
     expect(share(0.1)).toBeGreaterThan(share(0.9) * 3);
+  });
+});
+
+describe('road to liberty: borders', () => {
+  it('every 2.5 km: a bonus, the cops pushed back, and some fuel', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.copGap = 10_000;
+    s.fuel = 0.5;
+    expect(metersToBorder(s)).toBeCloseTo(2500 - PLAYER_Z / 180, 0);
+    // Jump to just before the first border and drive through it.
+    s.position = CONFIG.borderEvery - PLAYER_Z - 3000;
+    const events = drive(s, 1, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(events).toContainEqual({ type: 'border', name: BORDER_NAMES[0], bonus: CONFIG.borderBonus, index: 0 });
+    expect(s.bordersCrossed).toBe(1);
+    expect(s.copGap).toBeGreaterThan(10_000 + CONFIG.borderPushback - 5_000);
+    expect(s.fuel).toBeGreaterThan(0.7);
+  });
+
+  it('you cross it wherever you are on the road, even on the grass', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.x = 1.8;
+    s.position = CONFIG.borderEvery - PLAYER_Z - 3000;
+    expect(drive(s, 1, (st) => ({ steer: Math.max(-1, Math.min(1, (1.8 - st.x) * 4)), brake: false })).some((e) => e.type === 'border')).toBe(true);
+  });
+});
+
+describe('road to liberty: aggressive cops', () => {
+  it('spike strips and cruisers only show up later in a run', () => {
+    const kinds = (time: number) => new Set([...Array(200).keys()].map((r) => pickKind(r / 200, time)));
+    expect(kinds(30).has('spikes')).toBe(false);
+    expect(kinds(30).has('cruiser')).toBe(false);
+    expect(kinds(70).has('spikes')).toBe(true);
+    expect(kinds(70).has('cruiser')).toBe(false);
+    expect(kinds(120).has('cruiser')).toBe(true);
+  });
+
+  it('a spike strip covers two lanes and leaves the third open', () => {
+    const s = newGame();
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'spikes', -0.3);
+    s.x = 0.6; // the open lane
+    expect(drive(s, 0.2, () => idle).some((e) => e.type === 'crash')).toBe(false);
+    const t = newGame();
+    t.speed = CONFIG.maxSpeed;
+    placeAhead(t, 'spikes', -0.3);
+    t.x = -0.6;
+    expect(drive(t, 0.2, () => idle)).toContainEqual({ type: 'crash', kind: 'spikes' });
+    expect(t.speed).toBeLessThan(CONFIG.maxSpeed * 0.5);
+  });
+
+  it('a cruiser ahead swerves toward you', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    const cruiser: Entity = { id: 1, kind: 'cruiser', z: s.position + PLAYER_Z + 4000, x: -0.6, speed: CONFIG.maxSpeed * 0.75, vx: 0, variant: 0, hit: false };
+    s.entities = [cruiser];
+    s.x = 0.6;
+    s.speed = CONFIG.maxSpeed * 0.75; // keep pace so it stays ahead
+    drive(s, 1, (st) => ({ steer: Math.max(-1, Math.min(1, (0.6 - st.x) * 4)), brake: false }));
+    expect(cruiser.x).toBeGreaterThan(-0.3);
+  });
+
+  it('warns you when spikes or a cruiser are placed up ahead', () => {
+    const s = newGame();
+    s.time = 200;
+    const events = drive(s, 30, () => idle, rng(5));
+    expect(events.some((e) => e.type === 'warning')).toBe(true);
+  });
+});
+
+describe('road to liberty: day, night and weather', () => {
+  it('starts in daylight, gets dark, and comes back', () => {
+    expect(environment(0).daylight).toBe(1);
+    expect(environment(120).daylight).toBe(0);
+    expect(environment(90).daylight).toBeCloseTo(0.5, 5);
+    expect(environment(CONFIG.dayLength + 10).daylight).toBe(1);
+  });
+
+  it('rain comes in showers, never in the first 45 seconds', () => {
+    for (let t = 0; t < 45; t++) expect(environment(t).rain).toBe(0);
+    expect(environment(60).rain).toBe(1);
+    expect(environment(80).rain).toBe(0);
+    expect(environment(170).rain).toBe(1);
+  });
+
+  it('rain makes the car harder to steer', () => {
+    const turn = (time: number) => {
+      const s = newGame();
+      s.nextSpawnZ = Infinity;
+      s.time = time;
+      s.speed = CONFIG.maxSpeed;
+      update(s, { steer: 1, brake: false }, 0.05);
+      return s.x;
+    };
+    expect(turn(60)).toBeLessThan(turn(10));
+  });
+
+  it('announces nightfall and the rain', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.time = 40;
+    s.copGap = Infinity; // no chase, just weather
+    const events = drive(s, 60, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(events).toContainEqual({ type: 'rain' });
+    expect(events).toContainEqual({ type: 'nightfall' });
+  });
+});
+
+describe('road to liberty: power-ups', () => {
+  it('only show up after the warm-up', () => {
+    const kinds = (time: number) => new Set([...Array(400).keys()].map((r) => pickKind(r / 400, time)));
+    for (const p of POWER_UPS) {
+      expect(kinds(10).has(p)).toBe(false);
+      expect(kinds(60).has(p)).toBe(true);
+    }
+  });
+
+  it('donuts slow the cops down for 10 seconds', () => {
+    const gapChange = (donuts: boolean) => {
+      const s = newGame();
+      s.nextSpawnZ = Infinity;
+      s.nextBorderZ = Infinity;
+      s.speed = CONFIG.maxSpeed * 0.6; // slower than the cops
+      s.copGap = 20_000;
+      if (donuts) {
+        placeAhead(s, 'donuts');
+        update(s, idle, 0.05);
+      }
+      const before = s.copGap;
+      drive(s, 2, () => ({ steer: 0, brake: true }));
+      return s.copGap - before;
+    };
+    expect(gapChange(true)).toBeGreaterThan(gapChange(false));
+  });
+
+  it('the Killdozer plows through checkpoints, traffic and spikes without slowing down', () => {
+    const s = newGame();
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'killdozer');
+    expect(drive(s, 0.1, () => idle)).toContainEqual({ type: 'power-up', kind: 'killdozer' });
+    for (const kind of ['roadblock', 'traffic', 'spikes', 'cruiser'] as const) {
+      placeAhead(s, kind, kind === 'spikes' ? s.x : s.x);
+      const events = drive(s, 0.15, () => idle);
+      expect(events.some((e) => e.type === 'smash' && e.kind === kind), kind).toBe(true);
+      expect(events.some((e) => e.type === 'crash'), kind).toBe(false);
+    }
+    expect(s.speed).toBeGreaterThan(CONFIG.maxSpeed * 0.95);
+    expect(s.stats.crashes).toBe(0);
+  });
+
+  it('...but only for 5 seconds', () => {
+    const s = newGame();
+    s.killdozerLeft = CONFIG.killdozerSeconds;
+    drive(s, 5.2, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'roadblock');
+    expect(drive(s, 0.1, () => idle)).toContainEqual({ type: 'crash', kind: 'roadblock' });
+  });
+
+  it('a smoke grenade puts the cops 90 m further back', () => {
+    const s = newGame();
+    s.copGap = 10_000;
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'smoke');
+    drive(s, 0.1, () => idle);
+    expect(s.copGap).toBeGreaterThan(10_000 + CONFIG.smokePushback - 2_000);
+    expect(s.smokeLeft).toBeGreaterThan(0);
+  });
+});
+
+describe('road to liberty: scenery', () => {
+  it('lines the road on both sides, out of your reach', () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    drive(s, 20, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    const scenery = s.entities.filter((e) => isScenery(e.kind));
+    expect(scenery.length).toBeGreaterThan(5);
+    for (const e of scenery) expect(Math.abs(e.x)).toBeGreaterThan(CONFIG.maxX + 0.4);
+    expect(new Set(scenery.map((e) => Math.sign(e.x))).size).toBe(2);
+  });
+
+  it('never crashes you, even at the edge of the grass', () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    s.nextSpawnZ = Infinity;
+    const events = drive(s, 30, (st) => ({ steer: Math.max(-1, Math.min(1, (CONFIG.maxX - st.x) * 4)), brake: false }));
+    expect(events.filter((e) => e.type === 'crash')).toEqual([]);
+  });
+});
+
+describe('road to liberty: Liberty FM', () => {
+  it('plays every song once before repeating', () => {
+    const order = shuffledOrder(rng(3));
+    expect([...order].sort((a, b) => a - b)).toEqual(PLAYLIST.map((_, i) => i));
+  });
+
+  it("has Notorious N.A.P.'s corrected title", () => {
+    expect(PLAYLIST).toContainEqual({ artist: 'Notorious N.A.P.', title: 'Mo Printing Mo Inflation' });
+  });
+});
+
+describe('road to liberty: Rothbard', () => {
+  it('has something to say for every cue, and avoids repeating himself', () => {
+    for (const lines of Object.values(LINES)) expect(lines.length).toBeGreaterThan(0);
+    const first = pickLine('marx', 0);
+    expect(pickLine('marx', 0, first)).not.toBe(first);
   });
 });
 

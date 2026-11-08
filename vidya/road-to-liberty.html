@@ -23,6 +23,8 @@
             <div class="hud-score">$<span id="score">0</span></div>
             <div class="hud-line">🧔 <span id="marx-count">0</span><span class="hud-label"> Marxes flattened</span> <span id="combo" class="combo" hidden></span></div>
             <div class="hud-line hud-best">Best: $<span id="best">0</span></div>
+            <div id="powerups" class="powerups"></div>
+            <div class="hud-line hud-border">🏁 <span id="border-name">Liberland</span>: <span id="border-distance">2.5</span> km</div>
         </div>
 
         <!-- Rearview mirror, hanging from the roof: the cops behind you, and Hoppe -->
@@ -38,6 +40,9 @@
             <!-- Air freshener, hanging from the mirror -->
             <div id="ornament"><span>I ❤️<br><b>Property</b><br>and freedom</span></div>
         </div>
+
+        <!-- Rothbard, on speakerphone -->
+        <div id="speech" class="speech" hidden><b>Rothbard:</b> <span id="speech-text"></span></div>
 
         <!-- Cockpit -->
         <div id="dashboard">
@@ -58,8 +63,11 @@
                     <div class="thumb-l"></div>
                 </div>
             </div>
-            <div id="console" aria-hidden="true">
-                <div class="radio">📻 LIBERTY FM <span>101.1</span></div>
+            <div id="console">
+                <button id="radio" class="radio" type="button" title="Liberty FM: click for the next song">
+                    <span class="radio-station">📻 LIBERTY FM <span>101.1</span></span>
+                    <span class="radio-marquee"><span id="radio-song">Tuning in…</span></span>
+                </button>
                 <div class="vents"><i></i><i></i><i></i><i></i></div>
             </div>
             <div id="arm">
@@ -75,7 +83,7 @@
                     <div id="phone">
                         <div class="phone-notch"></div>
                         <div id="phone-screen">
-                            <div class="phone-time">Liberty FM</div>
+                            <div class="phone-time"><span id="phone-song">Liberty FM</span></div>
                             <img src="img/rothbard.webp" alt="Murray Rothbard on the phone screen">
                         </div>
                     </div>
@@ -98,6 +106,7 @@
                 <ul class="rules">
                     <li>🧔 <b>Run over Marx</b> for points and a speed boost. Flatten several in a row for a combo.</li>
                     <li>💰 Grab the gold. ⛽ Grab the jerry cans: run dry and you can only crawl.</li>
+                    <li>🍩 Donuts slow the cops down · 🚜 the Killdozer plows through anything · 💨 a smoke grenade loses them.</li>
                     <li>🚧 Dodge <b>IRS checkpoints</b> and slow traffic, and stay off the grass: they slow you down.</li>
                     <li>🚓 The cops are gaining. If they catch up, you're <b>busted</b>.</li>
                 </ul>

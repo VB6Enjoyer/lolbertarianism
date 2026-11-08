@@ -1,7 +1,7 @@
 // The rearview mirror: the road behind you, streaming away as you drive, and
 // the cop car seen from the front, closer and bigger as they catch up.
 
-import { CONFIG, curveAt, PLAYER_Z, segmentIndex, type GameState } from './logic.ts';
+import { CONFIG, curveAt, PLAYER_Z, segmentIndex, type Environment, type GameState } from './logic.ts';
 
 /** Dash spacing in the mirror, in world units. */
 const DASH_EVERY = 1600;
@@ -13,7 +13,7 @@ export function copCloseness(copGap: number): number {
 }
 
 /** Draws the mirror view. (width, height) in CSS pixels. */
-export function renderMirror(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState): void {
+export function renderMirror(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState, env: Environment): void {
   const horizon = height * 0.36;
   // The road behind bends the other way from the road ahead. It sits right of
   // center: Hoppe's face takes up the left of the mirror.
@@ -73,10 +73,40 @@ export function renderMirror(ctx: CanvasRenderingContext2D, width: number, heigh
     ctx.fill();
   }
 
+  // Night and rain dim the view behind you (the cop lights stay bright).
+  const dark = (1 - env.daylight) * 0.65 + env.rain * 0.15;
+  if (dark > 0.01) {
+    ctx.fillStyle = `rgba(0, 4, 20, ${dark})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+
   // The cop car, nose first.
   const gap = Math.max(0, state.copGap);
   const car = at(gap * 0.35 + 300, Math.sin(state.time * 0.7) * 0.25);
   drawCopFront(ctx, car.x, car.y, width * 0.62 * car.s, state.time);
+
+  if (state.smokeLeft > 0) drawSmoke(ctx, width, height, horizon, centerX, state);
+}
+
+/** The smoke screen behind you: billowing gray puffs over the road, thinning out as it clears. */
+function drawSmoke(ctx: CanvasRenderingContext2D, width: number, height: number, horizon: number, centerX: number, state: GameState) {
+  const strength = Math.min(1, state.smokeLeft / (CONFIG.smokeSeconds * 0.6));
+  const age = CONFIG.smokeSeconds - state.smokeLeft;
+  ctx.save();
+  for (let i = 0; i < 26; i++) {
+    // Each puff drifts back toward the horizon and swells as it goes.
+    const t = ((i * 0.137 + age * 0.35) % 1);
+    const y = height - t * (height - horizon) * 0.95;
+    const spread = (1 - t) * width * 0.5 + width * 0.08;
+    const x = centerX + Math.sin(i * 2.3 + age) * spread * 0.6;
+    const r = (12 + (1 - t) * 26 + (i % 4) * 5) * (width / 300);
+    const shade = 150 + (i % 3) * 25;
+    ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade + 5}, ${0.55 * strength})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /** A police car seen head-on: body, windshield, light bar, headlights, grille. */

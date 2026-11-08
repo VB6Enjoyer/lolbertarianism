@@ -2,7 +2,8 @@
 // segment is projected to the screen as a trapezoid, nearest last, and sprites
 // are drawn back to front on top, clipped behind hills.
 
-import { CONFIG, cameraDepth, curveAt, heightAt, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type GameState } from './logic.ts';
+import { borderName, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
+import { drawScenery, SCENERY_SIZE } from './scenery.ts';
 
 interface Point {
   x: number;
@@ -27,6 +28,13 @@ const SIZE: Record<EntityKind, [number, number]> = {
   marx: [860, 1070],
   gold: [380, 380],
   fuel: [330, 400],
+  spikes: [2000, 160],
+  cruiser: [900, 640],
+  border: [5000, 2700],
+  donuts: [520, 450],
+  killdozer: [700, 450],
+  smoke: [330, 450],
+  ...SCENERY_SIZE,
   traffic: [900, 620],
   roadblock: [1400, 760],
 };
@@ -40,6 +48,38 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const marxImage = new Image();
 marxImage.src = `${import.meta.env.BASE_URL}vidya/img/marx.webp`;
 const marxReady = () => marxImage.complete && marxImage.naturalWidth > 0;
+
+/** Power-up pictures, with an emoji stand-in until they load, and a glow color each. */
+const POWER_UP_LOOK: Record<PowerUp, { image: HTMLImageElement; emoji: string; glow: string }> = {
+  donuts: { image: new Image(), emoji: '🍩', glow: 'rgba(255, 128, 171, 0.45)' },
+  killdozer: { image: new Image(), emoji: '🚜', glow: 'rgba(255, 193, 7, 0.45)' },
+  smoke: { image: new Image(), emoji: '💨', glow: 'rgba(176, 190, 197, 0.55)' },
+};
+POWER_UP_LOOK.donuts.image.src = `${import.meta.env.BASE_URL}vidya/img/donuts.webp`;
+POWER_UP_LOOK.killdozer.image.src = `${import.meta.env.BASE_URL}vidya/img/killdozer.webp`;
+POWER_UP_LOOK.smoke.image.src = `${import.meta.env.BASE_URL}vidya/img/smoke-grenade.webp`;
+
+/** A power-up floating over the road: a pulsing glow and its picture. */
+function drawPowerUp(ctx: CanvasRenderingContext2D, kind: PowerUp, x: number, y: number, w: number, h: number, time: number, id: number) {
+  const look = POWER_UP_LOOK[kind];
+  const bob = Math.sin(time * 4 + id) * h * 0.06;
+  ctx.save();
+  ctx.fillStyle = look.glow;
+  ctx.beginPath();
+  ctx.arc(x, y - h * 0.5 + bob, Math.max(w, h) * (0.62 + Math.sin(time * 6) * 0.05), 0, Math.PI * 2);
+  ctx.fill();
+  if (look.image.complete && look.image.naturalWidth > 0) {
+    const ratio = look.image.naturalWidth / look.image.naturalHeight;
+    const drawH = Math.min(h, w / ratio);
+    ctx.drawImage(look.image, x - (drawH * ratio) / 2, y - drawH + bob, drawH * ratio, drawH);
+  } else {
+    ctx.font = `${Math.round(h)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(look.emoji, x, y + bob);
+  }
+  ctx.restore();
+}
 
 function project(cameraX: number, cameraY: number, cameraZ: number, width: number, height: number): Point {
   const scale = cameraDepth / cameraZ;
@@ -78,28 +118,63 @@ function drawSegment(ctx: CanvasRenderingContext2D, width: number, index: number
   }
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number, skyOffset: number) {
+type RGB = [number, number, number];
+const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)) as RGB;
+const css = ([r, g, b]: RGB) => `rgb(${r}, ${g}, ${b})`;
+
+const SKY = {
+  dayTop: [58, 143, 217] as RGB,
+  dayBottom: [191, 230, 255] as RGB,
+  sunset: [255, 158, 94] as RGB,
+  nightTop: [5, 10, 31] as RGB,
+  nightBottom: [26, 35, 71] as RGB,
+  overcast: [120, 132, 145] as RGB,
+};
+
+/** Stars at fixed spots (0..1 coordinates), so they don't flicker around. */
+const STARS = Array.from({ length: 70 }, (_, i) => [((i * 7919) % 1000) / 1000, ((i * 104729) % 1000) / 1000] as const);
+
+function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number, skyOffset: number, env: Environment) {
   const horizon = height / 2;
+  const d = env.daylight;
+  let top = mix(SKY.nightTop, SKY.dayTop, d);
+  let bottom = d > 0.5 ? mix(SKY.sunset, SKY.dayBottom, (d - 0.5) * 2) : mix(SKY.nightBottom, SKY.sunset, d * 2);
+  top = mix(top, mix(SKY.overcast, SKY.nightTop, 1 - d), env.rain * 0.7);
+  bottom = mix(bottom, mix(SKY.overcast, SKY.nightBottom, 1 - d), env.rain * 0.7);
   const sky = ctx.createLinearGradient(0, 0, 0, horizon);
-  sky.addColorStop(0, '#3a8fd9');
-  sky.addColorStop(1, '#bfe6ff');
+  sky.addColorStop(0, css(top));
+  sky.addColorStop(1, css(bottom));
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, width, horizon + 2);
 
-  // Sun
-  const sunX = width * 0.78 - skyOffset * width * 0.2;
-  ctx.fillStyle = 'rgba(255, 236, 140, 0.9)';
-  ctx.beginPath();
-  ctx.arc(((sunX % (width * 1.4)) + width * 1.4) % (width * 1.4) - width * 0.2, horizon * 0.35, Math.max(24, width * 0.03), 0, Math.PI * 2);
-  ctx.fill();
+  // Stars and the moon at night
+  if (d < 0.6 && env.rain < 0.8) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${(0.6 - d) * (1 - env.rain)})`;
+    for (const [sx, sy] of STARS) ctx.fillRect(sx * width, sy * horizon * 0.85, 1.6, 1.6);
+    ctx.fillStyle = `rgba(240, 240, 220, ${(0.6 - d) * 1.5 * (1 - env.rain)})`;
+    ctx.beginPath();
+    ctx.arc(width * 0.2, horizon * 0.3, Math.max(14, width * 0.018), 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Two layers of hills that slide sideways in curves (parallax).
-  const layers: [string, number, number, number][] = [
-    ['#7fb3a3', 0.35, horizon * 0.22, 0.004],
-    ['#5c9a6c', 0.7, horizon * 0.14, 0.009],
+  // The sun sinks as the day ends
+  if (d > 0 && env.rain < 0.9) {
+    const sunX = width * 0.78 - skyOffset * width * 0.2;
+    const wrapped = ((sunX % (width * 1.4)) + width * 1.4) % (width * 1.4) - width * 0.2;
+    ctx.fillStyle = d > 0.6 ? `rgba(255, 236, 140, ${0.9 * (1 - env.rain)})` : `rgba(255, 140, 70, ${0.9 * (1 - env.rain)})`;
+    ctx.beginPath();
+    ctx.arc(wrapped, horizon * (0.35 + (1 - d) * 0.7), Math.max(24, width * 0.03), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Two layers of hills that slide sideways in curves (parallax), darker at night.
+  const shade = 0.3 + 0.7 * d;
+  const layers: [RGB, number, number, number][] = [
+    [[127, 179, 163], 0.35, horizon * 0.22, 0.004],
+    [[92, 154, 108], 0.7, horizon * 0.14, 0.009],
   ];
-  for (const [color, parallax, amplitude, freq] of layers) {
-    ctx.fillStyle = color;
+  for (const [rgb, parallax, amplitude, freq] of layers) {
+    ctx.fillStyle = css(rgb.map((c) => Math.round(c * shade)) as RGB);
     ctx.beginPath();
     ctx.moveTo(0, horizon + 2);
     const shift = skyOffset * width * parallax;
@@ -348,8 +423,121 @@ function drawRoadblock(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.restore();
 }
 
-function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: number, w: number, h: number, time: number) {
+/** A spike strip across two lanes: a dark band of steel teeth, striped ends. */
+function drawSpikes(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.fillStyle = '#222';
+  ctx.fillRect(x - w / 2, y - h * 0.5, w, h * 0.5);
+  ctx.fillStyle = '#cfd8dc';
+  const teeth = 16;
+  for (let i = 0; i < teeth; i++) {
+    const tx = x - w / 2 + (i + 0.5) * (w / teeth);
+    ctx.beginPath();
+    ctx.moveTo(tx - w / teeth / 2.5, y - h * 0.45);
+    ctx.lineTo(tx, y - h);
+    ctx.lineTo(tx + w / teeth / 2.5, y - h * 0.45);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#ffd600';
+  ctx.fillRect(x - w / 2, y - h * 0.5, w * 0.05, h * 0.5);
+  ctx.fillRect(x + w / 2 - w * 0.05, y - h * 0.5, w * 0.05, h * 0.5);
+  ctx.restore();
+}
+
+/** A police cruiser from behind, light bar going. */
+function drawCruiser(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(x - w * 0.5, y - h * 0.06, w, h * 0.08);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(x - w * 0.46, y - h * 0.18, w * 0.18, h * 0.18);
+  ctx.fillRect(x + w * 0.28, y - h * 0.18, w * 0.18, h * 0.18);
+  ctx.fillStyle = '#1b1b1b';
+  ctx.fillRect(x - w * 0.5, y - h * 0.6, w, h * 0.46);
+  ctx.fillStyle = '#f2f2f2';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.38, y - h * 0.6);
+  ctx.lineTo(x - w * 0.28, y - h * 0.9);
+  ctx.lineTo(x + w * 0.28, y - h * 0.9);
+  ctx.lineTo(x + w * 0.38, y - h * 0.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#2c3e50';
+  ctx.fillRect(x - w * 0.27, y - h * 0.85, w * 0.54, h * 0.2);
+  const flip = Math.floor(time * 6) % 2 === 0;
+  ctx.fillStyle = flip ? '#ff1744' : '#5c0010';
+  ctx.fillRect(x - w * 0.24, y - h, w * 0.22, h * 0.1);
+  ctx.fillStyle = flip ? '#0a1a5c' : '#2979ff';
+  ctx.fillRect(x + w * 0.02, y - h, w * 0.22, h * 0.1);
+  ctx.fillStyle = '#ff1744';
+  ctx.fillRect(x - w * 0.47, y - h * 0.5, w * 0.14, h * 0.1);
+  ctx.fillRect(x + w * 0.33, y - h * 0.5, w * 0.14, h * 0.1);
+  if (w > 50) {
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(h * 0.11)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('POLICE', x, y - h * 0.34);
+  }
+  ctx.restore();
+}
+
+/** A border gate across the whole road: two posts, a banner, a checkered line. */
+function drawBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, index: number, roadHalf: number) {
+  ctx.save();
+  // Checkered line across the road
+  const squares = 16;
+  const lineH = Math.max(2, h * 0.03);
+  for (let i = 0; i < squares; i++) {
+    for (let row = 0; row < 2; row++) {
+      ctx.fillStyle = (i + row) % 2 ? '#111' : '#fafafa';
+      ctx.fillRect(x - roadHalf + (i * 2 * roadHalf) / squares, y - lineH * (row + 1), (2 * roadHalf) / squares + 1, lineH);
+    }
+  }
+  // Posts
+  ctx.fillStyle = '#d4af37';
+  const postW = Math.max(2, w * 0.02);
+  ctx.fillRect(x - w * 0.48, y - h, postW, h);
+  ctx.fillRect(x + w * 0.48 - postW, y - h, postW, h);
+  // Banner
+  const bannerH = h * 0.2;
+  ctx.fillStyle = '#111';
+  ctx.fillRect(x - w * 0.48, y - h, w * 0.96, bannerH);
+  ctx.strokeStyle = '#d4af37';
+  ctx.lineWidth = Math.max(1, w * 0.004);
+  ctx.strokeRect(x - w * 0.47, y - h + bannerH * 0.08, w * 0.94, bannerH * 0.84);
+  if (w > 60) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f6e27a';
+    ctx.font = `bold ${Math.round(bannerH * 0.32)}px 'Courier New', monospace`;
+    ctx.fillText('WELCOME TO', x, y - h + bannerH * 0.3, w * 0.9);
+    ctx.font = `bold ${Math.round(bannerH * 0.42)}px 'Courier New', monospace`;
+    ctx.fillText(borderName(index).toUpperCase(), x, y - h + bannerH * 0.68, w * 0.9);
+  }
+  ctx.restore();
+}
+
+function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: number, w: number, h: number, time: number, roadHalf: number) {
+  if (isScenery(e.kind)) {
+    drawScenery(ctx, e.kind, x, y, w, h, e.variant);
+    return;
+  }
   switch (e.kind) {
+    case 'donuts':
+    case 'killdozer':
+    case 'smoke':
+      if (!e.hit) drawPowerUp(ctx, e.kind, x, y, w, h, time, e.id);
+      return;
+    case 'spikes':
+      drawSpikes(ctx, x, y, w, h);
+      return;
+    case 'cruiser':
+      drawCruiser(ctx, x, y, w, h, time);
+      return;
+    case 'border':
+      drawBorder(ctx, x, y, w, h, e.variant, roadHalf);
+      return;
     case 'marx':
       if (e.hit) return;
       if (marxReady()) drawMarxPhoto(ctx, x, y, w, h, time, e.id);
@@ -370,6 +558,68 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
 }
 
 // ---------------------------------------------------------------------------
+// Night and rain, drawn over the scene
+// ---------------------------------------------------------------------------
+
+function drawWeather(ctx: CanvasRenderingContext2D, width: number, height: number, env: Environment, state: GameState) {
+  const dark = (1 - env.daylight) * 0.72 + env.rain * 0.12;
+  if (dark > 0.01) {
+    // Darkness everywhere except where your headlights reach (bottom center).
+    const night = ctx.createRadialGradient(width / 2, height * 1.05, height * 0.12, width / 2, height * 1.05, height * 0.95);
+    night.addColorStop(0, `rgba(0, 4, 20, ${dark * 0.1})`);
+    night.addColorStop(0.5, `rgba(0, 4, 20, ${dark * 0.7})`);
+    night.addColorStop(1, `rgba(0, 4, 20, ${dark})`);
+    ctx.fillStyle = night;
+    ctx.fillRect(0, 0, width, height);
+    // The sides of the road, outside the headlights, stay dark too.
+    const sides = ctx.createLinearGradient(0, 0, width, 0);
+    sides.addColorStop(0, `rgba(0, 4, 20, ${dark * 0.55})`);
+    sides.addColorStop(0.3, 'rgba(0, 4, 20, 0)');
+    sides.addColorStop(0.7, 'rgba(0, 4, 20, 0)');
+    sides.addColorStop(1, `rgba(0, 4, 20, ${dark * 0.55})`);
+    ctx.fillStyle = sides;
+    ctx.fillRect(0, height * 0.5, width, height * 0.5);
+  }
+  if (env.daylight < 0.6) {
+    // Headlight cones
+    const glow = (0.6 - env.daylight) * 0.35;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const side of [-1, 1]) {
+      const cone = ctx.createLinearGradient(0, height, 0, height * 0.55);
+      cone.addColorStop(0, `rgba(255, 240, 190, ${glow})`);
+      cone.addColorStop(1, 'rgba(255, 240, 190, 0)');
+      ctx.fillStyle = cone;
+      ctx.beginPath();
+      ctx.moveTo(width / 2 + side * width * 0.08, height);
+      ctx.lineTo(width / 2 + side * width * 0.02, height * 0.55);
+      ctx.lineTo(width / 2 + side * width * 0.24, height * 0.55);
+      ctx.lineTo(width / 2 + side * width * 0.38, height);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  if (env.rain > 0.01) {
+    ctx.fillStyle = `rgba(150, 165, 180, ${env.rain * 0.12})`;
+    ctx.fillRect(0, 0, width, height);
+    // Streaks, slanted by your speed
+    ctx.strokeStyle = `rgba(210, 225, 240, ${0.45 * env.rain})`;
+    ctx.lineWidth = 1.2;
+    const slant = (state.speed / CONFIG.maxSpeed) * 14;
+    const drops = Math.round(140 * env.rain);
+    ctx.beginPath();
+    for (let i = 0; i < drops; i++) {
+      const dx = ((i * 7919 + state.time * 900 * (1 + (i % 3))) % (width + 40)) - 20;
+      const dy = ((i * 104729 + state.time * 1600) % (height + 40)) - 20;
+      ctx.moveTo(dx, dy);
+      ctx.lineTo(dx - slant, dy + 18);
+    }
+    ctx.stroke();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The frame
 // ---------------------------------------------------------------------------
 
@@ -377,14 +627,14 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
  * Draws one frame. `width`/`height` are in CSS pixels (the context is already
  * scaled for the screen's pixel density). `skyOffset` slides the hills in curves.
  */
-export function render(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState, skyOffset: number): void {
+export function render(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState, skyOffset: number, env: Environment): void {
   const segLen = CONFIG.segmentLength;
   ctx.save();
   if (state.crashLeft > 0) {
     const shake = state.crashLeft * 14;
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   }
-  drawBackground(ctx, width, height, skyOffset);
+  drawBackground(ctx, width, height, skyOffset, env);
 
   const base = segmentIndex(state.position);
   const basePercent = (state.position % segLen) / segLen;
@@ -431,9 +681,11 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
     ctx.beginPath();
     ctx.rect(0, 0, width, seg.clip);
     ctx.clip();
-    drawEntity(ctx, e, sx, sy, w, h, state.time);
+    drawEntity(ctx, e, sx, sy, w, h, state.time, lerp(seg.p1.w, seg.p2.w, t));
     ctx.restore();
   }
+
+  drawWeather(ctx, width, height, env, state);
 
   // Speed streaks while boosted.
   if (state.boostLeft > 0) {

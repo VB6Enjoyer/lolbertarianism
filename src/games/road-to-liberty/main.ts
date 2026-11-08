@@ -2,7 +2,9 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { CONFIG, curveAt, kmh, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { borderName, CONFIG, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { pickLine, URGENT, type Cue } from './rothbard.ts';
+import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
 import { buildGauges } from './gauges.ts';
 import { copCloseness, renderMirror } from './mirror.ts';
 import { render } from './render.ts';
@@ -21,6 +23,14 @@ const els = {
   combo: byId('combo'),
   best: byId('best'),
   mirror: byId<HTMLCanvasElement>('mirror-view'),
+  speech: byId('speech'),
+  speechText: byId('speech-text'),
+  borderName: byId('border-name'),
+  borderDistance: byId('border-distance'),
+  radio: byId<HTMLButtonElement>('radio'),
+  radioSong: byId('radio-song'),
+  phoneSong: byId('phone-song'),
+  powerups: byId('powerups'),
   lights: byId('police-lights'),
   copGap: byId('cop-gap'),
   copDistance: byId('cop-distance'),
@@ -125,6 +135,18 @@ const sfx = {
   busted() {
     [784, 659, 523, 392].forEach((hz, i) => playTone(note(hz, 0.22, 0.08), i * 0.2));
   },
+  jingle() {
+    [659, 880, 1175].forEach((hz, i) => playTone(note(hz, 0.09, 0.035, 'triangle'), i * 0.09));
+  },
+  powerUp() {
+    [440, 660, 880, 1320].forEach((hz, i) => playTone(note(hz, 0.08, 0.06), i * 0.06));
+  },
+  smash() {
+    playTone({ wave: 'square', duration: 0.2, frequency: [[0, 300], [0.2, 80, 'exp']], gain: [[0, 0.1], [0.2, 0.001, 'exp']] });
+  },
+  border() {
+    [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.16, 0.07), i * 0.1));
+  },
 };
 
 function play(effect: keyof typeof sfx) {
@@ -216,6 +238,73 @@ els.mute.textContent = save.muted ? '🔇' : '🔊';
 els.mute.addEventListener('click', toggleMute);
 
 // ---------------------------------------------------------------------------
+// Liberty FM
+// ---------------------------------------------------------------------------
+
+let playOrder = shuffledOrder();
+let playIndex = -1;
+let nextSongAt = 0;
+
+/** Puts on the next song (reshuffling after the last one), with a little station jingle. */
+function nextSong(now: number, jingle = true) {
+  playIndex++;
+  if (playIndex >= playOrder.length) {
+    playOrder = shuffledOrder();
+    playIndex = 0;
+  }
+  const label = `♪ ${songLabel(PLAYLIST[playOrder[playIndex]])}`;
+  els.radioSong.textContent = label;
+  els.phoneSong.textContent = label;
+  nextSongAt = now + SONG_SECONDS;
+  if (jingle) play('jingle');
+}
+
+function updateRadio(now: number) {
+  if (now >= nextSongAt) nextSong(now, mode === 'playing');
+}
+
+els.radio.addEventListener('click', () => nextSong(performance.now() / 1000));
+
+// ---------------------------------------------------------------------------
+// Rothbard on speakerphone
+// ---------------------------------------------------------------------------
+
+/** Seconds of game time: when he last spoke, and when the bubble goes away. */
+let lastSpoke = -99;
+let speechUntil = 0;
+const lastLine: Partial<Record<Cue, string>> = {};
+/** So "they're right behind us" fires once per close call. */
+let warnedClose = false;
+
+function say(cue: Cue, now: number) {
+  const gap = now - lastSpoke;
+  if (gap < (URGENT.has(cue) ? 1.2 : 5)) return;
+  const line = pickLine(cue, Math.random(), lastLine[cue]);
+  lastLine[cue] = line;
+  lastSpoke = now;
+  speechUntil = now + 3.6;
+  els.speechText.textContent = line;
+  els.speech.hidden = false;
+  // Restart the pop-in animation
+  els.speech.style.animation = 'none';
+  void els.speech.offsetWidth;
+  els.speech.style.animation = '';
+}
+
+function updateSpeech(now: number) {
+  if (!els.speech.hidden && now > speechUntil) els.speech.hidden = true;
+  if (mode !== 'playing') return;
+  const meters = state.copGap / UNITS_PER_METER;
+  if (meters < 45 && !warnedClose) {
+    warnedClose = true;
+    say('cops-close', now);
+  } else if (meters > 90) {
+    warnedClose = false;
+  }
+  if (now - lastSpoke > 22) say('idle', now);
+}
+
+// ---------------------------------------------------------------------------
 // Game flow
 // ---------------------------------------------------------------------------
 
@@ -224,8 +313,12 @@ let mode: Mode = 'title';
 let state = newGame();
 let skyOffset = 0;
 
+/** Preview: ?time=110 starts the run that many seconds in (night, rain, late-game hazards). */
+const START_TIME = Math.max(0, Number(new URLSearchParams(location.search).get('time')) || 0);
+
 function startGame() {
   state = newGame();
+  state.time = START_TIME;
   skyOffset = 0;
   steer = 0;
   keys.clear();
@@ -235,6 +328,11 @@ function startGame() {
   els.paused.hidden = true;
   getAudioContext(); // unlock audio on this click/keypress
   startEngine();
+  lastSpoke = -99;
+  warnedClose = false;
+  say('start', state.time);
+  // ?debug exposes the run to the console (and to screenshot scripts).
+  if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { rtl: state });
 }
 
 function pause() {
@@ -319,6 +417,25 @@ function flash(color: string) {
   setTimeout(() => el.remove(), 260);
 }
 
+const POWER_UP_TEXT = {
+  donuts: '🍩 DONUTS! THE COPS PULLED OVER FOR A SNACK',
+  killdozer: '🚜 KILLDOZER! NOTHING STOPS YOU',
+  smoke: '💨 SMOKE SCREEN! THE COPS LOST YOU',
+} as const;
+
+const POWER_UP_FLASH = {
+  donuts: 'rgba(248, 187, 208, 0.45)',
+  killdozer: 'rgba(255, 213, 79, 0.45)',
+  smoke: 'rgba(207, 216, 220, 0.6)',
+} as const;
+
+const CRASH_TEXT = {
+  roadblock: 'PAPERS, PLEASE!',
+  traffic: 'SLOWPOKE!',
+  spikes: 'SPIKE STRIP! TIRES SHREDDED!',
+  cruiser: 'RAMMED BY A CRUISER!',
+} as const;
+
 function handle(events: GameEvent[]) {
   for (const e of events) {
     switch (e.type) {
@@ -327,28 +444,61 @@ function handle(events: GameEvent[]) {
         flash('rgba(211, 47, 47, 0.6)');
         floater(`${MARX_LINES[Math.floor(Math.random() * MARX_LINES.length)]} +$${e.points}`);
         if (e.combo > 1) floater(`COMBO ×${e.combo}`, '#ff8a65', 0.42);
+        say(e.combo >= 2 ? 'combo' : 'marx', state.time);
         break;
       case 'fuel':
         play('coin');
         flash('rgba(255, 82, 82, 0.25)');
         floater('⛽ +FUEL', '#ff8a80', 0.6);
+        say('fuel', state.time);
         break;
       case 'low-fuel':
         floater('⛽ LOW FUEL!', '#ffb300', 0.35);
+        say('low-fuel', state.time);
         break;
       case 'out-of-gas':
         play('crash');
         floater('OUT OF GAS! FIND A CAN!', '#ff5252', 0.35);
+        say('out-of-gas', state.time);
         break;
       case 'gold':
         play('coin');
         flash('rgba(255, 215, 0, 0.35)');
         floater(`+$${e.points}`, '#ffd54f', 0.6);
+        say('gold', state.time);
         break;
       case 'crash':
         play('crash');
         flash('rgba(0, 0, 0, 0.45)');
-        floater(e.kind === 'roadblock' ? 'PAPERS, PLEASE!' : 'SLOWPOKE!', '#ff5252');
+        floater(CRASH_TEXT[e.kind], '#ff5252');
+        say(e.kind, state.time);
+        break;
+      case 'warning':
+        say(e.kind === 'spikes' ? 'spikes-ahead' : 'cruiser-ahead', state.time);
+        break;
+      case 'border':
+        play('border');
+        flash('rgba(255, 255, 255, 0.5)');
+        floater(`WELCOME TO ${e.name.toUpperCase()}!`, '#b9f6ca', 0.4);
+        floater(`+$${e.bonus.toLocaleString('en-US')} · COPS HELD AT THE BORDER`, '#ffeb3b', 0.55);
+        say('border', state.time);
+        break;
+      case 'nightfall':
+        say('nightfall', state.time);
+        break;
+      case 'power-up':
+        play('powerUp');
+        flash(POWER_UP_FLASH[e.kind]);
+        floater(POWER_UP_TEXT[e.kind], '#ffffff', 0.4);
+        say(e.kind, state.time);
+        break;
+      case 'smash':
+        play('smash');
+        floater(`PLOWED THROUGH! +$${e.points}`, '#ffd54f');
+        say('smash', state.time);
+        break;
+      case 'rain':
+        say('rain', state.time);
         break;
       case 'busted':
         bust();
@@ -374,6 +524,14 @@ function updateHud() {
   const meters = Math.max(0, state.copGap / UNITS_PER_METER);
   els.lights.style.opacity = String(0.05 + copCloseness(state.copGap) * 0.55);
   els.copDistance.textContent = String(Math.round(meters));
+  els.borderName.textContent = borderName(state.bordersCrossed);
+  const chips: string[] = [];
+  if (state.donutsLeft > 0) chips.push(`<span class="powerup-chip donuts">🍩 Donuts ${Math.ceil(state.donutsLeft)}s</span>`);
+  if (state.killdozerLeft > 0) chips.push(`<span class="powerup-chip killdozer">🚜 Killdozer ${Math.ceil(state.killdozerLeft)}s</span>`);
+  if (state.smokeLeft > 0) chips.push(`<span class="powerup-chip smoke">💨 Smoke</span>`);
+  const html = chips.join('');
+  if (els.powerups.innerHTML !== html) els.powerups.innerHTML = html;
+  els.borderDistance.textContent = (metersToBorder(state) / 1000).toFixed(1);
   els.copGap.classList.toggle('close', meters < 80);
 
   // Turn the wheel and lean the arm with the steering.
@@ -427,8 +585,11 @@ function frame(now: number) {
     skyOffset += curveAt(segmentIndex(state.position + PLAYER_Z)) * share * dt * 0.02;
   }
 
-  render(ctx, cssWidth, cssHeight, state, skyOffset);
-  renderMirror(mirrorCtx, mirrorWidth, mirrorHeight, state);
+  const env = environment(state.time);
+  render(ctx, cssWidth, cssHeight, state, skyOffset, env);
+  renderMirror(mirrorCtx, mirrorWidth, mirrorHeight, state, env);
+  updateSpeech(state.time);
+  updateRadio(now / 1000);
   updateHud();
   updateSound(state, mode === 'playing');
   requestAnimationFrame(frame);
