@@ -2,7 +2,8 @@
 // segment is projected to the screen as a trapezoid, nearest last, and sprites
 // are drawn back to front on top, clipped behind hills.
 
-import { borderName, CONFIG, cameraDepth, curveAt, heightAt, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState } from './logic.ts';
+import { borderName, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
+import { drawScenery, SCENERY_SIZE } from './scenery.ts';
 
 interface Point {
   x: number;
@@ -30,6 +31,10 @@ const SIZE: Record<EntityKind, [number, number]> = {
   spikes: [2000, 160],
   cruiser: [900, 640],
   border: [5000, 2700],
+  donuts: [520, 450],
+  killdozer: [700, 450],
+  smoke: [330, 450],
+  ...SCENERY_SIZE,
   traffic: [900, 620],
   roadblock: [1400, 760],
 };
@@ -43,6 +48,38 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const marxImage = new Image();
 marxImage.src = `${import.meta.env.BASE_URL}vidya/img/marx.webp`;
 const marxReady = () => marxImage.complete && marxImage.naturalWidth > 0;
+
+/** Power-up pictures, with an emoji stand-in until they load, and a glow color each. */
+const POWER_UP_LOOK: Record<PowerUp, { image: HTMLImageElement; emoji: string; glow: string }> = {
+  donuts: { image: new Image(), emoji: '🍩', glow: 'rgba(255, 128, 171, 0.45)' },
+  killdozer: { image: new Image(), emoji: '🚜', glow: 'rgba(255, 193, 7, 0.45)' },
+  smoke: { image: new Image(), emoji: '💨', glow: 'rgba(176, 190, 197, 0.55)' },
+};
+POWER_UP_LOOK.donuts.image.src = `${import.meta.env.BASE_URL}vidya/img/donuts.webp`;
+POWER_UP_LOOK.killdozer.image.src = `${import.meta.env.BASE_URL}vidya/img/killdozer.webp`;
+POWER_UP_LOOK.smoke.image.src = `${import.meta.env.BASE_URL}vidya/img/smoke-grenade.webp`;
+
+/** A power-up floating over the road: a pulsing glow and its picture. */
+function drawPowerUp(ctx: CanvasRenderingContext2D, kind: PowerUp, x: number, y: number, w: number, h: number, time: number, id: number) {
+  const look = POWER_UP_LOOK[kind];
+  const bob = Math.sin(time * 4 + id) * h * 0.06;
+  ctx.save();
+  ctx.fillStyle = look.glow;
+  ctx.beginPath();
+  ctx.arc(x, y - h * 0.5 + bob, Math.max(w, h) * (0.62 + Math.sin(time * 6) * 0.05), 0, Math.PI * 2);
+  ctx.fill();
+  if (look.image.complete && look.image.naturalWidth > 0) {
+    const ratio = look.image.naturalWidth / look.image.naturalHeight;
+    const drawH = Math.min(h, w / ratio);
+    ctx.drawImage(look.image, x - (drawH * ratio) / 2, y - drawH + bob, drawH * ratio, drawH);
+  } else {
+    ctx.font = `${Math.round(h)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(look.emoji, x, y + bob);
+  }
+  ctx.restore();
+}
 
 function project(cameraX: number, cameraY: number, cameraZ: number, width: number, height: number): Point {
   const scale = cameraDepth / cameraZ;
@@ -482,7 +519,16 @@ function drawBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: numb
 }
 
 function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: number, w: number, h: number, time: number, roadHalf: number) {
+  if (isScenery(e.kind)) {
+    drawScenery(ctx, e.kind, x, y, w, h, e.variant);
+    return;
+  }
   switch (e.kind) {
+    case 'donuts':
+    case 'killdozer':
+    case 'smoke':
+      if (!e.hit) drawPowerUp(ctx, e.kind, x, y, w, h, time, e.id);
+      return;
     case 'spikes':
       drawSpikes(ctx, x, y, w, h);
       return;

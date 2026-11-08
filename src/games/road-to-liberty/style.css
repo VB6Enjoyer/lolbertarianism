@@ -544,8 +544,8 @@ body {
     position: absolute;
     left: 55%;
     bottom: 40px;
-    width: 180px;
-    margin-left: -90px;
+    width: 240px;
+    margin-left: -120px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -553,6 +553,10 @@ body {
 }
 
 #console .radio {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 220px;
     padding: 6px 10px;
     border: 2px solid #3a3a3a;
     border-radius: 6px;
@@ -561,11 +565,64 @@ body {
     font: bold 12px 'Courier New', monospace;
     text-shadow: 0 0 6px rgba(127, 255, 127, 0.6);
     white-space: nowrap;
+    cursor: pointer;
 }
 
-#console .radio span {
+#console .radio-station span {
     margin-left: 6px;
     color: #ffeb3b;
+}
+
+/* The song scrolls across the display. */
+.radio-marquee {
+    display: block;
+    overflow: hidden;
+}
+
+.radio-marquee span,
+.phone-time span {
+    display: inline-block;
+    padding-left: 100%;
+    animation: marquee 9s linear infinite;
+}
+
+@keyframes marquee {
+    to {
+        transform: translateX(-100%);
+    }
+}
+
+.phone-time {
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.powerups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.powerup-chip {
+    padding: 1px 8px;
+    border: 2px solid #000;
+    border-radius: 999px;
+    font-size: 13px;
+    text-shadow: none;
+    color: #111;
+}
+
+.powerup-chip.donuts {
+    background: #f8bbd0;
+}
+
+.powerup-chip.killdozer {
+    background: #ffd54f;
+}
+
+.powerup-chip.smoke {
+    background: #cfd8dc;
 }
 
 #console .vents {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BORDER_NAMES, CONFIG, copSpeed, curveAt, environment, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, update, type Entity, type GameState, type Input } from './logic.ts';
+import { BORDER_NAMES, CONFIG, copSpeed, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
+import { PLAYLIST, shuffledOrder } from './radio.ts';
 import { LINES, pickLine } from './rothbard.ts';
 
 /** A seeded random number generator, so runs are repeatable. */
@@ -261,6 +262,99 @@ describe('road to liberty: day, night and weather', () => {
     const events = drive(s, 60, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
     expect(events).toContainEqual({ type: 'rain' });
     expect(events).toContainEqual({ type: 'nightfall' });
+  });
+});
+
+describe('road to liberty: power-ups', () => {
+  it('only show up after the warm-up', () => {
+    const kinds = (time: number) => new Set([...Array(400).keys()].map((r) => pickKind(r / 400, time)));
+    for (const p of POWER_UPS) {
+      expect(kinds(10).has(p)).toBe(false);
+      expect(kinds(60).has(p)).toBe(true);
+    }
+  });
+
+  it('donuts slow the cops down for 10 seconds', () => {
+    const gapChange = (donuts: boolean) => {
+      const s = newGame();
+      s.nextSpawnZ = Infinity;
+      s.nextBorderZ = Infinity;
+      s.speed = CONFIG.maxSpeed * 0.6; // slower than the cops
+      s.copGap = 20_000;
+      if (donuts) {
+        placeAhead(s, 'donuts');
+        update(s, idle, 0.05);
+      }
+      const before = s.copGap;
+      drive(s, 2, () => ({ steer: 0, brake: true }));
+      return s.copGap - before;
+    };
+    expect(gapChange(true)).toBeGreaterThan(gapChange(false));
+  });
+
+  it('the Killdozer plows through checkpoints, traffic and spikes without slowing down', () => {
+    const s = newGame();
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'killdozer');
+    expect(drive(s, 0.1, () => idle)).toContainEqual({ type: 'power-up', kind: 'killdozer' });
+    for (const kind of ['roadblock', 'traffic', 'spikes', 'cruiser'] as const) {
+      placeAhead(s, kind, kind === 'spikes' ? s.x : s.x);
+      const events = drive(s, 0.15, () => idle);
+      expect(events.some((e) => e.type === 'smash' && e.kind === kind), kind).toBe(true);
+      expect(events.some((e) => e.type === 'crash'), kind).toBe(false);
+    }
+    expect(s.speed).toBeGreaterThan(CONFIG.maxSpeed * 0.95);
+    expect(s.stats.crashes).toBe(0);
+  });
+
+  it('...but only for 5 seconds', () => {
+    const s = newGame();
+    s.killdozerLeft = CONFIG.killdozerSeconds;
+    drive(s, 5.2, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'roadblock');
+    expect(drive(s, 0.1, () => idle)).toContainEqual({ type: 'crash', kind: 'roadblock' });
+  });
+
+  it('a smoke grenade puts the cops 90 m further back', () => {
+    const s = newGame();
+    s.copGap = 10_000;
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'smoke');
+    drive(s, 0.1, () => idle);
+    expect(s.copGap).toBeGreaterThan(10_000 + CONFIG.smokePushback - 2_000);
+    expect(s.smokeLeft).toBeGreaterThan(0);
+  });
+});
+
+describe('road to liberty: scenery', () => {
+  it('lines the road on both sides, out of your reach', () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    drive(s, 20, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    const scenery = s.entities.filter((e) => isScenery(e.kind));
+    expect(scenery.length).toBeGreaterThan(5);
+    for (const e of scenery) expect(Math.abs(e.x)).toBeGreaterThan(CONFIG.maxX + 0.4);
+    expect(new Set(scenery.map((e) => Math.sign(e.x))).size).toBe(2);
+  });
+
+  it('never crashes you, even at the edge of the grass', () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    s.nextSpawnZ = Infinity;
+    const events = drive(s, 30, (st) => ({ steer: Math.max(-1, Math.min(1, (CONFIG.maxX - st.x) * 4)), brake: false }));
+    expect(events.filter((e) => e.type === 'crash')).toEqual([]);
+  });
+});
+
+describe('road to liberty: Liberty FM', () => {
+  it('plays every song once before repeating', () => {
+    const order = shuffledOrder(rng(3));
+    expect([...order].sort((a, b) => a - b)).toEqual(PLAYLIST.map((_, i) => i));
+  });
+
+  it("has Notorious N.A.P.'s corrected title", () => {
+    expect(PLAYLIST).toContainEqual({ artist: 'Notorious N.A.P.', title: 'Mo Printing Mo Inflation' });
   });
 });
 

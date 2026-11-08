@@ -4,6 +4,7 @@ import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { borderName, CONFIG, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
+import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
 import { buildGauges } from './gauges.ts';
 import { copCloseness, renderMirror } from './mirror.ts';
 import { render } from './render.ts';
@@ -26,6 +27,10 @@ const els = {
   speechText: byId('speech-text'),
   borderName: byId('border-name'),
   borderDistance: byId('border-distance'),
+  radio: byId<HTMLButtonElement>('radio'),
+  radioSong: byId('radio-song'),
+  phoneSong: byId('phone-song'),
+  powerups: byId('powerups'),
   lights: byId('police-lights'),
   copGap: byId('cop-gap'),
   copDistance: byId('cop-distance'),
@@ -130,6 +135,15 @@ const sfx = {
   busted() {
     [784, 659, 523, 392].forEach((hz, i) => playTone(note(hz, 0.22, 0.08), i * 0.2));
   },
+  jingle() {
+    [659, 880, 1175].forEach((hz, i) => playTone(note(hz, 0.09, 0.035, 'triangle'), i * 0.09));
+  },
+  powerUp() {
+    [440, 660, 880, 1320].forEach((hz, i) => playTone(note(hz, 0.08, 0.06), i * 0.06));
+  },
+  smash() {
+    playTone({ wave: 'square', duration: 0.2, frequency: [[0, 300], [0.2, 80, 'exp']], gain: [[0, 0.1], [0.2, 0.001, 'exp']] });
+  },
   border() {
     [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.16, 0.07), i * 0.1));
   },
@@ -222,6 +236,34 @@ function toggleMute() {
 }
 els.mute.textContent = save.muted ? '🔇' : '🔊';
 els.mute.addEventListener('click', toggleMute);
+
+// ---------------------------------------------------------------------------
+// Liberty FM
+// ---------------------------------------------------------------------------
+
+let playOrder = shuffledOrder();
+let playIndex = -1;
+let nextSongAt = 0;
+
+/** Puts on the next song (reshuffling after the last one), with a little station jingle. */
+function nextSong(now: number, jingle = true) {
+  playIndex++;
+  if (playIndex >= playOrder.length) {
+    playOrder = shuffledOrder();
+    playIndex = 0;
+  }
+  const label = `♪ ${songLabel(PLAYLIST[playOrder[playIndex]])}`;
+  els.radioSong.textContent = label;
+  els.phoneSong.textContent = label;
+  nextSongAt = now + SONG_SECONDS;
+  if (jingle) play('jingle');
+}
+
+function updateRadio(now: number) {
+  if (now >= nextSongAt) nextSong(now, mode === 'playing');
+}
+
+els.radio.addEventListener('click', () => nextSong(performance.now() / 1000));
 
 // ---------------------------------------------------------------------------
 // Rothbard on speakerphone
@@ -375,6 +417,18 @@ function flash(color: string) {
   setTimeout(() => el.remove(), 260);
 }
 
+const POWER_UP_TEXT = {
+  donuts: '🍩 DONUTS! THE COPS PULLED OVER FOR A SNACK',
+  killdozer: '🚜 KILLDOZER! NOTHING STOPS YOU',
+  smoke: '💨 SMOKE SCREEN! THE COPS LOST YOU',
+} as const;
+
+const POWER_UP_FLASH = {
+  donuts: 'rgba(248, 187, 208, 0.45)',
+  killdozer: 'rgba(255, 213, 79, 0.45)',
+  smoke: 'rgba(207, 216, 220, 0.6)',
+} as const;
+
 const CRASH_TEXT = {
   roadblock: 'PAPERS, PLEASE!',
   traffic: 'SLOWPOKE!',
@@ -432,6 +486,17 @@ function handle(events: GameEvent[]) {
       case 'nightfall':
         say('nightfall', state.time);
         break;
+      case 'power-up':
+        play('powerUp');
+        flash(POWER_UP_FLASH[e.kind]);
+        floater(POWER_UP_TEXT[e.kind], '#ffffff', 0.4);
+        say(e.kind, state.time);
+        break;
+      case 'smash':
+        play('smash');
+        floater(`PLOWED THROUGH! +$${e.points}`, '#ffd54f');
+        say('smash', state.time);
+        break;
       case 'rain':
         say('rain', state.time);
         break;
@@ -460,6 +525,12 @@ function updateHud() {
   els.lights.style.opacity = String(0.05 + copCloseness(state.copGap) * 0.55);
   els.copDistance.textContent = String(Math.round(meters));
   els.borderName.textContent = borderName(state.bordersCrossed);
+  const chips: string[] = [];
+  if (state.donutsLeft > 0) chips.push(`<span class="powerup-chip donuts">🍩 Donuts ${Math.ceil(state.donutsLeft)}s</span>`);
+  if (state.killdozerLeft > 0) chips.push(`<span class="powerup-chip killdozer">🚜 Killdozer ${Math.ceil(state.killdozerLeft)}s</span>`);
+  if (state.smokeLeft > 0) chips.push(`<span class="powerup-chip smoke">💨 Smoke</span>`);
+  const html = chips.join('');
+  if (els.powerups.innerHTML !== html) els.powerups.innerHTML = html;
   els.borderDistance.textContent = (metersToBorder(state) / 1000).toFixed(1);
   els.copGap.classList.toggle('close', meters < 80);
 
@@ -518,6 +589,7 @@ function frame(now: number) {
   render(ctx, cssWidth, cssHeight, state, skyOffset, env);
   renderMirror(mirrorCtx, mirrorWidth, mirrorHeight, state, env);
   updateSpeech(state.time);
+  updateRadio(now / 1000);
   updateHud();
   updateSound(state, mode === 'playing');
   requestAnimationFrame(frame);

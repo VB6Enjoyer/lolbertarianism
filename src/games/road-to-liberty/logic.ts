@@ -80,6 +80,22 @@ export const CONFIG = {
   /** …and the duty-free shop tops up your tank. */
   borderFuel: 0.25,
 
+  /** Power-ups show up after this many seconds. */
+  powerUpsAfter: 25,
+  /** 🍩 Donuts: the cops slow to this share of their speed, for this long. */
+  donutSlowdown: 0.55,
+  donutSeconds: 10,
+  /** 🚜 Killdozer: crash through anything for this long, for points. */
+  killdozerSeconds: 5,
+  smashPoints: 250,
+  /** 💨 Smoke grenade: the cops lose this much ground (90 m). */
+  smokePushback: 90 * 180,
+  /** How long the smoke hangs in your mirror. */
+  smokeSeconds: 6,
+
+  /** Roadside scenery (billboards, houses, bars…): one every this many segments, roughly. */
+  sceneryEvery: 11,
+
   /** One day/night cycle, in seconds of driving. */
   dayLength: 180,
   /** Rain makes steering this much weaker and curves this much stronger. */
@@ -157,7 +173,15 @@ export function heightAt(i: number): number {
 // State
 // ---------------------------------------------------------------------------
 
-export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border';
+export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | PowerUp | Scenery;
+
+export type PowerUp = 'donuts' | 'killdozer' | 'smoke';
+export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke'];
+
+/** Things by the side of the road. Never in your way (they stand beyond where you can drive). */
+export type Scenery = 'billboard' | 'house' | 'bar' | 'gas-station' | 'diner' | 'barn';
+export const SCENERY: readonly Scenery[] = ['billboard', 'house', 'bar', 'gas-station', 'diner', 'barn'];
+export const isScenery = (kind: EntityKind): kind is Scenery => (SCENERY as readonly string[]).includes(kind);
 
 export interface Entity {
   id: number;
@@ -186,6 +210,15 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
   cruiser: 0.22,
   /** Borders span the whole road (crossing one doesn't depend on where you are). */
   border: 99,
+  donuts: 0.16,
+  killdozer: 0.16,
+  smoke: 0.16,
+  billboard: 0,
+  house: 0,
+  bar: 0,
+  'gas-station': 0,
+  diner: 0,
+  barn: 0,
 };
 export const CAR_HALF_WIDTH = 0.2;
 
@@ -221,6 +254,12 @@ export interface GameState {
   /** Where the next border gets placed, and how many you've crossed. */
   nextBorderZ: number;
   bordersCrossed: number;
+  /** Seconds left on each power-up (smoke: how long it hangs in the mirror). */
+  donutsLeft: number;
+  killdozerLeft: number;
+  smokeLeft: number;
+  /** Where the next roadside scenery goes. */
+  nextSceneryZ: number;
   over: boolean;
 }
 
@@ -239,6 +278,8 @@ export type GameEvent =
   | { type: 'border'; name: string; bonus: number; index: number }
   | { type: 'nightfall' }
   | { type: 'rain' }
+  | { type: 'power-up'; kind: PowerUp }
+  | { type: 'smash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser'; points: number }
   | { type: 'fuel' }
   | { type: 'low-fuel' }
   | { type: 'out-of-gas' }
@@ -262,6 +303,10 @@ export function newGame(): GameState {
     fuel: 1,
     nextBorderZ: CONFIG.borderEvery,
     bordersCrossed: 0,
+    donutsLeft: 0,
+    killdozerLeft: 0,
+    smokeLeft: 0,
+    nextSceneryZ: CONFIG.segmentLength * 10,
     over: false,
   };
 }
@@ -291,6 +336,7 @@ export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
     ['roadblock', time >= CONFIG.roadblocksAfter ? 2 + Math.min(2, time / 120) : 0],
     ['spikes', time >= CONFIG.spikesAfter ? 0.7 + Math.min(0.8, time / 300) : 0],
     ['cruiser', time >= CONFIG.cruisersAfter ? 0.5 + Math.min(0.8, time / 300) : 0],
+    ...POWER_UPS.map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? 0.25 : 0]),
   ];
   const total = weights.reduce((sum, [, w]) => sum + w, 0);
   let r = roll * total;
@@ -346,6 +392,9 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   dt = Math.min(dt, 0.05); // a long frame (tab switch) shouldn't teleport you
   state.time += dt;
   state.boostLeft = Math.max(0, state.boostLeft - dt);
+  state.donutsLeft = Math.max(0, state.donutsLeft - dt);
+  state.killdozerLeft = Math.max(0, state.killdozerLeft - dt);
+  state.smokeLeft = Math.max(0, state.smokeLeft - dt);
   state.crashLeft = Math.max(0, state.crashLeft - dt);
 
   // Speed: always on the gas unless braking.
@@ -385,11 +434,17 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   // Spawn ahead of the draw distance; drop what's behind.
   const horizon = state.position + CONFIG.drawDistance * CONFIG.segmentLength;
   while (state.nextSpawnZ < horizon) spawn(state, rng, events);
+  while (state.nextSceneryZ < horizon) {
+    const kind = SCENERY[Math.floor(rng() * SCENERY.length)];
+    const side = rng() < 0.5 ? -1 : 1;
+    state.entities.push({ id: state.nextId++, kind, z: state.nextSceneryZ, x: side * (3.5 + rng() * 1.1), speed: 0, vx: 0, variant: Math.floor(rng() * 1000), hit: false });
+    state.nextSceneryZ += CONFIG.segmentLength * CONFIG.sceneryEvery * (0.5 + rng());
+  }
   while (state.nextBorderZ < horizon) {
     const index = Math.round(state.nextBorderZ / CONFIG.borderEvery) - 1;
     state.entities.push({ id: state.nextId++, kind: 'border', z: state.nextBorderZ, x: 0, speed: 0, vx: 0, variant: index, hit: false });
     // Keep the gate clear: nothing spawns right on top of it.
-    state.entities = state.entities.filter((e) => e.kind === 'border' || Math.abs(e.z - state.nextBorderZ) > CONFIG.segmentLength * 4);
+    state.entities = state.entities.filter((e) => e.kind === 'border' || isScenery(e.kind) || Math.abs(e.z - state.nextBorderZ) > CONFIG.segmentLength * 4);
     state.nextBorderZ += CONFIG.borderEvery;
   }
 
@@ -408,17 +463,17 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
       const toward = Math.sign(state.x - e.x) * Math.min(Math.abs(state.x - e.x), CONFIG.cruiserSteer * dt);
       e.x = Math.max(-0.9, Math.min(0.9, e.x + toward));
     }
-    if (e.hit) continue;
+    if (e.hit || isScenery(e.kind)) continue;
     // Did it go from ahead of your bumper to behind it this frame? (Traffic moves too.)
     const crossed = prevZ >= before && e.z <= after;
     if (!crossed ||Math.abs(e.x - state.x) > HALF_WIDTH[e.kind] + CAR_HALF_WIDTH) continue;
     e.hit = true;
     events.push(...collide(state, e));
   }
-  state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel')));
+  state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel' || POWER_UPS.includes(e.kind as PowerUp))));
 
   // The chase.
-  state.copGap += (state.speed - copSpeed(state.time)) * dt;
+  state.copGap += (state.speed - copSpeed(state.time) * (state.donutsLeft > 0 ? CONFIG.donutSlowdown : 1)) * dt;
   state.copGap = Math.min(CONFIG.copMaxGap, state.copGap);
   if (state.copGap <= 0) {
     state.copGap = 0;
@@ -428,8 +483,37 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   return events;
 }
 
+/** With the Killdozer, anything in the way gets plowed aside for points. */
+function smash(state: GameState, e: Entity, kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser'): GameEvent[] {
+  const points = Math.round(CONFIG.smashPoints * state.combo);
+  state.score += points;
+  if (kind === 'traffic' || kind === 'cruiser') e.x += e.x >= state.x ? 1.2 : -1.2;
+  state.crashLeft = 0.25; // a little shake, no slowdown
+  return [{ type: 'smash', kind, points }];
+}
+
 function collide(state: GameState, e: Entity): GameEvent[] {
+  if (state.killdozerLeft > 0 && (e.kind === 'traffic' || e.kind === 'roadblock' || e.kind === 'spikes' || e.kind === 'cruiser')) {
+    return smash(state, e, e.kind);
+  }
   switch (e.kind) {
+    case 'donuts':
+      state.donutsLeft = CONFIG.donutSeconds;
+      return [{ type: 'power-up', kind: 'donuts' }];
+    case 'killdozer':
+      state.killdozerLeft = CONFIG.killdozerSeconds;
+      return [{ type: 'power-up', kind: 'killdozer' }];
+    case 'smoke':
+      state.copGap = Math.min(CONFIG.copMaxGap, state.copGap + CONFIG.smokePushback);
+      state.smokeLeft = CONFIG.smokeSeconds;
+      return [{ type: 'power-up', kind: 'smoke' }];
+    case 'billboard':
+    case 'house':
+    case 'bar':
+    case 'gas-station':
+    case 'diner':
+    case 'barn':
+      return [];
     case 'marx': {
       const points = Math.round(CONFIG.marxPoints * state.combo);
       state.score += points;

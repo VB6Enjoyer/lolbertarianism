@@ -18,7 +18,11 @@ export type Cue =
   | 'border'
   | 'nightfall'
   | 'rain'
-  | 'idle';
+  | 'idle'
+  | 'donuts'
+  | 'killdozer'
+  | 'smoke'
+  | 'smash';
 
 export const LINES: Record<Cue, readonly string[]> = {
   start: [
@@ -56,7 +60,12 @@ export const LINES: Record<Cue, readonly string[]> = {
   ],
   nightfall: ['Night falls. The State never sleeps, so neither do we.', 'Lights on! Darkness is no excuse for statism.'],
   rain: ['Rain! The roads are slick. Public roads, naturally.', 'Careful, it\'s wet out. Ease into the curves.'],
+  donuts: ['Donuts! The oldest bribe in the book. Works every time.', 'They stopped for donuts. Public servants, everyone.'],
+  killdozer: ['The Killdozer! Property rights, enforced.', 'Plow through! Every checkpoint is a broken window now.'],
+  smoke: ['Smoke screen! Exit, stage left.', "They can't arrest what they can't see!"],
+  smash: ['Creative destruction!', "That's what I call a hostile takeover.", 'Bill the State for the damages.'],
   idle: [
+    "What's on the radio? Turn it up.",
     'Did I ever tell you about the Circle Bastiat?',
     'The State is the organization of the political means.',
     'Ludwig would be proud of this driving.',

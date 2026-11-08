@@ -441,3 +441,14 @@ Ideas for later:
   stronger. `?time=110` previews later in the cycle; `?debug` exposes the run
   as `window.rtl`.
 - Pacing (automated driver): careful 4–6½ min, sloppy 3–4 min.
+- Power-ups (your art, in `art/road-to-liberty/`), from 25 s on: 🍩 donuts
+  slow the cops to 55% for 10 s, 🚜 the Killdozer plows through checkpoints,
+  traffic, spikes and cruisers for 5 s (points per smash, no slowdown), and 💨
+  a smoke grenade puts the cops 90 m back and fills the mirror with smoke.
+  Active ones show as chips in the HUD.
+- Liberty FM 101.1: the dashboard radio scrolls the current song, shuffles
+  through the playlist in `radio.ts` every 25 s with a station jingle, and
+  skips ahead when clicked. The phone shows it too (for small screens).
+- Roadside scenery (`scenery.ts`): billboards with 12 slogans, houses (some
+  with a Gadsden flag), saloons with neon signs, Free Market Fuel stations,
+  diners and raw-milk barns, set back beyond where you can drive.
