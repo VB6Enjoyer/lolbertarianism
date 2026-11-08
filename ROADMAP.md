@@ -482,3 +482,10 @@ Ideas for later:
   WEB, HSH, LYS; hover for the full name). Make the table and you enter three
   initials (remembered for next time); your row is highlighted. On the title
   screen behind "🏆 High scores".
+- Achievements (`achievements.ts`): 26, saved in localStorage. Commies
+  (first one, Stalin, the whole Politburo, 50 in a run), combos (×5, ×10),
+  borders and landscapes, distance, time and score, Killdozer smashes, a
+  smoke grenade with the cops right behind, a close shave, 2 minutes
+  crash-free, repairs, running dry, a night storm, the high-score table, and
+  lifetime ones (10 busts, 500 commies). Pop-ups during the run, a list on
+  the busted screen, and a "🏅 Achievements" screen on the title.

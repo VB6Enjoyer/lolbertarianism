@@ -125,9 +125,23 @@
                 <div class="panel-buttons">
                     <button id="start" type="button" class="big-button">Floor it</button>
                     <button id="show-scores" type="button" class="big-button secondary">🏆 High scores</button>
+                    <button id="show-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
                 </div>
             </div>
         </div>
+
+        <!-- Achievements -->
+        <div id="achievements" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>🏅 Achievements</h1>
+                <p class="tagline"><span id="achievements-count">0</span> unlocked. Saved in this browser.</p>
+                <div id="achievements-grid" class="achievements-grid"></div>
+                <button id="hide-achievements" type="button" class="big-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Pop-ups when you unlock one -->
+        <div id="achievement-toasts" class="achievement-toasts" aria-live="polite"></div>
 
         <!-- High scores -->
         <div id="scores" class="overlay" hidden>
@@ -170,6 +184,10 @@
                     </div>
                     <small id="initials-hint">Three letters, like the legends: MNR, LVM, HHH…</small>
                 </form>
+                <div id="run-achievements" class="run-achievements" hidden>
+                    <p>🏅 Unlocked this run:</p>
+                    <ul id="run-achievements-list" class="tally"></ul>
+                </div>
                 <ol id="busted-scores" class="scoreboard compact"></ol>
                 <button id="restart" type="button" class="big-button">Floor it again</button>
             </div>

@@ -5,6 +5,7 @@ import { createSaveSlot } from '../../shared/storage.ts';
 import { currentTerritory, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
+import { ACHIEVEMENTS, achievementById, normalizeLifetime, normalizeUnlocked, Tracker, type Lifetime } from './achievements.ts';
 import { cleanInitials, insertScore, legendName, normalizeScores, qualifies, type ScoreEntry } from './scoreboard.ts';
 import { buildGauges } from './gauges.ts';
 import { copCloseness, renderMirror } from './mirror.ts';
@@ -55,6 +56,12 @@ const els = {
   highRank: byId('high-rank'),
   bustedScores: byId('busted-scores'),
   scores: byId('scores'),
+  achievements: byId('achievements'),
+  achievementsGrid: byId('achievements-grid'),
+  achievementsCount: byId('achievements-count'),
+  toasts: byId('achievement-toasts'),
+  runAchievements: byId('run-achievements'),
+  runAchievementsList: byId('run-achievements-list'),
   scoresList: byId('scores-list'),
   finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
@@ -77,6 +84,9 @@ interface Save {
   /** The high-score table, and the initials you used last. */
   scores: ScoreEntry[];
   initials: string;
+  /** Unlocked achievement ids, and the counters some of them need. */
+  achievements: string[];
+  lifetime: Lifetime;
 }
 
 const slot = createSaveSlot<Save>({ game: 'road-to-liberty', version: 1 });
@@ -87,6 +97,8 @@ const save: Save = {
   muted: saved?.muted === true,
   scores: normalizeScores(saved?.scores),
   initials: typeof saved?.initials === 'string' ? cleanInitials(saved.initials) : '',
+  achievements: [...normalizeUnlocked(saved?.achievements)],
+  lifetime: normalizeLifetime(saved?.lifetime),
 };
 
 // ---------------------------------------------------------------------------
@@ -153,6 +165,9 @@ const sfx = {
   busted() {
     [784, 659, 523, 392].forEach((hz, i) => playTone(note(hz, 0.22, 0.08), i * 0.2));
   },
+  achievement() {
+    [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
+  },
   jingle() {
     [659, 880, 1175].forEach((hz, i) => playTone(note(hz, 0.09, 0.035, 'triangle'), i * 0.09));
   },
@@ -207,7 +222,7 @@ document.addEventListener('keydown', (e) => {
     toggleMute();
     return;
   }
-  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden) {
+  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden) {
     e.preventDefault();
     if (mode === 'paused') resume();
     else startGame();
@@ -353,6 +368,8 @@ function startGame() {
   lastSpoke = -99;
   warnedClose = false;
   say('start', state.time);
+  runUnlocked = [];
+  tracker.startRun(state);
   // ?debug exposes the run to the console (and to screenshot scripts).
   if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { rtl: state });
 }
@@ -414,11 +431,22 @@ function bust() {
     ? { initials: save.initials || 'AAA', score, commies: totalCommies(state.stats.commies), meters: Math.floor(state.stats.meters) }
     : null;
   els.initialsForm.hidden = !pendingScore;
+  const rank = pendingScore ? insertScore(save.scores, pendingScore).rank : -1;
   if (pendingScore) {
-    const rank = insertScore(save.scores, pendingScore).rank;
     els.highRank.textContent = `#${rank + 1}`;
     els.initials.value = save.initials;
   }
+  announce(tracker.endRun(state, rank));
+  els.runAchievements.hidden = runUnlocked.length === 0;
+  els.runAchievementsList.replaceChildren(
+    ...runUnlocked.map((id) => {
+      const a = achievementById(id)!;
+      const li = document.createElement('li');
+      li.textContent = `${a.icon} ${a.name}`;
+      li.title = a.description;
+      return li;
+    }),
+  );
   renderScores(els.bustedScores, save.scores);
   setTimeout(() => {
     if (mode !== 'busted') return;
@@ -480,6 +508,71 @@ els.initialsForm.addEventListener('submit', (e) => {
 els.initials.addEventListener('input', () => {
   const clean = els.initials.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
   if (els.initials.value !== clean) els.initials.value = clean;
+});
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+const unlocked = new Set(save.achievements);
+const tracker = new Tracker(unlocked, save.lifetime);
+/** Unlocked during the current run, for the busted screen. */
+let runUnlocked: string[] = [];
+
+/** Pops up each newly unlocked achievement and saves. */
+function announce(ids: readonly string[]) {
+  if (!ids.length) return;
+  for (const id of ids) {
+    const a = achievementById(id);
+    if (!a) continue;
+    runUnlocked.push(id);
+    const toast = document.createElement('div');
+    toast.className = 'achievement-toast';
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = a.icon;
+    const label = document.createElement('small');
+    label.textContent = 'ACHIEVEMENT UNLOCKED';
+    const name = document.createElement('b');
+    name.textContent = a.name;
+    toast.append(icon, label, name);
+    els.toasts.append(toast);
+    setTimeout(() => toast.remove(), 4100);
+  }
+  play('achievement');
+  save.achievements = [...unlocked];
+  slot.save(save);
+}
+
+function renderAchievements() {
+  els.achievementsCount.textContent = `${unlocked.size} / ${ACHIEVEMENTS.length}`;
+  els.achievementsGrid.replaceChildren(
+    ...ACHIEVEMENTS.map((a) => {
+      const card = document.createElement('div');
+      card.className = `achievement${unlocked.has(a.id) ? '' : ' locked'}`;
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = unlocked.has(a.id) ? a.icon : '🔒';
+      const name = document.createElement('b');
+      name.textContent = a.name;
+      const desc = document.createElement('small');
+      desc.textContent = a.description;
+      card.append(icon, name, desc);
+      return card;
+    }),
+  );
+}
+
+byId('show-achievements').addEventListener('click', () => {
+  renderAchievements();
+  els.title.hidden = true;
+  els.achievements.hidden = false;
+  byId('hide-achievements').focus();
+});
+byId('hide-achievements').addEventListener('click', () => {
+  els.achievements.hidden = true;
+  els.title.hidden = false;
+  byId('start').focus();
 });
 
 byId('show-scores').addEventListener('click', () => {
@@ -706,7 +799,9 @@ function frame(now: number) {
   last = now;
 
   if (mode === 'playing') {
-    handle(update(state, readInput(dt), dt));
+    const events = update(state, readInput(dt), dt);
+    handle(events);
+    announce(tracker.update(state, events));
   } else if (mode === 'title') {
     // Attract mode: cruise down the road behind the title screen.
     state.position += CONFIG.maxSpeed * 0.6 * dt;

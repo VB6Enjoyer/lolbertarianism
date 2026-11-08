@@ -1096,6 +1096,116 @@ body {
     color: #999;
 }
 
+/* Achievements */
+.panel.wide {
+    max-width: 760px;
+}
+
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin: 0 0 16px;
+    text-align: left;
+}
+
+.achievement {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 2px 8px;
+    align-items: center;
+    padding: 8px;
+    border: 2px solid #3a3a3a;
+    border-radius: 8px;
+    background: #161616;
+}
+
+.achievement .icon {
+    grid-row: span 2;
+    font-size: 26px;
+    text-align: center;
+}
+
+.achievement b {
+    color: var(--gold-light);
+    font-size: 14px;
+}
+
+.achievement small {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.achievement.locked {
+    opacity: 0.45;
+}
+
+.achievement.locked .icon {
+    filter: grayscale(1);
+}
+
+.achievement-toasts {
+    position: absolute;
+    top: calc(var(--roof-height) + 12px);
+    left: 16px;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(320px, 44vw);
+    pointer-events: none;
+}
+
+.achievement-toast {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 0 8px;
+    align-items: center;
+    padding: 8px 12px;
+    border: 3px solid var(--gold);
+    border-radius: 10px;
+    background: rgba(12, 12, 12, 0.92);
+    color: #fff;
+    font: 13px 'Courier New', monospace;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+    animation: toast-in 0.3s ease-out, toast-out 0.4s ease-in 3.6s forwards;
+}
+
+.achievement-toast .icon {
+    grid-row: span 2;
+    font-size: 28px;
+}
+
+.achievement-toast small {
+    color: var(--gold-light);
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+}
+
+@keyframes toast-out {
+    to {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+}
+
+.run-achievements p {
+    margin: 0 0 6px;
+    color: var(--gold-light);
+    font-weight: bold;
+}
+
+.run-achievements[hidden] {
+    display: none;
+}
+
 .tally {
     display: flex;
     flex-wrap: wrap;
