@@ -427,3 +427,17 @@ Ideas for later:
   (`hoppe-up-close.webp`, original in `art/road-to-liberty/`).
 - Fuel: a tank lasts ~80 s flat out, ⛽ jerry cans refill 40% (more of them
   when you're low), and an empty tank caps you at half speed.
+- Rothbard talks: a speech bubble from the phone reacts to Marx hits, combos,
+  crashes, fuel, borders, nightfall, rain and close calls, and warns you about
+  spikes and cruisers ahead; small talk when nothing happens (`rothbard.ts`).
+- Aggressive cops: spike strips across two lanes after 60 s (take the third),
+  and cruisers that swerve toward you to box you in after 90 s.
+- Borders every 2.5 km: Liberland, the Free State of New Hampshire, Próspera,
+  Zug, Seasteadia, Galt's Gulch, Ancapistan, Rothbardia… Crossing one pays a
+  growing bonus, holds the cops back 50 m and tops up 25% fuel. The HUD shows
+  the next one.
+- Day/night and weather: a 3-minute day (sunset, starry night with headlights,
+  dawn) and 28-second rain showers that make steering weaker and curves
+  stronger. `?time=110` previews later in the cycle; `?debug` exposes the run
+  as `window.rtl`.
+- Pacing (automated driver): careful 4–6½ min, sloppy 3–4 min.

@@ -1,7 +1,7 @@
 // The rearview mirror: the road behind you, streaming away as you drive, and
 // the cop car seen from the front, closer and bigger as they catch up.
 
-import { CONFIG, curveAt, PLAYER_Z, segmentIndex, type GameState } from './logic.ts';
+import { CONFIG, curveAt, PLAYER_Z, segmentIndex, type Environment, type GameState } from './logic.ts';
 
 /** Dash spacing in the mirror, in world units. */
 const DASH_EVERY = 1600;
@@ -13,7 +13,7 @@ export function copCloseness(copGap: number): number {
 }
 
 /** Draws the mirror view. (width, height) in CSS pixels. */
-export function renderMirror(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState): void {
+export function renderMirror(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState, env: Environment): void {
   const horizon = height * 0.36;
   // The road behind bends the other way from the road ahead. It sits right of
   // center: Hoppe's face takes up the left of the mirror.
@@ -71,6 +71,13 @@ export function renderMirror(ctx: CanvasRenderingContext2D, width: number, heigh
     ctx.lineTo(b.x + w2, b.y);
     ctx.lineTo(a.x + w1, a.y);
     ctx.fill();
+  }
+
+  // Night and rain dim the view behind you (the cop lights stay bright).
+  const dark = (1 - env.daylight) * 0.65 + env.rain * 0.15;
+  if (dark > 0.01) {
+    ctx.fillStyle = `rgba(0, 4, 20, ${dark})`;
+    ctx.fillRect(0, 0, width, height);
   }
 
   // The cop car, nose first.

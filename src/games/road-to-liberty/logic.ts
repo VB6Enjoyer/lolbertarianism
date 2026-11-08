@@ -64,7 +64,67 @@ export const CONFIG = {
   emptySpeed: 0.5,
   /** Below this, the fuel light comes on and cans show up more often. */
   lowFuel: 0.25,
+
+  /** Aggressive cops: spike strips after this many seconds… */
+  spikesAfter: 60,
+  /** …and cruisers that try to box you in after this many. */
+  cruisersAfter: 90,
+  /** How fast a cruiser swerves toward you (road widths per second). */
+  cruiserSteer: 0.3,
+
+  /** A border every 2.5 km (in world units): cross it for a bonus and a head start. */
+  borderEvery: 2500 * 180,
+  borderBonus: 1000,
+  /** Crossing a border puts the cops this far further back (50 m)… */
+  borderPushback: 50 * 180,
+  /** …and the duty-free shop tops up your tank. */
+  borderFuel: 0.25,
+
+  /** One day/night cycle, in seconds of driving. */
+  dayLength: 180,
+  /** Rain makes steering this much weaker and curves this much stronger. */
+  rainGrip: 0.25,
+  rainSlide: 0.5,
 } as const;
+
+/** The places you cross into, in order (then around again). */
+export const BORDER_NAMES = [
+  'Liberland',
+  'Free State of New Hampshire',
+  'Próspera',
+  'Zug',
+  'Seasteadia',
+  "Galt's Gulch",
+  'Ancapistan',
+  'Free Private City of Rothbardia',
+];
+
+export const borderName = (index: number) => BORDER_NAMES[index % BORDER_NAMES.length];
+
+// ---------------------------------------------------------------------------
+// Time of day and weather (a fixed cycle, so every run sees them in the same order)
+// ---------------------------------------------------------------------------
+
+export interface Environment {
+  /** 1 = full day, 0 = night. */
+  daylight: number;
+  /** 0 = dry, 1 = pouring. */
+  rain: number;
+}
+
+const ramp = (t: number, start: number, length: number) => Math.min(1, Math.max(0, (t - start) / length));
+
+/**
+ * Day for 80 s, sunset, night for 50 s, dawn, and around again. Rain comes in
+ * 28-second showers: the first after 45 s, then every 110 s.
+ */
+export function environment(time: number): Environment {
+  const t = time % CONFIG.dayLength;
+  const daylight = t < 80 ? 1 : t < 100 ? 1 - ramp(t, 80, 20) : t < 150 ? 0 : ramp(t, 150, 20);
+  const shower = (time - 45) % 110;
+  const rain = time < 45 ? 0 : shower < 28 ? Math.min(ramp(shower, 0, 3), 1 - ramp(shower, 25, 3)) : 0;
+  return { daylight, rain };
+}
 
 /** Units per meter, for the speedometer and the cop distance (top speed = 240 km/h). */
 export const UNITS_PER_METER = 180;
@@ -97,7 +157,7 @@ export function heightAt(i: number): number {
 // State
 // ---------------------------------------------------------------------------
 
-export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock';
+export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border';
 
 export interface Entity {
   id: number;
@@ -121,6 +181,11 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
   gold: 0.12,
   traffic: 0.22,
   roadblock: 0.32,
+  /** A spike strip covers two lanes: the third one is the way out. */
+  spikes: 0.5,
+  cruiser: 0.22,
+  /** Borders span the whole road (crossing one doesn't depend on where you are). */
+  border: 99,
 };
 export const CAR_HALF_WIDTH = 0.2;
 
@@ -153,6 +218,9 @@ export interface GameState {
   stats: GameStats;
   /** 0 (empty) to 1 (full). */
   fuel: number;
+  /** Where the next border gets placed, and how many you've crossed. */
+  nextBorderZ: number;
+  bordersCrossed: number;
   over: boolean;
 }
 
@@ -166,7 +234,11 @@ export interface Input {
 export type GameEvent =
   | { type: 'marx'; points: number; combo: number }
   | { type: 'gold'; points: number }
-  | { type: 'crash'; kind: 'traffic' | 'roadblock' }
+  | { type: 'crash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser' }
+  | { type: 'warning'; kind: 'spikes' | 'cruiser' }
+  | { type: 'border'; name: string; bonus: number; index: number }
+  | { type: 'nightfall' }
+  | { type: 'rain' }
   | { type: 'fuel' }
   | { type: 'low-fuel' }
   | { type: 'out-of-gas' }
@@ -188,6 +260,8 @@ export function newGame(): GameState {
     nextId: 1,
     stats: { marxFlattened: 0, gold: 0, crashes: 0, meters: 0 },
     fuel: 1,
+    nextBorderZ: CONFIG.borderEvery,
+    bordersCrossed: 0,
     over: false,
   };
 }
@@ -215,6 +289,8 @@ export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
     ['fuel', fuel < CONFIG.lowFuel ? 3 : fuel < 0.6 ? 1 : 0.4],
     ['traffic', 3],
     ['roadblock', time >= CONFIG.roadblocksAfter ? 2 + Math.min(2, time / 120) : 0],
+    ['spikes', time >= CONFIG.spikesAfter ? 0.7 + Math.min(0.8, time / 300) : 0],
+    ['cruiser', time >= CONFIG.cruisersAfter ? 0.5 + Math.min(0.8, time / 300) : 0],
   ];
   const total = weights.reduce((sum, [, w]) => sum + w, 0);
   let r = roll * total;
@@ -232,15 +308,24 @@ export function spawnSpacing(time: number, roll: number): number {
   return segments * CONFIG.segmentLength;
 }
 
-function spawn(state: GameState, rng: () => number): void {
+function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
   const kind = pickKind(rng(), state.time, state.fuel);
   const lane = [-0.6, 0, 0.6][Math.floor(rng() * 3)];
+  const x =
+    kind === 'roadblock' ? lane * 0.9
+    : kind === 'spikes' ? (rng() < 0.5 ? -0.3 : 0.3) // covers two lanes
+    : lane + (rng() - 0.5) * 0.3;
+  const speed =
+    kind === 'traffic' ? CONFIG.maxSpeed * (0.35 + rng() * 0.2)
+    : kind === 'cruiser' ? CONFIG.maxSpeed * (0.72 + rng() * 0.08)
+    : 0;
+  if (kind === 'spikes' || kind === 'cruiser') events.push({ type: 'warning', kind });
   const entity: Entity = {
     id: state.nextId++,
     kind,
     z: state.nextSpawnZ,
-    x: kind === 'roadblock' ? lane * 0.9 : lane + (rng() - 0.5) * 0.3,
-    speed: kind === 'traffic' ? CONFIG.maxSpeed * (0.35 + rng() * 0.2) : 0,
+    x,
+    speed,
     // Marx sits in his armchair; some of the chairs have wheels and drift across the road.
     vx: kind === 'marx' && rng() < 0.5 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.2) : 0,
     variant: Math.floor(rng() * 4),
@@ -280,11 +365,15 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   }
   state.speed = Math.max(0, state.speed);
 
-  // Steering, and curves pushing you outward.
+  // Steering, and curves pushing you outward (rain makes both worse).
+  const env = environment(state.time);
+  const was = environment(state.time - dt);
+  if (was.daylight >= 0.5 && env.daylight < 0.5) events.push({ type: 'nightfall' });
+  if (was.rain === 0 && env.rain > 0) events.push({ type: 'rain' });
   const speedShare = state.speed / CONFIG.maxSpeed;
   const before = state.position + PLAYER_Z;
-  state.x += input.steer * CONFIG.steering * Math.min(1, speedShare + 0.25) * dt;
-  state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * speedShare * speedShare * dt;
+  state.x += input.steer * CONFIG.steering * (1 - CONFIG.rainGrip * env.rain) * Math.min(1, speedShare + 0.25) * dt;
+  state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * (1 + CONFIG.rainSlide * env.rain) * speedShare * speedShare * dt;
   state.x = Math.max(-CONFIG.maxX, Math.min(CONFIG.maxX, state.x));
 
   state.position += state.speed * dt;
@@ -295,7 +384,14 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
 
   // Spawn ahead of the draw distance; drop what's behind.
   const horizon = state.position + CONFIG.drawDistance * CONFIG.segmentLength;
-  while (state.nextSpawnZ < horizon) spawn(state, rng);
+  while (state.nextSpawnZ < horizon) spawn(state, rng, events);
+  while (state.nextBorderZ < horizon) {
+    const index = Math.round(state.nextBorderZ / CONFIG.borderEvery) - 1;
+    state.entities.push({ id: state.nextId++, kind: 'border', z: state.nextBorderZ, x: 0, speed: 0, vx: 0, variant: index, hit: false });
+    // Keep the gate clear: nothing spawns right on top of it.
+    state.entities = state.entities.filter((e) => e.kind === 'border' || Math.abs(e.z - state.nextBorderZ) > CONFIG.segmentLength * 4);
+    state.nextBorderZ += CONFIG.borderEvery;
+  }
 
   for (const e of state.entities) {
     const prevZ = e.z;
@@ -306,6 +402,11 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
         e.x = Math.sign(e.x) * 0.9;
         e.vx = -e.vx;
       }
+    }
+    // Cruisers swerve toward you to box you in while they're close ahead.
+    if (e.kind === 'cruiser' && !e.hit && e.z > before && e.z - before < 6000) {
+      const toward = Math.sign(state.x - e.x) * Math.min(Math.abs(state.x - e.x), CONFIG.cruiserSteer * dt);
+      e.x = Math.max(-0.9, Math.min(0.9, e.x + toward));
     }
     if (e.hit) continue;
     // Did it go from ahead of your bumper to behind it this frame? (Traffic moves too.)
@@ -355,10 +456,31 @@ function collide(state: GameState, e: Entity): GameEvent[] {
     case 'roadblock':
       state.speed *= 0.25;
       return crashed(state, 'roadblock');
+    case 'spikes':
+      state.speed *= 0.4;
+      return crashed(state, 'spikes');
+    case 'cruiser':
+      state.speed = Math.min(state.speed, e.speed * 0.5);
+      e.x += e.x >= state.x ? 0.7 : -0.7;
+      return crashed(state, 'cruiser');
+    case 'border': {
+      const index = state.bordersCrossed++;
+      const bonus = CONFIG.borderBonus * state.bordersCrossed;
+      state.score += bonus;
+      state.copGap = Math.min(CONFIG.copMaxGap, state.copGap + CONFIG.borderPushback);
+      state.fuel = Math.min(1, state.fuel + CONFIG.borderFuel);
+      return [{ type: 'border', name: borderName(index), bonus, index }];
+    }
   }
 }
 
-function crashed(state: GameState, kind: 'traffic' | 'roadblock'): GameEvent[] {
+/** Distance to the next border, in meters. */
+export function metersToBorder(state: GameState): number {
+  const next = (state.bordersCrossed + 1) * CONFIG.borderEvery;
+  return Math.max(0, (next - (state.position + PLAYER_Z)) / UNITS_PER_METER);
+}
+
+function crashed(state: GameState, kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser'): GameEvent[] {
   state.combo = 1;
   state.boostLeft = 0;
   state.crashLeft = 0.6;
