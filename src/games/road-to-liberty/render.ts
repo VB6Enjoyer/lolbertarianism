@@ -4,6 +4,7 @@
 
 import { borderName, COMMIES, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
 import { drawScenery, SCENERY_SIZE } from './scenery.ts';
+import { BIOMES, biomeAt, blendColor, blendNumber, type Biome } from './biomes.ts';
 
 interface Point {
   x: number;
@@ -120,14 +121,42 @@ function quad(ctx: CanvasRenderingContext2D, x1: number, y1: number, w1: number,
   ctx.fill();
 }
 
+const BEACH = BIOMES.find((b) => b.sea)!;
+
 function drawSegment(ctx: CanvasRenderingContext2D, width: number, index: number, p1: Point, p2: Point) {
   const band = Math.floor(index / 3) % 2 === 0;
-  ctx.fillStyle = band ? '#45a84f' : '#3d9a47';
+  const z = index * CONFIG.segmentLength;
+  ctx.fillStyle = css(blendColor(z, (b) => b.ground[band ? 0 : 1]));
   ctx.fillRect(0, p2.y, width, p1.y - p2.y);
+  // The sea, beyond the beach on the right
+  const sea = blendNumber(z, (b) => (b.sea ? 1 : 0));
+  if (sea > 0) {
+    const shore1 = p1.x + p1.w * 2.4;
+    const shore2 = p2.x + p2.w * 2.4;
+    ctx.globalAlpha = sea;
+    ctx.fillStyle = css(BEACH.sea![band ? 0 : 1]);
+    ctx.beginPath();
+    ctx.moveTo(shore1, p1.y);
+    ctx.lineTo(shore2, p2.y);
+    ctx.lineTo(Math.max(width, shore2), p2.y);
+    ctx.lineTo(Math.max(width, shore1), p1.y);
+    ctx.closePath();
+    ctx.fill();
+    // Foam along the shore
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(shore1 - p1.w * 0.06, p1.y);
+    ctx.lineTo(shore2 - p2.w * 0.06, p2.y);
+    ctx.lineTo(shore2 + p2.w * 0.04, p2.y);
+    ctx.lineTo(shore1 + p1.w * 0.04, p1.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   const rumble1 = p1.w / 8;
   const rumble2 = p2.w / 8;
   quad(ctx, p1.x, p1.y, p1.w + rumble1, p2.x, p2.y, p2.w + rumble2, band ? '#f2f2f2' : '#c62828');
-  quad(ctx, p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, band ? '#5e5e5e' : '#585858');
+  quad(ctx, p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, css(blendColor(z, (b) => b.road[band ? 0 : 1])));
   if (band) {
     for (const d of LANE_DIVIDERS) {
       quad(ctx, p1.x + p1.w * d, p1.y, p1.w / 40, p2.x + p2.w * d, p2.y, p2.w / 40, '#f5d000');
@@ -140,8 +169,6 @@ const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(
 const css = ([r, g, b]: RGB) => `rgb(${r}, ${g}, ${b})`;
 
 const SKY = {
-  dayTop: [58, 143, 217] as RGB,
-  dayBottom: [191, 230, 255] as RGB,
   sunset: [255, 158, 94] as RGB,
   nightTop: [5, 10, 31] as RGB,
   nightBottom: [26, 35, 71] as RGB,
@@ -151,13 +178,19 @@ const SKY = {
 /** Stars at fixed spots (0..1 coordinates), so they don't flicker around. */
 const STARS = Array.from({ length: 70 }, (_, i) => [((i * 7919) % 1000) / 1000, ((i * 104729) % 1000) / 1000] as const);
 
-function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number, skyOffset: number, env: Environment) {
+function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number, skyOffset: number, env: Environment, playerZ: number) {
   const horizon = height / 2;
   const d = env.daylight;
-  let top = mix(SKY.nightTop, SKY.dayTop, d);
-  let bottom = d > 0.5 ? mix(SKY.sunset, SKY.dayBottom, (d - 0.5) * 2) : mix(SKY.nightBottom, SKY.sunset, d * 2);
+  // Each biome has its own daytime sky; night and sunset are shared.
+  const dayTop = blendColor(playerZ, (b) => b.sky[0]);
+  const dayBottom = blendColor(playerZ, (b) => b.sky[1]);
+  let top = mix(SKY.nightTop, dayTop, d);
+  let bottom = d > 0.5 ? mix(SKY.sunset, dayBottom, (d - 0.5) * 2) : mix(SKY.nightBottom, SKY.sunset, d * 2);
   top = mix(top, mix(SKY.overcast, SKY.nightTop, 1 - d), env.rain * 0.7);
   bottom = mix(bottom, mix(SKY.overcast, SKY.nightBottom, 1 - d), env.rain * 0.7);
+  // Ground under the horizon, so nothing from earlier frames shows between the hills and the road.
+  ctx.fillStyle = css(blendColor(playerZ + CONFIG.drawDistance * CONFIG.segmentLength, (b) => b.ground[1]));
+  ctx.fillRect(0, horizon, width, height - horizon);
   const sky = ctx.createLinearGradient(0, 0, 0, horizon);
   sky.addColorStop(0, css(top));
   sky.addColorStop(1, css(bottom));
@@ -184,25 +217,90 @@ function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: nu
     ctx.fill();
   }
 
-  // Two layers of hills that slide sideways in curves (parallax), darker at night.
+  // The horizon: this biome's hills, crossfading into the next one's.
   const shade = 0.3 + 0.7 * d;
-  const layers: [RGB, number, number, number][] = [
-    [[127, 179, 163], 0.35, horizon * 0.22, 0.004],
-    [[92, 154, 108], 0.7, horizon * 0.14, 0.009],
-  ];
-  for (const [rgb, parallax, amplitude, freq] of layers) {
-    ctx.fillStyle = css(rgb.map((c) => Math.round(c * shade)) as RGB);
+  const here = biomeAt(playerZ);
+  drawHills(ctx, width, horizon, skyOffset, here.biome, shade);
+  if (here.t > 0) {
+    ctx.globalAlpha = here.t;
+    drawHills(ctx, width, horizon, skyOffset, here.next, shade);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** A repeatable pseudo-random number in [0, 1) for peak heights. */
+const hash = (k: number) => {
+  const v = Math.sin(k * 12.9898) * 43758.5453;
+  return v - Math.floor(v);
+};
+
+/** Two layers of distant scenery that slide sideways in curves (parallax), shaped by biome. */
+function drawHills(ctx: CanvasRenderingContext2D, width: number, horizon: number, skyOffset: number, biome: Biome, shade: number) {
+  const tint = (rgb: RGB) => css(rgb.map((c) => Math.round(c * shade)) as RGB);
+  const layer = (rgb: RGB, parallax: number, height: (t: number) => number, freq: number) => {
+    ctx.fillStyle = tint(rgb);
     ctx.beginPath();
     ctx.moveTo(0, horizon + 2);
     const shift = skyOffset * width * parallax;
-    for (let x = 0; x <= width; x += 8) {
-      const t = (x + shift) * freq;
-      const y = horizon - amplitude * (0.55 + 0.3 * Math.sin(t) + 0.15 * Math.sin(t * 2.7 + 1));
-      ctx.lineTo(x, y);
-    }
+    for (let x = 0; x <= width; x += 6) ctx.lineTo(x, horizon - height((x + shift) * freq));
     ctx.lineTo(width, horizon + 2);
     ctx.closePath();
     ctx.fill();
+  };
+  const [far, near] = biome.hills;
+  switch (biome.hillShape) {
+    case 'rolling':
+    case 'snowdrifts': {
+      const low = biome.hillShape === 'snowdrifts' ? 0.8 : 1;
+      layer(far, 0.35, (t) => horizon * 0.22 * low * (0.55 + 0.3 * Math.sin(t) + 0.15 * Math.sin(t * 2.7 + 1)), 0.004);
+      layer(near, 0.7, (t) => horizon * 0.14 * low * (0.55 + 0.3 * Math.sin(t) + 0.15 * Math.sin(t * 2.7 + 1)), 0.009);
+      return;
+    }
+    case 'dunes':
+      // Flat-topped mesas far away, soft dunes nearer.
+      layer(far, 0.3, (t) => {
+        const mesa = Math.min(1, Math.max(0, (Math.sin(t) - 0.35) * 5));
+        return horizon * (0.05 + 0.22 * mesa * (0.7 + 0.3 * hash(Math.floor(t / Math.PI))));
+      }, 0.006);
+      layer(near, 0.65, (t) => horizon * 0.09 * (0.6 + 0.4 * Math.sin(t) * Math.sin(t * 0.37)), 0.007);
+      return;
+    case 'islands': {
+      // Open sea to the horizon, with a few islands on it.
+      ctx.fillStyle = tint(BEACH.sea![0]);
+      ctx.fillRect(0, horizon - horizon * 0.035, width, horizon * 0.035 + 2);
+      layer(far, 0.3, (t) => {
+        const bump = Math.max(0, Math.sin(t) - 0.7) * 3.3;
+        return bump > 0 ? horizon * 0.035 + horizon * 0.12 * bump : 0;
+      }, 0.005);
+      return;
+    }
+    case 'peaks': {
+      // Jagged peaks with snow caps, and darker foothills in front.
+      const tri = (t: number) => 1 - Math.abs(2 * (t - Math.floor(t)) - 1);
+      const peakHeight = (t: number) => horizon * 0.55 * (0.5 + 0.5 * hash(Math.floor(t))) * tri(t);
+      layer(far, 0.3, peakHeight, 0.006);
+      // Snow caps on each far peak
+      ctx.fillStyle = tint([248, 250, 252]);
+      const shift = skyOffset * width * 0.3;
+      const freq = 0.006;
+      for (let k = Math.floor(shift * freq) - 1; k <= Math.floor((shift + width) * freq) + 1; k++) {
+        const apexX = (k + 0.5) / freq - shift;
+        const h = horizon * 0.55 * (0.5 + 0.5 * hash(k));
+        const capH = h * 0.28;
+        const halfW = (0.5 / freq) * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(apexX, horizon - h);
+        ctx.lineTo(apexX - halfW, horizon - h + capH);
+        ctx.lineTo(apexX - halfW * 0.4, horizon - h + capH * 0.8);
+        ctx.lineTo(apexX, horizon - h + capH);
+        ctx.lineTo(apexX + halfW * 0.5, horizon - h + capH * 0.75);
+        ctx.lineTo(apexX + halfW, horizon - h + capH);
+        ctx.closePath();
+        ctx.fill();
+      }
+      layer(near, 0.6, (t) => horizon * 0.2 * (0.4 + 0.6 * hash(Math.floor(t))) * tri(t), 0.011);
+      return;
+    }
   }
 }
 
@@ -582,7 +680,7 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
 // Night and rain, drawn over the scene
 // ---------------------------------------------------------------------------
 
-function drawWeather(ctx: CanvasRenderingContext2D, width: number, height: number, env: Environment, state: GameState) {
+function drawWeather(ctx: CanvasRenderingContext2D, width: number, height: number, env: Environment, state: GameState, snowy: number) {
   const dark = (1 - env.daylight) * 0.72 + env.rain * 0.12;
   if (dark > 0.01) {
     // Darkness everywhere except where your headlights reach (bottom center).
@@ -621,14 +719,26 @@ function drawWeather(ctx: CanvasRenderingContext2D, width: number, height: numbe
     }
     ctx.restore();
   }
-  if (env.rain > 0.01) {
-    ctx.fillStyle = `rgba(150, 165, 180, ${env.rain * 0.12})`;
+  // On the snowfield it snows instead (a light flurry even between storms).
+  const snow = Math.max(env.rain, 0.3) * snowy;
+  if (snow > 0.01) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.85 * Math.min(1, snow * 1.5)})`;
+    const flakes = Math.round(160 * snow);
+    for (let i = 0; i < flakes; i++) {
+      const fx = ((i * 7919 + Math.sin(state.time * 1.3 + i) * 30 + state.time * 60 * (i % 2 ? 1 : -1)) % (width + 20) + width + 20) % (width + 20) - 10;
+      const fy = ((i * 104729 + state.time * (90 + (i % 5) * 25)) % (height + 20)) - 10;
+      ctx.fillRect(fx, fy, 2 + (i % 3), 2 + (i % 3));
+    }
+  }
+  const rain = env.rain * (1 - snowy);
+  if (rain > 0.01) {
+    ctx.fillStyle = `rgba(150, 165, 180, ${rain * 0.12})`;
     ctx.fillRect(0, 0, width, height);
     // Streaks, slanted by your speed
-    ctx.strokeStyle = `rgba(210, 225, 240, ${0.45 * env.rain})`;
+    ctx.strokeStyle = `rgba(210, 225, 240, ${0.45 * rain})`;
     ctx.lineWidth = 1.2;
     const slant = (state.speed / CONFIG.maxSpeed) * 14;
-    const drops = Math.round(140 * env.rain);
+    const drops = Math.round(140 * rain);
     ctx.beginPath();
     for (let i = 0; i < drops; i++) {
       const dx = ((i * 7919 + state.time * 900 * (1 + (i % 3))) % (width + 40)) - 20;
@@ -655,11 +765,14 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
     const shake = state.crashLeft * 14;
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   }
-  drawBackground(ctx, width, height, skyOffset, env);
+  // No rain in the desert: the weather there stays clear.
+  const playerZ = state.position + PLAYER_Z;
+  const view: Environment = { daylight: env.daylight, rain: env.rain * blendNumber(playerZ, (b) => (b.precipitation === 'none' ? 0 : 1)) };
+  const snowy = blendNumber(playerZ, (b) => (b.precipitation === 'snow' ? 1 : 0));
+  drawBackground(ctx, width, height, skyOffset, view, playerZ);
 
   const base = segmentIndex(state.position);
   const basePercent = (state.position % segLen) / segLen;
-  const playerZ = state.position + PLAYER_Z;
   const playerSeg = segmentIndex(playerZ);
   const playerY = lerp(heightAt(playerSeg), heightAt(playerSeg + 1), (playerZ % segLen) / segLen);
   const cameraY = playerY + CONFIG.cameraHeight;
@@ -706,7 +819,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
     ctx.restore();
   }
 
-  drawWeather(ctx, width, height, env, state);
+  drawWeather(ctx, width, height, view, state, snowy);
 
   // Speed streaks while boosted.
   if (state.boostLeft > 0) {

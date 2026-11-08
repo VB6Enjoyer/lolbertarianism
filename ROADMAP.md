@@ -466,3 +466,10 @@ Ideas for later:
   combo, commies, next border, best) and 2×2 warning lights between the
   gauges (donuts, Killdozer, smoke with seconds left; check engine with your
   top speed %).
+- Biomes (`biomes.ts`), a new one every 5 km (every other border), blending
+  over ~170 m and announced as you drive in: the countryside; the desert (sand,
+  mesas, cacti, cow skulls, no rain); the beach (sea on the right with foam,
+  islands on the horizon, palms, surf shacks, lifeguard towers); the snowfield
+  (white ground, snowy pines, snowmen, ski lodges, snow instead of rain and a
+  little ice all the time); the mountains (snow-capped peaks, pines, boulders,
+  log cabins, steeper hills and sharper bends). Then around again.

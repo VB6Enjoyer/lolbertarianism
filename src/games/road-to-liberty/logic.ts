@@ -6,6 +6,8 @@
 // distance `z` along the track. The renderer (render.ts) draws it; this file
 // only moves things and decides what happens.
 
+import { biomeAt, blendNumber, sceneryBiome, type BiomeId, type NatureKind } from './biomes.ts';
+
 export const CONFIG = {
   /** World units per road segment. */
   segmentLength: 200,
@@ -146,6 +148,18 @@ export interface Environment {
   rain: number;
 }
 
+/**
+ * How slippery it is at track position `z`, from 0 to 1: the rain (where it
+ * rains; none in the desert, snow on the snowfield) or the biome's own slip
+ * (the snowfield is always a bit icy), whichever is worse.
+ */
+export function weatherSlip(z: number, rain: number): number {
+  const wet = blendNumber(z, (b) => (b.precipitation === 'none' ? 0 : 1));
+  return Math.max(rain * wet, blendNumber(z, (b) => b.slip));
+}
+
+export { biomeAt };
+
 const ramp = (t: number, start: number, length: number) => Math.min(1, Math.max(0, (t - start) / length));
 
 /**
@@ -178,13 +192,15 @@ export function curveAt(i: number): number {
   const bend = Math.sin(i / 97) * 4 + Math.sin(i / 31 + 1) * 1.6;
   const calm = smooth(Math.min(1, Math.max(0, (Math.sin(i / 181) + 0.3) / 0.6)));
   const warmUp = smooth(Math.min(1, Math.max(0, (i - 60) / 120)));
-  const raw = bend * calm * warmUp;
+  // The mountains bend harder (blended across biome changes, so there are no kinks).
+  const raw = bend * calm * warmUp * Math.sqrt(blendNumber(i * CONFIG.segmentLength, (b) => b.terrain));
   return Math.abs(raw) < 0.4 ? 0 : raw;
 }
 
 /** Height of the road at the start of segment `i`. */
 export function heightAt(i: number): number {
-  return Math.sin(i / 53) * 900 + Math.sin(i / 137 + 2) * 1400;
+  const base = Math.sin(i / 53) * 900 + Math.sin(i / 137 + 2) * 1400;
+  return base * blendNumber(i * CONFIG.segmentLength, (b) => b.terrain);
 }
 
 // ---------------------------------------------------------------------------
@@ -231,8 +247,11 @@ export type PowerUp = 'donuts' | 'killdozer' | 'smoke' | 'wrench';
 export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke', 'wrench'];
 
 /** Things by the side of the road. Never in your way (they stand beyond where you can drive). */
-export type Scenery = 'billboard' | 'house' | 'bar' | 'gas-station' | 'diner' | 'barn';
-export const SCENERY: readonly Scenery[] = ['billboard', 'house', 'bar', 'gas-station', 'diner', 'barn'];
+export type Scenery = 'billboard' | 'house' | 'bar' | 'gas-station' | 'diner' | 'barn' | NatureKind;
+export const SCENERY: readonly Scenery[] = [
+  'billboard', 'house', 'bar', 'gas-station', 'diner', 'barn',
+  'cactus', 'skull', 'palm', 'surf-shack', 'lifeguard', 'pine', 'snowy-pine', 'snowman', 'ski-lodge', 'rock', 'cabin',
+];
 export const isScenery = (kind: EntityKind): kind is Scenery => (SCENERY as readonly string[]).includes(kind);
 
 export interface Entity {
@@ -272,6 +291,17 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
   'gas-station': 0,
   diner: 0,
   barn: 0,
+  cactus: 0,
+  skull: 0,
+  palm: 0,
+  'surf-shack': 0,
+  lifeguard: 0,
+  pine: 0,
+  'snowy-pine': 0,
+  snowman: 0,
+  'ski-lodge': 0,
+  rock: 0,
+  cabin: 0,
 };
 export const CAR_HALF_WIDTH = 0.2;
 
@@ -319,6 +349,8 @@ export interface GameState {
   ramSlowLeft: number;
   /** Where the next roadside scenery goes. */
   nextSceneryZ: number;
+  /** The landscape you're in (for "entering the desert"). */
+  biome: BiomeId;
   over: boolean;
 }
 
@@ -332,6 +364,7 @@ export interface Input {
 export type GameEvent =
   | { type: 'commie'; who: CommieId; points: number; combo: number }
   | { type: 'repair' }
+  | { type: 'biome'; id: BiomeId; name: string }
   | { type: 'gold'; points: number }
   | { type: 'crash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser' }
   | { type: 'warning'; kind: 'spikes' | 'cruiser' }
@@ -370,6 +403,7 @@ export function newGame(): GameState {
     spikeSlowLeft: 0,
     ramSlowLeft: 0,
     nextSceneryZ: CONFIG.segmentLength * 10,
+    biome: 'fields',
     over: false,
   };
 }
@@ -490,11 +524,19 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const env = environment(state.time);
   const was = environment(state.time - dt);
   if (was.daylight >= 0.5 && env.daylight < 0.5) events.push({ type: 'nightfall' });
-  if (was.rain === 0 && env.rain > 0) events.push({ type: 'rain' });
+  if (was.rain === 0 && env.rain > 0 && blendNumber(state.position + PLAYER_Z, (b) => (b.precipitation === 'rain' ? 1 : 0)) > 0.5) {
+    events.push({ type: 'rain' });
+  }
+  const landscape = sceneryBiome(state.position + PLAYER_Z);
+  if (landscape.id !== state.biome) {
+    state.biome = landscape.id;
+    events.push({ type: 'biome', id: landscape.id, name: landscape.name });
+  }
   const speedShare = state.speed / CONFIG.maxSpeed;
   const before = state.position + PLAYER_Z;
-  state.x += input.steer * CONFIG.steering * (1 - CONFIG.rainGrip * env.rain) * Math.min(1, speedShare + 0.25) * dt;
-  state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * (1 + CONFIG.rainSlide * env.rain) * speedShare * speedShare * dt;
+  const slick = weatherSlip(before, env.rain);
+  state.x += input.steer * CONFIG.steering * (1 - CONFIG.rainGrip * slick) * Math.min(1, speedShare + 0.25) * dt;
+  state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * (1 + CONFIG.rainSlide * slick) * speedShare * speedShare * dt;
   state.x = Math.max(-CONFIG.maxX, Math.min(CONFIG.maxX, state.x));
 
   state.position += state.speed * dt;
@@ -507,8 +549,10 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const horizon = state.position + CONFIG.drawDistance * CONFIG.segmentLength;
   while (state.nextSpawnZ < horizon) spawn(state, rng, events);
   while (state.nextSceneryZ < horizon) {
-    const kind = SCENERY[Math.floor(rng() * SCENERY.length)];
-    const side = rng() < 0.5 ? -1 : 1;
+    const here = sceneryBiome(state.nextSceneryZ);
+    const kind = here.scenery[Math.floor(rng() * here.scenery.length)] as Scenery;
+    // At the beach the sea is on the right, so everything stands on the left.
+    const side = here.sea || rng() < 0.5 ? -1 : 1;
     state.entities.push({ id: state.nextId++, kind, z: state.nextSceneryZ, x: side * (3.5 + rng() * 1.1), speed: 0, vx: 0, variant: Math.floor(rng() * 1000), hit: false });
     state.nextSceneryZ += CONFIG.segmentLength * CONFIG.sceneryEvery * (0.5 + rng());
   }
@@ -565,6 +609,7 @@ function smash(state: GameState, e: Entity, kind: 'traffic' | 'roadblock' | 'spi
 }
 
 function collide(state: GameState, e: Entity): GameEvent[] {
+  if (isScenery(e.kind)) return []; // never reached: scenery stands out of your way
   if (state.killdozerLeft > 0 && (e.kind === 'traffic' || e.kind === 'roadblock' || e.kind === 'spikes' || e.kind === 'cruiser')) {
     return smash(state, e, e.kind);
   }
@@ -579,13 +624,6 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       state.copGap = Math.min(CONFIG.copMaxGap, state.copGap + CONFIG.smokePushback);
       state.smokeLeft = CONFIG.smokeSeconds;
       return [{ type: 'power-up', kind: 'smoke' }];
-    case 'billboard':
-    case 'house':
-    case 'bar':
-    case 'gas-station':
-    case 'diner':
-    case 'barn':
-      return [];
     case 'commie': {
       const who = COMMIES[e.variant] ?? COMMIES[0];
       const points = Math.round(who.points * state.combo);

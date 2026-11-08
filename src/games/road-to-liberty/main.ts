@@ -464,6 +464,10 @@ function handle(events: GameEvent[]) {
         say(e.who !== 'marx' ? e.who : e.combo >= 2 ? 'combo' : 'marx', state.time);
         break;
       }
+      case 'biome':
+        floater(`ENTERING ${e.name.toUpperCase()}`, '#ffffff', 0.3);
+        say(e.id, state.time);
+        break;
       case 'repair':
         play('powerUp');
         flash('rgba(129, 212, 250, 0.45)');

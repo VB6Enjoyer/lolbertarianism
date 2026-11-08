@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BORDER_NAMES, COMMIES, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
+import { BORDER_NAMES, COMMIES, heightAt, weatherSlip, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
 import { PLAYLIST, shuffledOrder } from './radio.ts';
+import { BIOME_LENGTH, BIOMES, biomeAt, sceneryBiome } from './biomes.ts';
 import { LINES, pickLine } from './rothbard.ts';
 
 /** A seeded random number generator, so runs are repeatable. */
@@ -432,6 +433,69 @@ describe('road to liberty: Liberty FM', () => {
 
   it("has Notorious N.A.P.'s corrected title", () => {
     expect(PLAYLIST).toContainEqual({ artist: 'Notorious N.A.P.', title: 'Mo Printing Mo Inflation' });
+  });
+});
+
+describe('road to liberty: biomes', () => {
+  it('cycle every 5 km: fields, desert, beach, snowfield, mountains, and around again', () => {
+    const at = (km: number) => biomeAt(km * 1000 * 180 + 1).biome.id;
+    expect([0, 5, 10, 15, 20, 25].map(at)).toEqual(['fields', 'desert', 'beach', 'snow', 'mountains', 'fields']);
+    expect(BIOME_LENGTH).toBe(2 * CONFIG.borderEvery); // a new landscape every other border
+  });
+
+  it('blend smoothly: the road never jumps at a biome change', () => {
+    const seg = CONFIG.segmentLength;
+    for (let n = 1; n <= 5; n++) {
+      const start = Math.floor((n * BIOME_LENGTH - 40_000) / seg);
+      for (let i = start; i < start + 300; i++) {
+        expect(Math.abs(heightAt(i + 1) - heightAt(i)), `segment ${i}`).toBeLessThan(260);
+        expect(Math.abs(curveAt(i + 1) - curveAt(i)), `segment ${i}`).toBeLessThan(1.2);
+      }
+    }
+  });
+
+  it('the mountains have bigger hills than the beach', () => {
+    const spread = (biome: string) => {
+      const index = BIOMES.findIndex((b) => b.id === biome);
+      const start = Math.floor((index * BIOME_LENGTH + 100_000) / CONFIG.segmentLength);
+      const heights = Array.from({ length: 1500 }, (_, k) => heightAt(start + k));
+      return Math.max(...heights) - Math.min(...heights);
+    };
+    expect(spread('mountains')).toBeGreaterThan(spread('beach') * 3);
+  });
+
+  it("each biome's scenery lines its own stretch of road, and at the beach it stays out of the sea", () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    s.nextSpawnZ = Infinity;
+    s.position = 2 * BIOME_LENGTH + 50_000; // the beach
+    s.nextSceneryZ = s.position + 1000;
+    drive(s, 4, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    const beach = BIOMES.find((b) => b.id === 'beach')!;
+    const scenery = s.entities.filter((e) => isScenery(e.kind) && sceneryBiome(e.z).id === 'beach');
+    expect(scenery.length).toBeGreaterThan(3);
+    for (const e of scenery) {
+      expect(beach.scenery).toContain(e.kind);
+      expect(e.x).toBeLessThan(0);
+    }
+  });
+
+  it("it doesn't rain in the desert, and the snowfield is always a little icy", () => {
+    const middle = (id: string) => BIOMES.findIndex((b) => b.id === id) * BIOME_LENGTH + BIOME_LENGTH / 2;
+    expect(weatherSlip(middle('fields'), 1)).toBe(1);
+    expect(weatherSlip(middle('desert'), 1)).toBe(0);
+    expect(weatherSlip(middle('snow'), 0)).toBeGreaterThan(0.2);
+    expect(weatherSlip(middle('fields'), 0)).toBe(0);
+  });
+
+  it('announces each new landscape as you drive in', () => {
+    const s = newGame();
+    s.copGap = Infinity;
+    s.nextSpawnZ = Infinity;
+    s.nextBorderZ = Infinity;
+    s.position = BIOME_LENGTH - PLAYER_Z - 20_000;
+    const events = drive(s, 3, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(events).toContainEqual({ type: 'biome', id: 'desert', name: 'the Desert' });
   });
 });
 
