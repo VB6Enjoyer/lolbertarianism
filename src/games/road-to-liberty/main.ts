@@ -2,9 +2,11 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { currentTerritory, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { currentTerritory, COMMIES, CONFIG, stateEnvironment, speedFactor, totalCommies, curveAt, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
+import { carById, carUnlocked, CARS, type Car, type CarId } from './cars.ts';
+import { dailyFor, normalizeDailyBests, seededRng, type Daily } from './daily.ts';
 import { buyUpgrade, MAX_LEVEL, nextCost, normalizeLevels, UPGRADES, type GarageLevels, type UpgradeId } from './garage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeLifetime, normalizeUnlocked, Tracker, type Lifetime } from './achievements.ts';
 import { cleanInitials, insertScore, legendName, normalizeScores, qualifies, type ScoreEntry } from './scoreboard.ts';
@@ -72,6 +74,11 @@ const els = {
   garageGrid: byId('garage-grid'),
   garageSavings: byId('garage-savings'),
   savingsLine: byId('savings-line'),
+  dailyLine: byId('daily-line'),
+  daily: byId('daily'),
+  garageCars: byId('garage-cars'),
+  hornButton: byId<HTMLButtonElement>('horn-button'),
+  hub: document.querySelector<HTMLElement>('#wheel .hub')!,
   scoresList: byId('scores-list'),
   finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
@@ -101,6 +108,9 @@ interface Save {
   savings: number;
   savingsEarned: number;
   garage: GarageLevels;
+  /** The car you drive, and your best daily-challenge score per date. */
+  car: CarId;
+  dailyBests: Record<string, number>;
 }
 
 const slot = createSaveSlot<Save>({ game: 'road-to-liberty', version: 1 });
@@ -116,6 +126,8 @@ const save: Save = {
   savings: Math.max(0, Math.floor(Number(saved?.savings) || 0)),
   savingsEarned: Math.max(0, Math.floor(Number(saved?.savingsEarned) || 0)),
   garage: normalizeLevels(saved?.garage),
+  car: CARS.some((c) => c.id === saved?.car) ? (saved!.car as CarId) : 'sedan',
+  dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
 
 // ---------------------------------------------------------------------------
@@ -131,7 +143,7 @@ function startEngine() {
   filter.type = 'lowpass';
   filter.frequency.value = 500;
   const osc = audio.createOscillator();
-  osc.type = 'sawtooth';
+  osc.type = currentCar().engine.wave;
   const gain = audio.createGain();
   gain.gain.value = 0;
   osc.connect(filter).connect(gain).connect(audio.destination);
@@ -157,7 +169,8 @@ function updateSound(state: GameState, running: boolean) {
   const audio = getAudioContext();
   const t = audio.currentTime;
   const share = state.speed / CONFIG.maxSpeed;
-  engine.osc.frequency.setTargetAtTime(45 + share * 95, t, 0.05);
+  const { low, high } = currentCar().engine;
+  engine.osc.frequency.setTargetAtTime(low + share * (high - low), t, 0.05);
   engine.gain.gain.setTargetAtTime(running ? 0.05 : 0, t, 0.1);
   // The siren gets louder as the cops close in (within 100 m).
   const meters = state.copGap / UNITS_PER_METER;
@@ -181,6 +194,9 @@ const sfx = {
   },
   busted() {
     [784, 659, 523, 392].forEach((hz, i) => playTone(note(hz, 0.22, 0.08), i * 0.2));
+  },
+  horn() {
+    for (const hz of currentCar().horn) playTone(note(hz, 0.35, 0.05, 'square'));
   },
   nitro() {
     playTone({ wave: 'sawtooth', duration: 0.6, frequency: [[0, 80], [0.6, 400, 'exp']], gain: [[0, 0.08], [0.6, 0.001, 'exp']] });
@@ -217,8 +233,9 @@ let touchBrake = false;
 /** Smoothed steering, so keyboard taps ease in instead of snapping. */
 let steer = 0;
 
-/** Set when the nitro key or button is pressed; used once by the next update. */
+/** Set when the nitro key / horn key (or their buttons) are pressed; used once by the next update. */
 let nitroQueued = false;
+let hornQueued = false;
 
 function readInput(dt: number): Input {
   let target = 0;
@@ -227,8 +244,10 @@ function readInput(dt: number): Input {
   if (pointerSteer !== null) target = pointerSteer;
   steer += (target - steer) * Math.min(1, dt * 10);
   const nitro = nitroQueued;
+  const horn = hornQueued;
   nitroQueued = false;
-  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s'), nitro };
+  hornQueued = false;
+  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s'), nitro, horn };
 }
 
 const STEER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'a', 'd', 's', 'w', ' ']);
@@ -242,6 +261,10 @@ document.addEventListener('keydown', (e) => {
     nitroQueued = true;
     return;
   }
+  if (key === 'h' && mode === 'playing') {
+    hornQueued = true;
+    return;
+  }
   if (key === 'p' || key === 'Escape') {
     if (mode === 'playing') pause();
     else if (mode === 'paused') resume();
@@ -251,10 +274,10 @@ document.addEventListener('keydown', (e) => {
     toggleMute();
     return;
   }
-  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden && els.garage.hidden) {
+  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden && els.garage.hidden && els.daily.hidden) {
     e.preventDefault();
     if (mode === 'paused') resume();
-    else startGame();
+    else startGame(mode === 'busted' && runDaily !== null);
     return;
   }
   keys.add(key);
@@ -291,6 +314,10 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
   });
 }
 
+els.hornButton.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (mode === 'playing') hornQueued = true;
+});
 els.nosButton.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (mode === 'playing') nitroQueued = true;
@@ -385,10 +412,30 @@ let skyOffset = 0;
 /** Preview: ?time=110 starts the run that many seconds in (night, rain, late-game hazards). */
 const START_TIME = Math.max(0, Number(new URLSearchParams(location.search).get('time')) || 0);
 
-function startGame() {
+/** The daily challenge being played (null for a normal run), and the random numbers driving the road. */
+let runDaily: Daily | null = null;
+let runRng: () => number = Math.random;
+
+const currentCar = (): Car => carById(save.car);
+
+/** Paints the cockpit in the car's colors. */
+function applyTheme(car: Car) {
+  els.game.style.setProperty('--dash', car.theme.dash);
+  els.game.style.setProperty('--dash-dark', car.theme.dashDark);
+  els.game.style.setProperty('--interior', car.theme.interior);
+  els.hub.textContent = car.theme.hub;
+  els.hub.style.background = car.theme.hubColor;
+}
+
+function startGame(daily = false) {
   // Leaving the busted screen without saving still records the score (with your last initials).
   if (pendingScore) commitScore(els.initials.value);
-  state = newGame(save.garage);
+  runDaily = daily ? dailyFor(new Date()) : null;
+  runRng = runDaily ? seededRng(runDaily.seed) : Math.random;
+  stopEngine(); // the new car may sound different
+  state = newGame(save.garage, { car: save.car, daily: runDaily?.modifier.id ?? null });
+  applyTheme(currentCar());
+  els.daily.hidden = true;
   state.time = START_TIME;
   skyOffset = 0;
   steer = 0;
@@ -460,8 +507,15 @@ function bust() {
   els.finalDistance.textContent = `${Math.floor(state.stats.meters).toLocaleString('en-US')} m`;
   els.finalBest.textContent = save.best.toLocaleString('en-US');
   els.newBest.hidden = !isBest;
+  // Daily runs have their own best per day, and stay off the main table.
+  els.dailyLine.hidden = !runDaily;
+  if (runDaily) {
+    const previous = save.dailyBests[runDaily.key] ?? 0;
+    save.dailyBests[runDaily.key] = Math.max(previous, score);
+    els.dailyLine.textContent = `📅 ${runDaily.modifier.name}: ${score > previous ? 'new best today!' : `today's best $${previous.toLocaleString('en-US')}`}`;
+  }
   // Made the high-score table? Ask for initials before showing it.
-  pendingScore = qualifies(save.scores, score)
+  pendingScore = !runDaily && qualifies(save.scores, score)
     ? { initials: save.initials || 'AAA', score, commies: totalCommies(state.stats.commies), meters: Math.floor(state.stats.meters) }
     : null;
   els.initialsForm.hidden = !pendingScore;
@@ -475,7 +529,7 @@ function bust() {
   save.savingsEarned += score;
   slot.save(save);
   els.savingsLine.textContent = `+$${score.toLocaleString('en-US')} to your savings (now $${save.savings.toLocaleString('en-US')}). Spend it in the 🔧 Garage.`;
-  announce(tracker.endRun(state, rank));
+  announce(tracker.endRun(state, rank, runDaily ? { days: Object.keys(save.dailyBests).length } : null));
   announce(tracker.checkGarage(save.garage, save.savingsEarned));
   els.runAchievements.hidden = runUnlocked.length === 0;
   els.runAchievementsList.replaceChildren(
@@ -580,8 +634,29 @@ function announce(ids: readonly string[]) {
     setTimeout(() => toast.remove(), 4100);
   }
   play('achievement');
+  // Some achievements unlock a car.
+  for (const car of CARS.filter((c) => c.unlockedBy && ids.includes(c.unlockedBy))) {
+    toastMessage('🚗', 'NEW CAR UNLOCKED', `${car.icon} ${car.name}`);
+  }
   save.achievements = [...unlocked];
   slot.save(save);
+  if (CARS.every((c) => carUnlocked(c, unlocked)) && !unlocked.has('cars-all')) announce(tracker.checkCars(true));
+}
+
+/** A pop-up in the achievement style, for other news (a new car). */
+function toastMessage(iconText: string, labelText: string, nameText: string) {
+  const toast = document.createElement('div');
+  toast.className = 'achievement-toast';
+  const icon = document.createElement('span');
+  icon.className = 'icon';
+  icon.textContent = iconText;
+  const label = document.createElement('small');
+  label.textContent = labelText;
+  const name = document.createElement('b');
+  name.textContent = nameText;
+  toast.append(icon, label, name);
+  els.toasts.append(toast);
+  setTimeout(() => toast.remove(), 4100);
 }
 
 function renderAchievements() {
@@ -612,6 +687,30 @@ let garageReturn: HTMLElement = els.title;
 
 function renderGarage() {
   els.garageSavings.textContent = save.savings.toLocaleString('en-US');
+  els.garageCars.replaceChildren(
+    ...CARS.map((car) => {
+      const open = carUnlocked(car, unlocked);
+      const item = document.createElement('div');
+      item.className = `garage-item car${car.id === save.car ? ' selected' : ''}${open ? '' : ' locked'}`;
+      const title = document.createElement('h3');
+      title.textContent = `${open ? car.icon : '🔒'} ${car.name}`;
+      const desc = document.createElement('p');
+      desc.textContent = open ? car.description : `Unlock: ${achievementById(car.unlockedBy!)?.description ?? ''}`;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = car.id === save.car ? 'DRIVING' : open ? 'Drive this one' : 'LOCKED';
+      button.disabled = !open || car.id === save.car;
+      button.addEventListener('click', () => {
+        save.car = car.id;
+        slot.save(save);
+        applyTheme(car);
+        play('horn');
+        renderGarage();
+      });
+      item.append(title, desc, button);
+      return item;
+    }),
+  );
   els.garageGrid.replaceChildren(
     ...UPGRADES.map((u) => {
       const level = save.garage[u.id];
@@ -690,8 +789,24 @@ byId('hide-scores').addEventListener('click', () => {
   byId('start').focus();
 });
 
-byId('start').addEventListener('click', startGame);
-byId('restart').addEventListener('click', startGame);
+byId('start').addEventListener('click', () => startGame(false));
+byId('restart').addEventListener('click', () => startGame(runDaily !== null));
+byId('start-daily').addEventListener('click', () => startGame(true));
+byId('show-daily').addEventListener('click', () => {
+  const today = dailyFor(new Date());
+  byId('daily-icon').textContent = today.modifier.icon;
+  byId('daily-name').textContent = today.modifier.name;
+  byId('daily-description').textContent = today.modifier.description;
+  const best = save.dailyBests[today.key];
+  byId('daily-best').textContent = best ? `$${best.toLocaleString('en-US')}` : 'none yet';
+  els.title.hidden = true;
+  els.daily.hidden = false;
+  byId('start-daily').focus();
+});
+byId('hide-daily').addEventListener('click', () => {
+  els.daily.hidden = true;
+  els.title.hidden = false;
+});
 byId('resume').addEventListener('click', resume);
 
 // ---------------------------------------------------------------------------
@@ -733,6 +848,12 @@ const POWER_UP_FLASH = {
   smoke: 'rgba(207, 216, 220, 0.6)',
 } as const;
 
+const LANE_EVENT_TEXT = {
+  parade: '☭ COMMIE PARADE AHEAD!',
+  toll: '💸 TOLL PLAZA AHEAD: FIND THE FREE LANE',
+  roadwork: '🚧 ROAD WORK AHEAD: LANE CLOSED',
+} as const;
+
 const CRASH_TEXT = {
   roadblock: 'PAPERS, PLEASE!',
   traffic: 'SLOWPOKE!',
@@ -755,6 +876,20 @@ function handle(events: GameEvent[]) {
         say(e.who !== 'marx' ? e.who : e.combo >= 2 ? 'combo' : 'marx', state.time);
         break;
       }
+      case 'horn':
+        play('horn');
+        if (e.cleared) floater(`📯 HONK! ${e.cleared} OUT OF THE WAY`, '#ffe082', 0.45);
+        if (e.cleared) say('horn', state.time);
+        break;
+      case 'lane-event':
+        floater(LANE_EVENT_TEXT[e.kind], '#ffffff', 0.3);
+        say(e.kind, state.time);
+        break;
+      case 'toll-evaded':
+        play('coin');
+        floater(`💸 TOLL EVADED! +$${e.bonus.toLocaleString('en-US')}`, '#b9f6ca', 0.4);
+        say('toll-evaded', state.time);
+        break;
       case 'nitro':
         play('nitro');
         flash('rgba(0, 229, 255, 0.35)');
@@ -938,7 +1073,7 @@ function frame(now: number) {
   last = now;
 
   if (mode === 'playing') {
-    const events = update(state, readInput(dt), dt);
+    const events = update(state, readInput(dt), dt, runRng);
     handle(events);
     announce(tracker.update(state, events));
   } else if (mode === 'title') {
@@ -953,7 +1088,7 @@ function frame(now: number) {
     skyOffset += curveAt(segmentIndex(state.position + PLAYER_Z)) * share * dt * 0.02;
   }
 
-  const env = environment(state.time);
+  const env = stateEnvironment(state);
   render(ctx, cssWidth, cssHeight, state, skyOffset, env);
   renderMirror(mirrorCtx, mirrorWidth, mirrorHeight, state, env);
   updateSpeech(state.time);
@@ -964,3 +1099,6 @@ function frame(now: number) {
 }
 
 requestAnimationFrame(frame);
+
+// The car you drive, from the start.
+applyTheme(currentCar());

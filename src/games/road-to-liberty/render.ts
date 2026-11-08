@@ -44,7 +44,8 @@ const SIZE: Record<EntityKind, [number, number]> = {
 };
 
 const CAR_COLORS = ['#c0392b', '#2471a3', '#f1c40f', '#7f8c8d'];
-const ROADBLOCK_SIGNS = ['IRS CHECKPOINT', 'TOLL: 40% OF ALL', 'PERMIT REQUIRED', 'SOCIAL CREDIT CHECK'];
+/** Indexes 4 and 5 are the lane events' toll booths and road work (TOLL_SIGN, ROADWORK_SIGN in logic.ts). */
+const ROADBLOCK_SIGNS = ['IRS CHECKPOINT', 'TOLL: 40% OF ALL', 'PERMIT REQUIRED', 'SOCIAL CREDIT CHECK', 'STATE TOLL BOOTH', 'ROAD WORK · LANE CLOSED'];
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -791,6 +792,17 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
 // Night and rain, drawn over the scene
 // ---------------------------------------------------------------------------
 
+/** The Fog of Regulation daily: you can only see the road close to you. */
+function drawFog(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const fog = ctx.createLinearGradient(0, 0, 0, height);
+  fog.addColorStop(0, 'rgba(190, 196, 202, 0.9)');
+  fog.addColorStop(0.5, 'rgba(190, 196, 202, 0.97)');
+  fog.addColorStop(0.62, 'rgba(190, 196, 202, 0.75)');
+  fog.addColorStop(0.85, 'rgba(190, 196, 202, 0)');
+  ctx.fillStyle = fog;
+  ctx.fillRect(0, 0, width, height);
+}
+
 function drawWeather(ctx: CanvasRenderingContext2D, width: number, height: number, env: Environment, state: GameState, snowy: number) {
   const dark = (1 - env.daylight) * 0.72 + env.rain * 0.12;
   if (dark > 0.01) {
@@ -931,6 +943,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
   }
 
   if (state.boss?.kind === 'helicopter') drawHelicopter(ctx, width, height, state.boss.x, state.time, view.daylight < 0.4);
+  if (state.daily === 'fog') drawFog(ctx, width, height);
   drawWeather(ctx, width, height, view, state, snowy);
 
   // Speed streaks while boosted.

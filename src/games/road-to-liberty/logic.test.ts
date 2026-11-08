@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BORDER_NAMES, COMMIES, currentTerritory, START_TERRITORY, heightAt, weatherSlip, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
+import { BORDER_NAMES, COMMIES, stateEnvironment, TOLL_SIGN, currentTerritory, START_TERRITORY, heightAt, weatherSlip, CONFIG, copSpeed, pickCommie, speedFactor, totalCommies, curveAt, environment, isScenery, kmh, metersToBorder, newGame, pickKind, PLAYER_Z, POWER_UPS, update, type Entity, type GameState, type Input } from './logic.ts';
 import { PLAYLIST, shuffledOrder } from './radio.ts';
+import { CARS, carById, carUnlocked } from './cars.ts';
+import { DAILY_MODIFIERS, dailyFor, normalizeDailyBests, seededRng } from './daily.ts';
 import { buyUpgrade, carStats, nextCost, normalizeLevels, stockCar } from './garage.ts';
 import { BIOME_LENGTH, BIOMES, biomeAt, sceneryBiome } from './biomes.ts';
 import { LINES, pickLine } from './rothbard.ts';
@@ -652,6 +654,149 @@ describe('road to liberty: the garage', () => {
   it('saves are cleaned up', () => {
     expect(normalizeLevels({ tires: 9, tank: -1, turbo: '2', bogus: 3 })).toEqual({ ...stockCar(), tires: 3, turbo: 2 });
     expect(normalizeLevels(null)).toEqual(stockCar());
+  });
+});
+
+describe('road to liberty: the horn', () => {
+  it('moves traffic out of your lane and sends commies diving aside', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    const bumper = s.position + PLAYER_Z;
+    s.entities = [
+      { id: 1, kind: 'traffic', z: bumper + 3000, x: 0, speed: 3000, vx: 0, variant: 0, hit: false },
+      { id: 2, kind: 'commie', z: bumper + 4000, x: 0.1, speed: 0, vx: 0, variant: 0, hit: false },
+      { id: 3, kind: 'traffic', z: bumper + 3000, x: 0.9, speed: 3000, vx: 0, variant: 0, hit: false }, // not in your lane
+    ];
+    expect(update(s, { steer: 0, brake: false, horn: true }, 0.016)).toContainEqual({ type: 'horn', cleared: 2 });
+    expect(Math.abs(s.entities[0].x)).toBeGreaterThan(0.4);
+    expect(s.entities[1].fleeing).toBe(true);
+    expect(s.honks).toBe(1);
+  });
+
+  it('needs a moment between honks', () => {
+    const s = newGame();
+    update(s, { steer: 0, brake: false, horn: true }, 0.016);
+    expect(update(s, { steer: 0, brake: false, horn: true }, 0.016).some((e) => e.type === 'horn')).toBe(false);
+    drive(s, CONFIG.hornCooldown + 0.1, () => idle);
+    expect(update(s, { steer: 0, brake: false, horn: true }, 0.016).some((e) => e.type === 'horn')).toBe(true);
+  });
+
+  it('a commie who dives aside runs off the road', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.entities = [{ id: 2, kind: 'commie', z: s.position + PLAYER_Z + 5000, x: 0, speed: 0, vx: 0, variant: 0, hit: false }];
+    update(s, { steer: 0, brake: false, horn: true }, 0.016);
+    s.speed = 0;
+    drive(s, 2, () => ({ steer: 0, brake: true }));
+    expect(s.entities.filter((e) => e.kind === 'commie')).toEqual([]);
+  });
+});
+
+describe('road to liberty: lane events', () => {
+  const center = (st: GameState): Input => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false });
+
+  it('come about once a minute (not in the first 50 seconds)', () => {
+    const s = newGame();
+    const events = drive(s, 200, (st) => ((st.copGap = Infinity), center(st)), rng(4)); // no chase, just the road
+    const lane = events.filter((e) => e.type === 'lane-event');
+    expect(lane.length).toBeGreaterThanOrEqual(2);
+    expect(lane.length).toBeLessThanOrEqual(4);
+  });
+
+  it('a toll plaza blocks every lane but one, and slipping through pays', () => {
+    for (let seed = 1; seed < 40; seed++) {
+      const s = newGame();
+      s.copGap = Infinity;
+      s.nextSpawnZ = Infinity;
+      s.time = CONFIG.laneEventFirst;
+      const r = rng(seed);
+      const events = drive(s, 0.05, center, r);
+      const placed = events.find((e) => e.type === 'lane-event');
+      if (!placed || placed.type !== 'lane-event' || placed.kind !== 'toll') continue;
+      const booths = s.entities.filter((e) => e.toll);
+      expect(booths).toHaveLength(2);
+      expect(booths.every((b) => b.variant === TOLL_SIGN)).toBe(true);
+      // The free lane is the one farthest from every booth.
+      const freeLane = [-0.6, 0, 0.6].sort((a, b) => Math.min(...booths.map((k) => Math.abs(k.x - b))) - Math.min(...booths.map((k) => Math.abs(k.x - a))))[0];
+      const out = drive(s, 8, (st) => ({ steer: Math.max(-1, Math.min(1, (freeLane - st.x) * 4)), brake: false }), r);
+      expect(out).toContainEqual({ type: 'toll-evaded', bonus: CONFIG.tollBonus });
+      return;
+    }
+    throw new Error('no toll plaza in 40 seeds');
+  });
+
+  it('a parade lines up seven commies', () => {
+    for (let seed = 1; seed < 40; seed++) {
+      const s = newGame();
+      s.nextSpawnZ = Infinity;
+      s.time = CONFIG.laneEventFirst;
+      const events = drive(s, 0.05, center, rng(seed));
+      const placed = events.find((e) => e.type === 'lane-event');
+      if (!placed || placed.type !== 'lane-event' || placed.kind !== 'parade') continue;
+      expect(s.entities.filter((e) => e.parade && e.kind === 'commie')).toHaveLength(7);
+      return;
+    }
+    throw new Error('no parade in 40 seeds');
+  });
+});
+
+describe('road to liberty: daily challenge', () => {
+  it('the same day always gives the same road and twist; days differ', () => {
+    const a = dailyFor(new Date(2026, 10, 9));
+    expect(dailyFor(new Date(2026, 10, 9, 23, 59))).toEqual(a);
+    expect(a.key).toBe('2026-11-09');
+    const week = Array.from({ length: 7 }, (_, i) => dailyFor(new Date(2026, 10, 9 + i)).modifier.id);
+    expect(new Set(week).size).toBe(DAILY_MODIFIERS.length); // every twist once a week
+    const r1 = seededRng(a.seed);
+    const r2 = seededRng(a.seed);
+    for (let i = 0; i < 20; i++) expect(r1()).toBe(r2());
+  });
+
+  it('twists: Stalin Day, night, drought, rush hour, hyperinflation', () => {
+    const stalin = newGame(undefined, { daily: 'stalin' });
+    stalin.copGap = Infinity;
+    drive(stalin, 30, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }), rng(2));
+    const commies = stalin.entities.filter((e) => e.kind === 'commie');
+    expect(commies.length).toBeGreaterThan(0);
+    expect(commies.every((e) => COMMIES[e.variant].id === 'stalin')).toBe(true);
+
+    expect(stateEnvironment(newGame(undefined, { daily: 'night' })).daylight).toBe(0);
+    expect(newGame(undefined, { daily: 'drought' }).car.fuelSeconds).toBe(CONFIG.fuelSeconds * 2);
+    const count = (daily: 'drought' | 'rush-hour' | null, kind: string) =>
+      [...Array(1000).keys()].filter((r) => pickKind(r / 1000, 100, 0.1, false, daily) === kind).length;
+    expect(count('drought', 'fuel')).toBe(0);
+    expect(count('rush-hour', 'traffic')).toBeGreaterThan(count(null, 'traffic') * 2);
+
+    const s = newGame(undefined, { daily: 'hyperinflation' });
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'commie');
+    expect(drive(s, 0.15, () => idle)).toContainEqual({ type: 'commie', who: 'marx', points: CONFIG.marxPoints * 2, combo: 1 });
+  });
+
+  it('daily bests keep valid dates only', () => {
+    expect(normalizeDailyBests({ '2026-11-09': 5000, nope: 3, '2026-11-10': -1 })).toEqual({ '2026-11-09': 5000 });
+  });
+});
+
+describe('road to liberty: cars', () => {
+  it('the sedan is yours from the start; the rest unlock with achievements', () => {
+    expect(carUnlocked(carById('sedan'), new Set())).toBe(true);
+    for (const car of CARS.filter((c) => c.id !== 'sedan')) {
+      expect(carUnlocked(car, new Set()), car.id).toBe(false);
+      expect(carUnlocked(car, new Set([car.unlockedBy!])), car.id).toBe(true);
+    }
+  });
+
+  it('each car changes how you drive', () => {
+    const sedan = newGame();
+    expect(newGame(undefined, { car: 'galt' }).car.fuelSeconds).toBeGreaterThan(sedan.car.fuelSeconds);
+    expect(newGame(undefined, { car: 'pickup' }).car.crashKeep).toBeGreaterThan(sedan.car.crashKeep);
+    expect(newGame(undefined, { car: 'mustang' }).car.topSpeed).toBeGreaterThan(sedan.car.topSpeed);
+    const trabant = newGame(undefined, { car: 'trabant' });
+    expect(trabant.car.topSpeed).toBeLessThan(1);
+    trabant.speed = CONFIG.maxSpeed;
+    placeAhead(trabant, 'commie');
+    expect(drive(trabant, 0.15, () => idle)).toContainEqual({ type: 'commie', who: 'marx', points: CONFIG.marxPoints * 1.5, combo: 1 });
   });
 });
 

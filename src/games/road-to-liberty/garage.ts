@@ -46,6 +46,9 @@ export interface CarStats {
   crashKeep: number;
   /** Extra head start on the cops, in meters. */
   headStart: number;
+  /** Commie points multiplier, and steering response (cars change these; the garage doesn't). */
+  commieBonus: number;
+  steering: number;
 }
 
 const pick = <T>(values: readonly T[], level: number) => values[Math.max(0, Math.min(MAX_LEVEL, level))];
@@ -61,6 +64,8 @@ export function carStats(levels: GarageLevels = stockCar()): CarStats {
     ramSlow: pick([0.5, 0.6, 0.7, 0.8], levels.armor),
     crashKeep: pick([0.25, 0.4, 0.55, 0.7], levels.armor),
     headStart: pick([0, 30, 60, 90], levels.jammer),
+    commieBonus: 1,
+    steering: 1,
   };
 }
 

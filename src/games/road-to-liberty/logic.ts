@@ -8,6 +8,8 @@
 
 import { biomeAt, blendNumber, sceneryBiome, type BiomeId, type NatureKind } from './biomes.ts';
 import { carStats, type CarStats, type GarageLevels } from './garage.ts';
+import { carById, type CarId } from './cars.ts';
+import type { DailyModifierId } from './daily.ts';
 
 export const CONFIG = {
   /** World units per road segment. */
@@ -27,6 +29,17 @@ export const CONFIG = {
   /** 🔥 Nitro: top speed while it burns. Gold fills the bottle this share of what a commie does. */
   nitroSpeed: 17_000,
   nitroGoldShare: 0.4,
+
+  /** 📯 Horn: seconds between honks, and how far ahead it clears your lane (world units). */
+  hornCooldown: 2,
+  hornReach: 7000,
+
+  /** Lane events (parade, toll plaza, road work): the first after this many seconds, then every 45-70 s. */
+  laneEventFirst: 50,
+  laneEventEvery: 45,
+  laneEventSpread: 25,
+  /** Slipping through a toll plaza's free lane pays this. */
+  tollBonus: 1500,
 
   /** Boss chases (one per new landscape): how long they last, and the reward for surviving. */
   bossSeconds: 30,
@@ -307,7 +320,14 @@ export interface Entity {
   /** For drawing: which car color, which roadblock sign, etc. */
   variant: number;
   hit: boolean;
+  /** Lane events: a marcher in a commie parade, a toll booth. */
+  parade?: boolean;
+  toll?: boolean;
+  /** A commie diving out of the way of your horn (runs off the road instead of pacing). */
+  fleeing?: boolean;
 }
+
+export type LaneEventKind = 'parade' | 'toll' | 'roadwork';
 
 /** Half widths, in road widths, for collisions. */
 export const HALF_WIDTH: Record<EntityKind, number> = {
@@ -402,6 +422,14 @@ export interface GameState {
   boss: Boss | null;
   bossesMet: number;
   bossesSurvived: number;
+  /** Today's daily-challenge twist, if this is a daily run. */
+  daily: DailyModifierId | null;
+  /** 📯 Horn: seconds until it can honk again, and honks this run. */
+  hornCooldown: number;
+  honks: number;
+  /** When the next lane event comes, and the toll plaza you're approaching (if any). */
+  nextLaneEventAt: number;
+  toll: { z: number; hit: boolean } | null;
   over: boolean;
 }
 
@@ -411,11 +439,13 @@ export interface Input {
   brake: boolean;
   /** Fire the nitro (if the bottle's full). */
   nitro?: boolean;
+  /** Honk the horn. */
+  horn?: boolean;
 }
 
 /** What happened during an update, so main.ts can play sounds and show text. */
 export type GameEvent =
-  | { type: 'commie'; who: CommieId; points: number; combo: number }
+  | { type: 'commie'; who: CommieId; points: number; combo: number; parade?: boolean }
   | { type: 'repair' }
   | { type: 'biome'; id: BiomeId; name: string }
   | { type: 'gold'; points: number }
@@ -424,6 +454,9 @@ export type GameEvent =
   | { type: 'nitro-ready' }
   | { type: 'boss'; kind: BossKind }
   | { type: 'boss-drop' }
+  | { type: 'horn'; cleared: number }
+  | { type: 'lane-event'; kind: LaneEventKind }
+  | { type: 'toll-evaded'; bonus: number }
   | { type: 'boss-survived'; kind: BossKind; bonus: number; smashed: boolean }
   | { type: 'warning'; kind: 'spikes' | 'cruiser' }
   | { type: 'border'; name: string; bonus: number; index: number }
@@ -437,8 +470,16 @@ export type GameEvent =
   | { type: 'busted' };
 
 /** A fresh run, with the car as upgraded in the garage. */
-export function newGame(garage?: GarageLevels): GameState {
-  const car = carStats(garage);
+export interface RunOptions {
+  /** Which car you're driving (default: the Liberty Sedan). */
+  car?: CarId;
+  /** A daily challenge's twist. */
+  daily?: DailyModifierId | null;
+}
+
+export function newGame(garage?: GarageLevels, options: RunOptions = {}): GameState {
+  const car = carById(options.car ?? 'sedan').tweak(carStats(garage));
+  if (options.daily === 'drought') car.fuelSeconds *= 2;
   return {
     position: 0,
     speed: CONFIG.maxSpeed * 0.5,
@@ -471,6 +512,11 @@ export function newGame(garage?: GarageLevels): GameState {
     boss: null,
     bossesMet: 0,
     bossesSurvived: 0,
+    daily: options.daily ?? null,
+    hornCooldown: 0,
+    honks: 0,
+    nextLaneEventAt: CONFIG.laneEventFirst,
+    toll: null,
     over: false,
   };
 }
@@ -497,16 +543,17 @@ export const kmh = (speed: number) => Math.round((speed / UNITS_PER_METER) * 3.6
 // ---------------------------------------------------------------------------
 
 /** Picks what to place next. `roll` in [0, 1). Roadblocks only after the warm-up; more jerry cans when you're low. */
-export function pickKind(roll: number, time: number, fuel = 1, hurt = false): EntityKind {
+export function pickKind(roll: number, time: number, fuel = 1, hurt = false, daily: DailyModifierId | null = null): EntityKind {
+  const powerUps = daily === 'free-market' ? 3 : 1;
   const weights: [EntityKind, number][] = [
     ['commie', 4],
     ['gold', 3],
-    ['fuel', fuel < CONFIG.lowFuel ? 3 : fuel < 0.6 ? 1 : 0.4],
-    ['traffic', 3],
+    ['fuel', daily === 'drought' ? 0 : fuel < CONFIG.lowFuel ? 3 : fuel < 0.6 ? 1 : 0.4],
+    ['traffic', daily === 'rush-hour' ? 9 : 3],
     ['roadblock', time >= CONFIG.roadblocksAfter ? 2 + Math.min(2, time / 120) : 0],
     ['spikes', time >= CONFIG.spikesAfter ? 0.7 + Math.min(0.8, time / 300) : 0],
     ['cruiser', time >= CONFIG.cruisersAfter ? 0.5 + Math.min(0.8, time / 300) : 0],
-    ...(['donuts', 'killdozer', 'smoke'] as const).map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? CONFIG.powerUpWeight : 0]),
+    ...(['donuts', 'killdozer', 'smoke'] as const).map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? CONFIG.powerUpWeight * powerUps : 0]),
     ['wrench', time < CONFIG.wrenchAfter ? 0 : hurt ? CONFIG.wrenchWeightHurt : CONFIG.wrenchWeight],
   ];
   const total = weights.reduce((sum, [, w]) => sum + w, 0);
@@ -526,7 +573,7 @@ export function spawnSpacing(time: number, roll: number): number {
 }
 
 function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
-  const kind = pickKind(rng(), state.time, state.fuel, state.damage < 0.9);
+  const kind = pickKind(rng(), state.time, state.fuel, state.damage < 0.9, state.daily);
   const lane = [-0.6, 0, 0.6][Math.floor(rng() * 3)];
   const x =
     kind === 'roadblock' ? lane * 0.9
@@ -545,7 +592,7 @@ function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
     speed,
     // Marx sits in his armchair (some chairs have wheels and drift); the others stroll across.
     vx: kind === 'commie' && rng() < 0.6 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.22) : 0,
-    variant: kind === 'commie' ? pickCommie(rng()) : Math.floor(rng() * 4),
+    variant: kind === 'commie' ? commieFor(state, rng()) : Math.floor(rng() * 4),
     hit: false,
   };
   state.entities.push(entity);
@@ -601,8 +648,8 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   state.speed = Math.max(0, state.speed);
 
   // Steering, and curves pushing you outward (rain makes both worse).
-  const env = environment(state.time);
-  const was = environment(state.time - dt);
+  const env = stateEnvironment(state);
+  const was = stateEnvironment(state, state.time - dt);
   if (was.daylight >= 0.5 && env.daylight < 0.5) events.push({ type: 'nightfall' });
   if (was.rain === 0 && env.rain > 0 && blendNumber(state.position + PLAYER_Z, (b) => (b.precipitation === 'rain' ? 1 : 0)) > 0.5) {
     events.push({ type: 'rain' });
@@ -616,7 +663,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const speedShare = state.speed / CONFIG.maxSpeed;
   const before = state.position + PLAYER_Z;
   const slick = weatherSlip(before, env.rain);
-  state.x += input.steer * CONFIG.steering * (1 - CONFIG.rainGrip * slick) * Math.min(1, speedShare + 0.25) * dt;
+  state.x += input.steer * CONFIG.steering * state.car.steering * (1 - CONFIG.rainGrip * slick) * Math.min(1, speedShare + 0.25) * dt;
   state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * (1 + CONFIG.rainSlide * slick) * speedShare * speedShare * dt;
   state.x = Math.max(-CONFIG.maxX, Math.min(CONFIG.maxX, state.x));
 
@@ -650,7 +697,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     e.z += e.speed * dt;
     if (e.kind === 'commie' && !e.hit) {
       e.x += e.vx * dt;
-      if (Math.abs(e.x) > 0.9) {
+      if (Math.abs(e.x) > 0.9 && !e.fleeing) {
         e.x = Math.sign(e.x) * 0.9;
         e.vx = -e.vx;
       }
@@ -667,7 +714,47 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     e.hit = true;
     events.push(...collide(state, e));
   }
-  state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel' || POWER_UPS.includes(e.kind as PowerUp))));
+  state.entities = state.entities.filter(
+    (e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel' || POWER_UPS.includes(e.kind as PowerUp))) && !(e.fleeing && Math.abs(e.x) > 2.5),
+  );
+
+  // 📯 The horn: traffic in your lane moves over, commies dive out of the way.
+  state.hornCooldown = Math.max(0, state.hornCooldown - dt);
+  if (input.horn && state.hornCooldown === 0) {
+    state.hornCooldown = CONFIG.hornCooldown;
+    state.honks++;
+    let cleared = 0;
+    for (const e of state.entities) {
+      if (e.hit || e.z < after || e.z - after > CONFIG.hornReach || Math.abs(e.x - state.x) > 0.5) continue;
+      const away = e.x >= state.x ? 1 : -1;
+      if (e.kind === 'traffic') {
+        e.x = Math.max(-0.9, Math.min(0.9, e.x + away * 0.6));
+        if (Math.abs(e.x - state.x) < 0.4) e.x = state.x - away * 0.6; // squeezed at the edge: the other way
+        cleared++;
+      } else if (e.kind === 'commie') {
+        e.fleeing = true;
+        e.vx = away * 1.8;
+        cleared++;
+      }
+    }
+    events.push({ type: 'horn', cleared });
+  }
+
+  // Lane events: a parade, a toll plaza or road work, every minute or so (not during a boss).
+  if (state.time >= state.nextLaneEventAt) {
+    if (state.boss) state.nextLaneEventAt = state.time + 8;
+    else {
+      placeLaneEvent(state, rng, events);
+      state.nextLaneEventAt = state.time + CONFIG.laneEventEvery + rng() * CONFIG.laneEventSpread;
+    }
+  }
+  if (state.toll && after > state.toll.z + 200) {
+    if (!state.toll.hit) {
+      state.score += CONFIG.tollBonus;
+      events.push({ type: 'toll-evaded', bonus: CONFIG.tollBonus });
+    }
+    state.toll = null;
+  }
 
   if (state.boss) updateBoss(state, dt, after, rng, events);
 
@@ -709,10 +796,10 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       return [{ type: 'power-up', kind: 'smoke' }];
     case 'commie': {
       const who = COMMIES[e.variant] ?? COMMIES[0];
-      const points = Math.round(who.points * state.combo);
+      const points = Math.round(who.points * state.combo * state.car.commieBonus * (state.daily === 'hyperinflation' ? 2 : 1));
       state.score += points;
       state.stats.commies[who.id]++;
-      const events: GameEvent[] = [{ type: 'commie', who: who.id, points, combo: state.combo }];
+      const events: GameEvent[] = [{ type: 'commie', who: who.id, points, combo: state.combo, ...(e.parade ? { parade: true } : {}) }];
       state.combo += CONFIG.comboStep;
       fillNitro(state, state.car.nitroPerCommie, events);
       state.boostLeft = CONFIG.boostSeconds;
@@ -722,7 +809,7 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       state.fuel = Math.min(1, state.fuel + CONFIG.fuelCan);
       return [{ type: 'fuel' }];
     case 'gold': {
-      const points = Math.round(CONFIG.goldPoints * state.combo);
+      const points = Math.round(CONFIG.goldPoints * state.combo * (state.daily === 'hyperinflation' ? 0.02 : 1));
       state.score += points;
       state.stats.gold++;
       const events: GameEvent[] = [{ type: 'gold', points }];
@@ -735,6 +822,7 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       e.x += e.x >= state.x ? 0.6 : -0.6;
       return crashed(state, 'traffic');
     case 'roadblock':
+      if (e.toll && state.toll) state.toll.hit = true;
       state.speed *= state.car.crashKeep;
       return crashed(state, 'roadblock');
     case 'spikes':
@@ -769,6 +857,62 @@ function collide(state: GameState, e: Entity): GameEvent[] {
 export function metersToBorder(state: GameState): number {
   const next = (state.bordersCrossed + 1) * CONFIG.borderEvery;
   return Math.max(0, (next - (state.position + PLAYER_Z)) / UNITS_PER_METER);
+}
+
+/** Which commie: Stalin Day has only Stalins. */
+function commieFor(state: GameState, roll: number): number {
+  return state.daily === 'stalin' ? COMMIES.findIndex((c) => c.id === 'stalin') : pickCommie(roll);
+}
+
+/** The time of day and weather for this run (the Night Drive daily never sees the sun). */
+export function stateEnvironment(state: GameState, time = state.time): Environment {
+  const env = environment(time);
+  return state.daily === 'night' ? { ...env, daylight: 0 } : env;
+}
+
+// ---------------------------------------------------------------------------
+// Lane events: placed well ahead, with the road cleared around them
+// ---------------------------------------------------------------------------
+
+const LANES = [-0.6, 0, 0.6];
+/** Roadblock sign variants for lane events (see ROADBLOCK_SIGNS in render.ts). */
+export const TOLL_SIGN = 4;
+export const ROADWORK_SIGN = 5;
+
+function placeLaneEvent(state: GameState, rng: () => number, events: GameEvent[]) {
+  const seg = CONFIG.segmentLength;
+  let z = state.position + PLAYER_Z + 220 * seg;
+  // Not on top of a border gate
+  const gate = state.entities.find((e) => e.kind === 'border' && Math.abs(e.z - z) < 50 * seg);
+  if (gate) z = gate.z + 20 * seg;
+  const kinds: LaneEventKind[] = ['parade', 'toll', 'roadwork'];
+  const kind = kinds[Math.floor(rng() * kinds.length)];
+  const length = kind === 'roadwork' ? 50 : kind === 'parade' ? 24 : 4;
+  state.entities = state.entities.filter((e) => isScenery(e.kind) || e.kind === 'border' || e.kind === 'tank' || e.z < z - 8 * seg || e.z > z + (length + 6) * seg);
+  const add = (e: Partial<Entity> & Pick<Entity, 'kind' | 'z' | 'x'>) =>
+    state.entities.push({ id: state.nextId++, speed: 0, vx: 0, variant: 0, hit: false, ...e });
+
+  if (kind === 'parade') {
+    // Seven marchers zig-zagging across the lanes: line them up for a combo.
+    const flip = rng() < 0.5 ? 1 : -1;
+    for (let i = 0; i < 7; i++) add({ kind: 'commie', z: z + i * 3 * seg, x: LANES[[0, 1, 2, 1, 0, 1, 2][i]] * flip, variant: commieFor(state, rng()), parade: true });
+  } else if (kind === 'toll') {
+    // Booths across the road, except one free lane (narrow, but you fit).
+    const free = Math.floor(rng() * 3);
+    LANES.forEach((x, i) => {
+      if (i === free) return;
+      const boothX = free === 1 ? Math.sign(x) * 0.85 : x; // a free middle lane: push the booths out
+      add({ kind: 'roadblock', z, x: boothX, variant: TOLL_SIGN, toll: true });
+    });
+    state.toll = { z, hit: false };
+  } else {
+    // A lane closed for a long stretch, and traffic squeezing by.
+    const closed = Math.floor(rng() * 3);
+    for (let i = 0; i < length; i += 5) add({ kind: 'roadblock', z: z + i * seg, x: LANES[closed] * 0.95, variant: ROADWORK_SIGN });
+    const open = LANES.filter((_, i) => i !== closed);
+    for (let i = 0; i < 2; i++) add({ kind: 'traffic', z: z + (10 + i * 20) * seg, x: open[i % 2], speed: CONFIG.maxSpeed * 0.4, variant: Math.floor(rng() * 4) });
+  }
+  events.push({ type: 'lane-event', kind });
 }
 
 function fillNitro(state: GameState, amount: number, events: GameEvent[]) {

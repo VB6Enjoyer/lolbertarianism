@@ -4,6 +4,9 @@
     --gold-dark: #8a6d1b;
     --interior: #232323;
     --interior-dark: #141414;
+    /* The dashboard's colors (each car has its own). */
+    --dash: #2c2c2c;
+    --dash-dark: #141414;
     --dash-height: 250px;
     --dash-overlap: 26px;
     --roof-height: 46px;
@@ -84,7 +87,7 @@ body {
     z-index: 25;
     width: var(--pillar-width);
     height: calc(100% - var(--dash-height) + 30px);
-    background: linear-gradient(90deg, #1b1b1b, #303030 60%, #1e1e1e);
+    background: linear-gradient(90deg, #1b1b1b, var(--interior) 60%, #1e1e1e);
 }
 
 #pillar-left {
@@ -296,7 +299,7 @@ body {
     bottom: 0;
     z-index: 27;
     height: var(--dash-height);
-    background: linear-gradient(#2c2c2c, var(--interior-dark) 70%);
+    background: linear-gradient(var(--dash), var(--dash-dark) 70%);
     border-top: 6px solid #0a0a0a;
     border-radius: 45% 45% 0 0 / 34px 34px 0 0;
     box-shadow: inset 0 10px 18px rgba(255, 255, 255, 0.04);
@@ -495,6 +498,57 @@ body {
     border-color: #444;
     color: #777;
     cursor: not-allowed;
+}
+
+.garage-heading {
+    margin: 4px 0 8px;
+    font-size: 16px;
+    color: #ccc;
+    text-align: left;
+}
+
+.garage-item.car.selected {
+    border-color: var(--gold);
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+}
+
+.garage-item.car.locked {
+    opacity: 0.55;
+}
+
+.daily-card {
+    display: grid;
+    gap: 4px;
+    justify-items: center;
+    margin: 0 auto 12px;
+    padding: 14px;
+    max-width: 360px;
+    border: 2px solid var(--gold);
+    border-radius: 10px;
+    background: #161616;
+}
+
+.daily-icon {
+    font-size: 42px;
+}
+
+.daily-card b {
+    font-size: 20px;
+    color: var(--gold-light);
+}
+
+.daily-card small {
+    color: #bbb;
+}
+
+.daily-best b,
+.daily-line {
+    color: #80d8ff;
+    font-weight: bold;
+}
+
+.daily-line[hidden] {
+    display: none;
 }
 
 .savings-line {
@@ -936,6 +990,20 @@ body {
     cursor: pointer;
 }
 
+#horn-button {
+    position: absolute;
+    right: 194px;
+    bottom: 24px;
+    display: none;
+    width: 58px;
+    height: 58px;
+    border: 3px solid #000;
+    border-radius: 50%;
+    background: radial-gradient(#ffe082, #b8860b);
+    font-size: 26px;
+    z-index: 12;
+}
+
 #nos-button {
     position: absolute;
     right: 112px;
@@ -988,7 +1056,8 @@ body {
 /* Touch screens get an on-screen brake pedal. */
 @media (pointer: coarse) {
     #brake,
-    #nos-button {
+    #nos-button,
+    #horn-button {
         display: block;
     }
 }

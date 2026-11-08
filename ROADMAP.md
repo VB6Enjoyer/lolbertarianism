@@ -502,3 +502,21 @@ Ideas for later:
   screen. Automated driver: stock car ~2½–5 min, fully upgraded 4–14 min.
 - 9 more achievements (35 in all): nitro, bosses, Heemeyer's Revenge, and the
   garage (first upgrade, one maxed, all maxed, $1M saved).
+- Legends raised (MNR $500k down to LYS $50k) so the table is a real
+  challenge; old saves pick up the new values automatically.
+- Lane events about once a minute after the first 50 s: a commie parade
+  (seven marchers zig-zagging across the road), a state toll plaza (booths in
+  every lane but one; slip through for $1,500) and road work (one lane closed
+  with roadblocks).
+- 📅 Daily challenge (`daily.ts`): the same seeded road for everyone each day,
+  with one of seven twists (hyperinflation, fog, Stalin Day, rush hour,
+  drought, night, free market). Daily bests are kept per day and stay off the
+  main high-score table.
+- Unlockable cars (`cars.ts`), picked in the garage, each with its own cockpit,
+  engine and horn: Galt Motors Model R (score $100k; more fuel and nitro),
+  Gadsden Pickup (beat the tank; tougher), Seized Trabant (the whole Politburo;
+  slow, but commies pay 1.5×), Mises Mustang (4 borders; fast, twitchy).
+- 📯 Horn (H, or the button on touch screens): traffic moves out of your lane
+  and commies dive off the road.
+- 6 more achievements (41 in all): parade, toll, horn, a daily run, seven of
+  them, every car.
