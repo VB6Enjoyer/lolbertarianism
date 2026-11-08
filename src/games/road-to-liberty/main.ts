@@ -2,9 +2,12 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { borderName, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { currentTerritory, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
+import { buyUpgrade, MAX_LEVEL, nextCost, normalizeLevels, UPGRADES, type GarageLevels, type UpgradeId } from './garage.ts';
+import { ACHIEVEMENTS, achievementById, normalizeLifetime, normalizeUnlocked, Tracker, type Lifetime } from './achievements.ts';
+import { cleanInitials, insertScore, legendName, normalizeScores, qualifies, type ScoreEntry } from './scoreboard.ts';
 import { buildGauges } from './gauges.ts';
 import { copCloseness, renderMirror } from './mirror.ts';
 import { render } from './render.ts';
@@ -49,6 +52,27 @@ const els = {
   bustedLine: byId('busted-line'),
   finalScore: byId('final-score'),
   finalCommies: byId('final-commies'),
+  initialsForm: byId<HTMLFormElement>('initials-form'),
+  initials: byId<HTMLInputElement>('initials'),
+  highRank: byId('high-rank'),
+  bustedScores: byId('busted-scores'),
+  scores: byId('scores'),
+  achievements: byId('achievements'),
+  achievementsGrid: byId('achievements-grid'),
+  achievementsCount: byId('achievements-count'),
+  toasts: byId('achievement-toasts'),
+  runAchievements: byId('run-achievements'),
+  runAchievementsList: byId('run-achievements-list'),
+  nos: document.querySelector<HTMLElement>('.nos')!,
+  nosFill: byId('nos-fill'),
+  nosLabel: byId('nos-label'),
+  nosButton: byId<HTMLButtonElement>('nos-button'),
+  bossBanner: byId('boss-banner'),
+  garage: byId('garage'),
+  garageGrid: byId('garage-grid'),
+  garageSavings: byId('garage-savings'),
+  savingsLine: byId('savings-line'),
+  scoresList: byId('scores-list'),
   finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
   finalBest: byId('final-best'),
@@ -67,6 +91,16 @@ interface Save {
   best: number;
   bestMarx: number;
   muted: boolean;
+  /** The high-score table, and the initials you used last. */
+  scores: ScoreEntry[];
+  initials: string;
+  /** Unlocked achievement ids, and the counters some of them need. */
+  achievements: string[];
+  lifetime: Lifetime;
+  /** Garage: money to spend, all money ever saved, and the car's upgrade levels. */
+  savings: number;
+  savingsEarned: number;
+  garage: GarageLevels;
 }
 
 const slot = createSaveSlot<Save>({ game: 'road-to-liberty', version: 1 });
@@ -75,6 +109,13 @@ const save: Save = {
   best: Math.max(0, Number(saved?.best) || 0),
   bestMarx: Math.max(0, Number(saved?.bestMarx) || 0),
   muted: saved?.muted === true,
+  scores: normalizeScores(saved?.scores),
+  initials: typeof saved?.initials === 'string' ? cleanInitials(saved.initials) : '',
+  achievements: [...normalizeUnlocked(saved?.achievements)],
+  lifetime: normalizeLifetime(saved?.lifetime),
+  savings: Math.max(0, Math.floor(Number(saved?.savings) || 0)),
+  savingsEarned: Math.max(0, Math.floor(Number(saved?.savingsEarned) || 0)),
+  garage: normalizeLevels(saved?.garage),
 };
 
 // ---------------------------------------------------------------------------
@@ -141,6 +182,12 @@ const sfx = {
   busted() {
     [784, 659, 523, 392].forEach((hz, i) => playTone(note(hz, 0.22, 0.08), i * 0.2));
   },
+  nitro() {
+    playTone({ wave: 'sawtooth', duration: 0.6, frequency: [[0, 80], [0.6, 400, 'exp']], gain: [[0, 0.08], [0.6, 0.001, 'exp']] });
+  },
+  achievement() {
+    [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
+  },
   jingle() {
     [659, 880, 1175].forEach((hz, i) => playTone(note(hz, 0.09, 0.035, 'triangle'), i * 0.09));
   },
@@ -170,20 +217,31 @@ let touchBrake = false;
 /** Smoothed steering, so keyboard taps ease in instead of snapping. */
 let steer = 0;
 
+/** Set when the nitro key or button is pressed; used once by the next update. */
+let nitroQueued = false;
+
 function readInput(dt: number): Input {
   let target = 0;
   if (keys.has('ArrowLeft') || keys.has('a')) target -= 1;
   if (keys.has('ArrowRight') || keys.has('d')) target += 1;
   if (pointerSteer !== null) target = pointerSteer;
   steer += (target - steer) * Math.min(1, dt * 10);
-  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s') };
+  const nitro = nitroQueued;
+  nitroQueued = false;
+  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s'), nitro };
 }
 
 const STEER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'a', 'd', 's', 'w', ' ']);
 
 document.addEventListener('keydown', (e) => {
+  // Typing your initials: let the text box have the keys.
+  if (e.target instanceof HTMLInputElement) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (STEER_KEYS.has(key) && mode === 'playing') e.preventDefault();
+  if ((key === ' ' || key === 'Shift') && mode === 'playing') {
+    nitroQueued = true;
+    return;
+  }
   if (key === 'p' || key === 'Escape') {
     if (mode === 'playing') pause();
     else if (mode === 'paused') resume();
@@ -193,7 +251,7 @@ document.addEventListener('keydown', (e) => {
     toggleMute();
     return;
   }
-  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat) {
+  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden && els.garage.hidden) {
     e.preventDefault();
     if (mode === 'paused') resume();
     else startGame();
@@ -232,6 +290,11 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
     els.brake.classList.remove('pressed');
   });
 }
+
+els.nosButton.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (mode === 'playing') nitroQueued = true;
+});
 
 function toggleMute() {
   save.muted = !save.muted;
@@ -323,7 +386,9 @@ let skyOffset = 0;
 const START_TIME = Math.max(0, Number(new URLSearchParams(location.search).get('time')) || 0);
 
 function startGame() {
-  state = newGame();
+  // Leaving the busted screen without saving still records the score (with your last initials).
+  if (pendingScore) commitScore(els.initials.value);
+  state = newGame(save.garage);
   state.time = START_TIME;
   skyOffset = 0;
   steer = 0;
@@ -337,6 +402,8 @@ function startGame() {
   lastSpoke = -99;
   warnedClose = false;
   say('start', state.time);
+  runUnlocked = [];
+  tracker.startRun(state);
   // ?debug exposes the run to the console (and to screenshot scripts).
   if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { rtl: state });
 }
@@ -393,12 +460,235 @@ function bust() {
   els.finalDistance.textContent = `${Math.floor(state.stats.meters).toLocaleString('en-US')} m`;
   els.finalBest.textContent = save.best.toLocaleString('en-US');
   els.newBest.hidden = !isBest;
+  // Made the high-score table? Ask for initials before showing it.
+  pendingScore = qualifies(save.scores, score)
+    ? { initials: save.initials || 'AAA', score, commies: totalCommies(state.stats.commies), meters: Math.floor(state.stats.meters) }
+    : null;
+  els.initialsForm.hidden = !pendingScore;
+  const rank = pendingScore ? insertScore(save.scores, pendingScore).rank : -1;
+  if (pendingScore) {
+    els.highRank.textContent = `#${rank + 1}`;
+    els.initials.value = save.initials;
+  }
+  // The run's earnings go into your garage savings.
+  save.savings += score;
+  save.savingsEarned += score;
+  slot.save(save);
+  els.savingsLine.textContent = `+$${score.toLocaleString('en-US')} to your savings (now $${save.savings.toLocaleString('en-US')}). Spend it in the 🔧 Garage.`;
+  announce(tracker.endRun(state, rank));
+  announce(tracker.checkGarage(save.garage, save.savingsEarned));
+  els.runAchievements.hidden = runUnlocked.length === 0;
+  els.runAchievementsList.replaceChildren(
+    ...runUnlocked.map((id) => {
+      const a = achievementById(id)!;
+      const li = document.createElement('li');
+      li.textContent = `${a.icon} ${a.name}`;
+      li.title = a.description;
+      return li;
+    }),
+  );
+  renderScores(els.bustedScores, save.scores);
   setTimeout(() => {
     if (mode !== 'busted') return;
     els.busted.hidden = false;
-    document.getElementById('restart')?.focus();
+    (pendingScore ? els.initials : document.getElementById('restart'))?.focus();
   }, 900);
 }
+
+// ---------------------------------------------------------------------------
+// High scores
+// ---------------------------------------------------------------------------
+
+/** A run that made the table, waiting for its initials. */
+let pendingScore: ScoreEntry | null = null;
+
+function renderScores(list: HTMLElement, scores: readonly ScoreEntry[], highlight = -1) {
+  list.replaceChildren(
+    ...scores.map((entry, i) => {
+      const li = document.createElement('li');
+      li.className = `${entry.legend ? 'legend' : ''}${i === highlight ? ' mine' : ''}`.trim();
+      const initials = document.createElement('span');
+      initials.className = 'initials';
+      initials.textContent = entry.initials;
+      const who = entry.legend ? legendName(entry.initials) : null;
+      if (who) initials.title = who;
+      const points = document.createElement('span');
+      points.className = 'points';
+      points.textContent = `$${entry.score.toLocaleString('en-US')}`;
+      if (!entry.legend) {
+        const detail = document.createElement('small');
+        detail.textContent = `☭ ${entry.commies} · ${(entry.meters / 1000).toFixed(1)} km`;
+        points.append(detail);
+      }
+      li.append(initials, points);
+      return li;
+    }),
+  );
+}
+
+/** Saves the waiting run with these initials (or the last ones used) and shows where it landed. */
+function commitScore(rawInitials: string) {
+  if (!pendingScore) return;
+  const initials = cleanInitials(rawInitials || save.initials || 'AAA');
+  const { scores, rank } = insertScore(save.scores, { ...pendingScore, initials });
+  pendingScore = null;
+  save.scores = scores;
+  save.initials = initials;
+  slot.save(save);
+  els.initialsForm.hidden = true;
+  renderScores(els.bustedScores, save.scores, rank);
+}
+
+els.initialsForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  commitScore(els.initials.value);
+  byId('restart').focus();
+});
+// Letters only, shown in capitals as you type.
+els.initials.addEventListener('input', () => {
+  const clean = els.initials.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  if (els.initials.value !== clean) els.initials.value = clean;
+});
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+const unlocked = new Set(save.achievements);
+const tracker = new Tracker(unlocked, save.lifetime);
+/** Unlocked during the current run, for the busted screen. */
+let runUnlocked: string[] = [];
+
+/** Pops up each newly unlocked achievement and saves. */
+function announce(ids: readonly string[]) {
+  if (!ids.length) return;
+  for (const id of ids) {
+    const a = achievementById(id);
+    if (!a) continue;
+    runUnlocked.push(id);
+    const toast = document.createElement('div');
+    toast.className = 'achievement-toast';
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = a.icon;
+    const label = document.createElement('small');
+    label.textContent = 'ACHIEVEMENT UNLOCKED';
+    const name = document.createElement('b');
+    name.textContent = a.name;
+    toast.append(icon, label, name);
+    els.toasts.append(toast);
+    setTimeout(() => toast.remove(), 4100);
+  }
+  play('achievement');
+  save.achievements = [...unlocked];
+  slot.save(save);
+}
+
+function renderAchievements() {
+  els.achievementsCount.textContent = `${unlocked.size} / ${ACHIEVEMENTS.length}`;
+  els.achievementsGrid.replaceChildren(
+    ...ACHIEVEMENTS.map((a) => {
+      const card = document.createElement('div');
+      card.className = `achievement${unlocked.has(a.id) ? '' : ' locked'}`;
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = unlocked.has(a.id) ? a.icon : '🔒';
+      const name = document.createElement('b');
+      name.textContent = a.name;
+      const desc = document.createElement('small');
+      desc.textContent = a.description;
+      card.append(icon, name, desc);
+      return card;
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The Free Market Garage
+// ---------------------------------------------------------------------------
+
+/** Which screen to go back to when leaving the garage. */
+let garageReturn: HTMLElement = els.title;
+
+function renderGarage() {
+  els.garageSavings.textContent = save.savings.toLocaleString('en-US');
+  els.garageGrid.replaceChildren(
+    ...UPGRADES.map((u) => {
+      const level = save.garage[u.id];
+      const cost = nextCost(save.garage, u.id);
+      const item = document.createElement('div');
+      item.className = 'garage-item';
+      const title = document.createElement('h3');
+      title.textContent = `${u.icon} ${u.name}`;
+      const desc = document.createElement('p');
+      desc.textContent = u.description;
+      const pips = document.createElement('div');
+      pips.className = 'pips';
+      pips.title = `Level ${level} of ${MAX_LEVEL}`;
+      for (let i = 0; i < MAX_LEVEL; i++) {
+        const pip = document.createElement('i');
+        if (i < level) pip.className = 'on';
+        pips.append(pip);
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = cost === null ? 'MAXED OUT' : `Buy level ${level + 1} · $${cost.toLocaleString('en-US')}`;
+      button.disabled = cost === null || save.savings < cost;
+      button.addEventListener('click', () => onBuyUpgrade(u.id));
+      item.append(title, desc, pips, button);
+      return item;
+    }),
+  );
+}
+
+function onBuyUpgrade(id: UpgradeId) {
+  const left = buyUpgrade(save.garage, id, save.savings);
+  if (left === null) return;
+  save.savings = left;
+  slot.save(save);
+  play('powerUp');
+  renderGarage();
+  announce(tracker.checkGarage(save.garage, save.savingsEarned));
+}
+
+function openGarage(from: HTMLElement) {
+  garageReturn = from;
+  renderGarage();
+  from.hidden = true;
+  els.garage.hidden = false;
+  byId('hide-garage').focus();
+}
+
+byId('show-garage').addEventListener('click', () => openGarage(els.title));
+byId('busted-garage').addEventListener('click', () => openGarage(els.busted));
+byId('hide-garage').addEventListener('click', () => {
+  els.garage.hidden = true;
+  garageReturn.hidden = false;
+});
+
+byId('show-achievements').addEventListener('click', () => {
+  renderAchievements();
+  els.title.hidden = true;
+  els.achievements.hidden = false;
+  byId('hide-achievements').focus();
+});
+byId('hide-achievements').addEventListener('click', () => {
+  els.achievements.hidden = true;
+  els.title.hidden = false;
+  byId('start').focus();
+});
+
+byId('show-scores').addEventListener('click', () => {
+  renderScores(els.scoresList, save.scores);
+  els.title.hidden = true;
+  els.scores.hidden = false;
+  byId('hide-scores').focus();
+});
+byId('hide-scores').addEventListener('click', () => {
+  els.scores.hidden = true;
+  els.title.hidden = false;
+  byId('start').focus();
+});
 
 byId('start').addEventListener('click', startGame);
 byId('restart').addEventListener('click', startGame);
@@ -448,6 +738,7 @@ const CRASH_TEXT = {
   traffic: 'SLOWPOKE!',
   spikes: 'SPIKE STRIP! TIRES SHREDDED!',
   cruiser: 'RAMMED BY A CRUISER!',
+  tank: 'BRAKE-CHECKED BY A TANK!',
 } as const;
 
 function handle(events: GameEvent[]) {
@@ -464,6 +755,30 @@ function handle(events: GameEvent[]) {
         say(e.who !== 'marx' ? e.who : e.combo >= 2 ? 'combo' : 'marx', state.time);
         break;
       }
+      case 'nitro':
+        play('nitro');
+        flash('rgba(0, 229, 255, 0.35)');
+        floater('🔥 NITRO!', '#80d8ff', 0.4);
+        say('nitro', state.time);
+        break;
+      case 'nitro-ready':
+        play('coin');
+        floater('NOS READY · SPACE TO FIRE', '#80d8ff', 0.3);
+        break;
+      case 'boss':
+        play('crash');
+        floater(e.kind === 'helicopter' ? '🚁 IRS AIR SUPPORT INBOUND!' : '🪖 A TANK! SURVIVE 30 SECONDS!', '#ff5252', 0.3);
+        say(e.kind === 'helicopter' ? 'boss-helicopter' : 'boss-tank', state.time);
+        break;
+      case 'boss-drop':
+        play('smash');
+        break;
+      case 'boss-survived':
+        play('border');
+        flash('rgba(255, 255, 255, 0.45)');
+        floater(e.smashed ? `🚜 TANK FLATTENED! +$${e.bonus.toLocaleString('en-US')}` : `BOSS SURVIVED! +$${e.bonus.toLocaleString('en-US')}`, '#b9f6ca', 0.35);
+        say(e.smashed ? 'boss-smashed' : 'boss-survived', state.time);
+        break;
       case 'biome':
         floater(`ENTERING ${e.name.toUpperCase()}`, '#ffffff', 0.3);
         say(e.id, state.time);
@@ -543,6 +858,17 @@ function updateHud() {
   els.score.textContent = Math.floor(state.score).toLocaleString('en-US');
   els.commies.textContent = String(totalCommies(state.stats.commies));
   els.combo.classList.toggle('on', state.combo > 1);
+  const ready = state.nitro >= 1 && state.nitroLeft === 0;
+  els.nosFill.style.width = `${(state.nitroLeft > 0 ? state.nitroLeft / state.car.nitroSeconds : state.nitro) * 100}%`;
+  els.nos.classList.toggle('ready', ready);
+  els.nosButton.classList.toggle('ready', ready);
+  const nosText = state.nitroLeft > 0 ? 'BURNING' : ready ? 'READY ⎵' : '';
+  if (els.nosLabel.textContent !== nosText) els.nosLabel.textContent = nosText;
+  els.bossBanner.hidden = !state.boss;
+  if (state.boss) {
+    const text = `${state.boss.kind === 'helicopter' ? '🚁 IRS AIR SUPPORT' : '🪖 TANK'} · SURVIVE ${Math.ceil(state.boss.left)}s`;
+    if (els.bossBanner.textContent !== text) els.bossBanner.textContent = text;
+  }
   els.combo.textContent = `×${state.combo}`;
   els.best.textContent = Math.max(save.best, Math.floor(mode === 'playing' ? state.score : 0)).toLocaleString('en-US');
   gauges.setSpeed(kmh(state.speed));
@@ -552,7 +878,11 @@ function updateHud() {
   const meters = Math.max(0, state.copGap / UNITS_PER_METER);
   els.lights.style.opacity = String(0.05 + copCloseness(state.copGap) * 0.55);
   els.copDistance.textContent = String(Math.round(meters));
-  els.borderName.textContent = borderName(state.bordersCrossed);
+  const place = currentTerritory(state.bordersCrossed);
+  if (els.borderName.textContent !== place) {
+    els.borderName.textContent = place;
+    els.borderName.parentElement!.title = place;
+  }
   // Warning lights: lit while a power-up runs (seconds left underneath), blinking at the end.
   const light = (el: HTMLElement, left: number, label = left > 0 ? `${Math.ceil(left)}s` : '') => {
     el.classList.toggle('on', left > 0);
@@ -608,7 +938,9 @@ function frame(now: number) {
   last = now;
 
   if (mode === 'playing') {
-    handle(update(state, readInput(dt), dt));
+    const events = update(state, readInput(dt), dt);
+    handle(events);
+    announce(tracker.update(state, events));
   } else if (mode === 'title') {
     // Attract mode: cruise down the road behind the title screen.
     state.position += CONFIG.maxSpeed * 0.6 * dt;

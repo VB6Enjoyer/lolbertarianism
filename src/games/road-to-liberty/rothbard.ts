@@ -33,7 +33,13 @@ export type Cue =
   | 'desert'
   | 'beach'
   | 'snow'
-  | 'mountains';
+  | 'mountains'
+  | 'tank'
+  | 'nitro'
+  | 'boss-helicopter'
+  | 'boss-tank'
+  | 'boss-survived'
+  | 'boss-smashed';
 
 export const LINES: Record<Cue, readonly string[]> = {
   start: [
@@ -84,6 +90,12 @@ export const LINES: Record<Cue, readonly string[]> = {
   beach: ['The beach! Seasteading is just past those waves.', 'Ocean on the right. International waters, here we come!'],
   snow: ['Snow! Ice on the roads, careful in the curves.', 'The snowfield. Even the State can\'t plow these roads in time.'],
   mountains: ['The mountains! Sharp bends ahead, ease off in the curves.', 'Up in the mountains. Hard to collect taxes up here.'],
+  tank: ['The tank brake-checked us! Swerve when it slows!', 'Ow! Tanks: the ultimate public good, apparently.'],
+  nitro: ['Nitro! Voluntarily exchanged, extremely flammable.', 'Hit it! Leave the State in the dust!'],
+  'boss-helicopter': ['IRS Air Support! Watch for what they drop in your lane!', "A helicopter! Your tax dollars, hovering over you."],
+  'boss-tank': ['A tank! It will brake-check you. Stay out of its lane!', 'They sent a tank for a sedan. Typical government overspending.'],
+  'boss-survived': ['They gave up! Bureaucracies always run out of budget.', 'Survived! Exit beats voice again.'],
+  'boss-smashed': ['You flattened a TANK with a bulldozer! Heemeyer would be proud.', 'The Killdozer beats the tank. Property rights win!'],
   repair: ['Good as new! A private mechanic, naturally.', "Böhm-Bawerk's wrench: capital goods at work!"],
   smash: ['Creative destruction!', "That's what I call a hostile takeover.", 'Bill the State for the damages.'],
   idle: [

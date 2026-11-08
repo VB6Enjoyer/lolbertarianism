@@ -473,3 +473,32 @@ Ideas for later:
   (white ground, snowy pines, snowmen, ski lodges, snow instead of rain and a
   little ice all the time); the mountains (snow-capped peaks, pines, boulders,
   log cabins, steeper hills and sharper bends). Then around again.
+- Fix: the dashboard now shows where you are (📍, starting in "Statist
+  Territory") and the distance to the next gate; the gate names where you're
+  going, so crossing "WELCOME TO ZUG" puts Zug on the dashboard. Long names are
+  cut off with "…" instead of overflowing the display.
+- High scores (`scoreboard.ts`): an arcade table of ten, saved in
+  localStorage, starting with the legends (MNR, LVM, HHH, FAH, RON, SEK, FCB,
+  WEB, HSH, LYS; hover for the full name). Make the table and you enter three
+  initials (remembered for next time); your row is highlighted. On the title
+  screen behind "🏆 High scores".
+- Achievements (`achievements.ts`): 26, saved in localStorage. Commies
+  (first one, Stalin, the whole Politburo, 50 in a run), combos (×5, ×10),
+  borders and landscapes, distance, time and score, Killdozer smashes, a
+  smoke grenade with the cops right behind, a close shave, 2 minutes
+  crash-free, repairs, running dry, a night storm, the high-score table, and
+  lifetime ones (10 busts, 500 commies). Pop-ups during the run, a list on
+  the busted screen, and a "🏅 Achievements" screen on the title.
+- Boss chases: each new landscape brings one for 30 s, alternating 🚁 IRS Air
+  Support (drops checkpoints and spikes in your lane; searchlight at night) and
+  a 🪖 tank (stays ahead, brake-checks you, swerves to block). Surviving pays a
+  growing bonus and holds the cops back 40 m; a Killdozer flattens the tank for
+  double. Countdown banner under the mirror.
+- 🔥 Nitro: commies (and a little gold) fill a NOS gauge on the LCD; Space or
+  Shift (or the NOS button on touch screens) fires it for a burst past top speed.
+- 🔧 Free Market Garage (`garage.ts`): every run's earnings go into savings.
+  Six upgrades, three levels each: Run-Flat Tires, Long-Range Tank, Austrian
+  Turbo, Bigger NOS Bottle, Bull Bar, Radar Jammer. From the title or the busted
+  screen. Automated driver: stock car ~2½–5 min, fully upgraded 4–14 min.
+- 9 more achievements (35 in all): nitro, bosses, Heemeyer's Revenge, and the
+  garage (first upgrade, one maxed, all maxed, $1M saved).

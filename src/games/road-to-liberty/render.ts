@@ -32,6 +32,7 @@ const SIZE: Record<EntityKind, [number, number]> = {
   fuel: [330, 400],
   spikes: [2000, 160],
   cruiser: [900, 640],
+  tank: [1500, 900],
   border: [5000, 2700],
   donuts: [520, 450],
   killdozer: [700, 450],
@@ -597,6 +598,113 @@ function drawCruiser(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.restore();
 }
 
+/** The State's tank, from behind: treads, hull, turret with its barrel aimed back at you. */
+function drawTank(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(x - w * 0.55, y - h * 0.05, w * 1.1, h * 0.08);
+  // Treads
+  ctx.fillStyle = '#2b2b2b';
+  ctx.fillRect(x - w * 0.5, y - h * 0.35, w * 0.22, h * 0.35);
+  ctx.fillRect(x + w * 0.28, y - h * 0.35, w * 0.22, h * 0.35);
+  ctx.fillStyle = '#444';
+  const tick = (time * 12) % 1;
+  for (let i = 0; i < 4; i++) {
+    const ty = y - h * 0.35 + ((i + tick) / 4) * h * 0.35;
+    ctx.fillRect(x - w * 0.5, ty, w * 0.22, h * 0.02);
+    ctx.fillRect(x + w * 0.28, ty, w * 0.22, h * 0.02);
+  }
+  // Hull
+  ctx.fillStyle = '#556b2f';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.46, y - h * 0.3);
+  ctx.lineTo(x - w * 0.4, y - h * 0.6);
+  ctx.lineTo(x + w * 0.4, y - h * 0.6);
+  ctx.lineTo(x + w * 0.46, y - h * 0.3);
+  ctx.closePath();
+  ctx.fill();
+  // Turret and the barrel, pointing back at you
+  ctx.fillStyle = '#4b5d27';
+  ctx.beginPath();
+  ctx.roundRect(x - w * 0.22, y - h * 0.88, w * 0.44, h * 0.3, w * 0.05);
+  ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(x, y - h * 0.72, w * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+  if (w > 50) {
+    ctx.fillStyle = '#f5f5dc';
+    ctx.font = `bold ${Math.round(h * 0.13)}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('IRS', x, y - h * 0.45);
+  }
+  // Brake lights flash on the brake check
+  ctx.fillStyle = Math.floor(time * 4) % 2 ? '#ff1744' : '#7f0000';
+  ctx.fillRect(x - w * 0.42, y - h * 0.4, w * 0.08, h * 0.06);
+  ctx.fillRect(x + w * 0.34, y - h * 0.4, w * 0.08, h * 0.06);
+  ctx.restore();
+}
+
+/** IRS Air Support, hovering over the road ahead (drawn in screen space). */
+function drawHelicopter(ctx: CanvasRenderingContext2D, width: number, height: number, bossX: number, time: number, night: boolean) {
+  // Below the rearview mirror, and a bit off-center so the mirror never hides it.
+  const x = width / 2 + width * 0.12 + bossX * width * 0.25;
+  const y = height * 0.4 + Math.sin(time * 2.2) * height * 0.015;
+  const w = Math.max(90, width * 0.11);
+  ctx.save();
+  if (night) {
+    // Searchlight sweeping the road
+    const sweep = Math.sin(time * 1.3) * width * 0.12;
+    const beam = ctx.createLinearGradient(0, y, 0, height);
+    beam.addColorStop(0, 'rgba(255, 255, 220, 0.35)');
+    beam.addColorStop(1, 'rgba(255, 255, 220, 0.05)');
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.05, y + w * 0.12);
+    ctx.lineTo(x + w * 0.05, y + w * 0.12);
+    ctx.lineTo(x + sweep + width * 0.12, height);
+    ctx.lineTo(x + sweep - width * 0.12, height);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Tail boom and rotor
+  ctx.fillStyle = '#263238';
+  ctx.fillRect(x + w * 0.2, y - w * 0.04, w * 0.5, w * 0.07);
+  ctx.fillRect(x + w * 0.66, y - w * 0.14, w * 0.05, w * 0.18);
+  // Body
+  ctx.fillStyle = '#37474f';
+  ctx.beginPath();
+  ctx.ellipse(x, y, w * 0.32, w * 0.17, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#90caf9';
+  ctx.beginPath();
+  ctx.ellipse(x - w * 0.14, y - w * 0.02, w * 0.13, w * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Skids
+  ctx.strokeStyle = '#212121';
+  ctx.lineWidth = Math.max(2, w * 0.025);
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.3, y + w * 0.24);
+  ctx.lineTo(x + w * 0.25, y + w * 0.24);
+  ctx.stroke();
+  // Main rotor, a blur
+  ctx.fillStyle = 'rgba(30, 30, 30, 0.55)';
+  const blade = w * (0.55 + 0.15 * Math.sin(time * 40));
+  ctx.fillRect(x - blade, y - w * 0.22, blade * 2, w * 0.03);
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(w * 0.12)}px 'Courier New', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('IRS', x + w * 0.08, y + w * 0.05);
+  // Flashing light
+  ctx.fillStyle = Math.floor(time * 5) % 2 ? '#ff1744' : '#2979ff';
+  ctx.beginPath();
+  ctx.arc(x, y + w * 0.17, w * 0.03, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 /** A border gate across the whole road: two posts, a banner, a checkered line. */
 function drawBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, index: number, roadHalf: number) {
   ctx.save();
@@ -650,6 +758,9 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: numb
       return;
     case 'cruiser':
       drawCruiser(ctx, x, y, w, h, time);
+      return;
+    case 'tank':
+      drawTank(ctx, x, y, w, h, time);
       return;
     case 'border':
       drawBorder(ctx, x, y, w, h, e.variant, roadHalf);
@@ -819,6 +930,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
     ctx.restore();
   }
 
+  if (state.boss?.kind === 'helicopter') drawHelicopter(ctx, width, height, state.boss.x, state.time, view.daylight < 0.4);
   drawWeather(ctx, width, height, view, state, snowy);
 
   // Speed streaks while boosted.

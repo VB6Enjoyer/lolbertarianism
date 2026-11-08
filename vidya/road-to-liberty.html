@@ -28,6 +28,7 @@
                 <div class="glare" aria-hidden="true"></div>
             </div>
             <div id="cop-gap">🚨 <span id="cop-distance">120</span> m</div>
+            <div id="boss-banner" class="boss-banner" hidden></div>
             <!-- Air freshener, hanging from the mirror -->
             <div id="ornament"><span>I ❤️<br><b>Property</b><br>and freedom</span></div>
         </div>
@@ -45,8 +46,14 @@
                 </div>
                 <div class="lcd-row lcd-small">
                     <span title="Commies flattened"><span class="sickle">☭</span> <span id="commie-count">0</span></span>
-                    <span title="Next border">🏁 <span id="border-name">Liberland</span> <span id="border-distance">2.5</span> km</span>
+                    <span class="lcd-place" title="Where you are, and the next border">📍 <span id="border-name">Statist Territory</span></span>
+                    <span title="Next border">🏁 <span id="border-distance">2.5</span> km</span>
                     <span class="lcd-best">BEST $<span id="best">0</span></span>
+                </div>
+                <div class="nos" title="Nitro: fills as you flatten commies and grab gold. Space or Shift to fire.">
+                    <span>NOS</span>
+                    <div class="nos-bar"><i id="nos-fill"></i></div>
+                    <span id="nos-label" class="nos-label"></span>
                 </div>
             </div>
             <div id="cluster" aria-label="Gauges">
@@ -105,6 +112,7 @@
                 </div>
             </div>
             <button id="brake" type="button" aria-label="Brake">BRAKE</button>
+            <button id="nos-button" type="button" aria-label="Fire nitro">NOS</button>
             <button id="mute" type="button" aria-label="Toggle sound">🔊</button>
         </div>
 
@@ -119,9 +127,49 @@
                     <li>🍩 Donuts slow the cops down · 🚜 the Killdozer plows through anything · 💨 a smoke grenade loses them · 🔧 a wrench fixes the car.</li>
                     <li>🚧 Dodge <b>IRS checkpoints</b> and slow traffic, and stay off the grass: they slow you down.</li>
                     <li>🚓 The cops are gaining. If they catch up, you're <b>busted</b>.</li>
+                    <li>🚁 Every new landscape brings a <b>boss</b>: survive 30 seconds. 🔥 Fill the NOS with commies and fire it with Space. 🔧 Spend your earnings in the Garage.</li>
                 </ul>
-                <p class="controls"><b>Steer:</b> ← → or A D, or hold the left/right side of the screen · <b>Brake:</b> ↓ or S · <b>Pause:</b> P</p>
-                <button id="start" type="button" class="big-button">Floor it</button>
+                <p class="controls"><b>Steer:</b> ← → or A D, or hold the left/right side of the screen · <b>Brake:</b> ↓ or S · <b>Nitro:</b> Space or Shift · <b>Pause:</b> P</p>
+                <div class="panel-buttons">
+                    <button id="start" type="button" class="big-button">Floor it</button>
+                    <button id="show-scores" type="button" class="big-button secondary">🏆 High scores</button>
+                    <button id="show-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
+                    <button id="show-garage" type="button" class="big-button secondary">🔧 Garage</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- The Free Market Garage -->
+        <div id="garage" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>🔧 Free Market Garage</h1>
+                <p class="tagline">Every run's earnings go into your savings. Spend them on your car. No permits required.</p>
+                <p class="savings">Savings: <b>$<span id="garage-savings">0</span></b></p>
+                <div id="garage-grid" class="garage-grid"></div>
+                <button id="hide-garage" type="button" class="big-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Achievements -->
+        <div id="achievements" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>🏅 Achievements</h1>
+                <p class="tagline"><span id="achievements-count">0</span> unlocked. Saved in this browser.</p>
+                <div id="achievements-grid" class="achievements-grid"></div>
+                <button id="hide-achievements" type="button" class="big-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Pop-ups when you unlock one -->
+        <div id="achievement-toasts" class="achievement-toasts" aria-live="polite"></div>
+
+        <!-- High scores -->
+        <div id="scores" class="overlay" hidden>
+            <div class="panel">
+                <h1>🏆 High Scores</h1>
+                <p class="tagline">Beat the legends of liberty. Saved in this browser.</p>
+                <ol id="scores-list" class="scoreboard"></ol>
+                <button id="hide-scores" type="button" class="big-button">Back</button>
             </div>
         </div>
 
@@ -147,7 +195,25 @@
                 </dl>
                 <ul id="final-tally" class="tally"></ul>
                 <p id="new-best" class="new-best" hidden>🏆 New personal best!</p>
-                <button id="restart" type="button" class="big-button">Floor it again</button>
+                <form id="initials-form" class="initials-form" hidden>
+                    <p class="new-high">🏆 NEW HIGH SCORE! <span id="high-rank"></span></p>
+                    <label for="initials">Enter your initials:</label>
+                    <div class="initials-row">
+                        <input id="initials" name="initials" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" pattern="[A-Za-z]{1,3}" aria-describedby="initials-hint">
+                        <button type="submit" class="big-button">Save</button>
+                    </div>
+                    <small id="initials-hint">Three letters, like the legends: MNR, LVM, HHH…</small>
+                </form>
+                <div id="run-achievements" class="run-achievements" hidden>
+                    <p>🏅 Unlocked this run:</p>
+                    <ul id="run-achievements-list" class="tally"></ul>
+                </div>
+                <ol id="busted-scores" class="scoreboard compact"></ol>
+                <p id="savings-line" class="savings-line"></p>
+                <div class="panel-buttons">
+                    <button id="restart" type="button" class="big-button">Floor it again</button>
+                    <button id="busted-garage" type="button" class="big-button secondary">🔧 Garage</button>
+                </div>
             </div>
         </div>
     </div>

@@ -356,8 +356,150 @@ body {
     color: #b9f6ca;
 }
 
+/* Long place names get cut off with "…" instead of pushing out of the display. */
+.lcd-place {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .lcd-best {
     color: #ffeb3b;
+}
+
+/* Nitro gauge on the LCD */
+.nos {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 11px;
+    color: #80d8ff;
+}
+
+.nos-bar {
+    flex: 1;
+    height: 7px;
+    border: 1px solid #2a5a7a;
+    border-radius: 4px;
+    background: #061018;
+    overflow: hidden;
+}
+
+.nos-bar i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, #0288d1, #80d8ff);
+}
+
+.nos.ready .nos-bar i {
+    background: linear-gradient(90deg, #00e5ff, #ffffff);
+    animation: blink 0.4s infinite alternate;
+}
+
+.nos-label {
+    min-width: 5.5em;
+    text-align: right;
+    font-weight: bold;
+}
+
+/* The boss countdown, under the mirror */
+.boss-banner {
+    margin-top: 4px;
+    padding: 3px 12px;
+    border: 2px solid #ff5252;
+    border-radius: 999px;
+    background: rgba(80, 0, 0, 0.85);
+    color: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    animation: blink 0.6s infinite alternate;
+}
+
+.boss-banner[hidden] {
+    display: none;
+}
+
+/* Garage */
+.savings {
+    margin: 0 0 12px;
+    font-size: 18px;
+}
+
+.savings b {
+    color: #8dff8d;
+}
+
+.garage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 0 0 16px;
+    text-align: left;
+}
+
+.garage-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    border: 2px solid #3a3a3a;
+    border-radius: 8px;
+    background: #161616;
+}
+
+.garage-item h3 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--gold-light);
+}
+
+.garage-item p {
+    margin: 0;
+    font-size: 12px;
+    color: #bbb;
+}
+
+.pips {
+    display: flex;
+    gap: 4px;
+}
+
+.pips i {
+    width: 22px;
+    height: 8px;
+    border-radius: 3px;
+    background: #333;
+}
+
+.pips i.on {
+    background: #8dff8d;
+    box-shadow: 0 0 6px rgba(141, 255, 141, 0.6);
+}
+
+.garage-item button {
+    margin-top: 4px;
+    padding: 6px 10px;
+    border: 2px solid var(--gold-dark);
+    border-radius: 6px;
+    background: var(--gold);
+    color: #111;
+    font: bold 14px 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.garage-item button:disabled {
+    background: #333;
+    border-color: #444;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.savings-line {
+    color: #8dff8d;
+    font-weight: bold;
 }
 
 .sickle {
@@ -794,6 +936,26 @@ body {
     cursor: pointer;
 }
 
+#nos-button {
+    position: absolute;
+    right: 112px;
+    bottom: 18px;
+    display: none;
+    width: 70px;
+    height: 70px;
+    border: 3px solid #000;
+    border-radius: 50%;
+    background: radial-gradient(#4fc3f7, #01579b);
+    color: #fff;
+    font: bold 16px 'Courier New', monospace;
+    z-index: 12;
+}
+
+#nos-button.ready {
+    box-shadow: 0 0 16px #00e5ff;
+    animation: blink 0.4s infinite alternate;
+}
+
 #brake {
     right: 16px;
     bottom: 18px;
@@ -825,7 +987,8 @@ body {
 
 /* Touch screens get an on-screen brake pedal. */
 @media (pointer: coarse) {
-    #brake {
+    #brake,
+    #nos-button {
         display: block;
     }
 }
@@ -963,6 +1126,239 @@ body {
 .results dd {
     margin: 0;
     font-weight: bold;
+}
+
+.panel-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.big-button.secondary {
+    background: #2a2a2a;
+    color: var(--gold-light);
+}
+
+.big-button.secondary:hover,
+.big-button.secondary:focus-visible {
+    background: #3a3a3a;
+}
+
+/* Old-school high-score table. */
+.scoreboard {
+    width: min(100%, 380px);
+    margin: 0 auto 16px;
+    padding: 0;
+    list-style: none;
+    font-family: 'Courier New', monospace;
+    counter-reset: rank;
+}
+
+.scoreboard li {
+    display: grid;
+    grid-template-columns: 2.4em 3.6em 1fr;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-align: left;
+    counter-increment: rank;
+}
+
+.scoreboard li::before {
+    content: counter(rank) '.';
+    color: #888;
+    text-align: right;
+}
+
+.scoreboard li:nth-child(-n + 3)::before {
+    color: var(--gold-light);
+}
+
+.scoreboard .initials {
+    font-size: 1.15em;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: #8dff8d;
+}
+
+.scoreboard .legend .initials {
+    color: #bbb;
+}
+
+.scoreboard .points {
+    text-align: right;
+    font-weight: bold;
+}
+
+.scoreboard .points small {
+    display: block;
+    font-weight: normal;
+    font-size: 0.75em;
+    color: #999;
+}
+
+.scoreboard li.mine {
+    background: #3a2f00;
+    outline: 2px solid var(--gold);
+    animation: blink 0.6s 4 alternate;
+}
+
+.scoreboard.compact li {
+    padding: 1px 8px;
+    font-size: 13px;
+}
+
+.initials-form {
+    margin: 0 0 14px;
+    padding: 10px;
+    border: 2px dashed var(--gold);
+    border-radius: 8px;
+}
+
+.initials-form[hidden] {
+    display: none;
+}
+
+.new-high {
+    margin: 0 0 6px;
+    color: var(--gold-light);
+    font-weight: bold;
+}
+
+.initials-row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 6px 0;
+}
+
+#initials {
+    width: 4.2em;
+    padding: 4px 8px;
+    border: 3px solid var(--gold);
+    border-radius: 6px;
+    background: #081a0c;
+    color: #8dff8d;
+    font: bold 28px 'Courier New', monospace;
+    letter-spacing: 6px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.initials-form small {
+    color: #999;
+}
+
+/* Achievements */
+.panel.wide {
+    max-width: 760px;
+}
+
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin: 0 0 16px;
+    text-align: left;
+}
+
+.achievement {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 2px 8px;
+    align-items: center;
+    padding: 8px;
+    border: 2px solid #3a3a3a;
+    border-radius: 8px;
+    background: #161616;
+}
+
+.achievement .icon {
+    grid-row: span 2;
+    font-size: 26px;
+    text-align: center;
+}
+
+.achievement b {
+    color: var(--gold-light);
+    font-size: 14px;
+}
+
+.achievement small {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.achievement.locked {
+    opacity: 0.45;
+}
+
+.achievement.locked .icon {
+    filter: grayscale(1);
+}
+
+.achievement-toasts {
+    position: absolute;
+    top: calc(var(--roof-height) + 12px);
+    left: 16px;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(320px, 44vw);
+    pointer-events: none;
+}
+
+.achievement-toast {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 0 8px;
+    align-items: center;
+    padding: 8px 12px;
+    border: 3px solid var(--gold);
+    border-radius: 10px;
+    background: rgba(12, 12, 12, 0.92);
+    color: #fff;
+    font: 13px 'Courier New', monospace;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+    animation: toast-in 0.3s ease-out, toast-out 0.4s ease-in 3.6s forwards;
+}
+
+.achievement-toast .icon {
+    grid-row: span 2;
+    font-size: 28px;
+}
+
+.achievement-toast small {
+    color: var(--gold-light);
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+}
+
+@keyframes toast-out {
+    to {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+}
+
+.run-achievements p {
+    margin: 0 0 6px;
+    color: var(--gold-light);
+    font-weight: bold;
+}
+
+.run-achievements[hidden] {
+    display: none;
 }
 
 .tally {
