@@ -502,3 +502,40 @@ Ideas for later:
   screen. Automated driver: stock car ~2½–5 min, fully upgraded 4–14 min.
 - 9 more achievements (35 in all): nitro, bosses, Heemeyer's Revenge, and the
   garage (first upgrade, one maxed, all maxed, $1M saved).
+- Legends raised (MNR $500k down to LYS $50k) so the table is a real
+  challenge; old saves pick up the new values automatically.
+- Lane events about once a minute after the first 50 s: a commie parade
+  (seven marchers zig-zagging across the road), a state toll plaza (booths in
+  every lane but one; slip through for $1,500) and road work (one lane closed
+  with roadblocks).
+- 📅 Daily challenge (`daily.ts`): the same seeded road for everyone each day,
+  with one of seven twists (hyperinflation, fog, Stalin Day, rush hour,
+  drought, night, free market). Daily bests are kept per day and stay off the
+  main high-score table.
+- Unlockable cars (`cars.ts`), picked in the garage, each with its own cockpit,
+  engine and horn: Galt Motors Model R (score $100k; more fuel and nitro),
+  Gadsden Pickup (beat the tank; tougher), Seized Trabant (the whole Politburo;
+  slow, but commies pay 1.5×), Mises Mustang (4 borders; fast, twitchy).
+- 📯 Horn (H, or the button on touch screens): traffic moves out of your lane
+  and commies dive off the road.
+- 6 more achievements (41 in all): parade, toll, horn, a daily run, seven of
+  them, every car.
+- 🎙️ Liberty FM talk and ads: after every two songs, a talk segment (the
+  Rothbard Call-In Show, the Hoppe Hour, the Mises Minute, traffic, weather,
+  sports) or an ad (gold, Galt Motors, Hoppe Home Security, Private Roads
+  Inc.…), alternating.
+- 📸 Photo finish (`photo.ts`): the run's best moment (the biggest combo, a
+  tank flattened, a toll evaded… or a crash if that's all you've got), taken
+  from a frame just before it happened, with a caption, as a polaroid on the
+  busted screen.
+- 🎮 Gamepad (`gamepad.ts`): stick or d-pad to steer, LT/B to brake, A/RB
+  nitro, X/Y/LB horn, Start to pause; d-pad, A and B work the menus.
+- ⚙️ Options (`settings.ts`): reduced flashing (no screen flashes, no blinking,
+  steady police lights; on by default with the system's reduced-motion
+  setting), colorblind-friendly colors (blue/orange, outlined warning lights)
+  and screen shake on/off. From the title or the pause screen.
+- Share (`share.ts`): copy the run as text, or a 1200×630 card with the photo
+  finish, score, commies, distance, landscape and car (the share sheet on
+  phones, a download elsewhere).
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
+  with a new screenshot.

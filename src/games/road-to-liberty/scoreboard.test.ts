@@ -22,16 +22,16 @@ describe('high scores', () => {
   });
 
   it('a new score slots into place and pushes the last one off', () => {
-    const { scores, rank } = insertScore(defaultScores(), entry(90_000));
-    expect(rank).toBe(3); // 4th: below HHH's 100k, above FAH's 80k
+    const { scores, rank } = insertScore(defaultScores(), entry(300_000));
+    expect(rank).toBe(3); // 4th: below HHH's 330k, above FAH's 270k
     expect(scores[3].initials).toBe('YOU');
     expect(scores).toHaveLength(SCOREBOARD_SIZE);
     expect(scores.some((s) => s.initials === 'LYS')).toBe(false); // the 10th legend fell off
   });
 
   it('ties go below the older score', () => {
-    const first = insertScore(defaultScores(), entry(65_000, 'AAA')).scores;
-    const { scores, rank } = insertScore(first, entry(65_000, 'BBB'));
+    const first = insertScore(defaultScores(), entry(200_000, 'AAA')).scores;
+    const { scores, rank } = insertScore(first, entry(200_000, 'BBB'));
     expect(scores[rank].initials).toBe('BBB');
     expect(scores[rank - 1].initials).toBe('AAA');
   });
@@ -48,10 +48,21 @@ describe('high scores', () => {
   it('a damaged save falls back to the legends, and bad entries are dropped', () => {
     expect(normalizeScores(null)).toEqual(defaultScores());
     expect(normalizeScores('nope')).toEqual(defaultScores());
-    const cleaned = normalizeScores([{ initials: 'zzz', score: 5 }, { initials: 'x', score: -3 }, null, { initials: 'ABC', score: 900, commies: 2, meters: 40 }]);
-    expect(cleaned).toEqual([
-      { initials: 'ABC', score: 900, commies: 2, meters: 40 },
-      { initials: 'ZZZ', score: 5, commies: 0, meters: 0 },
-    ]);
+    const cleaned = normalizeScores([{ initials: 'zzz', score: 5 }, { initials: 'x', score: -3 }, null, { initials: 'ABC', score: 900_000, commies: 2, meters: 40 }]);
+    expect(cleaned[0]).toEqual({ initials: 'ABC', score: 900_000, commies: 2, meters: 40 });
+    expect(cleaned).toHaveLength(SCOREBOARD_SIZE);
+    expect(cleaned.some((e) => e.initials === 'ZZZ')).toBe(false); // $5 doesn't beat the legends
+  });
+
+  it('old saves get the raised legends, keeping your own scores', () => {
+    const old = [
+      { initials: 'MNR', score: 150_000, commies: 0, meters: 0, legend: true },
+      { initials: 'YOU', score: 250_000, commies: 9, meters: 9000 },
+      { initials: 'LYS', score: 10_000, commies: 0, meters: 0, legend: true },
+    ];
+    const scores = normalizeScores(old);
+    expect(scores.find((e) => e.initials === 'MNR')!.score).toBe(500_000);
+    expect(scores.find((e) => e.initials === 'YOU')!.score).toBe(250_000);
+    expect(scores.filter((e) => e.legend)).toHaveLength(9); // YOU pushed the last legend off
   });
 });

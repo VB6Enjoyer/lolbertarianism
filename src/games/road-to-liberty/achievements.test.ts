@@ -147,6 +147,24 @@ describe('achievements', () => {
     expect(tracker.checkGarage(levels, 1_000_000)).toEqual(['garage-all', 'savings-1m']);
   });
 
+  it('parades, tolls and the horn', () => {
+    const { tracker, state } = setup();
+    const marcher: GameEvent = { type: 'commie', who: 'marx', points: 500, combo: 1, parade: true };
+    tick(tracker, state, [marcher, marcher, marcher, marcher]);
+    expect(tick(tracker, state, [marcher])).toContain('parade');
+    expect(tick(tracker, state, [{ type: 'toll-evaded', bonus: 1500 }])).toEqual(['toll']);
+    state.honks = 10;
+    expect(tick(tracker, state, [{ type: 'horn', cleared: 0 }])).toEqual(['honk']);
+  });
+
+  it('daily runs, a week of them, and every car', () => {
+    const { tracker, state } = setup();
+    expect(tracker.endRun(state, -1, { days: 1 })).toContain('daily');
+    expect(tracker.endRun(state, -1, { days: 7 })).toContain('daily-7');
+    expect(tracker.checkCars(false)).toEqual([]);
+    expect(tracker.checkCars(true)).toEqual(['cars-all']);
+  });
+
   it('saves are cleaned up', () => {
     expect([...normalizeUnlocked(['stalin', 'nope', 3])]).toEqual(['stalin']);
     expect(normalizeLifetime({ busts: '4', commies: -2 })).toEqual({ busts: 4, commies: 0 });

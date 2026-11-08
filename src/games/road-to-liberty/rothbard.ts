@@ -39,7 +39,12 @@ export type Cue =
   | 'boss-helicopter'
   | 'boss-tank'
   | 'boss-survived'
-  | 'boss-smashed';
+  | 'boss-smashed'
+  | 'parade'
+  | 'toll'
+  | 'roadwork'
+  | 'toll-evaded'
+  | 'horn';
 
 export const LINES: Record<Cue, readonly string[]> = {
   start: [
@@ -96,6 +101,11 @@ export const LINES: Record<Cue, readonly string[]> = {
   'boss-tank': ['A tank! It will brake-check you. Stay out of its lane!', 'They sent a tank for a sedan. Typical government overspending.'],
   'boss-survived': ['They gave up! Bureaucracies always run out of budget.', 'Survived! Exit beats voice again.'],
   'boss-smashed': ['You flattened a TANK with a bulldozer! Heemeyer would be proud.', 'The Killdozer beats the tank. Property rights win!'],
+  parade: ['A May Day parade! Line them up, comrade-crusher!', 'A commie parade! Their permit is about to be revoked.'],
+  toll: ['A toll plaza! One lane is free. Find it!', 'State tolls ahead. Real entrepreneurs find the free lane.'],
+  roadwork: ['Road work! The State has been "fixing" this lane since 1974.', 'Lane closed. Four guys watching one guy dig. Classic.'],
+  'toll-evaded': ['Toll evaded! Not one cent for the State.', 'Ha! They can bill us. We know where they can send it.'],
+  horn: ['Honk if you love liberty!', 'Out of the way! Some of us have a country to secede from.'],
   repair: ['Good as new! A private mechanic, naturally.', "Böhm-Bawerk's wrench: capital goods at work!"],
   smash: ['Creative destruction!', "That's what I call a hostile takeover.", 'Bill the State for the damages.'],
   idle: [

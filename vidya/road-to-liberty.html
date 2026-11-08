@@ -113,6 +113,7 @@
             </div>
             <button id="brake" type="button" aria-label="Brake">BRAKE</button>
             <button id="nos-button" type="button" aria-label="Fire nitro">NOS</button>
+            <button id="horn-button" type="button" aria-label="Honk the horn">📯</button>
             <button id="mute" type="button" aria-label="Toggle sound">🔊</button>
         </div>
 
@@ -129,12 +130,47 @@
                     <li>🚓 The cops are gaining. If they catch up, you're <b>busted</b>.</li>
                     <li>🚁 Every new landscape brings a <b>boss</b>: survive 30 seconds. 🔥 Fill the NOS with commies and fire it with Space. 🔧 Spend your earnings in the Garage.</li>
                 </ul>
-                <p class="controls"><b>Steer:</b> ← → or A D, or hold the left/right side of the screen · <b>Brake:</b> ↓ or S · <b>Nitro:</b> Space or Shift · <b>Pause:</b> P</p>
+                <p class="controls"><b>Steer:</b> ← → or A D, or hold the left/right side of the screen · <b>Brake:</b> ↓ or S · <b>Nitro:</b> Space or Shift · <b>Horn:</b> H · <b>Pause:</b> P<br>🎮 <b>Gamepad:</b> stick or d-pad to steer · LT/B brake · A/RB nitro · X/Y horn · Start pause</p>
                 <div class="panel-buttons">
                     <button id="start" type="button" class="big-button">Floor it</button>
+                    <button id="show-daily" type="button" class="big-button secondary">📅 Daily challenge</button>
                     <button id="show-scores" type="button" class="big-button secondary">🏆 High scores</button>
                     <button id="show-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
                     <button id="show-garage" type="button" class="big-button secondary">🔧 Garage</button>
+                    <button id="show-options" type="button" class="big-button secondary">⚙️ Options</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Accessibility options -->
+        <div id="options" class="overlay" hidden>
+            <div class="panel">
+                <h1>⚙️ Options</h1>
+                <p class="tagline">Saved in this browser.</p>
+                <div class="options-list">
+                    <label class="option"><input type="checkbox" id="opt-flashing"> <span><b>Reduced flashing</b><small>No screen flashes or blinking lights; police lights hold steady.</small></span></label>
+                    <label class="option"><input type="checkbox" id="opt-colorblind"> <span><b>Colorblind-friendly colors</b><small>Blue and orange instead of green and red, with outlines on the warning lights.</small></span></label>
+                    <label class="option"><input type="checkbox" id="opt-shake"> <span><b>Screen shake</b><small>Shake the road when you crash.</small></span></label>
+                </div>
+                <p id="pad-status" class="pad-status">🎮 No gamepad found. Plug one in and press a button.</p>
+                <button id="hide-options" type="button" class="big-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Daily challenge -->
+        <div id="daily" class="overlay" hidden>
+            <div class="panel">
+                <h1>📅 Daily Challenge</h1>
+                <p class="tagline">Today's road is the same for everyone, with a twist. One best score per day.</p>
+                <div class="daily-card">
+                    <span id="daily-icon" class="daily-icon">🌫️</span>
+                    <b id="daily-name">Fog of Regulation</b>
+                    <small id="daily-description"></small>
+                </div>
+                <p class="daily-best">Today's best: <b id="daily-best">none yet</b></p>
+                <div class="panel-buttons">
+                    <button id="start-daily" type="button" class="big-button">Start today's run</button>
+                    <button id="hide-daily" type="button" class="big-button secondary">Back</button>
                 </div>
             </div>
         </div>
@@ -145,6 +181,9 @@
                 <h1>🔧 Free Market Garage</h1>
                 <p class="tagline">Every run's earnings go into your savings. Spend them on your car. No permits required.</p>
                 <p class="savings">Savings: <b>$<span id="garage-savings">0</span></b></p>
+                <h2 class="garage-heading">Your cars</h2>
+                <div id="garage-cars" class="garage-grid"></div>
+                <h2 class="garage-heading">Upgrades</h2>
                 <div id="garage-grid" class="garage-grid"></div>
                 <button id="hide-garage" type="button" class="big-button">Back</button>
             </div>
@@ -178,7 +217,10 @@
             <div class="panel">
                 <h1>Paused</h1>
                 <p>The cops are on a donut break. So are you.</p>
-                <button id="resume" type="button" class="big-button">Resume</button>
+                <div class="panel-buttons">
+                    <button id="resume" type="button" class="big-button">Resume</button>
+                    <button id="paused-options" type="button" class="big-button secondary">⚙️ Options</button>
+                </div>
             </div>
         </div>
 
@@ -194,6 +236,10 @@
                     <dt>Best</dt><dd>$<span id="final-best">0</span></dd>
                 </dl>
                 <ul id="final-tally" class="tally"></ul>
+                <figure id="photo-finish" class="photo-finish" hidden>
+                    <canvas id="photo-canvas" width="480" height="270" role="img" aria-label="Photo finish: your best moment of the run"></canvas>
+                    <figcaption>📸 Photo finish</figcaption>
+                </figure>
                 <p id="new-best" class="new-best" hidden>🏆 New personal best!</p>
                 <form id="initials-form" class="initials-form" hidden>
                     <p class="new-high">🏆 NEW HIGH SCORE! <span id="high-rank"></span></p>
@@ -209,10 +255,16 @@
                     <ul id="run-achievements-list" class="tally"></ul>
                 </div>
                 <ol id="busted-scores" class="scoreboard compact"></ol>
+                <p id="daily-line" class="daily-line" hidden></p>
                 <p id="savings-line" class="savings-line"></p>
                 <div class="panel-buttons">
                     <button id="restart" type="button" class="big-button">Floor it again</button>
                     <button id="busted-garage" type="button" class="big-button secondary">🔧 Garage</button>
+                </div>
+                <div class="share-buttons">
+                    <button id="share-copy" type="button" class="small-button">📋 Copy result</button>
+                    <button id="share-card" type="button" class="small-button">🖼️ Share card</button>
+                    <span id="share-status" class="share-status" aria-live="polite"></span>
                 </div>
             </div>
         </div>

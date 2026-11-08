@@ -17,16 +17,16 @@ export const SCOREBOARD_SIZE = 10;
 
 /** The legends you start out chasing (score, initials, who). */
 export const LEGENDS: readonly [number, string, string][] = [
-  [150_000, 'MNR', 'Murray N. Rothbard'],
-  [120_000, 'LVM', 'Ludwig von Mises'],
-  [100_000, 'HHH', 'Hans-Hermann Hoppe'],
-  [80_000, 'FAH', 'F. A. Hayek'],
-  [65_000, 'RON', 'Ron Paul'],
-  [50_000, 'SEK', 'Samuel Edward Konkin III'],
-  [40_000, 'FCB', 'Frédéric C. Bastiat'],
-  [30_000, 'WEB', 'Walter E. Block'],
-  [20_000, 'HSH', 'Henry S. Hazlitt'],
-  [10_000, 'LYS', 'Lysander Spooner'],
+  [500_000, 'MNR', 'Murray N. Rothbard'],
+  [400_000, 'LVM', 'Ludwig von Mises'],
+  [330_000, 'HHH', 'Hans-Hermann Hoppe'],
+  [270_000, 'FAH', 'F. A. Hayek'],
+  [220_000, 'RON', 'Ron Paul'],
+  [180_000, 'SEK', 'Samuel Edward Konkin III'],
+  [140_000, 'FCB', 'Frédéric C. Bastiat'],
+  [110_000, 'WEB', 'Walter E. Block'],
+  [80_000, 'HSH', 'Henry S. Hazlitt'],
+  [50_000, 'LYS', 'Lysander Spooner'],
 ];
 
 /** Who's behind a legend's initials (for tooltips), if anyone. */
@@ -62,7 +62,11 @@ export function insertScore(scores: readonly ScoreEntry[], entry: ScoreEntry): {
   return { scores: next, rank: rank < SCOREBOARD_SIZE ? rank : -1 };
 }
 
-/** Cleans up a saved table: valid entries only, sorted, at most ten; the defaults if there's nothing usable. */
+/**
+ * Cleans up a saved table: valid entries only, sorted, at most ten. The legends
+ * are always re-added at their current scores (so raising them reaches old
+ * saves too); your own entries are kept.
+ */
 export function normalizeScores(raw: unknown): ScoreEntry[] {
   if (!Array.isArray(raw)) return defaultScores();
   const entries = raw
@@ -74,8 +78,6 @@ export function normalizeScores(raw: unknown): ScoreEntry[] {
       meters: Math.max(0, Math.floor(Number(e.meters) || 0)),
       ...(e.legend === true ? { legend: true } : {}),
     }))
-    .filter((e) => e.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, SCOREBOARD_SIZE);
-  return entries.length ? entries : defaultScores();
+    .filter((e) => e.score > 0 && !e.legend);
+  return [...entries, ...defaultScores()].sort((a, b) => b.score - a.score).slice(0, SCOREBOARD_SIZE);
 }

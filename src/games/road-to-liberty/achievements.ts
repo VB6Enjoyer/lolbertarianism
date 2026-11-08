@@ -45,6 +45,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'garage-max', icon: '🏎️', name: 'Fully Loaded', description: 'Max out an upgrade.' },
   { id: 'garage-all', icon: '⚙️', name: 'Roundabout Production', description: 'Max out every upgrade in the garage.' },
   { id: 'savings-1m', icon: '💼', name: 'Capital Accumulation', description: 'Save $1,000,000 in total.' },
+  { id: 'parade', icon: '🎺', name: 'Parade Crasher', description: 'Flatten 5 commies from parades in one run.' },
+  { id: 'toll', icon: '💸', name: 'Toll Evader', description: "Slip through a toll plaza's free lane." },
+  { id: 'honk', icon: '📯', name: 'Honk If You Agree', description: 'Honk the horn 10 times in one run.' },
+  { id: 'daily', icon: '📅', name: 'Daily Grind', description: 'Finish a daily challenge run.' },
+  { id: 'daily-7', icon: '🗓️', name: 'A Week of Liberty', description: 'Play the daily challenge on 7 different days.' },
+  { id: 'cars-all', icon: '🚗', name: 'Car Collector', description: 'Unlock every car.' },
   { id: 'hall-of-fame', icon: '🏆', name: 'Hall of Fame', description: 'Make the high-score table.' },
   { id: 'top', icon: '👑', name: 'Out-Rothbarding Rothbard', description: 'Take first place on the high-score table.' },
   { id: 'busts-10', icon: '🚔', name: 'Repeat Offender', description: 'Get busted 10 times.' },
@@ -73,6 +79,7 @@ export class Tracker {
   private ranDry = false;
   private lastGap = Infinity;
   private lastFactor = 1;
+  private paradeHits = 0;
 
   constructor(
     readonly unlocked: Set<string>,
@@ -88,6 +95,7 @@ export class Tracker {
     this.ranDry = false;
     this.lastGap = state.copGap;
     this.lastFactor = speedFactor(state);
+    this.paradeHits = 0;
   }
 
   private unlock(id: string, found: string[]) {
@@ -107,6 +115,13 @@ export class Tracker {
         case 'commie':
           add('first-commie');
           if (e.who === 'stalin') add('stalin');
+          if (e.parade && ++this.paradeHits >= 5) add('parade');
+          break;
+        case 'toll-evaded':
+          add('toll');
+          break;
+        case 'horn':
+          if (state.honks >= 10) add('honk');
           break;
         case 'crash':
           this.lastCrash = state.time;
@@ -177,9 +192,23 @@ export class Tracker {
     return found;
   }
 
-  /** Call when the run ends. `rank` is its place on the high-score table (-1 if it didn't make it). */
-  endRun(state: GameState, rank: number): string[] {
+  /** Call when you have every car (after an unlock). */
+  checkCars(allUnlocked: boolean): string[] {
     const found: string[] = [];
+    if (allUnlocked) this.unlock('cars-all', found);
+    return found;
+  }
+
+  /**
+   * Call when the run ends. `rank` is its place on the high-score table (-1 if
+   * it didn't make it); for a daily run, `dailyDays` is how many days you've played one.
+   */
+  endRun(state: GameState, rank: number, daily: { days: number } | null = null): string[] {
+    const found: string[] = [];
+    if (daily) {
+      this.unlock('daily', found);
+      if (daily.days >= 7) this.unlock('daily-7', found);
+    }
     this.lifetime.busts++;
     this.lifetime.commies += totalCommies(state.stats.commies);
     if (this.lifetime.busts >= 10) this.unlock('busts-10', found);

@@ -2,6 +2,7 @@
 // the cop car seen from the front, closer and bigger as they catch up.
 
 import { blendColor } from './biomes.ts';
+import { display } from './settings.ts';
 import { CONFIG, curveAt, PLAYER_Z, segmentIndex, type Environment, type GameState } from './logic.ts';
 
 /** Dash spacing in the mirror, in world units. */
@@ -156,11 +157,12 @@ function drawCopFront(ctx: CanvasRenderingContext2D, x: number, bottom: number, 
   ctx.fill();
   // Light bar, flashing red and blue
   const flip = Math.floor(time * 6) % 2 === 0;
-  ctx.fillStyle = flip ? '#ff1744' : '#5c0010';
+  const steady = display.reducedFlashing;
+  ctx.fillStyle = flip || steady ? '#ff1744' : '#5c0010';
   ctx.fillRect(x - w * 0.26, top + h * 0.06, w * 0.24, h * 0.12);
-  ctx.fillStyle = flip ? '#0a1a5c' : '#2979ff';
+  ctx.fillStyle = flip && !steady ? '#0a1a5c' : '#2979ff';
   ctx.fillRect(x + w * 0.02, top + h * 0.06, w * 0.24, h * 0.12);
-  if (w > 18) {
+  if (w > 18 && !steady) {
     ctx.fillStyle = flip ? 'rgba(255,23,68,0.35)' : 'rgba(41,121,255,0.35)';
     ctx.beginPath();
     ctx.arc(flip ? x - w * 0.14 : x + w * 0.14, top + h * 0.12, w * 0.3, 0, Math.PI * 2);
