@@ -2,7 +2,7 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { borderName, CONFIG, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { borderName, COMMIES, CONFIG, speedFactor, totalCommies, curveAt, environment, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
 import { buildGauges } from './gauges.ts';
@@ -19,7 +19,7 @@ const els = {
   game: byId('game'),
   canvas: byId<HTMLCanvasElement>('road'),
   score: byId('score'),
-  marx: byId('marx-count'),
+  commies: byId('commie-count'),
   combo: byId('combo'),
   best: byId('best'),
   mirror: byId<HTMLCanvasElement>('mirror-view'),
@@ -30,7 +30,12 @@ const els = {
   radio: byId<HTMLButtonElement>('radio'),
   radioSong: byId('radio-song'),
   phoneSong: byId('phone-song'),
-  powerups: byId('powerups'),
+  telltales: {
+    donuts: document.querySelector<HTMLElement>('.telltale.donuts')!,
+    killdozer: document.querySelector<HTMLElement>('.telltale.killdozer')!,
+    smoke: document.querySelector<HTMLElement>('.telltale.smoke')!,
+    engine: document.querySelector<HTMLElement>('.telltale.engine')!,
+  },
   lights: byId('police-lights'),
   copGap: byId('cop-gap'),
   copDistance: byId('cop-distance'),
@@ -43,7 +48,8 @@ const els = {
   busted: byId('busted'),
   bustedLine: byId('busted-line'),
   finalScore: byId('final-score'),
-  finalMarx: byId('final-marx'),
+  finalCommies: byId('final-commies'),
+  finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
   finalBest: byId('final-best'),
   newBest: byId('new-best'),
@@ -370,12 +376,20 @@ function bust() {
   const score = Math.floor(state.score);
   const isBest = score > save.best;
   save.best = Math.max(save.best, score);
-  save.bestMarx = Math.max(save.bestMarx, state.stats.marxFlattened);
+  save.bestMarx = Math.max(save.bestMarx, totalCommies(state.stats.commies));
   slot.save(save);
   const lines = state.fuel === 0 ? OUT_OF_GAS_LINES : BUSTED_LINES;
   els.bustedLine.textContent = lines[Math.floor(Math.random() * lines.length)];
   els.finalScore.textContent = score.toLocaleString('en-US');
-  els.finalMarx.textContent = String(state.stats.marxFlattened);
+  els.finalCommies.textContent = String(totalCommies(state.stats.commies));
+  // Who you ran over, one chip each (only the ones you got).
+  els.finalTally.replaceChildren(
+    ...COMMIES.filter((c) => state.stats.commies[c.id] > 0).map((c) => {
+      const li = document.createElement('li');
+      li.textContent = `${c.name} ×${state.stats.commies[c.id]}`;
+      return li;
+    }),
+  );
   els.finalDistance.textContent = `${Math.floor(state.stats.meters).toLocaleString('en-US')} m`;
   els.finalBest.textContent = save.best.toLocaleString('en-US');
   els.newBest.hidden = !isBest;
@@ -439,12 +453,26 @@ const CRASH_TEXT = {
 function handle(events: GameEvent[]) {
   for (const e of events) {
     switch (e.type) {
-      case 'marx':
+      case 'commie': {
         play('splat');
         flash('rgba(211, 47, 47, 0.6)');
-        floater(`${MARX_LINES[Math.floor(Math.random() * MARX_LINES.length)]} +$${e.points}`);
+        const name = COMMIES.find((c) => c.id === e.who)!.name.toUpperCase();
+        const line = e.who === 'marx' ? MARX_LINES[Math.floor(Math.random() * MARX_LINES.length)] : `${name} FLATTENED!`;
+        floater(`${line} +$${e.points.toLocaleString('en-US')}`);
         if (e.combo > 1) floater(`COMBO ×${e.combo}`, '#ff8a65', 0.42);
-        say(e.combo >= 2 ? 'combo' : 'marx', state.time);
+        // Rare ones get their own line; Marx gets the combo or the usual.
+        say(e.who !== 'marx' ? e.who : e.combo >= 2 ? 'combo' : 'marx', state.time);
+        break;
+      }
+      case 'biome':
+        floater(`ENTERING ${e.name.toUpperCase()}`, '#ffffff', 0.3);
+        say(e.id, state.time);
+        break;
+      case 'repair':
+        play('powerUp');
+        flash('rgba(129, 212, 250, 0.45)');
+        floater('🔧 REPAIRED! BACK TO 100%', '#81d4fa', 0.4);
+        say('repair', state.time);
         break;
       case 'fuel':
         play('coin');
@@ -513,8 +541,8 @@ function handle(events: GameEvent[]) {
 
 function updateHud() {
   els.score.textContent = Math.floor(state.score).toLocaleString('en-US');
-  els.marx.textContent = String(state.stats.marxFlattened);
-  els.combo.hidden = state.combo <= 1;
+  els.commies.textContent = String(totalCommies(state.stats.commies));
+  els.combo.classList.toggle('on', state.combo > 1);
   els.combo.textContent = `×${state.combo}`;
   els.best.textContent = Math.max(save.best, Math.floor(mode === 'playing' ? state.score : 0)).toLocaleString('en-US');
   gauges.setSpeed(kmh(state.speed));
@@ -525,12 +553,20 @@ function updateHud() {
   els.lights.style.opacity = String(0.05 + copCloseness(state.copGap) * 0.55);
   els.copDistance.textContent = String(Math.round(meters));
   els.borderName.textContent = borderName(state.bordersCrossed);
-  const chips: string[] = [];
-  if (state.donutsLeft > 0) chips.push(`<span class="powerup-chip donuts">🍩 Donuts ${Math.ceil(state.donutsLeft)}s</span>`);
-  if (state.killdozerLeft > 0) chips.push(`<span class="powerup-chip killdozer">🚜 Killdozer ${Math.ceil(state.killdozerLeft)}s</span>`);
-  if (state.smokeLeft > 0) chips.push(`<span class="powerup-chip smoke">💨 Smoke</span>`);
-  const html = chips.join('');
-  if (els.powerups.innerHTML !== html) els.powerups.innerHTML = html;
+  // Warning lights: lit while a power-up runs (seconds left underneath), blinking at the end.
+  const light = (el: HTMLElement, left: number, label = left > 0 ? `${Math.ceil(left)}s` : '') => {
+    el.classList.toggle('on', left > 0);
+    el.classList.toggle('ending', left > 0 && left < 2);
+    const small = el.querySelector('small')!;
+    if (small.textContent !== label) small.textContent = label;
+  };
+  light(els.telltales.donuts, state.donutsLeft);
+  light(els.telltales.killdozer, state.killdozerLeft);
+  light(els.telltales.smoke, state.smokeLeft);
+  // Check engine: on while the car is damaged or slowed, showing your top speed.
+  const health = speedFactor(state);
+  light(els.telltales.engine, health < 0.999 ? 1 : 0, health < 0.999 ? `${Math.round(health * 100)}%` : '');
+  els.telltales.engine.classList.remove('ending');
   els.borderDistance.textContent = (metersToBorder(state) / 1000).toFixed(1);
   els.copGap.classList.toggle('close', meters < 80);
 

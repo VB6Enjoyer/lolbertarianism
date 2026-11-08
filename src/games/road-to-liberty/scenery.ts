@@ -12,6 +12,17 @@ export const SCENERY_SIZE: Record<Scenery, [number, number]> = {
   'gas-station': [2700, 1300],
   diner: [2400, 1200],
   barn: [1900, 1700],
+  cactus: [520, 1100],
+  skull: [700, 380],
+  rock: [1300, 760],
+  palm: [1000, 1900],
+  'surf-shack': [2000, 1300],
+  lifeguard: [1000, 1600],
+  pine: [900, 1800],
+  'snowy-pine': [900, 1800],
+  snowman: [620, 920],
+  'ski-lodge': [2500, 1700],
+  cabin: [1800, 1300],
 };
 
 /** [headline, small print, background, text color]. */
@@ -178,6 +189,262 @@ function barn(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h:
   }
 }
 
+// --- Desert ---
+
+function cactus(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w * 0.8);
+  ctx.fillStyle = variant % 2 ? '#2e7d32' : '#388e3c';
+  const trunk = w * 0.26;
+  ctx.beginPath();
+  ctx.roundRect(x - trunk / 2, y - h, trunk, h, trunk / 2);
+  ctx.fill();
+  // Arms: one up on each side, at different heights
+  const arm = (side: number, at: number, up: number) => {
+    ctx.beginPath();
+    ctx.roundRect(side > 0 ? x : x - w * 0.42, y - h * at - trunk * 0.4, w * 0.42, trunk * 0.8, trunk / 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(x + side * w * 0.42 - (side > 0 ? trunk * 0.8 : 0), y - h * (at + up), trunk * 0.8, h * up, trunk / 2);
+    ctx.fill();
+  };
+  arm(-1, 0.45, 0.3);
+  if (variant % 3 !== 0) arm(1, 0.6, 0.25);
+}
+
+function skull(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  shadow(ctx, x, y, w * 0.7);
+  ctx.fillStyle = '#f5efe0';
+  // Horns
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.15, y - h * 0.7);
+  ctx.quadraticCurveTo(x - w * 0.5, y - h * 0.75, x - w * 0.5, y - h);
+  ctx.quadraticCurveTo(x - w * 0.35, y - h * 0.8, x - w * 0.12, y - h * 0.55);
+  ctx.moveTo(x + w * 0.15, y - h * 0.7);
+  ctx.quadraticCurveTo(x + w * 0.5, y - h * 0.75, x + w * 0.5, y - h);
+  ctx.quadraticCurveTo(x + w * 0.35, y - h * 0.8, x + w * 0.12, y - h * 0.55);
+  ctx.fill();
+  // Head
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.4, w * 0.18, h * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#3e2723';
+  ctx.beginPath();
+  ctx.arc(x - w * 0.07, y - h * 0.55, w * 0.04, 0, Math.PI * 2);
+  ctx.arc(x + w * 0.07, y - h * 0.55, w * 0.04, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function rock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w);
+  ctx.fillStyle = variant % 2 ? '#8d8d8d' : '#a1887f';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.5, y);
+  ctx.lineTo(x - w * 0.38, y - h * 0.6);
+  ctx.lineTo(x - w * 0.1, y - h);
+  ctx.lineTo(x + w * 0.25, y - h * 0.82);
+  ctx.lineTo(x + w * 0.48, y - h * 0.35);
+  ctx.lineTo(x + w * 0.5, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.38, y - h * 0.6);
+  ctx.lineTo(x - w * 0.1, y - h);
+  ctx.lineTo(x, y - h * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// --- Beach ---
+
+function palm(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w * 0.6);
+  const lean = (variant % 2 ? 1 : -1) * w * 0.25;
+  ctx.strokeStyle = '#8d6e63';
+  ctx.lineWidth = Math.max(2, w * 0.1);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x + lean * 0.2, y - h * 0.5, x + lean, y - h * 0.82);
+  ctx.stroke();
+  // Fronds
+  ctx.fillStyle = '#2e7d32';
+  const topX = x + lean;
+  const topY = y - h * 0.82;
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2 + 0.3;
+    ctx.beginPath();
+    ctx.moveTo(topX, topY);
+    ctx.quadraticCurveTo(topX + Math.cos(angle) * w * 0.4, topY - h * 0.12 + Math.sin(angle) * h * 0.04, topX + Math.cos(angle) * w * 0.55, topY + h * 0.1);
+    ctx.quadraticCurveTo(topX + Math.cos(angle) * w * 0.3, topY - h * 0.02, topX, topY);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#6d4c41';
+  ctx.beginPath();
+  ctx.arc(topX - w * 0.05, topY + h * 0.03, w * 0.05, 0, Math.PI * 2);
+  ctx.arc(topX + w * 0.05, topY + h * 0.03, w * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function surfShack(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w);
+  ctx.fillStyle = '#ffcc80';
+  ctx.fillRect(x - w * 0.4, y - h * 0.6, w * 0.8, h * 0.6);
+  // Thatched roof
+  ctx.fillStyle = '#c8a165';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.5, y - h * 0.58);
+  ctx.lineTo(x, y - h);
+  ctx.lineTo(x + w * 0.5, y - h * 0.58);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#4fc3f7';
+  ctx.fillRect(x - w * 0.3, y - h * 0.5, w * 0.6, h * 0.16);
+  text(ctx, variant % 2 ? 'SURF · NO LICENSE' : 'TIKI BAR · NO FDA', x, y - h * 0.42, h * 0.08, '#0d47a1', w * 0.58);
+  // Surfboards leaning on it
+  for (const [dx, color] of [[-0.46, '#e53935'], [0.42, '#fdd835']] as const) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x + w * dx, y - h * 0.32, w * 0.05, h * 0.32, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function lifeguard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  shadow(ctx, x, y, w);
+  ctx.strokeStyle = '#eceff1';
+  ctx.lineWidth = Math.max(1, w * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.35, y);
+  ctx.lineTo(x - w * 0.25, y - h * 0.55);
+  ctx.moveTo(x + w * 0.35, y);
+  ctx.lineTo(x + w * 0.25, y - h * 0.55);
+  ctx.stroke();
+  ctx.fillStyle = '#e53935';
+  ctx.fillRect(x - w * 0.35, y - h * 0.82, w * 0.7, h * 0.3);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.45, y - h * 0.82);
+  ctx.lineTo(x, y - h);
+  ctx.lineTo(x + w * 0.45, y - h * 0.82);
+  ctx.closePath();
+  ctx.fill();
+  text(ctx, 'PRIVATE', x, y - h * 0.67, h * 0.07, '#ffffff', w * 0.6);
+}
+
+// --- Snow and mountains ---
+
+function pineTree(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number, snowy: boolean) {
+  shadow(ctx, x, y, w * 0.7);
+  ctx.fillStyle = '#5d4037';
+  ctx.fillRect(x - w * 0.06, y - h * 0.18, w * 0.12, h * 0.18);
+  const green = variant % 2 ? '#1b5e20' : '#2e7d32';
+  for (let tier = 0; tier < 3; tier++) {
+    const bottom = y - h * (0.12 + tier * 0.26);
+    const width = w * (0.5 - tier * 0.12);
+    const top = bottom - h * 0.42;
+    ctx.fillStyle = green;
+    ctx.beginPath();
+    ctx.moveTo(x - width, bottom);
+    ctx.lineTo(x, top);
+    ctx.lineTo(x + width, bottom);
+    ctx.closePath();
+    ctx.fill();
+    if (snowy) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(x - width * 0.45, top + (bottom - top) * 0.45);
+      ctx.lineTo(x, top);
+      ctx.lineTo(x + width * 0.45, top + (bottom - top) * 0.45);
+      ctx.quadraticCurveTo(x, top + (bottom - top) * 0.6, x - width * 0.45, top + (bottom - top) * 0.45);
+      ctx.fill();
+    }
+  }
+}
+
+function snowman(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w * 0.8);
+  ctx.fillStyle = '#fafafa';
+  for (const [cy, r] of [[0.22, 0.4], [0.55, 0.3], [0.8, 0.21]] as const) {
+    ctx.beginPath();
+    ctx.arc(x, y - h * cy, w * r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#212121';
+  ctx.fillRect(x - w * 0.2, y - h * 0.98, w * 0.4, h * 0.06); // hat brim
+  ctx.fillRect(x - w * 0.13, y - h * 1.12, w * 0.26, h * 0.16);
+  ctx.fillStyle = '#ff6d00';
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * 0.8);
+  ctx.lineTo(x + w * 0.22, y - h * 0.78);
+  ctx.lineTo(x, y - h * 0.76);
+  ctx.fill();
+  // A little Gadsden scarf on some of them
+  ctx.fillStyle = variant % 2 ? '#f7d02c' : '#c62828';
+  ctx.fillRect(x - w * 0.22, y - h * 0.69, w * 0.44, h * 0.05);
+}
+
+function skiLodge(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w);
+  ctx.fillStyle = '#795548';
+  ctx.fillRect(x - w * 0.42, y - h * 0.55, w * 0.84, h * 0.55);
+  ctx.fillStyle = '#4e342e';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.5, y - h * 0.52);
+  ctx.lineTo(x, y - h);
+  ctx.lineTo(x + w * 0.5, y - h * 0.52);
+  ctx.closePath();
+  ctx.fill();
+  // Snow on the roof
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.5, y - h * 0.52);
+  ctx.lineTo(x, y - h);
+  ctx.lineTo(x + w * 0.5, y - h * 0.52);
+  ctx.lineTo(x + w * 0.42, y - h * 0.58);
+  ctx.lineTo(x, y - h * 0.9);
+  ctx.lineTo(x - w * 0.42, y - h * 0.58);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffe082';
+  ctx.fillRect(x - w * 0.3, y - h * 0.42, w * 0.16, h * 0.16);
+  ctx.fillRect(x + w * 0.14, y - h * 0.42, w * 0.16, h * 0.16);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x - w * 0.25, y - h * 0.7, w * 0.5, h * 0.1);
+  text(ctx, variant % 2 ? 'LODGE · NO PERMITS' : 'HAYEK SKI RESORT', x, y - h * 0.65, h * 0.065, '#4e342e', w * 0.48);
+}
+
+function cabin(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number) {
+  shadow(ctx, x, y, w);
+  ctx.fillStyle = '#8d6e63';
+  ctx.fillRect(x - w * 0.4, y - h * 0.55, w * 0.8, h * 0.55);
+  // Log lines
+  ctx.strokeStyle = '#5d4037';
+  ctx.lineWidth = Math.max(1, h * 0.02);
+  for (let i = 1; i < 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.4, y - h * 0.11 * i);
+    ctx.lineTo(x + w * 0.4, y - h * 0.11 * i);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#3e2723';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.5, y - h * 0.52);
+  ctx.lineTo(x, y - h * 0.95);
+  ctx.lineTo(x + w * 0.5, y - h * 0.52);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffe082';
+  ctx.fillRect(x - w * 0.08, y - h * 0.32, w * 0.16, h * 0.32);
+  // Gadsden flag for the off-grid homesteader
+  if (variant % 2 === 0) {
+    ctx.fillStyle = '#777';
+    ctx.fillRect(x + w * 0.45, y - h * 0.8, w * 0.015, h * 0.8);
+    ctx.fillStyle = '#f7d02c';
+    ctx.fillRect(x + w * 0.465, y - h * 0.8, w * 0.16, h * 0.12);
+  }
+}
+
 export function drawScenery(ctx: CanvasRenderingContext2D, kind: Scenery, x: number, y: number, w: number, h: number, variant: number) {
   ctx.save();
   switch (kind) {
@@ -198,6 +465,39 @@ export function drawScenery(ctx: CanvasRenderingContext2D, kind: Scenery, x: num
       break;
     case 'barn':
       barn(ctx, x, y, w, h, variant);
+      break;
+    case 'cactus':
+      cactus(ctx, x, y, w, h, variant);
+      break;
+    case 'skull':
+      skull(ctx, x, y, w, h);
+      break;
+    case 'rock':
+      rock(ctx, x, y, w, h, variant);
+      break;
+    case 'palm':
+      palm(ctx, x, y, w, h, variant);
+      break;
+    case 'surf-shack':
+      surfShack(ctx, x, y, w, h, variant);
+      break;
+    case 'lifeguard':
+      lifeguard(ctx, x, y, w, h);
+      break;
+    case 'pine':
+      pineTree(ctx, x, y, w, h, variant, false);
+      break;
+    case 'snowy-pine':
+      pineTree(ctx, x, y, w, h, variant, true);
+      break;
+    case 'snowman':
+      snowman(ctx, x, y, w, h, variant);
+      break;
+    case 'ski-lodge':
+      skiLodge(ctx, x, y, w, h, variant);
+      break;
+    case 'cabin':
+      cabin(ctx, x, y, w, h, variant);
       break;
   }
   ctx.restore();

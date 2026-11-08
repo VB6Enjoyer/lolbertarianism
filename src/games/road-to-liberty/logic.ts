@@ -6,6 +6,8 @@
 // distance `z` along the track. The renderer (render.ts) draws it; this file
 // only moves things and decides what happens.
 
+import { biomeAt, blendNumber, sceneryBiome, type BiomeId, type NatureKind } from './biomes.ts';
+
 export const CONFIG = {
   /** World units per road segment. */
   segmentLength: 200,
@@ -19,7 +21,7 @@ export const CONFIG = {
 
   /** Top speed in world units per second (about 240 km/h on the speedometer). */
   maxSpeed: 12_000,
-  /** Boosted top speed after flattening Marx. */
+  /** Boosted top speed after flattening a commie. */
   boostSpeed: 15_000,
   boostSeconds: 2,
   accel: 5_000,
@@ -43,17 +45,21 @@ export const CONFIG = {
   /** Cop speed as a share of your top speed: starts here… */
   copSpeedStart: 0.72,
   /** …and creeps up to this over copRampSeconds. */
-  copSpeedMax: 0.96,
+  copSpeedMax: 0.92,
+  /** …and keeps climbing with distance: this much more per km driven, up to the cap. */
+  copSpeedPerKm: 0.005,
+  copSpeedCap: 1.05,
   copRampSeconds: 240,
   /** Seconds before the first roadblocks show up. */
   roadblocksAfter: 20,
 
   /** Points. */
+  /** Points for Marx; rarer commies are worth more (see COMMIES). */
   marxPoints: 500,
   goldPoints: 150,
   /** Points per meter driven. */
   pointsPerMeter: 1,
-  /** Each Marx in a row (without hitting anything bad) adds this to the multiplier. */
+  /** Each commie in a row (without hitting anything bad) adds this to the multiplier. */
   comboStep: 0.5,
 
   /** A full tank lasts this many seconds at top speed (less driving slowly drains less). */
@@ -80,8 +86,22 @@ export const CONFIG = {
   /** …and the duty-free shop tops up your tank. */
   borderFuel: 0.25,
 
-  /** Power-ups show up after this many seconds. */
+  /** Power-ups show up after this many seconds, this often (relative weight each). */
   powerUpsAfter: 25,
+  powerUpWeight: 0.13,
+
+  /** Spike strips: top speed ×0.9 for 5 s, and 5% off for good (down to 50%). */
+  spikeSlow: 0.9,
+  spikeSlowSeconds: 5,
+  spikeDamage: 0.95,
+  minDamage: 0.5,
+  /** Getting rammed by a cruiser: top speed halved for 5 s. */
+  ramSlow: 0.5,
+  ramSlowSeconds: 5,
+  /** 🔧 Wrench: rare; a bit less rare when the car is hurt. */
+  wrenchAfter: 40,
+  wrenchWeight: 0.08,
+  wrenchWeightHurt: 0.3,
   /** 🍩 Donuts: the cops slow to this share of their speed, for this long. */
   donutSlowdown: 0.55,
   donutSeconds: 10,
@@ -128,6 +148,18 @@ export interface Environment {
   rain: number;
 }
 
+/**
+ * How slippery it is at track position `z`, from 0 to 1: the rain (where it
+ * rains; none in the desert, snow on the snowfield) or the biome's own slip
+ * (the snowfield is always a bit icy), whichever is worse.
+ */
+export function weatherSlip(z: number, rain: number): number {
+  const wet = blendNumber(z, (b) => (b.precipitation === 'none' ? 0 : 1));
+  return Math.max(rain * wet, blendNumber(z, (b) => b.slip));
+}
+
+export { biomeAt };
+
 const ramp = (t: number, start: number, length: number) => Math.min(1, Math.max(0, (t - start) / length));
 
 /**
@@ -160,27 +192,66 @@ export function curveAt(i: number): number {
   const bend = Math.sin(i / 97) * 4 + Math.sin(i / 31 + 1) * 1.6;
   const calm = smooth(Math.min(1, Math.max(0, (Math.sin(i / 181) + 0.3) / 0.6)));
   const warmUp = smooth(Math.min(1, Math.max(0, (i - 60) / 120)));
-  const raw = bend * calm * warmUp;
+  // The mountains bend harder (blended across biome changes, so there are no kinks).
+  const raw = bend * calm * warmUp * Math.sqrt(blendNumber(i * CONFIG.segmentLength, (b) => b.terrain));
   return Math.abs(raw) < 0.4 ? 0 : raw;
 }
 
 /** Height of the road at the start of segment `i`. */
 export function heightAt(i: number): number {
-  return Math.sin(i / 53) * 900 + Math.sin(i / 137 + 2) * 1400;
+  const base = Math.sin(i / 53) * 900 + Math.sin(i / 137 + 2) * 1400;
+  return base * blendNumber(i * CONFIG.segmentLength, (b) => b.terrain);
 }
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | PowerUp | Scenery;
+export type CommieId = 'marx' | 'engels' | 'lenin' | 'stalin' | 'mao' | 'che';
 
-export type PowerUp = 'donuts' | 'killdozer' | 'smoke';
-export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke'];
+export interface Commie {
+  id: CommieId;
+  name: string;
+  points: number;
+  /** Relative odds among commies. */
+  weight: number;
+}
+
+/** Marx is everywhere; the rest are rarer and worth more. */
+export const COMMIES: readonly Commie[] = [
+  { id: 'marx', name: 'Marx', points: 500, weight: 12 },
+  { id: 'engels', name: 'Engels', points: 700, weight: 3 },
+  { id: 'che', name: 'Che', points: 900, weight: 2.5 },
+  { id: 'lenin', name: 'Lenin', points: 1000, weight: 2 },
+  { id: 'mao', name: 'Mao', points: 1200, weight: 1.5 },
+  { id: 'stalin', name: 'Stalin', points: 1500, weight: 1 },
+];
+
+/** Picks which commie, by weight. `roll` in [0, 1). */
+export function pickCommie(roll: number): number {
+  const total = COMMIES.reduce((sum, c) => sum + c.weight, 0);
+  let r = roll * total;
+  for (let i = 0; i < COMMIES.length; i++) {
+    r -= COMMIES[i].weight;
+    if (r < 0) return i;
+  }
+  return 0;
+}
+
+export const emptyTally = (): Record<CommieId, number> => ({ marx: 0, engels: 0, lenin: 0, stalin: 0, mao: 0, che: 0 });
+export const totalCommies = (tally: Record<CommieId, number>) => Object.values(tally).reduce((a, b) => a + b, 0);
+
+export type EntityKind = 'commie' | 'gold' | 'fuel' | 'traffic' | 'roadblock' | 'spikes' | 'cruiser' | 'border' | PowerUp | Scenery;
+
+export type PowerUp = 'donuts' | 'killdozer' | 'smoke' | 'wrench';
+export const POWER_UPS: readonly PowerUp[] = ['donuts', 'killdozer', 'smoke', 'wrench'];
 
 /** Things by the side of the road. Never in your way (they stand beyond where you can drive). */
-export type Scenery = 'billboard' | 'house' | 'bar' | 'gas-station' | 'diner' | 'barn';
-export const SCENERY: readonly Scenery[] = ['billboard', 'house', 'bar', 'gas-station', 'diner', 'barn'];
+export type Scenery = 'billboard' | 'house' | 'bar' | 'gas-station' | 'diner' | 'barn' | NatureKind;
+export const SCENERY: readonly Scenery[] = [
+  'billboard', 'house', 'bar', 'gas-station', 'diner', 'barn',
+  'cactus', 'skull', 'palm', 'surf-shack', 'lifeguard', 'pine', 'snowy-pine', 'snowman', 'ski-lodge', 'rock', 'cabin',
+];
 export const isScenery = (kind: EntityKind): kind is Scenery => (SCENERY as readonly string[]).includes(kind);
 
 export interface Entity {
@@ -190,7 +261,7 @@ export interface Entity {
   z: number;
   /** Lateral position; -1..1 is the road. */
   x: number;
-  /** Own speed: traffic drives forward, Marx wanders sideways. */
+  /** Own speed: traffic drives forward, commies wander sideways. */
   speed: number;
   vx: number;
   /** For drawing: which car color, which roadblock sign, etc. */
@@ -200,7 +271,7 @@ export interface Entity {
 
 /** Half widths, in road widths, for collisions. */
 export const HALF_WIDTH: Record<EntityKind, number> = {
-  marx: 0.18,
+  commie: 0.18,
   fuel: 0.13,
   gold: 0.12,
   traffic: 0.22,
@@ -213,17 +284,30 @@ export const HALF_WIDTH: Record<EntityKind, number> = {
   donuts: 0.16,
   killdozer: 0.16,
   smoke: 0.16,
+  wrench: 0.16,
   billboard: 0,
   house: 0,
   bar: 0,
   'gas-station': 0,
   diner: 0,
   barn: 0,
+  cactus: 0,
+  skull: 0,
+  palm: 0,
+  'surf-shack': 0,
+  lifeguard: 0,
+  pine: 0,
+  'snowy-pine': 0,
+  snowman: 0,
+  'ski-lodge': 0,
+  rock: 0,
+  cabin: 0,
 };
 export const CAR_HALF_WIDTH = 0.2;
 
 export interface GameStats {
-  marxFlattened: number;
+  /** How many of each commie you ran over. */
+  commies: Record<CommieId, number>;
   gold: number;
   crashes: number;
   meters: number;
@@ -239,7 +323,7 @@ export interface GameState {
   /** Seconds since the start. */
   time: number;
   score: number;
-  /** Score multiplier from flattening Marxes in a row. */
+  /** Score multiplier from flattening commies in a row. */
   combo: number;
   boostLeft: number;
   /** Seconds of screen shake / slowdown flash left after a crash. */
@@ -258,8 +342,15 @@ export interface GameState {
   donutsLeft: number;
   killdozerLeft: number;
   smokeLeft: number;
+  /** Lasting damage from spike strips: your top speed is multiplied by this (1 = like new). */
+  damage: number;
+  /** Seconds left of the spike and ram slowdowns. */
+  spikeSlowLeft: number;
+  ramSlowLeft: number;
   /** Where the next roadside scenery goes. */
   nextSceneryZ: number;
+  /** The landscape you're in (for "entering the desert"). */
+  biome: BiomeId;
   over: boolean;
 }
 
@@ -271,14 +362,16 @@ export interface Input {
 
 /** What happened during an update, so main.ts can play sounds and show text. */
 export type GameEvent =
-  | { type: 'marx'; points: number; combo: number }
+  | { type: 'commie'; who: CommieId; points: number; combo: number }
+  | { type: 'repair' }
+  | { type: 'biome'; id: BiomeId; name: string }
   | { type: 'gold'; points: number }
   | { type: 'crash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser' }
   | { type: 'warning'; kind: 'spikes' | 'cruiser' }
   | { type: 'border'; name: string; bonus: number; index: number }
   | { type: 'nightfall' }
   | { type: 'rain' }
-  | { type: 'power-up'; kind: PowerUp }
+  | { type: 'power-up'; kind: Exclude<PowerUp, 'wrench'> }
   | { type: 'smash'; kind: 'traffic' | 'roadblock' | 'spikes' | 'cruiser'; points: number }
   | { type: 'fuel' }
   | { type: 'low-fuel' }
@@ -299,24 +392,34 @@ export function newGame(): GameState {
     entities: [],
     nextSpawnZ: CONFIG.segmentLength * 40,
     nextId: 1,
-    stats: { marxFlattened: 0, gold: 0, crashes: 0, meters: 0 },
+    stats: { commies: emptyTally(), gold: 0, crashes: 0, meters: 0 },
     fuel: 1,
     nextBorderZ: CONFIG.borderEvery,
     bordersCrossed: 0,
     donutsLeft: 0,
     killdozerLeft: 0,
     smokeLeft: 0,
+    damage: 1,
+    spikeSlowLeft: 0,
+    ramSlowLeft: 0,
     nextSceneryZ: CONFIG.segmentLength * 10,
+    biome: 'fields',
     over: false,
   };
 }
 
 export const segmentIndex = (z: number) => Math.floor(z / CONFIG.segmentLength);
 
-/** Cop speed right now (units per second). */
-export function copSpeed(time: number): number {
+/** Cop speed right now (units per second): it ramps up over the first minutes, then keeps climbing with distance. */
+export function copSpeed(time: number, meters = 0): number {
   const t = Math.min(1, time / CONFIG.copRampSeconds);
-  return CONFIG.maxSpeed * (CONFIG.copSpeedStart + (CONFIG.copSpeedMax - CONFIG.copSpeedStart) * t);
+  const share = CONFIG.copSpeedStart + (CONFIG.copSpeedMax - CONFIG.copSpeedStart) * t + (meters / 1000) * CONFIG.copSpeedPerKm;
+  return CONFIG.maxSpeed * Math.min(CONFIG.copSpeedCap, share);
+}
+
+/** What your top speed is multiplied by right now: lasting damage and any slowdowns. */
+export function speedFactor(state: GameState): number {
+  return state.damage * (state.spikeSlowLeft > 0 ? CONFIG.spikeSlow : 1) * (state.ramSlowLeft > 0 ? CONFIG.ramSlow : 1);
 }
 
 /** Speedometer reading. */
@@ -327,16 +430,17 @@ export const kmh = (speed: number) => Math.round((speed / UNITS_PER_METER) * 3.6
 // ---------------------------------------------------------------------------
 
 /** Picks what to place next. `roll` in [0, 1). Roadblocks only after the warm-up; more jerry cans when you're low. */
-export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
+export function pickKind(roll: number, time: number, fuel = 1, hurt = false): EntityKind {
   const weights: [EntityKind, number][] = [
-    ['marx', 4],
+    ['commie', 4],
     ['gold', 3],
     ['fuel', fuel < CONFIG.lowFuel ? 3 : fuel < 0.6 ? 1 : 0.4],
     ['traffic', 3],
     ['roadblock', time >= CONFIG.roadblocksAfter ? 2 + Math.min(2, time / 120) : 0],
     ['spikes', time >= CONFIG.spikesAfter ? 0.7 + Math.min(0.8, time / 300) : 0],
     ['cruiser', time >= CONFIG.cruisersAfter ? 0.5 + Math.min(0.8, time / 300) : 0],
-    ...POWER_UPS.map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? 0.25 : 0]),
+    ...(['donuts', 'killdozer', 'smoke'] as const).map((kind): [EntityKind, number] => [kind, time >= CONFIG.powerUpsAfter ? CONFIG.powerUpWeight : 0]),
+    ['wrench', time < CONFIG.wrenchAfter ? 0 : hurt ? CONFIG.wrenchWeightHurt : CONFIG.wrenchWeight],
   ];
   const total = weights.reduce((sum, [, w]) => sum + w, 0);
   let r = roll * total;
@@ -344,7 +448,7 @@ export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
     r -= w;
     if (r < 0) return kind;
   }
-  return 'marx';
+  return 'commie';
 }
 
 /** Gap to the next spawn: things get denser as time goes on. */
@@ -355,7 +459,7 @@ export function spawnSpacing(time: number, roll: number): number {
 }
 
 function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
-  const kind = pickKind(rng(), state.time, state.fuel);
+  const kind = pickKind(rng(), state.time, state.fuel, state.damage < 0.9);
   const lane = [-0.6, 0, 0.6][Math.floor(rng() * 3)];
   const x =
     kind === 'roadblock' ? lane * 0.9
@@ -372,9 +476,9 @@ function spawn(state: GameState, rng: () => number, events: GameEvent[]): void {
     z: state.nextSpawnZ,
     x,
     speed,
-    // Marx sits in his armchair; some of the chairs have wheels and drift across the road.
-    vx: kind === 'marx' && rng() < 0.5 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.2) : 0,
-    variant: Math.floor(rng() * 4),
+    // Marx sits in his armchair (some chairs have wheels and drift); the others stroll across.
+    vx: kind === 'commie' && rng() < 0.6 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.22) : 0,
+    variant: kind === 'commie' ? pickCommie(rng()) : Math.floor(rng() * 4),
     hit: false,
   };
   state.entities.push(entity);
@@ -395,6 +499,8 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   state.donutsLeft = Math.max(0, state.donutsLeft - dt);
   state.killdozerLeft = Math.max(0, state.killdozerLeft - dt);
   state.smokeLeft = Math.max(0, state.smokeLeft - dt);
+  state.spikeSlowLeft = Math.max(0, state.spikeSlowLeft - dt);
+  state.ramSlowLeft = Math.max(0, state.ramSlowLeft - dt);
   state.crashLeft = Math.max(0, state.crashLeft - dt);
 
   // Speed: always on the gas unless braking.
@@ -404,7 +510,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   if (fuelBefore >= CONFIG.lowFuel && state.fuel < CONFIG.lowFuel) events.push({ type: 'low-fuel' });
   if (fuelBefore > 0 && state.fuel === 0) events.push({ type: 'out-of-gas' });
 
-  const top = state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed : state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed;
+  const top = (state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed : state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed) * speedFactor(state);
   if (input.brake) state.speed -= CONFIG.brake * dt;
   else if (state.speed < top) state.speed = Math.min(top, state.speed + CONFIG.accel * dt);
   else state.speed = Math.max(top, state.speed - CONFIG.coast * dt);
@@ -418,11 +524,19 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const env = environment(state.time);
   const was = environment(state.time - dt);
   if (was.daylight >= 0.5 && env.daylight < 0.5) events.push({ type: 'nightfall' });
-  if (was.rain === 0 && env.rain > 0) events.push({ type: 'rain' });
+  if (was.rain === 0 && env.rain > 0 && blendNumber(state.position + PLAYER_Z, (b) => (b.precipitation === 'rain' ? 1 : 0)) > 0.5) {
+    events.push({ type: 'rain' });
+  }
+  const landscape = sceneryBiome(state.position + PLAYER_Z);
+  if (landscape.id !== state.biome) {
+    state.biome = landscape.id;
+    events.push({ type: 'biome', id: landscape.id, name: landscape.name });
+  }
   const speedShare = state.speed / CONFIG.maxSpeed;
   const before = state.position + PLAYER_Z;
-  state.x += input.steer * CONFIG.steering * (1 - CONFIG.rainGrip * env.rain) * Math.min(1, speedShare + 0.25) * dt;
-  state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * (1 + CONFIG.rainSlide * env.rain) * speedShare * speedShare * dt;
+  const slick = weatherSlip(before, env.rain);
+  state.x += input.steer * CONFIG.steering * (1 - CONFIG.rainGrip * slick) * Math.min(1, speedShare + 0.25) * dt;
+  state.x -= curveAt(segmentIndex(before)) * CONFIG.centrifugal * (1 + CONFIG.rainSlide * slick) * speedShare * speedShare * dt;
   state.x = Math.max(-CONFIG.maxX, Math.min(CONFIG.maxX, state.x));
 
   state.position += state.speed * dt;
@@ -435,8 +549,10 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const horizon = state.position + CONFIG.drawDistance * CONFIG.segmentLength;
   while (state.nextSpawnZ < horizon) spawn(state, rng, events);
   while (state.nextSceneryZ < horizon) {
-    const kind = SCENERY[Math.floor(rng() * SCENERY.length)];
-    const side = rng() < 0.5 ? -1 : 1;
+    const here = sceneryBiome(state.nextSceneryZ);
+    const kind = here.scenery[Math.floor(rng() * here.scenery.length)] as Scenery;
+    // At the beach the sea is on the right, so everything stands on the left.
+    const side = here.sea || rng() < 0.5 ? -1 : 1;
     state.entities.push({ id: state.nextId++, kind, z: state.nextSceneryZ, x: side * (3.5 + rng() * 1.1), speed: 0, vx: 0, variant: Math.floor(rng() * 1000), hit: false });
     state.nextSceneryZ += CONFIG.segmentLength * CONFIG.sceneryEvery * (0.5 + rng());
   }
@@ -451,7 +567,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   for (const e of state.entities) {
     const prevZ = e.z;
     e.z += e.speed * dt;
-    if (e.kind === 'marx' && !e.hit) {
+    if (e.kind === 'commie' && !e.hit) {
       e.x += e.vx * dt;
       if (Math.abs(e.x) > 0.9) {
         e.x = Math.sign(e.x) * 0.9;
@@ -473,7 +589,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel' || POWER_UPS.includes(e.kind as PowerUp))));
 
   // The chase.
-  state.copGap += (state.speed - copSpeed(state.time) * (state.donutsLeft > 0 ? CONFIG.donutSlowdown : 1)) * dt;
+  state.copGap += (state.speed - copSpeed(state.time, state.stats.meters) * (state.donutsLeft > 0 ? CONFIG.donutSlowdown : 1)) * dt;
   state.copGap = Math.min(CONFIG.copMaxGap, state.copGap);
   if (state.copGap <= 0) {
     state.copGap = 0;
@@ -493,6 +609,7 @@ function smash(state: GameState, e: Entity, kind: 'traffic' | 'roadblock' | 'spi
 }
 
 function collide(state: GameState, e: Entity): GameEvent[] {
+  if (isScenery(e.kind)) return []; // never reached: scenery stands out of your way
   if (state.killdozerLeft > 0 && (e.kind === 'traffic' || e.kind === 'roadblock' || e.kind === 'spikes' || e.kind === 'cruiser')) {
     return smash(state, e, e.kind);
   }
@@ -507,18 +624,12 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       state.copGap = Math.min(CONFIG.copMaxGap, state.copGap + CONFIG.smokePushback);
       state.smokeLeft = CONFIG.smokeSeconds;
       return [{ type: 'power-up', kind: 'smoke' }];
-    case 'billboard':
-    case 'house':
-    case 'bar':
-    case 'gas-station':
-    case 'diner':
-    case 'barn':
-      return [];
-    case 'marx': {
-      const points = Math.round(CONFIG.marxPoints * state.combo);
+    case 'commie': {
+      const who = COMMIES[e.variant] ?? COMMIES[0];
+      const points = Math.round(who.points * state.combo);
       state.score += points;
-      state.stats.marxFlattened++;
-      const event: GameEvent = { type: 'marx', points, combo: state.combo };
+      state.stats.commies[who.id]++;
+      const event: GameEvent = { type: 'commie', who: who.id, points, combo: state.combo };
       state.combo += CONFIG.comboStep;
       state.boostLeft = CONFIG.boostSeconds;
       return [event];
@@ -541,12 +652,20 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       state.speed *= 0.25;
       return crashed(state, 'roadblock');
     case 'spikes':
-      state.speed *= 0.4;
+      // Slower for a while, and a little slower for good.
+      state.spikeSlowLeft = CONFIG.spikeSlowSeconds;
+      state.damage = Math.max(CONFIG.minDamage, state.damage * CONFIG.spikeDamage);
       return crashed(state, 'spikes');
     case 'cruiser':
-      state.speed = Math.min(state.speed, e.speed * 0.5);
+      state.ramSlowLeft = CONFIG.ramSlowSeconds;
+      state.speed = Math.min(state.speed, CONFIG.maxSpeed * speedFactor(state));
       e.x += e.x >= state.x ? 0.7 : -0.7;
       return crashed(state, 'cruiser');
+    case 'wrench':
+      state.damage = 1;
+      state.spikeSlowLeft = 0;
+      state.ramSlowLeft = 0;
+      return [{ type: 'repair' }];
     case 'border': {
       const index = state.bordersCrossed++;
       const bonus = CONFIG.borderBonus * state.bordersCrossed;

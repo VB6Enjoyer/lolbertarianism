@@ -1,6 +1,7 @@
 // The rearview mirror: the road behind you, streaming away as you drive, and
 // the cop car seen from the front, closer and bigger as they catch up.
 
+import { blendColor } from './biomes.ts';
 import { CONFIG, curveAt, PLAYER_Z, segmentIndex, type Environment, type GameState } from './logic.ts';
 
 /** Dash spacing in the mirror, in world units. */
@@ -26,13 +27,16 @@ export function renderMirror(ctx: CanvasRenderingContext2D, width: number, heigh
   sky.addColorStop(1, '#cfe8f7');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, width, horizon);
-  ctx.fillStyle = '#5c9a6c';
+  const z = state.position + PLAYER_Z;
+  const [hr, hg, hb] = blendColor(z, (b) => b.hills[1]);
+  ctx.fillStyle = `rgb(${hr}, ${hg}, ${hb})`;
   ctx.beginPath();
   ctx.moveTo(0, horizon);
   for (let x = 0; x <= width; x += 6) ctx.lineTo(x, horizon - 6 - 5 * Math.sin(x * 0.04 + state.position * 0.00002));
   ctx.lineTo(width, horizon);
   ctx.fill();
-  ctx.fillStyle = '#3f9a49';
+  const [gr, gg, gb] = blendColor(z, (b) => b.ground[1]);
+  ctx.fillStyle = `rgb(${gr}, ${gg}, ${gb})`;
   ctx.fillRect(0, horizon, width, height - horizon);
 
   // Road: a wedge from the vanishing point to the bottom of the glass.

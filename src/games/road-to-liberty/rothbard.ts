@@ -22,7 +22,18 @@ export type Cue =
   | 'donuts'
   | 'killdozer'
   | 'smoke'
-  | 'smash';
+  | 'smash'
+  | 'engels'
+  | 'lenin'
+  | 'stalin'
+  | 'mao'
+  | 'che'
+  | 'repair'
+  | 'fields'
+  | 'desert'
+  | 'beach'
+  | 'snow'
+  | 'mountains';
 
 export const LINES: Record<Cue, readonly string[]> = {
   start: [
@@ -63,6 +74,17 @@ export const LINES: Record<Cue, readonly string[]> = {
   donuts: ['Donuts! The oldest bribe in the book. Works every time.', 'They stopped for donuts. Public servants, everyone.'],
   killdozer: ['The Killdozer! Property rights, enforced.', 'Plow through! Every checkpoint is a broken window now.'],
   smoke: ['Smoke screen! Exit, stage left.', "They can't arrest what they can't see!"],
+  engels: ['Engels! The factory owner who bankrolled Marx. Irony, flattened.', 'Engels down! His capital couldn\'t save him.'],
+  lenin: ["Lenin! That one's for the kulaks.", 'All power to the bumper!'],
+  stalin: ['Stalin! One flattening is a tragedy; this one is a statistic.', 'Uncle Joe, purged!'],
+  mao: ['Mao! The Great Leap Backward, under our tires.', "That's one cultural revolution he didn't see coming."],
+  che: ['Che! Finally on a T-shirt worth wearing: our tire tread.', 'Hasta la victoria siempre. Ours.'],
+  fields: ['Back in the countryside. Homesteaded, every acre.', 'Green fields, private property as far as the eye can see.'],
+  desert: ['The desert! Nobody here but us and the tumbleweeds. And Marx, somehow.', 'A desert: no rain, no regulations. Paradise.'],
+  beach: ['The beach! Seasteading is just past those waves.', 'Ocean on the right. International waters, here we come!'],
+  snow: ['Snow! Ice on the roads, careful in the curves.', 'The snowfield. Even the State can\'t plow these roads in time.'],
+  mountains: ['The mountains! Sharp bends ahead, ease off in the curves.', 'Up in the mountains. Hard to collect taxes up here.'],
+  repair: ['Good as new! A private mechanic, naturally.', "Böhm-Bawerk's wrench: capital goods at work!"],
   smash: ['Creative destruction!', "That's what I call a hostile takeover.", 'Bill the State for the damages.'],
   idle: [
     "What's on the radio? Turn it up.",
