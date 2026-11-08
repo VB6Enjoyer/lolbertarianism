@@ -24,8 +24,9 @@ const LANE_DIVIDERS = [-1 / 3, 1 / 3];
 
 /** Sprite sizes in world units (width, height). */
 const SIZE: Record<EntityKind, [number, number]> = {
-  marx: [520, 1000],
+  marx: [860, 1070],
   gold: [380, 380],
+  fuel: [330, 400],
   traffic: [900, 620],
   roadblock: [1400, 760],
 };
@@ -34,6 +35,11 @@ const CAR_COLORS = ['#c0392b', '#2471a3', '#f1c40f', '#7f8c8d'];
 const ROADBLOCK_SIGNS = ['IRS CHECKPOINT', 'TOLL: 40% OF ALL', 'PERMIT REQUIRED', 'SOCIAL CREDIT CHECK'];
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** Marx in his armchair (public/vidya/img/marx.webp). Until it loads, he's drawn with shapes. */
+const marxImage = new Image();
+marxImage.src = `${import.meta.env.BASE_URL}vidya/img/marx.webp`;
+const marxReady = () => marxImage.complete && marxImage.naturalWidth > 0;
 
 function project(cameraX: number, cameraY: number, cameraZ: number, width: number, height: number): Point {
   const scale = cameraDepth / cameraZ;
@@ -186,6 +192,51 @@ function drawMarx(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.restore();
 }
 
+/** The photo version: a shadow, then Marx and his chair, rocking a little. */
+function drawMarxPhoto(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number, id: number) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(x, y, w * 0.48, h * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(time * 2 + id) * 0.02);
+  const ratio = marxImage.naturalWidth / marxImage.naturalHeight;
+  const drawW = h * ratio;
+  ctx.drawImage(marxImage, -drawW / 2, -h, drawW, h);
+  ctx.restore();
+}
+
+/** A red jerry can. */
+function drawFuel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number, id: number) {
+  const bob = Math.sin(time * 4 + id) * h * 0.05;
+  ctx.save();
+  ctx.translate(x, y + bob);
+  ctx.fillStyle = 'rgba(255, 82, 82, 0.3)';
+  ctx.beginPath();
+  ctx.arc(0, -h * 0.5, w * 0.75, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#c62828';
+  ctx.beginPath();
+  ctx.roundRect(-w * 0.45, -h * 0.82, w * 0.9, h * 0.82, w * 0.1);
+  ctx.fill();
+  // Handle cut-out and spout
+  ctx.fillStyle = '#8e0000';
+  ctx.fillRect(-w * 0.3, -h * 0.76, w * 0.36, h * 0.1);
+  ctx.fillStyle = '#ffca28';
+  ctx.fillRect(w * 0.18, -h, w * 0.16, h * 0.2);
+  // An X stamped on the side
+  ctx.strokeStyle = '#8e0000';
+  ctx.lineWidth = Math.max(1, w * 0.06);
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.32, -h * 0.58);
+  ctx.lineTo(w * 0.32, -h * 0.08);
+  ctx.moveTo(w * 0.32, -h * 0.58);
+  ctx.lineTo(-w * 0.32, -h * 0.08);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawGold(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, time: number, id: number) {
   const bob = Math.sin(time * 4 + id) * w * 0.08;
   ctx.save();
@@ -300,7 +351,12 @@ function drawRoadblock(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
 function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, x: number, y: number, w: number, h: number, time: number) {
   switch (e.kind) {
     case 'marx':
-      if (!e.hit) drawMarx(ctx, x, y, w, h, time, e.id);
+      if (e.hit) return;
+      if (marxReady()) drawMarxPhoto(ctx, x, y, w, h, time, e.id);
+      else drawMarx(ctx, x, y, w * 0.6, h * 0.93, time, e.id);
+      return;
+    case 'fuel':
+      drawFuel(ctx, x, y, w, h, time, e.id);
       return;
     case 'gold':
       drawGold(ctx, x, y, w, time, e.id);

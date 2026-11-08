@@ -55,6 +55,15 @@ export const CONFIG = {
   pointsPerMeter: 1,
   /** Each Marx in a row (without hitting anything bad) adds this to the multiplier. */
   comboStep: 0.5,
+
+  /** A full tank lasts this many seconds at top speed (less driving slowly drains less). */
+  fuelSeconds: 80,
+  /** A jerry can refills this share of the tank. */
+  fuelCan: 0.4,
+  /** On an empty tank you can't go faster than this share of top speed. */
+  emptySpeed: 0.5,
+  /** Below this, the fuel light comes on and cans show up more often. */
+  lowFuel: 0.25,
 } as const;
 
 /** Units per meter, for the speedometer and the cop distance (top speed = 240 km/h). */
@@ -88,7 +97,7 @@ export function heightAt(i: number): number {
 // State
 // ---------------------------------------------------------------------------
 
-export type EntityKind = 'marx' | 'gold' | 'traffic' | 'roadblock';
+export type EntityKind = 'marx' | 'gold' | 'fuel' | 'traffic' | 'roadblock';
 
 export interface Entity {
   id: number;
@@ -107,7 +116,8 @@ export interface Entity {
 
 /** Half widths, in road widths, for collisions. */
 export const HALF_WIDTH: Record<EntityKind, number> = {
-  marx: 0.14,
+  marx: 0.18,
+  fuel: 0.13,
   gold: 0.12,
   traffic: 0.22,
   roadblock: 0.32,
@@ -141,6 +151,8 @@ export interface GameState {
   nextSpawnZ: number;
   nextId: number;
   stats: GameStats;
+  /** 0 (empty) to 1 (full). */
+  fuel: number;
   over: boolean;
 }
 
@@ -155,6 +167,9 @@ export type GameEvent =
   | { type: 'marx'; points: number; combo: number }
   | { type: 'gold'; points: number }
   | { type: 'crash'; kind: 'traffic' | 'roadblock' }
+  | { type: 'fuel' }
+  | { type: 'low-fuel' }
+  | { type: 'out-of-gas' }
   | { type: 'busted' };
 
 export function newGame(): GameState {
@@ -172,6 +187,7 @@ export function newGame(): GameState {
     nextSpawnZ: CONFIG.segmentLength * 40,
     nextId: 1,
     stats: { marxFlattened: 0, gold: 0, crashes: 0, meters: 0 },
+    fuel: 1,
     over: false,
   };
 }
@@ -191,11 +207,12 @@ export const kmh = (speed: number) => Math.round((speed / UNITS_PER_METER) * 3.6
 // Spawning
 // ---------------------------------------------------------------------------
 
-/** Picks what to place next. `roll` in [0, 1). Roadblocks only after the warm-up. */
-export function pickKind(roll: number, time: number): EntityKind {
+/** Picks what to place next. `roll` in [0, 1). Roadblocks only after the warm-up; more jerry cans when you're low. */
+export function pickKind(roll: number, time: number, fuel = 1): EntityKind {
   const weights: [EntityKind, number][] = [
     ['marx', 4],
     ['gold', 3],
+    ['fuel', fuel < CONFIG.lowFuel ? 3 : fuel < 0.6 ? 1 : 0.4],
     ['traffic', 3],
     ['roadblock', time >= CONFIG.roadblocksAfter ? 2 + Math.min(2, time / 120) : 0],
   ];
@@ -216,7 +233,7 @@ export function spawnSpacing(time: number, roll: number): number {
 }
 
 function spawn(state: GameState, rng: () => number): void {
-  const kind = pickKind(rng(), state.time);
+  const kind = pickKind(rng(), state.time, state.fuel);
   const lane = [-0.6, 0, 0.6][Math.floor(rng() * 3)];
   const entity: Entity = {
     id: state.nextId++,
@@ -224,7 +241,8 @@ function spawn(state: GameState, rng: () => number): void {
     z: state.nextSpawnZ,
     x: kind === 'roadblock' ? lane * 0.9 : lane + (rng() - 0.5) * 0.3,
     speed: kind === 'traffic' ? CONFIG.maxSpeed * (0.35 + rng() * 0.2) : 0,
-    vx: kind === 'marx' ? (rng() < 0.5 ? -1 : 1) * (0.25 + rng() * 0.35) : 0,
+    // Marx sits in his armchair; some of the chairs have wheels and drift across the road.
+    vx: kind === 'marx' && rng() < 0.5 ? (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.2) : 0,
     variant: Math.floor(rng() * 4),
     hit: false,
   };
@@ -246,7 +264,13 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   state.crashLeft = Math.max(0, state.crashLeft - dt);
 
   // Speed: always on the gas unless braking.
-  const top = state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed;
+  // Fuel drains with speed (a little even when crawling).
+  const fuelBefore = state.fuel;
+  state.fuel = Math.max(0, state.fuel - (dt / CONFIG.fuelSeconds) * Math.max(0.3, state.speed / CONFIG.maxSpeed));
+  if (fuelBefore >= CONFIG.lowFuel && state.fuel < CONFIG.lowFuel) events.push({ type: 'low-fuel' });
+  if (fuelBefore > 0 && state.fuel === 0) events.push({ type: 'out-of-gas' });
+
+  const top = state.fuel === 0 ? CONFIG.maxSpeed * CONFIG.emptySpeed : state.boostLeft > 0 ? CONFIG.boostSpeed : CONFIG.maxSpeed;
   if (input.brake) state.speed -= CONFIG.brake * dt;
   else if (state.speed < top) state.speed = Math.min(top, state.speed + CONFIG.accel * dt);
   else state.speed = Math.max(top, state.speed - CONFIG.coast * dt);
@@ -290,7 +314,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     e.hit = true;
     events.push(...collide(state, e));
   }
-  state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && e.kind === 'gold'));
+  state.entities = state.entities.filter((e) => e.z > state.position - CONFIG.segmentLength && !(e.hit && (e.kind === 'gold' || e.kind === 'fuel')));
 
   // The chase.
   state.copGap += (state.speed - copSpeed(state.time)) * dt;
@@ -314,6 +338,9 @@ function collide(state: GameState, e: Entity): GameEvent[] {
       state.boostLeft = CONFIG.boostSeconds;
       return [event];
     }
+    case 'fuel':
+      state.fuel = Math.min(1, state.fuel + CONFIG.fuelCan);
+      return [{ type: 'fuel' }];
     case 'gold': {
       const points = Math.round(CONFIG.goldPoints * state.combo);
       state.score += points;

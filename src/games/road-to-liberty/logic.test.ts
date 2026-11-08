@@ -33,7 +33,8 @@ function autopilot(s: GameState): Input {
   const ahead = s.entities.filter((e) => !e.hit && e.z > bumper && e.z < bumper + 4000).sort((a, b) => a.z - b.z);
   let target = 0;
   const threat = ahead.find((e) => (e.kind === 'roadblock' || e.kind === 'traffic') && Math.abs(e.x - s.x) < 0.6);
-  const prize = ahead.find((e) => e.kind === 'marx' || e.kind === 'gold');
+  const can = s.fuel < 0.6 ? ahead.find((e) => e.kind === 'fuel') : undefined;
+  const prize = can ?? ahead.find((e) => e.kind === 'marx' || e.kind === 'gold' || e.kind === 'fuel');
   if (threat) target = threat.x > 0 ? threat.x - 0.75 : threat.x + 0.75;
   else if (prize) target = prize.x;
   // Lean into curves to cancel the outward push.
@@ -118,6 +119,40 @@ describe('road to liberty: what you hit', () => {
   it('no roadblocks during the warm-up', () => {
     for (let r = 0; r < 1; r += 0.01) expect(pickKind(r, 5)).not.toBe('roadblock');
     expect([...Array(100).keys()].some((r) => pickKind(r / 100, 60) === 'roadblock')).toBe(true);
+  });
+});
+
+describe('road to liberty: fuel', () => {
+  it('drains as you drive; a full tank lasts about 80 seconds flat out', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.speed = CONFIG.maxSpeed;
+    drive(s, 40, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(s.fuel).toBeCloseTo(0.5, 1);
+  });
+
+  it('warns when low, and an empty tank caps your speed', () => {
+    const s = newGame();
+    s.nextSpawnZ = Infinity;
+    s.fuel = CONFIG.lowFuel + 0.001;
+    const events = drive(s, 30, (st) => ({ steer: Math.max(-1, Math.min(1, -st.x * 4)), brake: false }));
+    expect(events).toContainEqual({ type: 'low-fuel' });
+    expect(events).toContainEqual({ type: 'out-of-gas' });
+    expect(s.speed).toBeCloseTo(CONFIG.maxSpeed * CONFIG.emptySpeed, 0);
+  });
+
+  it('a jerry can tops you up', () => {
+    const s = newGame();
+    s.fuel = 0.1;
+    s.speed = CONFIG.maxSpeed;
+    placeAhead(s, 'fuel');
+    expect(drive(s, 0.1, () => idle)).toContainEqual({ type: 'fuel' });
+    expect(s.fuel).toBeCloseTo(0.5, 1);
+  });
+
+  it('cans turn up more often when you are low', () => {
+    const share = (fuel: number) => [...Array(1000).keys()].filter((r) => pickKind(r / 1000, 60, fuel) === 'fuel').length;
+    expect(share(0.1)).toBeGreaterThan(share(0.9) * 3);
   });
 });
 

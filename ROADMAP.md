@@ -416,3 +416,12 @@ Ideas for later:
 - Marx, cars and roadblocks are drawn with canvas shapes (no Marx image in the
   repo yet). Tests include an autopilot driver: a careful one outlasts the cops
   for minutes, an idle one gets busted.
+- Cockpit pass: Marx is now the photo from the meme (armchair included;
+  `public/vidya/img/marx.webp`, original in `art/road-to-liberty/`), with the
+  drawn version as a fallback. Roof with sun visors and A-pillars; the mirror
+  hangs from the roof and the air freshener hangs from the mirror. The wheel
+  moved left with a golden hand on it, behind it an analog speedometer and a
+  fuel gauge, plus a Liberty FM radio. The mirror is a canvas: the road behind
+  streams away and the cop car is drawn head-on, growing as it closes in.
+- Fuel: a tank lasts ~80 s flat out, ⛽ jerry cans refill 40% (more of them
+  when you're low), and an empty tank caps you at half speed.

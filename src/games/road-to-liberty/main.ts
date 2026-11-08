@@ -3,6 +3,8 @@ import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { CONFIG, curveAt, kmh, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
+import { buildGauges } from './gauges.ts';
+import { copCloseness, renderMirror } from './mirror.ts';
 import { render } from './render.ts';
 
 // ---------------------------------------------------------------------------
@@ -18,8 +20,7 @@ const els = {
   marx: byId('marx-count'),
   combo: byId('combo'),
   best: byId('best'),
-  speed: byId('speed'),
-  copCar: byId('cop-car'),
+  mirror: byId<HTMLCanvasElement>('mirror-view'),
   lights: byId('police-lights'),
   copGap: byId('cop-gap'),
   copDistance: byId('cop-distance'),
@@ -39,6 +40,8 @@ const els = {
 };
 
 const ctx = els.canvas.getContext('2d')!;
+const mirrorCtx = els.mirror.getContext('2d')!;
+const gauges = buildGauges(document.getElementById('speedo') as unknown as SVGSVGElement, document.getElementById('fuel-gauge') as unknown as SVGSVGElement);
 
 // ---------------------------------------------------------------------------
 // Save: best score and sound setting
@@ -250,6 +253,11 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && mode === 'playing') pause();
 });
 
+const OUT_OF_GAS_LINES = [
+  'Ran out of gas. The State barely had to chase you.',
+  'Empty tank. Should have homesteaded an oil field.',
+];
+
 const BUSTED_LINES = [
   'The State caught up with you. Hoppe is disappointed.',
   'Pulled over for driving without a permit to exist.',
@@ -266,7 +274,8 @@ function bust() {
   save.best = Math.max(save.best, score);
   save.bestMarx = Math.max(save.bestMarx, state.stats.marxFlattened);
   slot.save(save);
-  els.bustedLine.textContent = BUSTED_LINES[Math.floor(Math.random() * BUSTED_LINES.length)];
+  const lines = state.fuel === 0 ? OUT_OF_GAS_LINES : BUSTED_LINES;
+  els.bustedLine.textContent = lines[Math.floor(Math.random() * lines.length)];
   els.finalScore.textContent = score.toLocaleString('en-US');
   els.finalMarx.textContent = String(state.stats.marxFlattened);
   els.finalDistance.textContent = `${Math.floor(state.stats.meters).toLocaleString('en-US')} m`;
@@ -319,6 +328,18 @@ function handle(events: GameEvent[]) {
         floater(`${MARX_LINES[Math.floor(Math.random() * MARX_LINES.length)]} +$${e.points}`);
         if (e.combo > 1) floater(`COMBO ×${e.combo}`, '#ff8a65', 0.42);
         break;
+      case 'fuel':
+        play('coin');
+        flash('rgba(255, 82, 82, 0.25)');
+        floater('⛽ +FUEL', '#ff8a80', 0.6);
+        break;
+      case 'low-fuel':
+        floater('⛽ LOW FUEL!', '#ffb300', 0.35);
+        break;
+      case 'out-of-gas':
+        play('crash');
+        floater('OUT OF GAS! FIND A CAN!', '#ff5252', 0.35);
+        break;
       case 'gold':
         play('coin');
         flash('rgba(255, 215, 0, 0.35)');
@@ -346,19 +367,18 @@ function updateHud() {
   els.combo.hidden = state.combo <= 1;
   els.combo.textContent = `×${state.combo}`;
   els.best.textContent = Math.max(save.best, Math.floor(mode === 'playing' ? state.score : 0)).toLocaleString('en-US');
-  els.speed.textContent = String(kmh(state.speed));
+  gauges.setSpeed(kmh(state.speed));
+  gauges.setFuel(state.fuel, state.fuel < CONFIG.lowFuel);
 
-  // The cops in the mirror grow as they close in.
+  // The flashing lights fill the mirror as the cops close in.
   const meters = Math.max(0, state.copGap / UNITS_PER_METER);
-  const closeness = 1 - Math.min(1, state.copGap / CONFIG.copMaxGap);
-  els.copCar.style.fontSize = `${18 + closeness * closeness * 60}px`;
-  els.lights.style.opacity = String(0.15 + closeness * 0.7);
+  els.lights.style.opacity = String(0.05 + copCloseness(state.copGap) * 0.55);
   els.copDistance.textContent = String(Math.round(meters));
   els.copGap.classList.toggle('close', meters < 80);
 
   // Turn the wheel and lean the arm with the steering.
   els.wheel.style.transform = `rotate(${steer * 70}deg)`;
-  els.arm.style.transform = `scale(var(--arm-scale, 1)) translateX(${steer * 14}px) rotate(${steer * 4}deg)`;
+  els.arm.style.transform = `translateX(var(--arm-shift, 0px)) scale(var(--arm-scale, 1)) translateX(${steer * 14}px) rotate(${steer * 4}deg)`;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,15 +387,22 @@ function updateHud() {
 
 let cssWidth = 0;
 let cssHeight = 0;
+let mirrorWidth = 0;
+let mirrorHeight = 0;
+
+/** Sizes a canvas for the screen's pixel density; returns its size in CSS pixels. */
+function fitCanvas(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D): [number, number] {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [rect.width, rect.height];
+}
 
 function resize() {
-  const rect = els.canvas.getBoundingClientRect();
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  cssWidth = rect.width;
-  cssHeight = rect.height;
-  els.canvas.width = Math.round(rect.width * dpr);
-  els.canvas.height = Math.round(rect.height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  [cssWidth, cssHeight] = fitCanvas(els.canvas, ctx);
+  [mirrorWidth, mirrorHeight] = fitCanvas(els.mirror, mirrorCtx);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -393,6 +420,7 @@ function frame(now: number) {
     state.position += CONFIG.maxSpeed * 0.6 * dt;
     state.time += dt;
     state.copGap = CONFIG.copStartGap;
+    state.fuel = 1;
   }
   if (mode === 'playing' || mode === 'title') {
     const share = state.speed / CONFIG.maxSpeed;
@@ -400,6 +428,7 @@ function frame(now: number) {
   }
 
   render(ctx, cssWidth, cssHeight, state, skyOffset);
+  renderMirror(mirrorCtx, mirrorWidth, mirrorHeight, state);
   updateHud();
   updateSound(state, mode === 'playing');
   requestAnimationFrame(frame);

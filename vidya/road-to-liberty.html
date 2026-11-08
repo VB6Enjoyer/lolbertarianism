@@ -13,31 +13,55 @@
     <div id="game">
         <canvas id="road" aria-label="The road ahead"></canvas>
 
+        <!-- The car around you: roof and windshield pillars -->
+        <div id="roof" aria-hidden="true"><div class="sun-visor left"></div><div class="sun-visor right"></div></div>
+        <div id="pillar-left" class="pillar" aria-hidden="true"></div>
+        <div id="pillar-right" class="pillar" aria-hidden="true"></div>
+
         <!-- HUD -->
         <div id="hud">
             <div class="hud-score">$<span id="score">0</span></div>
             <div class="hud-line">🧔 <span id="marx-count">0</span><span class="hud-label"> Marxes flattened</span> <span id="combo" class="combo" hidden></span></div>
             <div class="hud-line hud-best">Best: $<span id="best">0</span></div>
         </div>
-        <div id="speedometer"><span id="speed">0</span><small>km/h</small></div>
 
-        <!-- Rearview mirror: Hoppe, and the cops behind -->
+        <!-- Rearview mirror, hanging from the roof: the cops behind you, and Hoppe -->
         <div id="mirror">
+            <div class="mirror-mount" aria-hidden="true"></div>
             <div id="mirror-glass">
-                <div id="mirror-road"></div>
-                <div id="cop-car">🚓</div>
+                <canvas id="mirror-view" aria-label="The road behind you"></canvas>
                 <div id="police-lights"></div>
                 <img id="hoppe" src="img/hoppe.webp" alt="Hans-Hermann Hoppe in the rearview mirror">
+                <div class="glare" aria-hidden="true"></div>
             </div>
-            <div id="cop-gap">🚨 <span id="cop-distance">300</span> m</div>
+            <div id="cop-gap">🚨 <span id="cop-distance">120</span> m</div>
+            <!-- Air freshener, hanging from the mirror -->
+            <div id="ornament"><span>I ❤️<br><b>Property</b><br>and freedom</span></div>
         </div>
-
-        <!-- Air freshener -->
-        <div id="ornament"><span>I ❤️<br><b>Property</b><br>and freedom</span></div>
 
         <!-- Cockpit -->
         <div id="dashboard">
-            <div id="wheel"><div class="spoke"></div><div class="hub">🐍</div></div>
+            <div id="cluster" aria-label="Gauges">
+                <svg id="speedo" viewBox="0 0 200 200" role="img" aria-label="Speedometer"></svg>
+                <svg id="fuel-gauge" viewBox="0 0 120 120" role="img" aria-label="Fuel gauge"></svg>
+            </div>
+            <div id="wheel">
+                <div class="spoke spoke-h"></div>
+                <div class="spoke spoke-v"></div>
+                <div class="hub">🐍</div>
+                <div id="left-hand" aria-hidden="true">
+                    <div class="palm"></div>
+                    <div class="knuckle k1"></div>
+                    <div class="knuckle k2"></div>
+                    <div class="knuckle k3"></div>
+                    <div class="knuckle k4"></div>
+                    <div class="thumb-l"></div>
+                </div>
+            </div>
+            <div id="console" aria-hidden="true">
+                <div class="radio">📻 LIBERTY FM <span>101.1</span></div>
+                <div class="vents"><i></i><i></i><i></i><i></i></div>
+            </div>
             <div id="arm">
                 <div id="forearm">
                     <svg viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
@@ -73,7 +97,7 @@
                 <p class="tagline">The Fed is in your mirror. Marx is in the road. Rothbard is on speakerphone.</p>
                 <ul class="rules">
                     <li>🧔 <b>Run over Marx</b> for points and a speed boost. Flatten several in a row for a combo.</li>
-                    <li>💰 Grab the gold.</li>
+                    <li>💰 Grab the gold. ⛽ Grab the jerry cans: run dry and you can only crawl.</li>
                     <li>🚧 Dodge <b>IRS checkpoints</b> and slow traffic, and stay off the grass: they slow you down.</li>
                     <li>🚓 The cops are gaining. If they catch up, you're <b>busted</b>.</li>
                 </ul>
