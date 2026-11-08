@@ -4,6 +4,7 @@
 
 import { borderName, COMMIES, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
 import { drawScenery, SCENERY_SIZE } from './scenery.ts';
+import { blink, display } from './settings.ts';
 import { BIOMES, biomeAt, blendColor, blendNumber, type Biome } from './biomes.ts';
 
 interface Point {
@@ -581,10 +582,11 @@ function drawCruiser(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.fill();
   ctx.fillStyle = '#2c3e50';
   ctx.fillRect(x - w * 0.27, y - h * 0.85, w * 0.54, h * 0.2);
+  // Alternating red and blue (both lit and steady with reduced flashing)
   const flip = Math.floor(time * 6) % 2 === 0;
-  ctx.fillStyle = flip ? '#ff1744' : '#5c0010';
+  ctx.fillStyle = flip || display.reducedFlashing ? '#ff1744' : '#5c0010';
   ctx.fillRect(x - w * 0.24, y - h, w * 0.22, h * 0.1);
-  ctx.fillStyle = flip ? '#0a1a5c' : '#2979ff';
+  ctx.fillStyle = flip && !display.reducedFlashing ? '#0a1a5c' : '#2979ff';
   ctx.fillRect(x + w * 0.02, y - h, w * 0.22, h * 0.1);
   ctx.fillStyle = '#ff1744';
   ctx.fillRect(x - w * 0.47, y - h * 0.5, w * 0.14, h * 0.1);
@@ -641,7 +643,7 @@ function drawTank(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
     ctx.fillText('IRS', x, y - h * 0.45);
   }
   // Brake lights flash on the brake check
-  ctx.fillStyle = Math.floor(time * 4) % 2 ? '#ff1744' : '#7f0000';
+  ctx.fillStyle = blink(time, 4) ? '#ff1744' : '#7f0000';
   ctx.fillRect(x - w * 0.42, y - h * 0.4, w * 0.08, h * 0.06);
   ctx.fillRect(x + w * 0.34, y - h * 0.4, w * 0.08, h * 0.06);
   ctx.restore();
@@ -699,7 +701,7 @@ function drawHelicopter(ctx: CanvasRenderingContext2D, width: number, height: nu
   ctx.textBaseline = 'middle';
   ctx.fillText('IRS', x + w * 0.08, y + w * 0.05);
   // Flashing light
-  ctx.fillStyle = Math.floor(time * 5) % 2 ? '#ff1744' : '#2979ff';
+  ctx.fillStyle = blink(time, 5) ? '#ff1744' : '#2979ff';
   ctx.beginPath();
   ctx.arc(x, y + w * 0.17, w * 0.03, 0, Math.PI * 2);
   ctx.fill();
@@ -884,7 +886,7 @@ function drawWeather(ctx: CanvasRenderingContext2D, width: number, height: numbe
 export function render(ctx: CanvasRenderingContext2D, width: number, height: number, state: GameState, skyOffset: number, env: Environment): void {
   const segLen = CONFIG.segmentLength;
   ctx.save();
-  if (state.crashLeft > 0) {
+  if (state.crashLeft > 0 && display.shake) {
     const shake = state.crashLeft * 14;
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   }

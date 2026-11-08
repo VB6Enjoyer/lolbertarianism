@@ -4,7 +4,12 @@ import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { currentTerritory, COMMIES, CONFIG, stateEnvironment, speedFactor, totalCommies, curveAt, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
-import { PLAYLIST, shuffledOrder, SONG_SECONDS, songLabel } from './radio.ts';
+import { broadcastLabel, broadcastSeconds, buildProgram } from './radio.ts';
+import { defaultOptions, display, normalizeOptions, type DisplayOptions } from './settings.ts';
+import { firstPad, PadReader } from './gamepad.ts';
+import { develop, Film, momentFor, type Moment } from './photo.ts';
+import { CARD_HEIGHT, CARD_WIDTH, drawShareCard, shareText, type RunSummary } from './share.ts';
+import { biomeAt } from './biomes.ts';
 import { carById, carUnlocked, CARS, type Car, type CarId } from './cars.ts';
 import { dailyFor, normalizeDailyBests, seededRng, type Daily } from './daily.ts';
 import { buyUpgrade, MAX_LEVEL, nextCost, normalizeLevels, UPGRADES, type GarageLevels, type UpgradeId } from './garage.ts';
@@ -84,6 +89,14 @@ const els = {
   finalDistance: byId('final-distance'),
   finalBest: byId('final-best'),
   newBest: byId('new-best'),
+  options: byId('options'),
+  optFlashing: byId<HTMLInputElement>('opt-flashing'),
+  optColorblind: byId<HTMLInputElement>('opt-colorblind'),
+  optShake: byId<HTMLInputElement>('opt-shake'),
+  padStatus: byId('pad-status'),
+  photoFinish: byId('photo-finish'),
+  photo: byId<HTMLCanvasElement>('photo-canvas'),
+  shareStatus: byId('share-status'),
 };
 
 const ctx = els.canvas.getContext('2d')!;
@@ -111,6 +124,8 @@ interface Save {
   /** The car you drive, and your best daily-challenge score per date. */
   car: CarId;
   dailyBests: Record<string, number>;
+  /** Accessibility options. */
+  options: DisplayOptions;
 }
 
 const slot = createSaveSlot<Save>({ game: 'road-to-liberty', version: 1 });
@@ -128,6 +143,7 @@ const save: Save = {
   garage: normalizeLevels(saved?.garage),
   car: CARS.some((c) => c.id === saved?.car) ? (saved!.car as CarId) : 'sedan',
   dailyBests: normalizeDailyBests(saved?.dailyBests),
+  options: normalizeOptions(saved?.options, defaultOptions(matchMedia('(prefers-reduced-motion: reduce)').matches)),
 };
 
 // ---------------------------------------------------------------------------
@@ -236,18 +252,22 @@ let steer = 0;
 /** Set when the nitro key / horn key (or their buttons) are pressed; used once by the next update. */
 let nitroQueued = false;
 let hornQueued = false;
+/** The gamepad, read once per frame (see pollGamepad). */
+let padSteer: number | null = null;
+let padBrake = false;
 
 function readInput(dt: number): Input {
   let target = 0;
   if (keys.has('ArrowLeft') || keys.has('a')) target -= 1;
   if (keys.has('ArrowRight') || keys.has('d')) target += 1;
+  if (padSteer !== null) target = padSteer;
   if (pointerSteer !== null) target = pointerSteer;
   steer += (target - steer) * Math.min(1, dt * 10);
   const nitro = nitroQueued;
   const horn = hornQueued;
   nitroQueued = false;
   hornQueued = false;
-  return { steer, brake: touchBrake || keys.has('ArrowDown') || keys.has('s'), nitro, horn };
+  return { steer, brake: touchBrake || padBrake || keys.has('ArrowDown') || keys.has('s'), nitro, horn };
 }
 
 const STEER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'a', 'd', 's', 'w', ' ']);
@@ -274,7 +294,9 @@ document.addEventListener('keydown', (e) => {
     toggleMute();
     return;
   }
-  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && els.scores.hidden && els.achievements.hidden && els.garage.hidden && els.daily.hidden) {
+  if ((key === 'Enter' || key === ' ') && mode !== 'playing' && !e.repeat && noMenuOpen()) {
+    // A focused button (Options, Garage…) gets the key instead.
+    if (document.activeElement instanceof HTMLButtonElement && document.activeElement.id !== 'start' && document.activeElement.id !== 'restart' && document.activeElement.id !== 'resume') return;
     e.preventDefault();
     if (mode === 'paused') resume();
     else startGame(mode === 'busted' && runDaily !== null);
@@ -284,6 +306,68 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keyup', (e) => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
 window.addEventListener('blur', () => keys.clear());
+
+/** True when no sub-screen (scores, garage, options…) is open over the title, pause or busted screen. */
+const noMenuOpen = () => els.scores.hidden && els.achievements.hidden && els.garage.hidden && els.daily.hidden && els.options.hidden;
+
+// ---------------------------------------------------------------------------
+// Gamepad
+// ---------------------------------------------------------------------------
+
+const pad = new PadReader();
+let padName = '';
+
+/** The buttons you can move between with the d-pad on the screen that's showing. */
+function menuButtons(): HTMLElement[] {
+  const open = [...document.querySelectorAll<HTMLElement>('#game .overlay')].find((o) => !o.hidden);
+  if (!open) return [];
+  return [...open.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]')].filter((el) => el.offsetParent !== null && !(el as HTMLButtonElement).disabled);
+}
+
+/** Reads the pad once per frame: driving while playing, menus otherwise. */
+function pollGamepad() {
+  const gamepad = firstPad();
+  if (!gamepad && !padName) return;
+  const name = gamepad?.id ?? '';
+  if (name !== padName) {
+    padName = name;
+    els.padStatus.textContent = name ? `🎮 Gamepad connected: ${name.replace(/\s*\(.*$/, '')}` : '🎮 No gamepad found. Plug one in and press a button.';
+    els.padStatus.classList.toggle('on', !!name);
+    if (name) toastMessage('🎮', 'GAMEPAD CONNECTED', 'Stick to steer · A to start');
+  }
+  const input = pad.read(gamepad);
+  padSteer = mode === 'playing' ? input.steer : null;
+  padBrake = mode === 'playing' && input.brake;
+  if (input.mute) toggleMute();
+  if (mode === 'playing') {
+    if (input.nitro) nitroQueued = true;
+    if (input.horn) hornQueued = true;
+    if (input.pause) pause();
+    return;
+  }
+  if (mode === 'paused' && input.pause) {
+    resume();
+    return;
+  }
+  // Menus: up/down moves between buttons, A presses, B goes back.
+  const buttons = menuButtons();
+  if (input.move && buttons.length) {
+    const at = buttons.indexOf(document.activeElement as HTMLElement);
+    buttons[(at + input.move + buttons.length) % buttons.length].focus();
+  }
+  if (input.back) {
+    const back = buttons.find((b) => b.id.startsWith('hide-'));
+    if (back) back.click();
+  }
+  if (input.confirm) {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && buttons.includes(focused)) focused.click();
+    else if (mode === 'paused') resume();
+    else if (noMenuOpen() && !(mode === 'busted' && els.busted.hidden)) startGame(mode === 'busted' && runDaily !== null);
+  }
+}
+
+window.addEventListener('gamepadconnected', () => pollGamepad());
 
 function steerFromPointer(e: PointerEvent) {
   const rect = els.canvas.getBoundingClientRect();
@@ -337,21 +421,26 @@ els.mute.addEventListener('click', toggleMute);
 // Liberty FM
 // ---------------------------------------------------------------------------
 
-let playOrder = shuffledOrder();
-let playIndex = -1;
+let program = buildProgram();
+let programIndex = -1;
 let nextSongAt = 0;
 
-/** Puts on the next song (reshuffling after the last one), with a little station jingle. */
+/**
+ * Puts on whatever's next: a song, a talk segment or an ad (a new shuffle
+ * after the last one), with a little station jingle.
+ */
 function nextSong(now: number, jingle = true) {
-  playIndex++;
-  if (playIndex >= playOrder.length) {
-    playOrder = shuffledOrder();
-    playIndex = 0;
+  programIndex++;
+  if (programIndex >= program.length) {
+    program = buildProgram();
+    programIndex = 0;
   }
-  const label = `♪ ${songLabel(PLAYLIST[playOrder[playIndex]])}`;
+  const on = program[programIndex];
+  const label = broadcastLabel(on);
   els.radioSong.textContent = label;
-  els.phoneSong.textContent = label;
-  nextSongAt = now + SONG_SECONDS;
+  els.phoneSong.textContent = on.kind === 'song' ? label : on.kind === 'talk' ? '🎙️ Liberty FM talk' : '📢 A word from our sponsors';
+  els.radio.classList.toggle('talk', on.kind !== 'song');
+  nextSongAt = now + broadcastSeconds(on);
   if (jingle) play('jingle');
 }
 
@@ -427,6 +516,30 @@ function applyTheme(car: Car) {
   els.hub.style.background = car.theme.hubColor;
 }
 
+/** The run's best moment so far, and a better one waiting to be photographed after this frame is drawn. */
+let photoMoment: Moment | null = null;
+let pendingPhoto: Moment | null = null;
+
+function considerPhoto(events: readonly GameEvent[]) {
+  for (const e of events) {
+    const m = momentFor(e);
+    const best = pendingPhoto ?? photoMoment;
+    if (m && (!best || m.value > best.value)) pendingPhoto = m;
+  }
+}
+
+const film = new Film();
+
+/** Films the frame just drawn, and develops the waiting photo from a moment before. */
+function takePhoto() {
+  if (mode === 'playing') film.record(els.canvas, state.time);
+  if (!pendingPhoto) return;
+  const frame = film.from(state.time, pendingPhoto.value > 100 ? 0.2 : 0.05);
+  if (frame) develop(els.photo, frame, pendingPhoto.caption);
+  photoMoment = pendingPhoto;
+  pendingPhoto = null;
+}
+
 function startGame(daily = false) {
   // Leaving the busted screen without saving still records the score (with your last initials).
   if (pendingScore) commitScore(els.initials.value);
@@ -450,6 +563,10 @@ function startGame(daily = false) {
   warnedClose = false;
   say('start', state.time);
   runUnlocked = [];
+  photoMoment = null;
+  pendingPhoto = null;
+  film.reset();
+  els.shareStatus.textContent = '';
   tracker.startRun(state);
   // ?debug exposes the run to the console (and to screenshot scripts).
   if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { rtl: state });
@@ -465,6 +582,7 @@ function pause() {
 function resume() {
   mode = 'playing';
   els.paused.hidden = true;
+  els.options.hidden = true;
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -487,6 +605,13 @@ const BUSTED_LINES = [
 function bust() {
   mode = 'busted';
   play('busted');
+  // No moment worth a photo? Then the moment they got you.
+  if (!photoMoment && !pendingPhoto) {
+    pendingPhoto = { value: 0, caption: state.fuel === 0 ? 'OUT OF GAS' : 'BUSTED' };
+    takePhoto();
+  }
+  els.photoFinish.hidden = false;
+  lastSummary = summarize();
   const score = Math.floor(state.score);
   const isBest = score > save.best;
   save.best = Math.max(save.best, score);
@@ -548,6 +673,111 @@ function bust() {
     (pendingScore ? els.initials : document.getElementById('restart'))?.focus();
   }, 900);
 }
+
+// ---------------------------------------------------------------------------
+// Share card
+// ---------------------------------------------------------------------------
+
+let lastSummary: RunSummary | null = null;
+
+function summarize(): RunSummary {
+  const car = currentCar();
+  return {
+    score: Math.floor(state.score),
+    commies: totalCommies(state.stats.commies),
+    meters: Math.floor(state.stats.meters),
+    landscape: biomeAt(state.position + PLAYER_Z).biome.name,
+    territory: currentTerritory(state.bordersCrossed),
+    car: car.name,
+    carIcon: car.icon,
+    daily: runDaily ? { name: runDaily.modifier.name, icon: runDaily.modifier.icon, key: runDaily.key } : null,
+    url: `${location.origin}${location.pathname}`,
+  };
+}
+
+function shareStatus(text: string) {
+  els.shareStatus.textContent = text;
+}
+
+byId('share-copy').addEventListener('click', async () => {
+  if (!lastSummary) return;
+  const text = shareText(lastSummary);
+  try {
+    await navigator.clipboard.writeText(text);
+    shareStatus('📋 Copied! Paste it anywhere.');
+  } catch {
+    shareStatus("Couldn't reach the clipboard. Here it is: " + text.replace(/\n/g, ' · '));
+  }
+});
+
+byId('share-card').addEventListener('click', () => {
+  if (!lastSummary) return;
+  const summary = lastSummary;
+  const card = document.createElement('canvas');
+  card.width = CARD_WIDTH;
+  card.height = CARD_HEIGHT;
+  drawShareCard(card.getContext('2d')!, summary, photoMoment ? els.photo : null);
+  card.toBlob(async (blob) => {
+    if (!blob) return;
+    const file = new File([blob], `road-to-liberty-${summary.score}.png`, { type: 'image/png' });
+    // Phones: the share sheet. Elsewhere: download the picture.
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], text: shareText(summary) });
+        shareStatus('🖼️ Shared!');
+        return;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+      }
+    }
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = file.name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    shareStatus('🖼️ Card saved. Post it with the copied text.');
+  }, 'image/png');
+});
+
+// ---------------------------------------------------------------------------
+// Options
+// ---------------------------------------------------------------------------
+
+/** Puts the saved options into effect. */
+function applyOptions() {
+  Object.assign(display, save.options);
+  els.game.classList.toggle('reduce-flashing', display.reducedFlashing);
+  els.game.classList.toggle('colorblind', display.colorblind);
+  els.optFlashing.checked = display.reducedFlashing;
+  els.optColorblind.checked = display.colorblind;
+  els.optShake.checked = display.shake;
+}
+
+for (const [input, key] of [[els.optFlashing, 'reducedFlashing'], [els.optColorblind, 'colorblind'], [els.optShake, 'shake']] as const) {
+  input.addEventListener('change', () => {
+    save.options[key] = input.checked;
+    slot.save(save);
+    applyOptions();
+  });
+}
+
+let optionsReturn: HTMLElement = els.title;
+
+function openOptions(from: HTMLElement) {
+  optionsReturn = from;
+  from.hidden = true;
+  els.options.hidden = false;
+  els.optFlashing.focus();
+}
+
+byId('show-options').addEventListener('click', () => openOptions(els.title));
+byId('paused-options').addEventListener('click', () => openOptions(els.paused));
+byId('hide-options').addEventListener('click', () => {
+  els.options.hidden = true;
+  optionsReturn.hidden = false;
+});
+
+applyOptions();
 
 // ---------------------------------------------------------------------------
 // High scores
@@ -815,7 +1045,11 @@ byId('resume').addEventListener('click', resume);
 
 const MARX_LINES = ['COMRADE FLATTENED!', 'SEIZED THE MEANS OF LOCOMOTION!', 'DIALECTICALLY RUN OVER!', 'WITHERED AWAY!', 'LABOR THEORY OF SPLAT!', 'CLASS STRUGGLE: OVER!'];
 
+/** Colorblind-friendly swaps for the floating texts: greens to blue, reds to orange. */
+const COLORBLIND: Record<string, string> = { '#b9f6ca': '#80d8ff', '#ff5252': '#ffab40', '#ff8a80': '#ffcc80', '#ff8a65': '#ffab40' };
+
 function floater(text: string, color = '#ffeb3b', yShare = 0.55) {
+  if (display.colorblind) color = COLORBLIND[color] ?? color;
   const rect = els.canvas.getBoundingClientRect();
   spawnText({
     text,
@@ -829,6 +1063,7 @@ function floater(text: string, color = '#ffeb3b', yShare = 0.55) {
 }
 
 function flash(color: string) {
+  if (display.reducedFlashing) return;
   const el = document.createElement('div');
   el.className = 'flash';
   el.style.background = color;
@@ -1072,8 +1307,10 @@ function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
+  pollGamepad();
   if (mode === 'playing') {
     const events = update(state, readInput(dt), dt, runRng);
+    considerPhoto(events);
     handle(events);
     announce(tracker.update(state, events));
   } else if (mode === 'title') {
@@ -1091,6 +1328,7 @@ function frame(now: number) {
   const env = stateEnvironment(state);
   render(ctx, cssWidth, cssHeight, state, skyOffset, env);
   renderMirror(mirrorCtx, mirrorWidth, mirrorHeight, state, env);
+  takePhoto();
   updateSpeech(state.time);
   updateRadio(now / 1000);
   updateHud();

@@ -1091,6 +1091,54 @@ body {
     }
 }
 
+/* Accessibility: reduced flashing turns off every blink and the police-light pulse. */
+#game.reduce-flashing *,
+#game.reduce-flashing *::before,
+#game.reduce-flashing *::after {
+    animation-name: none !important;
+}
+
+#game.reduce-flashing .flash {
+    display: none;
+}
+
+/* Keep the parts that only move (not flash) working. */
+#game.reduce-flashing .radio-marquee > span {
+    animation-name: marquee !important;
+}
+
+#game.reduce-flashing .rtl-floater {
+    animation-name: float-up !important;
+}
+
+#game.reduce-flashing .achievement-toast {
+    animation-name: toast-in, toast-out !important;
+}
+
+/* Colorblind-friendly: blue for good, orange for danger, and outlines you can see without color. */
+#game.colorblind .telltale.on {
+    outline: 2px solid #fff;
+    box-shadow: 0 0 8px rgba(64, 196, 255, 0.9);
+}
+
+#game.colorblind .telltale.engine.on {
+    outline: 2px dashed #ff9100;
+    box-shadow: 0 0 8px rgba(255, 145, 0, 0.9);
+}
+
+#game.colorblind #cop-gap.close {
+    background: #e65100;
+    outline: 2px dashed #fff;
+}
+
+#game.colorblind #cop-gap.close::before {
+    content: '⚠ ';
+}
+
+#game.colorblind .savings-line {
+    color: #80d8ff;
+}
+
 .flash {
     position: absolute;
     inset: 0;
@@ -1499,4 +1547,109 @@ body {
         padding: 6px 10px;
         font-size: 12px;
     }
+}
+
+/* Options */
+.options-list {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 14px;
+    text-align: left;
+}
+
+.option {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid #444;
+    border-radius: 8px;
+    background: #1a1a1a;
+    cursor: pointer;
+}
+
+.option input {
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    accent-color: var(--gold);
+}
+
+.option small {
+    display: block;
+    color: #aaa;
+}
+
+.pad-status {
+    margin: 0 0 14px;
+    color: #aaa;
+    font-size: 14px;
+}
+
+.pad-status.on {
+    color: #80d8ff;
+}
+
+/* Photo finish, like a polaroid */
+.photo-finish {
+    width: min(100%, 360px);
+    margin: 4px auto 14px;
+    padding: 8px 8px 4px;
+    background: #f5f5f5;
+    transform: rotate(-1.5deg);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+
+.photo-finish[hidden] {
+    display: none;
+}
+
+.photo-finish canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #222;
+}
+
+.photo-finish figcaption {
+    padding: 4px 0 2px;
+    color: #333;
+    font: bold 14px 'Courier New', monospace;
+}
+
+/* Share */
+.share-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.small-button {
+    padding: 6px 14px;
+    border: 2px solid var(--gold-dark);
+    border-radius: 6px;
+    background: #2a2a2a;
+    color: var(--gold-light);
+    font: bold 14px 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.small-button:hover,
+.small-button:focus-visible {
+    background: #3a3a3a;
+}
+
+.share-status {
+    flex-basis: 100%;
+    min-height: 1.2em;
+    color: #80d8ff;
+    font-size: 13px;
+}
+
+/* Talk segments and ads on the radio */
+.radio.talk .radio-marquee {
+    color: #ffcc80;
 }

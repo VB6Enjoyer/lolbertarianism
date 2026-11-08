@@ -520,3 +520,20 @@ Ideas for later:
   and commies dive off the road.
 - 6 more achievements (41 in all): parade, toll, horn, a daily run, seven of
   them, every car.
+- 🎙️ Liberty FM talk and ads: after every two songs, a talk segment (the
+  Rothbard Call-In Show, the Hoppe Hour, the Mises Minute, traffic, weather,
+  sports) or an ad (gold, Galt Motors, Hoppe Home Security, Private Roads
+  Inc.…), alternating.
+- 📸 Photo finish (`photo.ts`): the run's best moment (the biggest combo, a
+  tank flattened, a toll evaded… or a crash if that's all you've got), taken
+  from a frame just before it happened, with a caption, as a polaroid on the
+  busted screen.
+- 🎮 Gamepad (`gamepad.ts`): stick or d-pad to steer, LT/B to brake, A/RB
+  nitro, X/Y/LB horn, Start to pause; d-pad, A and B work the menus.
+- ⚙️ Options (`settings.ts`): reduced flashing (no screen flashes, no blinking,
+  steady police lights; on by default with the system's reduced-motion
+  setting), colorblind-friendly colors (blue/orange, outlined warning lights)
+  and screen shake on/off. From the title or the pause screen.
+- Share (`share.ts`): copy the run as text, or a 1200×630 card with the photo
+  finish, score, commies, distance, landscape and car (the share sheet on
+  phones, a download elsewhere).
