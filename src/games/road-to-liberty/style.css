@@ -886,17 +886,16 @@ body {
     transition: transform 0.08s linear;
 }
 
+/* Starts at the wrist (inside the palm) and runs down to the bottom-right corner. */
 #forearm {
     position: absolute;
-    right: 0;
-    bottom: 40px;
-    width: 420px;
-    height: 140px;
-    border-radius: 30px 120px 120px 50px;
-    background: radial-gradient(ellipse at 35% 30%, var(--gold-light), var(--gold) 45%, var(--gold-dark));
-    transform: rotate(-22deg);
-    transform-origin: right center;
-    box-shadow: 4px 6px 16px rgba(0, 0, 0, 0.5), inset -10px -12px 24px rgba(80, 50, 0, 0.45);
+    left: 130px;
+    top: 10px;
+    width: 470px;
+    height: 150px;
+    transform: rotate(40deg);
+    transform-origin: 0 50%;
+    filter: drop-shadow(4px 6px 10px rgba(0, 0, 0, 0.5));
 }
 
 #forearm svg {
@@ -904,6 +903,19 @@ body {
     inset: 0;
     width: 100%;
     height: 100%;
+    overflow: visible;
+}
+
+/* The back of the hand, behind the phone: the fingers and the wrist both grow out of it. */
+#palm {
+    position: absolute;
+    left: 66px;
+    top: 16px;
+    width: 104px;
+    height: 128px;
+    border-radius: 36px 52px 56px 40px;
+    background: radial-gradient(ellipse at 40% 35%, var(--gold-light), var(--gold) 55%, var(--gold-dark));
+    box-shadow: inset -8px -10px 18px rgba(80, 50, 0, 0.4);
 }
 
 .vein {
@@ -974,12 +986,13 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* The thumb hooks under the bottom of the phone, from the palm. */
 .finger.thumb {
-    top: 64px;
-    left: -18px;
+    top: 128px;
+    left: 40px;
     right: auto;
-    width: 64px;
-    transform: rotate(48deg);
+    width: 84px;
+    transform: rotate(-14deg);
 }
 
 #brake,
