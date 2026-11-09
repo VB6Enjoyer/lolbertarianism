@@ -539,3 +539,11 @@ Ideas for later:
   phones, a download elsewhere).
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
   with a new screenshot.
+
+### Link previews ✅
+
+- Every page (the homepage, each game, and the old redirect URLs) gets Open
+  Graph and Twitter card tags at build time (`src/social.ts`, added by a plugin
+  in `vite.config.ts`), so a shared link shows a 1200×630 picture, the title
+  and the blurb from `games.ts`. Pictures live in `public/og/`; a test fails if
+  a game is missing one.

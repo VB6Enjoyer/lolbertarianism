@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { games } from './src/games.ts';
+import { gamePreview, homePreview, previewTags } from './src/social.ts';
 
 const root = import.meta.dirname;
 const base = '/lolbertarianism/';
@@ -22,8 +23,8 @@ function legacyRedirects(): Plugin {
 <head>
 <meta charset="utf-8">
 <title>${game.title}</title>
+${previewTags(gamePreview(game), true)}
 <meta http-equiv="refresh" content="0; url=${target}">
-<link rel="canonical" href="${target}">
 <script>location.replace(${JSON.stringify(target)} + location.search + location.hash)</script>
 </head>
 <body><a href="${target}">${game.title} has moved here.</a></body>
@@ -36,9 +37,24 @@ function legacyRedirects(): Plugin {
   };
 }
 
+/** Adds link-preview tags (picture, title, description) to the homepage and every game page. */
+function socialPreviews(): Plugin {
+  return {
+    name: 'social-previews',
+    transformIndexHtml(html, ctx) {
+      const page = ctx.path.replace(/^\//, '');
+      const game = games.find((g) => page === `vidya/${g.slug}.html`);
+      const preview = game ? gamePreview(game) : page === 'index.html' || page === '' ? homePreview() : null;
+      if (!preview) return html;
+      const tags = previewTags(preview, !/<meta\s+name="description"/i.test(html));
+      return html.replace('</title>', `</title>\n    ${tags}`);
+    },
+  };
+}
+
 export default defineConfig({
   base,
-  plugins: [legacyRedirects()],
+  plugins: [legacyRedirects(), socialPreviews()],
   build: {
     rolldownOptions: {
       input: {
