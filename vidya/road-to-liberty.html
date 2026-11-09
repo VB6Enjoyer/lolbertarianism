@@ -88,15 +88,26 @@
                 <div class="vents"><i></i><i></i><i></i><i></i></div>
             </div>
             <div id="arm">
-                <div id="forearm">
-                    <svg viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
-                        <path d="M 30 80 Q 140 55 290 92 T 390 70" class="vein" />
-                        <path d="M 60 96 Q 190 120 350 74" class="vein" />
-                        <path d="M 90 48 Q 210 30 330 58" class="vein" />
-                        <path d="M 220 84 Q 290 108 390 86" class="vein" />
-                    </svg>
-                </div>
                 <div id="hand">
+                    <!-- One piece: the forearm runs out of the wrist, behind the palm -->
+                    <div id="forearm">
+                        <svg viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
+                            <defs>
+                                <linearGradient id="arm-gold" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0" stop-color="var(--gold-light)" />
+                                    <stop offset="0.5" stop-color="var(--gold)" />
+                                    <stop offset="1" stop-color="var(--gold-dark)" />
+                                </linearGradient>
+                            </defs>
+                            <!-- Narrow at the wrist (left), bulging toward the elbow (right) -->
+                            <path d="M 14 44 Q 2 70 14 98 C 110 112 170 150 300 140 L 400 138 L 400 2 L 300 4 C 190 -6 110 30 14 44 Z" fill="url(#arm-gold)" />
+                            <path d="M 40 74 Q 140 60 260 90 T 390 72" class="vein" />
+                            <path d="M 70 92 Q 190 120 350 96" class="vein" />
+                            <path d="M 90 54 Q 210 28 330 40" class="vein" />
+                            <path d="M 220 84 Q 290 112 390 104" class="vein" />
+                        </svg>
+                    </div>
+                    <div id="palm"></div>
                     <div id="phone">
                         <div class="phone-notch"></div>
                         <div id="phone-screen">
@@ -104,11 +115,12 @@
                             <img src="img/rothbard.webp" alt="Murray Rothbard on the phone screen">
                         </div>
                     </div>
-                    <div class="finger" style="top: 18px; width: 86px;"></div>
-                    <div class="finger" style="top: 46px; width: 92px;"></div>
-                    <div class="finger" style="top: 74px; width: 88px;"></div>
-                    <div class="finger" style="top: 102px; width: 76px;"></div>
-                    <div class="finger thumb"></div>
+                    <!-- Held from behind: fingertips curl over the left edge, the thumb up the right -->
+                    <div class="tip" style="top: 30px;"></div>
+                    <div class="tip" style="top: 55px;"></div>
+                    <div class="tip" style="top: 80px;"></div>
+                    <div class="tip pinky" style="top: 104px;"></div>
+                    <div class="thumb"></div>
                 </div>
             </div>
             <button id="brake" type="button" aria-label="Brake">BRAKE</button>
