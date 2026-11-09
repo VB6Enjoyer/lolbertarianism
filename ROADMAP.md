@@ -556,3 +556,29 @@ Ideas for later:
   in `vite.config.ts`), so a shared link shows a 1200×630 picture, the title
   and the blurb from `games.ts`. Pictures live in `public/og/`; a test fails if
   a game is missing one.
+
+### Austrian Economics Simulator: The Business Cycle ✅
+
+Rebuilt from three buttons into a small real-time game in TypeScript, around
+the meme's loop: steal a manhole cover → sell to the junkyard → buy drugs →
+wait for replacement.
+
+- A top-down city (`map.ts`, `render.ts`): the Fed, Cantillon Scrap & Salvage
+  (next door), Roundabout Hardware, your squat, the Corner and Last-in-Line
+  Recycling. Walk with the arrows/WASD or tap the map; E/Space to act; 1–4 to
+  buy. You're Rothbard.
+- The Fed (`logic.ts`): a calm start, then 45 s booms (rates at 0.25%, scrap
+  prices in a bubble, an infrastructure bill with new manholes, City Works
+  crews everywhere) and 35 s busts (rate hikes, a scrap crash, crews cut,
+  another cop), announced 8 s ahead on the news ticker. The yard by the Fed
+  hears the news first; the far one 12 s later (the Cantillon effect).
+- Your fix wears off (faster with tolerance); heroin fills it and slows you
+  down, crack fills half and speeds you up. Drugs inflate faster than scrap.
+  Being seen prying (cops, crews, passers-by) or carrying covers past a cop
+  raises heat; 100 is an arrest. Passers-by and cops fall into open manholes.
+- Your squat stores covers for later (low time preference); capital goods at
+  the hardware store: crowbar, shopping cart, hi-vis vest, bike.
+- The meme itself is the HUD: its arrows light up as you go around, and a full
+  lap pays a bonus. Price graphs for both yards and both drugs, DEA raids, 18
+  achievements, a personal best. Automated driver: ~8–10 min basic, longer
+  with capital goods.

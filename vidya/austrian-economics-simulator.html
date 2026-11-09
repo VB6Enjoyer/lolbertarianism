@@ -3,419 +3,156 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Austrian Economics Simulator</title>
-    <style>
-        :root {
-            --bg-color: #050a0f;
-            --cyan: #5ffbf1;
-            --red: #ff5f5f;
-            --green: #5fff8f;
-            --dark-green: #1a4d2e;
-            --grid-line: #1a2f38;
-            --font-main: 'Courier New', Courier, monospace;
-        }
-
-        * {
-            box-sizing: border-box;
-            user-select: none;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--cyan);
-            font-family: var(--font-main);
-            margin: 0;
-            padding: 20px;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            text-transform: uppercase;
-        }
-
-        /* CRT Overlay Effect */
-        .crt::before {
-            content: " ";
-            display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            right: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            z-index: 2;
-            background-size: 100% 2px, 3px 100%;
-            pointer-events: none;
-        }
-
-        .container {
-            display: grid;
-            grid-template-columns: 200px 250px 150px;
-            grid-template-rows: auto auto auto;
-            gap: 10px;
-            border: 2px solid var(--cyan);
-            padding: 10px;
-            background: #000;
-            box-shadow: 0 0 20px rgba(95, 251, 241, 0.2);
-            position: relative;
-            max-width: 100%;
-        }
-
-        /* Header */
-        .header {
-            grid-column: 1 / -1;
-            border: 2px solid var(--cyan);
-            padding: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: bold;
-            letter-spacing: 2px;
-            background: rgba(95, 251, 241, 0.1);
-        }
-
-        .logo {
-            border: 2px solid var(--green);
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--green);
-        }
-
-        /* Left Column - Portrait */
-        .portrait-panel {
-            border: 2px solid var(--grid-line);
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            position: relative;
-            overflow: hidden;
-            background: #0a151a;
-        }
-
-        .economist-face {
-            width: 100%;
-            height: 100%;
-            background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Murray_Rothbard.jpg/250px-Murray_Rothbard.jpg');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            filter: grayscale(100%) contrast(150%);
-            opacity: 0.5;
-        }
-
-        .pills {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            font-size: 20px;
-            opacity: 0.7;
-        }
-
-        /* Middle Column - Manhole */
-        .action-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .status-box {
-            border: 2px solid var(--red);
-            padding: 5px;
-            text-align: center;
-            font-size: 0.8rem;
-        }
-
-        .status-text {
-            color: var(--red);
-            font-weight: bold;
-            font-size: 1.1rem;
-            margin-top: 5px;
-        }
-
-        .manhole-display {
-            height: 150px;
-            border: 2px solid var(--red);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #111;
-            position: relative;
-        }
-
-        .manhole-cover {
-            width: 100px;
-            height: 100px;
-            background: radial-gradient(circle, #444 20%, #333 21%, #333 40%, #444 41%, #444 60%, #333 61%);
-            border-radius: 50%;
-            border: 4px dashed #555;
-            box-shadow: inset 0 0 10px #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #222;
-            font-weight: bold;
-            font-size: 0.8rem;
-            text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.1);
-            transition: all 0.3s;
-        }
-
-        .manhole-cover.missing {
-            opacity: 0.1;
-        }
-
-        .btn {
-            background: transparent;
-            padding: 10px;
-            font-family: var(--font-main);
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background 0.1s;
-        }
-
-        .btn:active {
-            transform: translateY(2px);
-        }
-
-        .btn-steal {
-            border: 2px solid var(--red);
-            color: var(--red);
-        }
-
-        .btn-steal:hover {
-            background: rgba(255, 95, 95, 0.2);
-        }
-
-        .btn-sell {
-            border: 2px solid var(--cyan);
-            color: var(--cyan);
-        }
-
-        .btn-sell:hover {
-            background: rgba(95, 251, 241, 0.2);
-        }
-
-        .btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        /* Right Column - Stats */
-        .stats-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .budget-box {
-            border: 2px solid var(--cyan);
-            padding: 10px;
-            text-align: center;
-        }
-
-        .budget-amount {
-            font-size: 1.5rem;
-            color: var(--green);
-        }
-
-        .bars-container {
-            display: flex;
-            height: 100%;
-            gap: 5px;
-            border: 2px solid var(--cyan);
-            padding: 2px;
-            background: #000;
-        }
-
-        .bar-col {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            background: #111;
-        }
-
-        .bar-fill {
-            width: 100%;
-            transition: height 0.5s;
-        }
-
-        .bar-red {
-            background: repeating-linear-gradient(45deg,
-                    var(--red),
-                    var(--red) 5px,
-                    #000 5px,
-                    #000 10px);
-        }
-
-        .bar-green {
-            background: repeating-linear-gradient(0deg,
-                    var(--green),
-                    var(--green) 2px,
-                    #000 2px,
-                    #000 4px);
-        }
-
-        /* Bottom Row - Graphs */
-        .graphs-row {
-            grid-column: 1 / -1;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .graph-container {
-            border: 1px solid var(--grid-line);
-            padding: 5px;
-            position: relative;
-        }
-
-        .graph-title {
-            font-size: 0.8rem;
-            margin-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .chart-area {
-            display: flex;
-            align-items: flex-end;
-            height: 80px;
-            border-bottom: 1px solid var(--cyan);
-            border-left: 1px solid var(--cyan);
-            position: relative;
-            overflow: hidden;
-        }
-
-        canvas {
-            width: 100%;
-            height: 100%;
-        }
-
-        .buy-btn {
-            position: absolute;
-            right: 0;
-            top: 20px;
-            bottom: 0;
-            width: 40px;
-            border: 2px solid var(--cyan);
-            color: var(--cyan);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-            background: #000;
-            cursor: pointer;
-            z-index: 10;
-        }
-
-        .buy-btn:hover {
-            background: rgba(95, 251, 241, 0.2);
-        }
-
-        .buy-btn:active {
-            background: var(--cyan);
-            color: #000;
-        }
-    </style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script type="module" src="/src/shared/arcade-button.ts"></script>
 </head>
 
 <body class="crt">
-
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
+    <div id="app">
+        <header class="topbar">
             <div class="logo">$</div>
-            <div>AUSTRIAN ECONOMICS</div>
-            <div>🔼</div>
-        </div>
+            <div class="brand">AUSTRIAN ECONOMICS <small>THE BUSINESS CYCLE</small></div>
+            <div id="phase" class="phase calm" title="Where the economy is in the cycle">CALM</div>
+            <div class="rate" title="The federal funds rate">FED <b id="rate">2.50%</b></div>
+            <div class="ticker" aria-live="polite"><span id="ticker">FED CHAIR: "WE HAVE TOOLS."</span></div>
+            <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
+            <button id="pause" class="icon-button" type="button" aria-label="Pause">⏸</button>
+        </header>
 
-        <!-- Left: Portrait -->
-        <div class="portrait-panel">
-            <div class="economist-face"></div>
-            <div class="pills">💊💊💊</div>
-        </div>
-
-        <!-- Middle: Action -->
-        <div class="action-panel">
-            <div class="status-box">
-                <div>MANHOLE COVER STATUS:</div>
-                <div class="status-text" id="coverStatus">NOT AVAILABLE</div>
-            </div>
-            <div class="manhole-display">
-                <div class="manhole-cover missing" id="manholeCover">DANGER</div>
-            </div>
-            <button class="btn btn-steal" id="btnSteal" onclick="stealCover()">
-                <span>STEAL COVER</span>
-                <span>50☎</span>
-            </button>
-            <button class="btn btn-sell" id="btnSell" onclick="sellCover()" disabled>
-                <span>SELL COVER</span>
-                <span>15🏛</span>
-            </button>
-        </div>
-
-        <!-- Right: Stats -->
-        <div class="stats-panel">
-            <div class="budget-box">
-                <div>DRUG BUDGET</div>
-                <div class="budget-amount" id="budgetDisplay">98$</div>
-            </div>
-            <div class="bars-container">
-                <div class="bar-col">
-                    <div class="bar-fill bar-red" style="height: 30%"></div>
+        <main class="layout">
+            <section class="map-wrap">
+                <canvas id="map" aria-label="The city: streets, manholes, the junkyards and the corner"></canvas>
+                <button id="action" class="action" type="button" disabled>Walk to a manhole cover</button>
+                <!-- Buying, at the corner and the hardware store -->
+                <div id="shop" class="shop" hidden>
+                    <h2 id="shop-title">The Corner</h2>
+                    <div id="shop-items" class="shop-items"></div>
                 </div>
-                <div class="bar-col">
-                    <div class="bar-fill bar-green" id="cashBar" style="height: 50%"></div>
-                </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- Bottom: Graphs -->
-        <div class="graphs-row">
-            <!-- Graph 1 -->
-            <div class="graph-container">
-                <div class="graph-title">
-                    <span>HEROIN PRICES</span>
-                    <span id="priceA">0.00</span>
+            <aside class="side">
+                <!-- The meme, as the HUD: the arrows light up as you go around -->
+                <div class="cycle" title="Go all the way around for a bonus">
+                    <svg viewBox="0 0 320 210" aria-hidden="true">
+                        <defs>
+                            <marker id="head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
+                        </defs>
+                        <ellipse cx="160" cy="108" rx="112" ry="78" fill="none" stroke="#111" stroke-width="2"/>
+                        <path class="arc arc-0" d="M 150 30 Q 230 26 262 72" marker-end="url(#head)"/>
+                        <path class="arc arc-1" d="M 270 120 Q 262 166 216 180" marker-end="url(#head)"/>
+                        <path class="arc arc-2" d="M 150 186 Q 84 186 56 150" marker-end="url(#head)"/>
+                        <path class="arc arc-3" d="M 50 104 Q 54 54 108 34" marker-end="url(#head)"/>
+                    </svg>
+                    <span class="step step-0">Steal Manhole Cover</span>
+                    <span class="step step-1">sell to junkyard</span>
+                    <span class="step step-2">buy drugs</span>
+                    <span class="step step-3">wait for replacement</span>
+                    <div class="cycle-center">
+                        <b>Austrian<br>Economics</b>
+                        <img src="img/rothbard.webp" alt="Murray Rothbard">
+                    </div>
+                    <span id="laps" class="laps">LAPS 0</span>
                 </div>
-                <div class="chart-area">
-                    <canvas id="canvasA"></canvas>
-                    <div class="buy-btn" onclick="buyAsset('A')">
-                        <span>B</span><span>U</span><span>Y</span>
+
+                <div class="stats">
+                    <div class="stat budget"><span>DRUG BUDGET</span><b id="cash">$98</b></div>
+                    <div class="stat utils"><span>UTILITY</span><b id="utils">0</b></div>
+                    <div class="meter" title="Your fix: when it runs out, the run is over">
+                        <span>FIX</span><div class="bar"><i id="fix-bar"></i></div>
+                    </div>
+                    <div class="meter heat" title="Heat: get seen and it rises; at 100 you're arrested">
+                        <span>HEAT</span><div class="bar"><i id="heat-bar"></i></div>
+                    </div>
+                    <div class="inventory">
+                        <span title="Covers you're carrying">⚙️ <b id="carried">0/1</b></span>
+                        <span title="Covers saved in your squat">🛏️ <b id="stash">0</b></span>
+                        <span id="gear" class="gear" title="Capital goods"></span>
                     </div>
                 </div>
-            </div>
-            <!-- Graph 2 -->
-            <div class="graph-container">
-                <div class="graph-title">
-                    <span>CRACK PRICES</span>
-                    <span id="priceB">0.00</span>
-                </div>
-                <div class="chart-area">
-                    <canvas id="canvasB"></canvas>
-                    <div class="buy-btn" onclick="buyAsset('B')">
-                        <span>B</span><span>U</span><span>Y</span>
+
+                <div class="graphs">
+                    <div class="graph">
+                        <div class="graph-title"><span>SCRAP PRICES</span><span><i class="key near"></i>NEAR <b id="price-near">$15</b> <i class="key far"></i>FAR <b id="price-far">$15</b></span></div>
+                        <canvas id="graph-scrap"></canvas>
                     </div>
+                    <div class="graph">
+                        <div class="graph-title"><span>DRUG PRICES</span><span><i class="key heroin"></i>HEROIN <b id="price-heroin">$40</b> <i class="key crack"></i>CRACK <b id="price-crack">$22</b></span></div>
+                        <canvas id="graph-drugs"></canvas>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Title -->
+        <div id="title" class="overlay">
+            <div class="panel">
+                <h1>The Business Cycle</h1>
+                <p class="tagline">An Austrian Economics Simulator</p>
+                <ol class="rules">
+                    <li>⚙️ <b>Steal manhole covers.</b> Stand on one and press <kbd>E</kbd>. Don't let anyone see you.</li>
+                    <li>🏗️ <b>Sell them to a junkyard.</b> Cantillon Scrap, next to the Fed, hears the news first. Last-in-Line Recycling finds out 12 seconds later.</li>
+                    <li>💊 <b>Buy drugs</b> at the Corner before your fix runs out. Heroin lasts, crack makes you fast.</li>
+                    <li>🦺 <b>Wait for the city to replace them,</b> then steal them again. Go all the way around for a bonus.</li>
+                    <li>🏛️ <b>Watch the Fed.</b> Booms pay double for scrap and bring new manholes. Busts crash the price and the crews stop coming. Save covers in your squat for the boom.</li>
+                </ol>
+                <p class="controls">Move: arrows / WASD, or tap the map · Action: <kbd>E</kbd> / <kbd>Space</kbd> · Buy: <kbd>1</kbd>–<kbd>4</kbd> · Pause: <kbd>P</kbd></p>
+                <p id="title-best" class="best"></p>
+                <div class="panel-buttons">
+                    <button id="start" type="button" class="big-button">Start the cycle</button>
+                    <button id="show-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
                 </div>
             </div>
         </div>
+
+        <!-- Achievements -->
+        <div id="achievements" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>🏅 Achievements</h1>
+                <p class="tagline"><span id="achievements-count">0</span> unlocked. Saved in this browser.</p>
+                <div id="achievements-grid" class="achievements-grid"></div>
+                <button id="hide-achievements" type="button" class="big-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Paused -->
+        <div id="paused" class="overlay" hidden>
+            <div class="panel">
+                <h1>Paused</h1>
+                <p>The market never sleeps. You can, for a bit.</p>
+                <button id="resume" type="button" class="big-button">Resume</button>
+            </div>
+        </div>
+
+        <!-- Game over -->
+        <div id="over" class="overlay" hidden>
+            <div class="panel">
+                <h1 id="over-title">Withdrawal</h1>
+                <p id="over-line"></p>
+                <dl class="results">
+                    <dt>Utility</dt><dd id="final-utils">0</dd>
+                    <dt>Cycles completed</dt><dd id="final-laps">0</dd>
+                    <dt>Covers stolen / sold</dt><dd id="final-covers">0</dd>
+                    <dt>Lasted</dt><dd id="final-time">0:00</dd>
+                    <dt>Best</dt><dd id="final-best">0</dd>
+                </dl>
+                <p id="new-best" class="new-best" hidden>🏆 New personal best!</p>
+                <div id="run-achievements" class="run-achievements" hidden>
+                    <p>🏅 Unlocked this run:</p>
+                    <ul id="run-achievements-list"></ul>
+                </div>
+                <div class="panel-buttons">
+                    <button id="restart" type="button" class="big-button">Go around again</button>
+                    <button id="over-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="toasts" class="toasts" aria-live="polite"></div>
     </div>
 
-    <script type="module" src="/src/games/austrian-economics-simulator/main.js"></script>
+    <script type="module" src="/src/games/austrian-economics-simulator/main.ts"></script>
 </body>
 
 </html>

@@ -25,8 +25,8 @@ export const games: Game[] = [
   {
     slug: 'austrian-economics-simulator',
     title: 'Austrian Economics Simulator',
-    blurb: 'Steal manhole covers, sell them, and play the heroin and crack markets.',
-    status: 'prototype',
+    blurb: 'Steal manhole covers, sell them to the junkyard, buy drugs, wait for the replacement. Time it with the Fed’s business cycle.',
+    status: 'wip',
     legacyPaths: ['austrian_economics_simulator.html'],
   },
   {
