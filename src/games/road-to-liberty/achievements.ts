@@ -19,7 +19,11 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'politburo', icon: '☭', name: 'The Whole Politburo', description: 'Run over Marx, Engels, Lenin, Stalin, Mao and Che in a single run.' },
   { id: 'commies-50', icon: '🏭', name: 'Means of Destruction', description: 'Flatten 50 commies in one run.' },
   { id: 'combo-5', icon: '🔗', name: 'Spontaneous Order', description: 'Reach a ×5 combo.' },
+  { id: 'commies-250', icon: '🚜', name: 'Collectivization, Reversed', description: 'Flatten 250 commies in one run.' },
+  { id: 'commies-500', icon: '🧹', name: 'Red Scare', description: 'Flatten 500 commies in one run.' },
   { id: 'combo-10', icon: '💥', name: 'Creative Destruction', description: 'Reach a ×10 combo.' },
+  { id: 'combo-25', icon: '⛓️', name: 'Division of Labor', description: 'Reach a ×25 combo.' },
+  { id: 'combo-50', icon: '🌋', name: 'Catallaxy', description: 'Reach a ×50 combo.' },
   { id: 'border', icon: '🏁', name: 'Exit Over Voice', description: 'Cross your first border.' },
   { id: 'borders-4', icon: '🗺️', name: 'Panarchist', description: 'Cross 4 borders in one run.' },
   { id: 'snow', icon: '❄️', name: 'Ice Road Ancap', description: 'Make it to the snowfield.' },
@@ -32,12 +36,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'killdozer', icon: '🚜', name: 'Marvin Would Be Proud', description: 'Smash 5 things with a single Killdozer.' },
   { id: 'smoke', icon: '💨', name: 'Now You See Me', description: 'Throw a smoke grenade with the cops less than 20 m behind.' },
   { id: 'close-call', icon: '🚨', name: 'Close Shave', description: 'Let the cops get within 10 m, then pull 100 m ahead.' },
-  { id: 'nap', icon: '🕊️', name: 'Non-Aggression Principle', description: 'Drive 2 minutes without crashing into anything.' },
+  { id: 'nap', icon: '🕊️', name: 'Non-Aggression Principle', description: 'Drive 1 minute without crashing into anything.' },
   { id: 'mechanic', icon: '🔧', name: 'Austrian Mechanic', description: 'Repair the car when it can only do 70% or less.' },
   { id: 'fumes', icon: '⛽', name: 'Running on Principle', description: 'Run out of gas and live to find a jerry can.' },
   { id: 'storm', icon: '🌧️', name: 'Dark and Stormy', description: 'Drive through a storm at night.' },
   { id: 'nitro', icon: '🔥', name: 'Hold My NOS', description: 'Fire your first nitro.' },
   { id: 'nitro-5', icon: '🚀', name: 'Supply-Side Boost', description: 'Fire the nitro 5 times in one run.' },
+  { id: 'nitro-10', icon: '☄️', name: 'Malinvestment in Speed', description: 'Fire the nitro 10 times in one run.' },
+  { id: 'hands-off', icon: '🙌', name: 'Laissez-Faire', description: "Don't touch the steering for 30 seconds." },
+  { id: 'spikes-10', icon: '📌', name: 'Regulatory Burden', description: 'Run over 10 spike strips in one run (Killdozer smashes don\'t count).' },
   { id: 'heli', icon: '🚁', name: 'Air Superiority', description: 'Survive IRS Air Support.' },
   { id: 'tank', icon: '🪖', name: 'Tank You Very Much', description: 'Survive the tank.' },
   { id: 'heemeyer', icon: '🚜', name: "Heemeyer's Revenge", description: 'Flatten the tank with the Killdozer.' },
@@ -55,6 +62,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'top', icon: '👑', name: 'Out-Rothbarding Rothbard', description: 'Take first place on the high-score table.' },
   { id: 'busts-10', icon: '🚔', name: 'Repeat Offender', description: 'Get busted 10 times.' },
   { id: 'lifetime-500', icon: '📈', name: 'Five-Year Plan, Exceeded', description: 'Flatten 500 commies in total.' },
+  { id: 'lifetime-3000', icon: '🏛️', name: 'The Road to Serfdom, Repaved', description: 'Flatten 3,000 commies in total.' },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -66,6 +74,9 @@ export interface Lifetime {
 }
 
 const m = (meters: number) => meters * UNITS_PER_METER;
+
+/** Steering below this counts as hands off the wheel. */
+const HANDS_OFF = 0.05;
 
 /**
  * Watches a run and unlocks achievements. `unlocked` and `lifetime` are the
@@ -80,6 +91,9 @@ export class Tracker {
   private lastGap = Infinity;
   private lastFactor = 1;
   private paradeHits = 0;
+  private spikeHits = 0;
+  /** When you last moved the wheel (game time). */
+  private lastSteer = 0;
 
   constructor(
     readonly unlocked: Set<string>,
@@ -96,6 +110,8 @@ export class Tracker {
     this.lastGap = state.copGap;
     this.lastFactor = speedFactor(state);
     this.paradeHits = 0;
+    this.spikeHits = 0;
+    this.lastSteer = state.time;
   }
 
   private unlock(id: string, found: string[]) {
@@ -104,10 +120,14 @@ export class Tracker {
     found.push(id);
   }
 
-  /** Call after each update with its events. Returns the ids unlocked just now. */
-  update(state: GameState, events: readonly GameEvent[]): string[] {
+  /**
+   * Call after each update with its events and the steering it used (-1..1).
+   * Returns the ids unlocked just now.
+   */
+  update(state: GameState, events: readonly GameEvent[], steer = 0): string[] {
     const found: string[] = [];
     const add = (id: string) => this.unlock(id, found);
+    if (Math.abs(steer) > HANDS_OFF) this.lastSteer = state.time;
     if (state.killdozerLeft === 0) this.smashes = 0;
 
     for (const e of events) {
@@ -125,6 +145,7 @@ export class Tracker {
           break;
         case 'crash':
           this.lastCrash = state.time;
+          if (e.kind === 'spikes' && ++this.spikeHits >= 10) add('spikes-10');
           break;
         case 'smash':
           if (++this.smashes >= 5) add('killdozer');
@@ -147,6 +168,7 @@ export class Tracker {
         case 'nitro':
           add('nitro');
           if (state.nitroUsed >= 5) add('nitro-5');
+          if (state.nitroUsed >= 10) add('nitro-10');
           break;
         case 'boss-survived':
           add(e.kind === 'helicopter' ? 'heli' : 'tank');
@@ -161,9 +183,17 @@ export class Tracker {
 
     const tally = state.stats.commies;
     if (Object.values(tally).every((n) => n > 0)) add('politburo');
-    if (totalCommies(tally) >= 50) add('commies-50');
+    const flattened = totalCommies(tally);
+    if (flattened >= 50) add('commies-50');
+    if (flattened >= 250) add('commies-250');
+    if (flattened >= 500) add('commies-500');
+    // Lifetime counts are saved at the end of each run; this run counts too.
+    if (this.lifetime.commies + flattened >= 500) add('lifetime-500');
+    if (this.lifetime.commies + flattened >= 3000) add('lifetime-3000');
     if (state.combo >= 5) add('combo-5');
     if (state.combo >= 10) add('combo-10');
+    if (state.combo >= 25) add('combo-25');
+    if (state.combo >= 50) add('combo-50');
     if (state.bordersCrossed >= 4) add('borders-4');
     if (this.biomes.size >= 5) add('all-biomes');
     if (state.stats.meters >= 10_000) add('km-10');
@@ -171,7 +201,8 @@ export class Tracker {
     if (state.time >= 300) add('survive-5');
     if (state.score >= 50_000) add('score-50k');
     if (state.score >= 100_000) add('score-100k');
-    if (state.time - this.lastCrash >= 120) add('nap');
+    if (state.time - this.lastCrash >= 60) add('nap');
+    if (state.time - this.lastSteer >= 30) add('hands-off');
     if (state.copGap < m(10) && !state.over) this.closeCall = true;
     if (this.closeCall && state.copGap > m(100)) add('close-call');
     const env = environment(state.time);
@@ -213,6 +244,7 @@ export class Tracker {
     this.lifetime.commies += totalCommies(state.stats.commies);
     if (this.lifetime.busts >= 10) this.unlock('busts-10', found);
     if (this.lifetime.commies >= 500) this.unlock('lifetime-500', found);
+    if (this.lifetime.commies >= 3000) this.unlock('lifetime-3000', found);
     if (rank >= 0) this.unlock('hall-of-fame', found);
     if (rank === 0) this.unlock('top', found);
     return found;
