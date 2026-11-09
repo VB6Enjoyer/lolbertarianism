@@ -1309,10 +1309,11 @@ function frame(now: number) {
 
   pollGamepad();
   if (mode === 'playing') {
-    const events = update(state, readInput(dt), dt, runRng);
+    const input = readInput(dt);
+    const events = update(state, input, dt, runRng);
     considerPhoto(events);
     handle(events);
-    announce(tracker.update(state, events));
+    announce(tracker.update(state, events, input.steer));
   } else if (mode === 'title') {
     // Attract mode: cruise down the road behind the title screen.
     state.position += CONFIG.maxSpeed * 0.6 * dt;

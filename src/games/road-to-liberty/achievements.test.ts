@@ -84,12 +84,12 @@ describe('achievements', () => {
     expect(tick(tracker, state, [{ type: 'power-up', kind: 'smoke' }])).toContain('smoke');
   });
 
-  it('two minutes without a crash; a crash restarts the clock', () => {
+  it('a minute without a crash; a crash restarts the clock', () => {
     const { tracker, state } = setup();
-    tick(tracker, state, [], 100);
+    tick(tracker, state, [], 50);
     tick(tracker, state, [{ type: 'crash', kind: 'traffic' }], 1);
-    expect(tick(tracker, state, [], 100)).not.toContain('nap');
-    expect(tick(tracker, state, [], 21)).toContain('nap');
+    expect(tick(tracker, state, [], 50)).not.toContain('nap');
+    expect(tick(tracker, state, [], 11)).toContain('nap');
   });
 
   it('running dry and then finding a can', () => {
@@ -163,6 +163,51 @@ describe('achievements', () => {
     expect(tracker.endRun(state, -1, { days: 7 })).toContain('daily-7');
     expect(tracker.checkCars(false)).toEqual([]);
     expect(tracker.checkCars(true)).toEqual(['cars-all']);
+  });
+
+  it('250 and 500 commies in one run; 3,000 in total, counting the run in progress', () => {
+    const { tracker, state, lifetime } = setup();
+    state.stats.commies.marx = 249;
+    expect(tick(tracker, state)).not.toContain('commies-250');
+    state.stats.commies.marx = 250;
+    expect(tick(tracker, state)).toContain('commies-250');
+    state.stats.commies.marx = 500;
+    expect(tick(tracker, state)).toEqual(expect.arrayContaining(['commies-500', 'lifetime-500']));
+    lifetime.commies = 2499;
+    expect(tick(tracker, state)).not.toContain('lifetime-3000');
+    state.stats.commies.mao = 1;
+    expect(tick(tracker, state)).toContain('lifetime-3000');
+  });
+
+  it('×25 and ×50 combos', () => {
+    const { tracker, state } = setup();
+    state.combo = 25;
+    expect(tick(tracker, state)).toContain('combo-25');
+    state.combo = 50;
+    expect(tick(tracker, state)).toContain('combo-50');
+  });
+
+  it('nitro ten times in one run', () => {
+    const { tracker, state } = setup();
+    state.nitroUsed = 10;
+    expect(tick(tracker, state, [{ type: 'nitro' }])).toContain('nitro-10');
+  });
+
+  it('30 seconds hands off the wheel; touching it restarts the clock', () => {
+    const { tracker, state } = setup();
+    tracker.update(state, [], 0);
+    tick(tracker, state, [], 20);
+    state.time += 1;
+    tracker.update(state, [], 0.6);
+    expect(tick(tracker, state, [], 25)).not.toContain('hands-off');
+    expect(tick(tracker, state, [], 6)).toContain('hands-off');
+  });
+
+  it('ten spike strips in one run, and Killdozer smashes do not count', () => {
+    const { tracker, state } = setup();
+    for (let i = 0; i < 5; i++) tick(tracker, state, [{ type: 'smash', kind: 'spikes', points: 250 }]);
+    for (let i = 0; i < 9; i++) expect(tick(tracker, state, [{ type: 'crash', kind: 'spikes' }])).not.toContain('spikes-10');
+    expect(tick(tracker, state, [{ type: 'crash', kind: 'spikes' }])).toContain('spikes-10');
   });
 
   it('saves are cleaned up', () => {

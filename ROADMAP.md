@@ -539,6 +539,15 @@ Ideas for later:
   phones, a download elsewhere).
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
   with a new screenshot.
+- 9 more achievements (49 in all): 250 and 500 commies in a run, 3,000 in
+  total, ×25 and ×50 combos, 10 nitros in a run, 30 s hands off the wheel, 10
+  spike strips in a run (Killdozer smashes don't count). The Non-Aggression
+  Principle now needs 1 minute without a crash instead of 2.
+- The tank and IRS Air Support redrawn as detailed SVGs (`bosses.ts`): the tank
+  with tracks, fenders, a grille, exhausts, an IRS·1040 plate and a turret
+  aiming back at you; the helicopter with a glass cockpit, a yellow stripe,
+  skids and a tail fin. Treads, brake lights, both rotors, the beacon and the
+  searchlight are animated on top.
 
 ### Link previews ✅
 

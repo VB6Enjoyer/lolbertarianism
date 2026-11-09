@@ -5,6 +5,7 @@
 import { borderName, COMMIES, CONFIG, cameraDepth, curveAt, heightAt, isScenery, PLAYER_Z, segmentIndex, type Entity, type EntityKind, type Environment, type GameState, type PowerUp } from './logic.ts';
 import { drawScenery, SCENERY_SIZE } from './scenery.ts';
 import { blink, display } from './settings.ts';
+import { HELI_PARTS, heliImage, TANK_PARTS, tankImage } from './bosses.ts';
 import { BIOMES, biomeAt, blendColor, blendNumber, type Biome } from './biomes.ts';
 
 interface Point {
@@ -601,109 +602,114 @@ function drawCruiser(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.restore();
 }
 
-/** The State's tank, from behind: treads, hull, turret with its barrel aimed back at you. */
+/** The State's tank, from behind (the SVG in bosses.ts), with moving treads and brake lights on top. */
 function drawTank(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number) {
+  const img = tankImage();
+  if (!img) return;
+  const left = x - w / 2;
+  const top = y - h;
+  const sx = w / 300;
+  const sy = h / 180;
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(x - w * 0.55, y - h * 0.05, w * 1.1, h * 0.08);
-  // Treads
-  ctx.fillStyle = '#2b2b2b';
-  ctx.fillRect(x - w * 0.5, y - h * 0.35, w * 0.22, h * 0.35);
-  ctx.fillRect(x + w * 0.28, y - h * 0.35, w * 0.22, h * 0.35);
-  ctx.fillStyle = '#444';
-  const tick = (time * 12) % 1;
-  for (let i = 0; i < 4; i++) {
-    const ty = y - h * 0.35 + ((i + tick) / 4) * h * 0.35;
-    ctx.fillRect(x - w * 0.5, ty, w * 0.22, h * 0.02);
-    ctx.fillRect(x + w * 0.28, ty, w * 0.22, h * 0.02);
-  }
-  // Hull
-  ctx.fillStyle = '#556b2f';
-  ctx.beginPath();
-  ctx.moveTo(x - w * 0.46, y - h * 0.3);
-  ctx.lineTo(x - w * 0.4, y - h * 0.6);
-  ctx.lineTo(x + w * 0.4, y - h * 0.6);
-  ctx.lineTo(x + w * 0.46, y - h * 0.3);
-  ctx.closePath();
-  ctx.fill();
-  // Turret and the barrel, pointing back at you
-  ctx.fillStyle = '#4b5d27';
-  ctx.beginPath();
-  ctx.roundRect(x - w * 0.22, y - h * 0.88, w * 0.44, h * 0.3, w * 0.05);
-  ctx.fill();
-  ctx.fillStyle = '#222';
-  ctx.beginPath();
-  ctx.arc(x, y - h * 0.72, w * 0.06, 0, Math.PI * 2);
-  ctx.fill();
-  if (w > 50) {
-    ctx.fillStyle = '#f5f5dc';
-    ctx.font = `bold ${Math.round(h * 0.13)}px 'Courier New', monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('IRS', x, y - h * 0.45);
+  ctx.drawImage(img, left, top, w, h);
+  // Tread links rolling down the tracks
+  if (w > 24) {
+    ctx.fillStyle = 'rgba(110, 110, 110, 0.75)';
+    const tick = (time * 10) % 1;
+    const span = TANK_PARTS.trackBottom - TANK_PARTS.trackTop;
+    for (const t of TANK_PARTS.tracks) {
+      for (let i = 0; i < 6; i++) {
+        const ty = TANK_PARTS.trackTop + ((i + tick) / 6) * span;
+        ctx.fillRect(left + (t.x + 4) * sx, top + ty * sy, (t.w - 8) * sx, Math.max(1, 2.5 * sy));
+      }
+    }
   }
   // Brake lights flash on the brake check
-  ctx.fillStyle = blink(time, 4) ? '#ff1744' : '#7f0000';
-  ctx.fillRect(x - w * 0.42, y - h * 0.4, w * 0.08, h * 0.06);
-  ctx.fillRect(x + w * 0.34, y - h * 0.4, w * 0.08, h * 0.06);
+  if (blink(time, 4)) {
+    ctx.fillStyle = '#ff1744';
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = Math.min(20, w * 0.04);
+    for (const l of TANK_PARTS.brakeLights) ctx.fillRect(left + l.x * sx, top + l.y * sy, l.w * sx, l.h * sy);
+  }
   ctx.restore();
 }
 
 /** IRS Air Support, hovering over the road ahead (drawn in screen space). */
 function drawHelicopter(ctx: CanvasRenderingContext2D, width: number, height: number, bossX: number, time: number, night: boolean) {
+  const img = heliImage();
+  if (!img) return;
   // Below the rearview mirror, and a bit off-center so the mirror never hides it.
-  const x = width / 2 + width * 0.12 + bossX * width * 0.25;
+  const x = width / 2 + width * 0.17 + bossX * width * 0.22;
   const y = height * 0.4 + Math.sin(time * 2.2) * height * 0.015;
-  const w = Math.max(90, width * 0.11);
+  const W = Math.max(150, width * 0.18);
+  const H = W / 2;
+  const left = x - (HELI_PARTS.anchor.x / 240) * W;
+  const top = y - (HELI_PARTS.anchor.y / 120) * H;
+  const at = (p: { x: number; y: number }) => [left + (p.x / 240) * W, top + (p.y / 120) * H] as const;
   ctx.save();
+  // A slight nose-down tilt, like it's chasing
+  ctx.translate(x, y);
+  ctx.rotate(-0.06 + Math.sin(time * 1.7) * 0.015);
+  ctx.translate(-x, -y);
   if (night) {
-    // Searchlight sweeping the road
+    // Searchlight sweeping the road, from under the nose
+    const [lx, ly] = at(HELI_PARTS.searchlight);
     const sweep = Math.sin(time * 1.3) * width * 0.12;
-    const beam = ctx.createLinearGradient(0, y, 0, height);
-    beam.addColorStop(0, 'rgba(255, 255, 220, 0.35)');
-    beam.addColorStop(1, 'rgba(255, 255, 220, 0.05)');
+    const beam = ctx.createLinearGradient(0, ly, 0, height);
+    beam.addColorStop(0, 'rgba(255, 255, 220, 0.4)');
+    beam.addColorStop(1, 'rgba(255, 255, 220, 0.04)');
     ctx.fillStyle = beam;
     ctx.beginPath();
-    ctx.moveTo(x - w * 0.05, y + w * 0.12);
-    ctx.lineTo(x + w * 0.05, y + w * 0.12);
-    ctx.lineTo(x + sweep + width * 0.12, height);
-    ctx.lineTo(x + sweep - width * 0.12, height);
+    ctx.moveTo(lx - W * 0.015, ly);
+    ctx.lineTo(lx + W * 0.015, ly);
+    ctx.lineTo(lx + sweep + width * 0.12, height * 1.2);
+    ctx.lineTo(lx + sweep - width * 0.12, height * 1.2);
     ctx.closePath();
     ctx.fill();
   }
-  // Tail boom and rotor
-  ctx.fillStyle = '#263238';
-  ctx.fillRect(x + w * 0.2, y - w * 0.04, w * 0.5, w * 0.07);
-  ctx.fillRect(x + w * 0.66, y - w * 0.14, w * 0.05, w * 0.18);
-  // Body
-  ctx.fillStyle = '#37474f';
+  ctx.drawImage(img, left, top, W, H);
+  // Tail rotor: a spinning blur with one visible blade
+  const [tx, ty] = at(HELI_PARTS.tailRotor);
+  const tr = W * 0.06;
+  ctx.fillStyle = 'rgba(40, 40, 40, 0.22)';
   ctx.beginPath();
-  ctx.ellipse(x, y, w * 0.32, w * 0.17, 0, 0, Math.PI * 2);
+  ctx.arc(tx, ty, tr, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#90caf9';
+  ctx.strokeStyle = 'rgba(20, 20, 20, 0.7)';
+  ctx.lineWidth = Math.max(1.5, W * 0.01);
+  const ta = time * 45;
   ctx.beginPath();
-  ctx.ellipse(x - w * 0.14, y - w * 0.02, w * 0.13, w * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Skids
-  ctx.strokeStyle = '#212121';
-  ctx.lineWidth = Math.max(2, w * 0.025);
-  ctx.beginPath();
-  ctx.moveTo(x - w * 0.3, y + w * 0.24);
-  ctx.lineTo(x + w * 0.25, y + w * 0.24);
+  ctx.moveTo(tx - Math.cos(ta) * tr, ty - Math.sin(ta) * tr);
+  ctx.lineTo(tx + Math.cos(ta) * tr, ty + Math.sin(ta) * tr);
   ctx.stroke();
-  // Main rotor, a blur
-  ctx.fillStyle = 'rgba(30, 30, 30, 0.55)';
-  const blade = w * (0.55 + 0.15 * Math.sin(time * 40));
-  ctx.fillRect(x - blade, y - w * 0.22, blade * 2, w * 0.03);
-  ctx.fillStyle = '#fff';
-  ctx.font = `bold ${Math.round(w * 0.12)}px 'Courier New', monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('IRS', x + w * 0.08, y + w * 0.05);
-  // Flashing light
-  ctx.fillStyle = blink(time, 5) ? '#ff1744' : '#2979ff';
+  // Main rotor: a flat disc seen almost edge-on, with two blades sweeping round
+  const [hx, hy] = at(HELI_PARTS.rotorHub);
+  const R = W * 0.56;
+  ctx.fillStyle = 'rgba(30, 30, 30, 0.16)';
   ctx.beginPath();
-  ctx.arc(x, y + w * 0.17, w * 0.03, 0, Math.PI * 2);
+  ctx.ellipse(hx, hy, R, R * 0.07, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(15, 15, 15, 0.8)';
+  ctx.lineWidth = Math.max(2, W * 0.014);
+  ctx.lineCap = 'round';
+  const a = time * 28;
+  for (const offset of [0, Math.PI]) {
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx + Math.cos(a + offset) * R, hy + Math.sin(a + offset) * R * 0.07);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.ellipse(hx, hy, W * 0.03, W * 0.012, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Beacon under the belly
+  const [bx, by] = at(HELI_PARTS.beacon);
+  ctx.fillStyle = blink(time, 5) ? '#ff1744' : '#2979ff';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = W * 0.04;
+  ctx.beginPath();
+  ctx.arc(bx, by, W * 0.014, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
