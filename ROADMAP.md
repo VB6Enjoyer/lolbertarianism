@@ -704,5 +704,25 @@ into a handicapping game. Steps 1 and 2 of the plan:
   even (−1%), a crude "always bet the matchup side" rule loses (−4%), and
   someone who really reads the fight wins ~+20% before it and ~+23% live.
 
-Next: tipsters and scouting, more bet types, a career of fight nights, and your
-own lobster to train and fight.
+### Libertarian Fight Club: step 3, intel and more bets ✅
+
+- Tabs under the arena: 🏆 Winner (the pool), 🎲 Props, 🧾 Parlay, 🕵️ Intel.
+- Intel (`intel.ts`): tipsters with track records kept on your save (the
+  market for lemons). 🐟 Fishmonger Frank ($15) whispers a hidden trait, right
+  two times in three; 🕵️ The Insider ($60) names who has the real edge, right
+  nine times in ten; 📱 @AlphaGuru (free) posts a 🔒 LOCK, a coin flip.
+  Scouting: $10 to watch a lobster in the tank for a tell ("hides behind the
+  treasure chest", "smells faintly of butter"), always true, never spelled
+  out. Rumors and tells stay on the cards.
+- Props (`props.ts`), at the house's fixed odds: ends by KO, goes to the
+  judges, KO in round 1/2/3, a lobster flees, 3+ critical hits, 4+ strawmen,
+  5+ super-effective arguments. The house reads the full matchup chart and
+  assumes the league's usual mix of traits, so its average prices are within
+  a point or two of reality; long shots are capped at 8×. Private
+  information pays: with a known coward in the ring, "a lobster flees" returns
+  about +38%.
+- Parlays: tonight's card is the current bout and the next two (saved). Pick
+  all three winners at the multiplied odds (each leg up to 10×, the parlay up
+  to 250×); legs settle bout by bout.
+
+Next: a career of fight nights, and your own lobster to train and fight.

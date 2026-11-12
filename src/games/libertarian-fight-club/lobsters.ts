@@ -137,6 +137,9 @@ export interface Lobster {
   trait: TraitId;
   /** Whether you've seen its trait (it shows on the card once you have). */
   traitKnown: boolean;
+  /** A tipster's word on its trait (maybe wrong), and whether you've watched it in the tank. */
+  rumor: { trait: TraitId; by: string } | null;
+  scouted: boolean;
 }
 
 const NAMES: readonly [FactionId, string][] = [
@@ -175,6 +178,8 @@ export function makeRoster(rng: () => number): Lobster[] {
       // A third have nothing special.
       trait: rng() < 0.33 ? 'none' : traits[1 + Math.floor(rng() * (traits.length - 1))],
       traitKnown: false,
+      rumor: null,
+      scouted: false,
     };
   });
 }
@@ -197,5 +202,10 @@ export function normalizeRoster(raw: unknown): Lobster[] | null {
     form: (Array.isArray(r?.form) ? r.form : []).filter((f: unknown) => f === 'W' || f === 'L').slice(-5),
     trait: TRAITS.some((t) => t.id === r?.trait) ? (r.trait as TraitId) : 'none',
     traitKnown: r?.traitKnown === true,
+    rumor:
+      r?.rumor && typeof r.rumor === 'object' && TRAITS.some((t) => t.id === (r.rumor as Record<string, unknown>).trait)
+        ? { trait: (r.rumor as Record<string, unknown>).trait as TraitId, by: String((r.rumor as Record<string, unknown>).by ?? '') }
+        : null,
+    scouted: r?.scouted === true,
   }));
 }

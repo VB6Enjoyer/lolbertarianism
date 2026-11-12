@@ -12,7 +12,7 @@ function rng(seed: number) {
 }
 
 const lobster = (over: Partial<Lobster> = {}): Lobster => ({
-  id: 0, name: 'Test', faction: 'ancap', claw: 6, shell: 6, stamina: 100, wits: 6, weight: 2, wins: 0, losses: 0, form: [], trait: 'none', traitKnown: false, ...over,
+  id: 0, name: 'Test', faction: 'ancap', claw: 6, shell: 6, stamina: 100, wits: 6, weight: 2, wins: 0, losses: 0, form: [], trait: 'none', traitKnown: false, rumor: null, scouted: false, ...over,
 });
 
 describe('fight club: the league', () => {
@@ -177,5 +177,91 @@ describe('fight club: live betting and cash-out', () => {
       return;
     }
     throw new Error('no fight went past round 1');
+  });
+});
+
+describe('fight club: intel', () => {
+  it('Frank whispers a trait (right about two in three); nothing to say when both are known', async () => {
+    const { buyTip } = await import('./intel.ts');
+    const a = lobster({ trait: 'coward' });
+    const b = lobster({ id: 1, trait: 'lazy', traitKnown: true });
+    let right = 0;
+    const r = rng(5);
+    for (let i = 0; i < 300; i++) {
+      const tip = buyTip('frank', [a, b], r)!;
+      expect(tip.kind).toBe('trait');
+      expect(tip.side).toBe(0); // only the unknown one
+      if (tip.kind === 'trait' && tip.trait === 'coward') right++;
+    }
+    expect(right / 300).toBeGreaterThan(0.55);
+    expect(right / 300).toBeLessThan(0.75);
+    expect(buyTip('frank', [{ ...a, traitKnown: true }, b], r)).toBeNull();
+  });
+
+  it('the Insider names the lobster with the real edge nine times in ten; the Guru is a coin flip', async () => {
+    const { buyTip } = await import('./intel.ts');
+    const strong = lobster({ faction: 'minarchist', claw: 9, shell: 8, stamina: 125 });
+    const weak = lobster({ id: 1, faction: 'ancap', claw: 4, shell: 4, stamina: 80 });
+    const r = rng(6);
+    let insider = 0;
+    let guru = 0;
+    for (let i = 0; i < 120; i++) {
+      if (buyTip('insider', [strong, weak], r)!.side === 0) insider++;
+      if (buyTip('guru', [strong, weak], r)!.side === 0) guru++;
+    }
+    expect(insider / 120).toBeGreaterThan(0.8);
+    expect(guru / 120).toBeGreaterThan(0.35);
+    expect(guru / 120).toBeLessThan(0.65);
+  });
+
+  it('every trait has two tells, and a lobster always shows the same one', async () => {
+    const { TELLS, tellFor } = await import('./intel.ts');
+    for (const t of TRAITS) expect(TELLS[t.id]).toHaveLength(2);
+    const l = lobster({ trait: 'coward', id: 3 });
+    expect(tellFor(l)).toBe(tellFor(l));
+    expect(tellFor(l)).toContain(TELLS.coward[1]);
+  });
+});
+
+describe('fight club: props and parlays', () => {
+  it('props read the fight correctly', async () => {
+    const { propOutcomes } = await import('./props.ts');
+    const roster = makeRoster(rng(8));
+    for (let i = 0; i < 100; i++) {
+      const res = simulate(roster[i % 16], roster[(i + 5) % 16], rng(i));
+      const out = propOutcomes(res);
+      expect(out.ko).toBe(res.ending === 'ko');
+      expect(out.decision).toBe(res.ending === 'decision');
+      expect(out.flee).toBe(res.ending === 'flee');
+      expect([out['ko-r1'], out['ko-r2'], out['ko-r3']].filter(Boolean).length).toBe(out.ko ? 1 : 0);
+      const crits = res.events.filter((e) => e.type === 'argue' && e.crit).length;
+      expect(out.crits3).toBe(crits >= 3);
+    }
+  });
+
+  it('the house prices props with a cut and a cap, and is stable', async () => {
+    const { propChances, propOdds, MAX_PROP_ODDS, PROPS } = await import('./props.ts');
+    const [a, b] = makeRoster(rng(9));
+    const ch = propChances(a, b);
+    expect(ch.ko + ch.decision + ch.flee).toBeCloseTo(1, 1);
+    expect(propChances(a, b)).toEqual(ch);
+    const odds = propOdds(ch);
+    for (const p of PROPS) {
+      expect(odds[p.id]).toBeLessThanOrEqual(MAX_PROP_ODDS);
+      expect(odds[p.id] * ch[p.id]).toBeLessThan(1); // the house's edge, on its own numbers
+    }
+  });
+
+  it('parlays multiply, and settle leg by leg', async () => {
+    const { parlayOdds, settleLeg, normalizeParlay } = await import('./props.ts');
+    expect(parlayOdds([{ odds: 2 }, { odds: 1.5 }, { odds: 3 }])).toBe(9);
+    const parlay = { stake: 50, legs: [{ ids: [1, 2] as [number, number], side: 0 as const, odds: 2, won: null }, { ids: [3, 4] as [number, number], side: 1 as const, odds: 2, won: null }] };
+    expect(settleLeg(parlay, [9, 9], 9)).toBe('none');
+    expect(settleLeg(parlay, [1, 2], 1)).toBe('pending');
+    expect(settleLeg(parlay, [3, 4], 4)).toBe('won');
+    const lost = { stake: 50, legs: [{ ids: [1, 2] as [number, number], side: 0 as const, odds: 2, won: null }] };
+    expect(settleLeg(lost, [1, 2], 2)).toBe('lost');
+    expect(normalizeParlay(JSON.parse(JSON.stringify(parlay)))).toEqual(parlay);
+    expect(normalizeParlay({ legs: [], stake: 5 })).toBeNull();
   });
 });

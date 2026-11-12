@@ -54,11 +54,34 @@
 
         <!-- Betting -->
         <section class="betbar">
+            <div class="tabs" role="tablist">
+                <button type="button" data-tab="winner" class="on">🏆 Winner</button>
+                <button type="button" data-tab="props">🎲 Props</button>
+                <button type="button" data-tab="parlay">🧾 Parlay</button>
+                <button type="button" data-tab="intel">🕵️ Intel</button>
+            </div>
             <!-- The pool: everyone's money, and the odds it makes -->
-            <div id="pool" class="pool">
+            <div id="pool" class="pool tab-pane" data-tab="winner">
                 <div class="pool-head"><span id="pool-total">The crowd is placing its bets…</span><span class="pool-help" title="Pool betting: the pot, minus the house's cut, is split among whoever backed the winner. The odds are whatever the crowd makes them, and your own stake moves them.">ⓘ How the pool works</span></div>
                 <div class="pool-bar"><i id="pool-bar-0" class="left"></i><i id="pool-bar-1" class="right"></i></div>
                 <ul id="pool-bets" class="pool-bets"></ul>
+            </div>
+            <div class="tab-pane" data-tab="props" hidden>
+                <p class="pane-note">The house's fixed odds on how the fight goes. It reads the full matchup chart but can't see hidden traits. Props settle at the end (no cash-out).</p>
+                <div id="props" class="props"></div>
+            </div>
+            <div class="tab-pane" data-tab="parlay" hidden>
+                <p class="pane-note">Pick the winners of this bout and the next two on tonight's card. The odds multiply; one wrong pick and it's gone.</p>
+                <div id="parlay-legs" class="legs"></div>
+                <p id="parlay-summary" class="preview"></p>
+                <button id="parlay-place" type="button" class="next-button">Place the parlay</button>
+                <div id="parlay-active" class="parlay-active" hidden></div>
+            </div>
+            <div class="tab-pane" data-tab="intel" hidden>
+                <p class="pane-note">Information costs money. Some of it is even true. Track records build up as their tips are tested.</p>
+                <div id="tipsters" class="tipsters"></div>
+                <div id="scouts" class="scouts"></div>
+                <ul id="notebook" class="notebook"></ul>
             </div>
             <div class="stake">
                 <label for="stake">Stake</label>
@@ -72,6 +95,7 @@
                 </div>
             </div>
             <p id="preview" class="preview"></p>
+            <p id="slip" class="slip" hidden></p>
             <div class="bets">
                 <button id="bet-0" class="bet-button left" type="button"></button>
                 <button id="watch" class="watch-button" type="button">Just watch</button>
@@ -116,6 +140,7 @@
                     <li>📊 Read the tale of the tape: claw, shell, stamina, wits, record and form. Some lobsters hide a <b>trait</b>; once you've seen it, it's on the card.</li>
                     <li>💸 It's <b>pool betting</b>: the crowd sets the odds. 😱 Screaming Susan backs whoever's popular, 😏 Squatting Sheila the underdog, 🤪 LMAO Larry whatever's funniest, and the rest follow the stats while only half-reading the matchup chart. <b>That's your edge.</b></li>
                     <li>⏸ Between rounds the <b>live market</b> opens: bet on the fight as it stands, or <b>cash out</b> a bet early.</li>
+                    <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
                 </ul>
                 <p id="title-best" class="best"></p>
                 <div class="panel-buttons">

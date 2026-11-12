@@ -590,6 +590,174 @@ body {
     display: none !important;
 }
 
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 1px solid #3d3731;
+    padding-bottom: 6px;
+}
+
+.tabs[hidden],
+.tab-pane[hidden] {
+    display: none !important;
+}
+
+.tabs button {
+    padding: 6px 12px;
+    border: 1px solid #5a5148;
+    border-radius: 8px 8px 0 0;
+    background: var(--panel-2);
+    color: var(--muted);
+    font: bold 13px var(--font);
+    cursor: pointer;
+}
+
+.tabs button.on {
+    background: var(--gold);
+    color: #2a1d00;
+    border-color: var(--gold);
+}
+
+.pane-note {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.props {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 6px;
+}
+
+.prop,
+.leg-pick,
+.scout,
+.tipster button {
+    padding: 8px 10px;
+    border: 1px solid #5a5148;
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: 13px var(--font);
+    cursor: pointer;
+}
+
+.prop {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+}
+
+.prop b,
+.leg-pick b {
+    color: var(--gold);
+    font-family: var(--mono);
+}
+
+.prop:disabled,
+.leg-pick:disabled,
+.scout:disabled,
+.tipster button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.legs {
+    display: grid;
+    gap: 6px;
+}
+
+.leg {
+    display: grid;
+    grid-template-columns: 6.5em 1fr 1fr;
+    gap: 6px;
+    align-items: center;
+}
+
+.leg-title {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.leg-pick.on {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold) inset;
+}
+
+.parlay-active ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+}
+
+.tipsters {
+    display: grid;
+    gap: 6px;
+}
+
+.tipster {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.tipster .face {
+    font-size: 26px;
+}
+
+.tipster small {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.tipster small.record {
+    color: var(--gold);
+}
+
+.scouts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.scout {
+    flex: 1;
+}
+
+.notebook {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 13px;
+    color: #ce93d8;
+}
+
+.slip {
+    margin: 0;
+    font-size: 12px;
+    color: var(--gold);
+}
+
+.rumor {
+    color: #ce93d8;
+    font-size: 12px;
+}
+
+.tell {
+    color: #80cbc4;
+    font-size: 12px;
+}
+
+.your-bets li small {
+    color: var(--muted);
+}
+
 .pool {
     display: grid;
     gap: 6px;
