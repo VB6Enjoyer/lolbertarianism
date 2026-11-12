@@ -743,3 +743,21 @@ into a handicapping game. Steps 1 and 2 of the plan:
   purse that grows with the tier and the venue, and bet on it in the pool
   (no parlays on its bouts: conflict of interest). A loss means rest (two
   bouts after a KO) and a 35% chance of an injury that costs a point.
+
+### Libertarian Fight Club: achievements and the loan shark ✅
+
+- 32 achievements (`achievements.ts`), with pop-ups and a 🏅 screen: betting
+  (first bet and win, 3× and 8× winners, $1,000 on a bout, cashing out for a
+  profit or out of a loser, a live win, a parlay, the flee and round-1 KO
+  props, three props on a bout), intel (all three tipsters, catching the
+  Insider wrong, 10 scouting trips, every league trait known), the career
+  (each venue, the championship, your uncle's bailout), your lobster (buying
+  one, a lemon, therapy, a win, a Hard win, five in a row, a maxed stat) and
+  Vinny (borrowing, paying him off, getting collected on).
+- 🦈 Vinny "the Fin" (`shark.ts`): lends $250 at a time at the Kitchen (more at
+  bigger venues), up to a limit, at 20% a night. Pay anything in a night and
+  he stays patient; three nights unpaid and he collects: your cash, then your
+  lobster's claw (−2) or your place at the venue, then he halves the rest. A
+  🦈 button in the header shows what you owe (and pulses when he's about to
+  lose patience). Going broke is now a choice: Vinny's money, or your uncle's
+  $500 and a trip down a venue.

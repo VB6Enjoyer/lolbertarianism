@@ -1377,3 +1377,75 @@ body {
     margin: 0;
     color: #ff8a80;
 }
+
+/* --- Achievements, Vinny, going broke --- */
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.achievement {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--panel-2);
+}
+
+.achievement .icon {
+    grid-row: span 2;
+    font-size: 24px;
+}
+
+.achievement b {
+    font-size: 13px;
+}
+
+.achievement small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.achievement.locked {
+    opacity: 0.45;
+}
+
+.shark-button.owing {
+    border-color: #ff8a80;
+    color: #ff8a80;
+}
+
+.shark-button.danger {
+    background: #5c1010;
+    animation: shark-pulse 0.8s infinite alternate;
+}
+
+@keyframes shark-pulse {
+    to {
+        box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.6);
+    }
+}
+
+.big-button.secondary {
+    background: var(--panel-2);
+    color: var(--gold);
+    border: 1px solid var(--gold);
+}
+
+.big-button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+/* Above every other screen: you have to deal with it. */
+#broke {
+    z-index: 55;
+}
+
+.broke-choices {
+    display: grid;
+    gap: 10px;
+}

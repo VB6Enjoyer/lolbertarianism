@@ -7,6 +7,8 @@ import { argTypesOf, pickBout, publicChance, revealedSides, ROUNDS, simulate, st
 import { BETTORS, bettorById, cashOutValue, crowdBets, lateBet, liveOdds, poolOdds, projectedPayout, TAKEOUT, totals, type PoolBet } from './pool.ts';
 import { buyTip, normalizeRecords, SCOUT_PRICE, TELLS, TIPSTERS, tipsterById, type Tip, type TipsterId, type TrackRecords } from './intel.ts';
 import { afterLoss, bailout, BAD_TRAITS, endNight, MARKET_VENUE, marketOffers, MINE_ID, NIGHT_BOUTS, normalizeCareer, normalizeStable, pickOpponent, purseFor, startNight, suggestName, THERAPY_PRICE, TIERS, train, trainingCost, VENUES, type Career, type NightOutcome, type Offer, type Stable, type Tier, type TrainStat } from './career.ts';
+import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
+import { borrow, collect, creditLimit, dueForCollection, loanChunk, nightPasses, normalizeShark, repay, SHARK_PATIENCE, SHARK_RATE, type Shark } from './shark.ts';
 import { MAX_LEG_ODDS, normalizeParlay, parlayOdds, PROPS, propById, propChances, propOdds, propOutcomes, settleLeg, type Parlay, type PropId } from './props.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -64,6 +66,17 @@ const els = {
   nightTitle: byId('night-title'),
   nightBody: byId('night-body'),
   nightNext: byId<HTMLButtonElement>('night-next'),
+  achievements: byId('achievements'),
+  achievementsGrid: byId('achievements-grid'),
+  achievementsCount: byId('achievements-count'),
+  sharkButton: byId<HTMLButtonElement>('show-shark'),
+  sharkPanel: byId('shark'),
+  sharkBody: byId('shark-body'),
+  sharkBorrow: byId<HTMLButtonElement>('shark-borrow'),
+  sharkRepay: byId<HTMLButtonElement>('shark-repay'),
+  broke: byId('broke'),
+  brokeShark: byId<HTMLButtonElement>('broke-shark'),
+  brokeUncle: byId<HTMLButtonElement>('broke-uncle'),
 };
 
 // ---------------------------------------------------------------------------
@@ -87,6 +100,10 @@ interface Save {
   stable: Stable | null;
   market: Offer[];
   entry: Tier | null;
+  /** Achievements, the counters a few of them need, and what you owe Vinny. */
+  achievements: string[];
+  stats: { scouted: number; tipsters: string[] };
+  shark: Shark;
 }
 
 const START_BANKROLL = 500;
@@ -105,7 +122,14 @@ const save: Save = {
   stable: normalizeStable(saved?.stable),
   market: [],
   entry: saved?.entry === 'easy' || saved?.entry === 'even' || saved?.entry === 'hard' ? saved.entry : null,
+  achievements: [...normalizeUnlocked(saved?.achievements)],
+  stats: {
+    scouted: Math.max(0, Math.floor(Number(saved?.stats?.scouted) || 0)),
+    tipsters: (Array.isArray(saved?.stats?.tipsters) ? saved!.stats.tipsters : []).filter((t): t is string => typeof t === 'string').slice(0, 3),
+  },
+  shark: normalizeShark(saved?.shark),
 };
+const unlocked = new Set(save.achievements);
 // The market's lots are regenerated on load (they're cheap to make, and it keeps saves honest).
 save.market = marketOffers(Math.random, save.career.night);
 const venue = () => VENUES[save.career.venue];
@@ -126,6 +150,8 @@ const sfx = {
   coin: () => playTone(note(1319, 0.08, 0.05, 'triangle')),
   reveal: () => [660, 990].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.08)),
   cashout: () => [1047, 1319, 1568].forEach((hz, i) => playTone(note(hz, 0.08, 0.05, 'triangle'), i * 0.06)),
+  achievement: () => [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07)),
+  shark: () => playTone({ wave: 'sawtooth', duration: 0.5, frequency: [[0, 110], [0.5, 55, 'exp']], gain: [[0, 0.08], [0.5, 0.001, 'exp']] }),
 };
 
 function play<K extends keyof typeof sfx>(name: K, ...args: Parameters<(typeof sfx)[K]>) {
@@ -403,6 +429,7 @@ function placeProp(id: PropId) {
   const odds = bout.propOdds[id];
   yourBets.push({ kind: 'prop', prop: id, side: 0, stake: amount, payout: Math.floor(amount * odds), cashedOut: null });
   play('coin');
+  award('first-bet');
   log(`🎲 Prop: ${money(amount)} on “${propById(id).name}” at ${odds.toFixed(2)}×.`, 'bet');
   persist();
   renderSlip();
@@ -480,6 +507,7 @@ els.parlayPlace.addEventListener('click', () => {
   if (amount === null) return;
   save.parlay = { stake: amount, legs: card.map((leg, i) => ({ ids: leg.ids, side: parlayPicks[i]!, odds: leg.odds[parlayPicks[i]!], won: null })) };
   play('coin');
+  award('first-bet');
   log(`🧾 Parlay: ${money(amount)} on three winners at ${parlayOdds(save.parlay.legs).toFixed(2)}×.`, 'bet');
   persist();
   renderParlay();
@@ -553,6 +581,8 @@ function buyFrom(id: TipsterId) {
   save.bankroll -= t.price;
   updateBankroll();
   bout.tips.push(tip);
+  if (!save.stats.tipsters.includes(id)) save.stats.tipsters.push(id);
+  if (save.stats.tipsters.length >= 3) award('tipsters');
   if (tip.kind === 'trait') bout.lobsters[tip.side].rumor = { trait: tip.trait, by: id };
   play('reveal');
   log(`${t.face} ${t.name}: “${tip.text}”`, 'trait');
@@ -566,6 +596,8 @@ function scout(side: Side) {
   if (phase !== 'betting' || l.scouted || l.traitKnown || save.bankroll < SCOUT_PRICE) return;
   save.bankroll -= SCOUT_PRICE;
   l.scouted = true;
+  save.stats.scouted++;
+  if (save.stats.scouted >= 10) award('scout-10');
   updateBankroll();
   play('reveal');
   log(`👀 You slip the kitchen staff ${money(SCOUT_PRICE)}. In the tank, ${l.name} ${TELLS[l.trait][l.id % 2]}`, 'trait');
@@ -654,6 +686,18 @@ function log(text: string, kind = '') {
   while (els.log.children.length > 60) els.log.lastChild!.remove();
 }
 
+/** Unlocks an achievement (once), with a pop-up. */
+function award(id: string) {
+  if (unlocked.has(id)) return;
+  const a = achievementById(id);
+  if (!a) return;
+  unlocked.add(id);
+  save.achievements = [...unlocked];
+  toast(a.icon, 'ACHIEVEMENT UNLOCKED', a.name);
+  play('achievement');
+  persist();
+}
+
 function toast(icon: string, label: string, name: string) {
   const el = document.createElement('div');
   el.className = 'toast';
@@ -703,6 +747,7 @@ function placeBet(side: Side | null) {
     bout.pool.push({ who: 'you', side, amount });
     updateBankroll();
     play('coin');
+    award('first-bet');
   } else {
     log('👀 You keep your money in your pocket and watch.', '');
   }
@@ -775,6 +820,7 @@ function cashOut(b: YourBet, value: number) {
   if (phase !== 'live' || b.cashedOut !== null) return;
   b.cashedOut = value;
   save.bankroll += value;
+  if (value > b.stake) award('cashout-profit');
   updateBankroll();
   persist();
   play('cashout');
@@ -795,6 +841,7 @@ function liveBet(side: Side) {
   updateBankroll();
   persist();
   play('coin');
+  award('first-bet');
   log(`⚡ Live bet: ${money(amount)} on ${bout.lobsters[side].name} at ${odds.toFixed(2)}×.`, 'bet');
   renderYourBets();
 }
@@ -1020,6 +1067,9 @@ function finish(result: FightResult) {
       save.bankroll += purse;
       stable.purses += purse;
       log(`🏆 ${stable.lobster.name} wins! The purse: ${money(purse)}.`, 'win');
+      award('mine-win');
+      if (bout.entry === 'hard') award('mine-hard');
+      if (stable.lobster.form.length >= 5 && stable.lobster.form.every((f) => f === 'W')) award('mine-streak');
       toast('🏆', 'YOUR LOBSTER WON', `${stable.lobster.name} · +${money(purse)}`);
     } else {
       const hurt = afterLoss(stable, result.ending === 'ko', Math.random);
@@ -1051,6 +1101,7 @@ function finish(result: FightResult) {
       play('win');
       rain();
       log(`🧾💰 Your parlay came in! ${money(pay)}. Three for three.`, 'win');
+      award('parlay');
       toast('🧾', 'PARLAY CAME IN', money(pay));
     } else if (outcome === 'lost') {
       save.parlay = null;
@@ -1063,6 +1114,30 @@ function finish(result: FightResult) {
     log(`🎲 “${propById(b.prop!).name}”: ${props[b.prop!] ? `hit! Pays ${money(b.payout)}.` : 'missed.'}`, props[b.prop!] ? 'win' : 'lose');
   }
   const betted = yourBets.length > 0;
+  // Achievements from how the bets went
+  let propHits = 0;
+  for (const b of yourBets) {
+    if (b.cashedOut !== null) {
+      if (b.kind !== 'prop' && b.side !== result.winner) award('cashout-save');
+      continue;
+    }
+    const won = b.kind === 'prop' ? props[b.prop!] : b.side === result.winner;
+    if (!won) continue;
+    const odds = b.payout / b.stake;
+    if (odds >= 3) award('underdog');
+    if (odds >= 8) award('longshot');
+    if (b.kind === 'live') award('live-win');
+    if (b.kind === 'prop') {
+      propHits++;
+      if (b.prop === 'flee') award('prop-flee');
+      if (b.prop === 'ko-r1') award('prop-ko1');
+    }
+  }
+  if (propHits >= 3) award('props-3');
+  if (betted && net > 0) award('first-win');
+  if (net >= 1000) award('big-win');
+  if (bout.tips.some((t) => t.by === 'insider' && t.kind === 'pick' && t.side !== result.winner)) award('insider-wrong');
+  if (save.roster.every((l) => l.traitKnown)) award('traits-all');
   let line = '';
   if (betted) {
     line = net > 0 ? `You're up ${money(net)} on the bout.` : net < 0 ? `You're down ${money(-net)} on the bout.` : 'You broke even.';
@@ -1077,15 +1152,8 @@ function finish(result: FightResult) {
     } else log(line, '');
   }
   save.best = Math.max(save.best, save.bankroll);
-  // Broke: your uncle spots you a fresh bankroll, and the bouncers throw you down a venue.
-  if (save.bankroll < 10) {
-    save.bankroll = START_BANKROLL;
-    const was = save.career.venue;
-    save.career = bailout(save.career);
-    save.career.startBankroll = save.bankroll;
-    log(`💸 You’re broke. Your uncle the Bitcoin maximalist spots you $500. “Have fun staying poor.”${save.career.venue < was ? ` The bouncers throw you out of ${VENUES[was].name}: back to ${venue().name}.` : ''}`, 'warn');
-    renderVenue();
-  }
+  // Broke: Vinny or your uncle (that's your call, on the next screen).
+  if (save.bankroll < 10) setTimeout(showBroke, 900);
   persist();
   updateBankroll();
   els.result.innerHTML = `<b>${escapeHtml(winner.name)}</b> wins ${how}<small>${escapeHtml(line) || 'You watched from the sidelines.'}</small>`;
@@ -1162,6 +1230,12 @@ els.nightNext.addEventListener('click', () => {
   if (nightOutcome === 'champion') toast('🏆', 'CHAMPION', 'The Invisible Claw');
   if (r.demoted) log(`🚪 You can't afford ${VENUES[save.career.venue + 1].name}'s door fee. Back to ${venue().name}.`, 'warn');
   if (r.fee) log(`🎟️ ${venue().name}: ${money(r.fee)} at the door.`, 'bell');
+  const reached = ['kitchen', 'garage', 'porcfest', 'convention', 'liberland'];
+  for (let i = 1; i <= save.career.venue; i++) award(reached[i]);
+  if (save.career.champion) award('champion');
+  sharkNight();
+  // Cleaned out at the door (or by Vinny)? Deal with it before the first bout.
+  if (save.bankroll < 10) setTimeout(showBroke, 300);
   log(`🌙 Night ${save.career.night} at ${venue().icon} ${venue().name}.`, 'bell');
   nightOutcome = null;
   els.night.hidden = true;
@@ -1252,6 +1326,8 @@ function buyLobster(i: number) {
   const t = traitById(save.stable.lobster.trait);
   log(`🦞 You bought ${name} for ${money(o.price)}. Now that it's yours, you can see it: ${t.id === 'none' ? 'nothing special.' : `it's a ${t.name}. ${t.description}`}`, BAD_TRAITS.has(t.id) ? 'warn' : 'win');
   toast('🦞', 'YOUR OWN LOBSTER', name);
+  award('buy');
+  if (BAD_TRAITS.has(t.id)) award('lemon');
   persist();
   renderStable();
 }
@@ -1263,6 +1339,7 @@ function trainMine(stat: TrainStat) {
   if (cost === null || save.bankroll < cost) return;
   save.bankroll -= cost;
   train(st.lobster, stat);
+  if (stat !== 'stamina' && st.lobster[stat] >= 10) award('maxed');
   updateBankroll();
   play('coin');
   persist();
@@ -1278,9 +1355,163 @@ function therapy_() {
   updateBankroll();
   play('reveal');
   log(`🛋️ After a few sessions, ${st.lobster.name} is no longer a ${was}.`, 'win');
+  award('therapy');
   persist();
   renderStable();
 }
+
+// ---------------------------------------------------------------------------
+// Vinny the Fin, and going broke
+// ---------------------------------------------------------------------------
+
+const SHARK_LINES = [
+  'Nice lobster you got there.',
+  'I’m a businessman. Voluntary exchange, capisce?',
+  'Twenty percent a night. Very competitive. Ask around.',
+  'Three nights. Then we talk about claws.',
+];
+
+function renderSharkButton() {
+  const d = save.shark.debt;
+  els.sharkButton.textContent = d > 0 ? `🦈 ${money(d)}` : '🦈 Vinny';
+  els.sharkButton.classList.toggle('owing', d > 0);
+  els.sharkButton.classList.toggle('danger', d > 0 && save.shark.nightsUnpaid >= SHARK_PATIENCE - 1);
+}
+
+function renderShark() {
+  const s = save.shark;
+  const limit = creditLimit(save.career.venue);
+  const chunk = Math.min(loanChunk(save.career.venue), Math.max(0, limit - s.debt));
+  const patience = SHARK_PATIENCE - s.nightsUnpaid;
+  const lines = [
+    `🦈 “${SHARK_LINES[Math.floor(Math.random() * SHARK_LINES.length)]}”`,
+    s.debt > 0
+      ? `You owe ${money(s.debt)}. ${Math.round(SHARK_RATE * 100)}% goes on every night. ${s.paidTonight ? 'You paid something tonight, so he’s patient.' : `Pay something before ${patience <= 1 ? 'the next night, or he collects' : `${patience} more nights go by unpaid`}.`}`
+      : `You owe nothing. He lends ${money(loanChunk(save.career.venue))} at a time here, up to ${money(limit)}, at ${Math.round(SHARK_RATE * 100)}% a night.`,
+    'If he collects, he takes your cash, then something that hurts: your lobster’s claw, or your place at this venue.',
+  ];
+  els.sharkBody.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
+  els.sharkBorrow.textContent = chunk >= 10 ? `Borrow ${money(chunk)}` : 'Credit limit reached';
+  els.sharkBorrow.disabled = chunk < 10 || phase === 'fighting' || phase === 'live';
+  els.sharkRepay.textContent = s.debt > 0 ? `Repay ${money(Math.min(save.bankroll, s.debt))}` : 'Nothing to repay';
+  els.sharkRepay.disabled = s.debt <= 0 || save.bankroll < 1;
+}
+
+function sharkBorrow(): number {
+  const amount = borrow(save.shark, save.career.venue);
+  if (!amount) return 0;
+  save.bankroll += amount;
+  updateBankroll();
+  play('shark');
+  log(`🦈 Vinny counts out ${money(amount)}. You owe him ${money(save.shark.debt)}.`, 'warn');
+  award('shark');
+  persist();
+  renderSharkButton();
+  return amount;
+}
+
+els.sharkBorrow.addEventListener('click', () => {
+  sharkBorrow();
+  renderShark();
+});
+els.sharkRepay.addEventListener('click', () => {
+  const paid = repay(save.shark, save.bankroll);
+  if (!paid) return;
+  save.bankroll -= paid;
+  updateBankroll();
+  play('cashout');
+  log(`🤝 You pay Vinny ${money(paid)}. ${save.shark.debt ? `Still owe ${money(save.shark.debt)}.` : 'All square. He looks almost disappointed.'}`, 'win');
+  if (save.shark.debt === 0) award('shark-repaid');
+  persist();
+  renderSharkButton();
+  renderShark();
+});
+els.sharkButton.addEventListener('click', () => {
+  renderShark();
+  els.sharkPanel.hidden = false;
+});
+byId('hide-shark').addEventListener('click', () => {
+  els.sharkPanel.hidden = true;
+});
+
+/** A new night: interest, and if he's run out of patience, he collects. */
+function sharkNight() {
+  const interest = nightPasses(save.shark);
+  if (interest) log(`🦈 Vinny’s interest: +${money(interest)}. You owe ${money(save.shark.debt)}.`, 'warn');
+  if (dueForCollection(save.shark)) {
+    const c = collect(save.shark, save.bankroll, !!save.stable);
+    save.bankroll -= c.took;
+    play('shark');
+    let what = '';
+    if (c.claw && save.stable) {
+      save.stable.lobster.claw = Math.max(1, save.stable.lobster.claw - 2);
+      what = ` Then he breaks ${save.stable.lobster.name}’s claw (Claw −2).`;
+    } else if (c.demoted && save.career.venue > 0) {
+      save.career = { ...save.career, venue: save.career.venue - 1 };
+      what = ` Then his friends walk you out of the venue: back to ${venue().name}.`;
+    }
+    log(`🦈 Vinny collects. He takes ${money(c.took)}.${what}${save.shark.debt ? ` You still owe ${money(save.shark.debt)}; call the rest a “courtesy”.` : ''}`, 'lose');
+    toast('🦈', 'VINNY COLLECTED', c.claw ? 'Your lobster’s claw' : c.demoted ? 'Your venue' : money(c.took));
+    award('shark-claw');
+    renderVenue();
+    renderStable();
+  }
+  updateBankroll();
+  renderSharkButton();
+}
+
+function showBroke() {
+  if (save.bankroll >= 10) return;
+  const chunk = Math.min(loanChunk(save.career.venue), creditLimit(save.career.venue) - save.shark.debt);
+  els.brokeShark.disabled = chunk < 10;
+  els.brokeShark.textContent = chunk >= 10 ? `🦈 Take ${money(chunk)} from Vinny (${Math.round(SHARK_RATE * 100)}% a night)` : '🦈 Vinny won’t lend you more';
+  els.brokeUncle.textContent = save.career.venue > 0 ? `👴 Call your uncle: $500, but you're thrown out to ${VENUES[save.career.venue - 1].name}` : '👴 Call your uncle: $500, no questions asked (well, some)';
+  els.broke.hidden = false;
+  (chunk >= 10 ? els.brokeShark : els.brokeUncle).focus();
+}
+
+els.brokeShark.addEventListener('click', () => {
+  if (sharkBorrow()) els.broke.hidden = true;
+});
+els.brokeUncle.addEventListener('click', () => {
+  save.bankroll += START_BANKROLL;
+  const was = save.career.venue;
+  save.career = bailout(save.career);
+  save.career.startBankroll = save.bankroll;
+  log(`💸 Your uncle the Bitcoin maximalist spots you $500. “Have fun staying poor.”${save.career.venue < was ? ` The bouncers throw you out of ${VENUES[was].name}: back to ${venue().name}.` : ''}`, 'warn');
+  award('bailout');
+  els.broke.hidden = true;
+  persist();
+  updateBankroll();
+  renderVenue();
+  renderStable();
+});
+
+// --- The achievements screen ---
+
+function renderAchievements() {
+  els.achievementsCount.textContent = `${unlocked.size} / ${ACHIEVEMENTS.length}`;
+  els.achievementsGrid.replaceChildren(
+    ...ACHIEVEMENTS.map((a) => {
+      const card = document.createElement('div');
+      card.className = `achievement${unlocked.has(a.id) ? '' : ' locked'}`;
+      card.innerHTML = '<span class="icon"></span><b></b><small></small>';
+      card.querySelector('.icon')!.textContent = unlocked.has(a.id) ? a.icon : '🔒';
+      card.querySelector('b')!.textContent = a.name;
+      card.querySelector('small')!.textContent = a.description;
+      return card;
+    }),
+  );
+}
+
+byId('show-achievements').addEventListener('click', () => {
+  renderAchievements();
+  els.achievements.hidden = false;
+  byId('hide-achievements').focus();
+});
+byId('hide-achievements').addEventListener('click', () => {
+  els.achievements.hidden = true;
+});
 
 // ---------------------------------------------------------------------------
 // Keys, screens, start
@@ -1288,7 +1519,7 @@ function therapy_() {
 
 document.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
-  if (!els.title.hidden || !els.chart.hidden || !els.night.hidden) return;
+  if (!els.title.hidden || !els.chart.hidden || !els.night.hidden || !els.achievements.hidden || !els.sharkPanel.hidden || !els.broke.hidden) return;
   if (phase === 'betting' && (e.key === '1' || e.key === 'ArrowLeft')) placeBet(0);
   else if (phase === 'betting' && (e.key === '2' || e.key === 'ArrowRight')) placeBet(1);
   else if (phase === 'fighting' && (e.key === ' ' || e.key === 'Enter')) {
@@ -1309,6 +1540,8 @@ document.addEventListener('keydown', (e) => {
 byId('start').addEventListener('click', () => {
   els.title.hidden = true;
   getAudioContext();
+  // Broke from last time? Sort that out first.
+  if (save.bankroll < 10) showBroke();
 });
 byId('show-chart').addEventListener('click', () => {
   renderChart();
@@ -1321,4 +1554,5 @@ byId('hide-chart').addEventListener('click', () => {
 
 byId('title-best').textContent = save.bouts ? `${venue().icon} ${venue().name} · night ${save.career.night} · bankroll ${money(save.bankroll)} · best ${money(save.best)}${save.career.champion ? ' · 🏆 champion' : ''}` : '';
 log('Welcome to the free market of violence. Read the tale of the tape and the pool, then place your bet.');
+renderSharkButton();
 void newBout();

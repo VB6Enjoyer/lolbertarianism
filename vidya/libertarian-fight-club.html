@@ -16,6 +16,8 @@
             <div class="venue"><b id="venue-name">🍳 The Kitchen Floor</b><small id="night-info"></small></div>
             <div class="bout">BOUT <b id="bout-number">1</b></div>
             <button id="show-chart" class="small-button" type="button">📖 Matchup chart</button>
+            <button id="show-achievements" class="small-button" type="button" aria-label="Achievements">🏅</button>
+            <button id="show-shark" class="small-button shark-button" type="button">🦈 Vinny</button>
             <div class="bankroll">BANKROLL <b id="bankroll">$500</b></div>
             <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
         </header>
@@ -134,6 +136,42 @@
             </div>
         </div>
 
+        <!-- Achievements -->
+        <div id="achievements" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>🏅 Achievements</h1>
+                <p class="tagline"><span id="achievements-count">0</span> unlocked. Saved in this browser.</p>
+                <div id="achievements-grid" class="achievements-grid"></div>
+                <div class="panel-buttons"><button id="hide-achievements" type="button" class="big-button">Back</button></div>
+            </div>
+        </div>
+
+        <!-- Vinny the Fin -->
+        <div id="shark" class="overlay" hidden>
+            <div class="panel">
+                <h1>🦈 Vinny “the Fin”</h1>
+                <p class="tagline">Licensed by nobody. Lends to anybody.</p>
+                <div id="shark-body" class="night-body"></div>
+                <div class="panel-buttons">
+                    <button id="shark-borrow" type="button" class="big-button">Borrow</button>
+                    <button id="shark-repay" type="button" class="big-button">Repay</button>
+                    <button id="hide-shark" type="button" class="big-button secondary">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Broke -->
+        <div id="broke" class="overlay" hidden>
+            <div class="panel">
+                <h1>💸 You're broke</h1>
+                <p class="tagline">The market has spoken. Two people will still lend to you.</p>
+                <div class="broke-choices">
+                    <button id="broke-shark" type="button" class="big-button">🦈 Vinny</button>
+                    <button id="broke-uncle" type="button" class="big-button secondary">👴 Your uncle</button>
+                </div>
+            </div>
+        </div>
+
         <!-- The end of a night -->
         <div id="night" class="overlay" hidden>
             <div class="panel">
@@ -155,6 +193,7 @@
                     <li>💸 It's <b>pool betting</b>: the crowd sets the odds. 😱 Screaming Susan backs whoever's popular, 😏 Squatting Sheila the underdog, 🤪 LMAO Larry whatever's funniest, and the rest follow the stats while only half-reading the matchup chart. <b>That's your edge.</b></li>
                     <li>⏸ Between rounds the <b>live market</b> opens: bet on the fight as it stands, or <b>cash out</b> a bet early.</li>
                     <li>🏟️ A <b>career</b>: five bouts a night. End a night with enough money to move up from the 🍳 Kitchen Floor to the 🚗 Garage, 🏕️ PorcFest, the 🏛️ Convention, and the 🏰 Liberland Championship. Go broke and you get thrown down a venue.</li>
+                    <li>🦈 Broke? <b>Vinny the Fin</b> lends at 20% a night, and collects after three unpaid nights. Or call your uncle and get thrown down a venue.</li>
                     <li>🦞 Once you reach the Garage, <b>buy a lobster of your own</b> at the fish market, train it, and send it into the ring for purses.</li>
                     <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
                 </ul>
