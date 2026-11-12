@@ -16,6 +16,7 @@
             <div class="brand">AUSTRIAN ECONOMICS <small>THE BUSINESS CYCLE</small></div>
             <div id="phase" class="phase calm" title="Where the economy is in the cycle">CALM</div>
             <div class="rate" title="The federal funds rate">FED <b id="rate">2.50%</b></div>
+            <div id="event" class="event" hidden></div>
             <div class="ticker" aria-live="polite"><span id="ticker">FED CHAIR: "WE HAVE TOOLS."</span></div>
             <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
             <button id="pause" class="icon-button" type="button" aria-label="Pause">⏸</button>
@@ -95,20 +96,23 @@
             <div class="panel">
                 <h1>The Business Cycle</h1>
                 <p class="tagline">An Austrian Economics Simulator</p>
+                <div id="districts" class="districts" aria-label="Where to play"></div>
+                <p id="title-best" class="best"></p>
+                <div class="panel-buttons">
+                    <button id="start" type="button" class="big-button">Start the cycle</button>
+                    <button id="show-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
+                </div>
+                <h2 class="how">How to play</h2>
                 <ol class="rules">
                     <li>⚙️ <b>Steal manhole covers.</b> Stand on one and press <kbd>E</kbd>. Don't let anyone see you.</li>
                     <li>🏗️ <b>Sell them to a junkyard.</b> Cantillon Scrap, next to the Fed, hears the news first. Last-in-Line Recycling finds out 12 seconds later.</li>
                     <li>💊 <b>Buy drugs</b> at the Corner before your fix runs out. Heroin lasts, crack makes you fast.</li>
                     <li>🦺 <b>Wait for the city to replace them,</b> then steal them again. Go all the way around for a bonus.</li>
                     <li>🏛️ <b>Watch the Fed.</b> Booms pay double for scrap and bring new manholes. Busts crash the price and the crews stop coming. Save covers in your squat for the boom.</li>
+                    <li>🦺 <b>Watch out for the rival scrapper.</b> He's after the same covers. Walk up and press <kbd>E</kbd> to shove him: into an open manhole, if there's one handy.</li>
                     <li>🏦 <b>Bank at the Fed's discount window.</b> Savings earn the Fed's rate; loans are cheap in a boom and called in at the bust. 🪙 Gold at the pawn shop holds its value. Brass covers pay ×3, and the Fed's own pays ×8 (it's alarmed).</li>
                 </ol>
                 <p class="controls">Move: arrows / WASD, or tap the map · Action: <kbd>E</kbd> / <kbd>Space</kbd> · Buy: <kbd>1</kbd>–<kbd>4</kbd> · Pause: <kbd>P</kbd></p>
-                <p id="title-best" class="best"></p>
-                <div class="panel-buttons">
-                    <button id="start" type="button" class="big-button">Start the cycle</button>
-                    <button id="show-achievements" type="button" class="big-button secondary">🏅 Achievements</button>
-                </div>
             </div>
         </div>
 

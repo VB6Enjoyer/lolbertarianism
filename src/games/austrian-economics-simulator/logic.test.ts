@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FED_COVER, findPath, isRoad, MANHOLE_SLOTS, PLACES, placeById, STARTING_SLOTS } from './map.ts';
-import { act, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
+import { COLS, DISTRICTS, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, PLACES, placeAtDoor, placeById, ROAD_TILES, ROWS, setDistrict, STARTING_SLOTS } from './map.ts';
+import { act, CITY_EVENTS, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
 import { ACHIEVEMENTS, normalizeUnlocked, Tracker } from './achievements.ts';
 
 function rng(seed: number) {
@@ -30,6 +30,8 @@ function quiet(): GameState {
   s.pedRespawns = [];
   s.nextCrewAt = Infinity;
   s.nextDeaAt = Infinity;
+  s.nextEventAt = Infinity;
+  s.rivals = 99; // no rival scrappers
   return s;
 }
 
@@ -195,7 +197,7 @@ describe('austrian economics: losing', () => {
     const s = quiet();
     const hole = s.manholes.find((h) => h.state === 'covered')!;
     teleport(s, hole.x, hole.y);
-    s.agents.push({ id: 1, kind: 'cop', mover: { x: hole.x, y: hole.y, path: [{ x: hole.x, y: hole.y }] }, down: 0, target: null, work: 0, leaving: false, variant: 0 });
+    s.agents.push({ id: 1, kind: 'cop', mover: { x: hole.x, y: hole.y, path: [{ x: hole.x, y: hole.y }] }, down: 0, target: null, work: 0, leaving: false, variant: 0, load: 0 });
     // Keep the cop standing there
     s.agents[0].mover.path = [];
     const events: GameEvent[] = [];
@@ -218,7 +220,7 @@ describe('austrian economics: losing', () => {
     hole.state = 'open';
     const next = { x: hole.x - 1, y: hole.y };
     for (let i = 0; i < 30; i++) {
-      s.agents = [{ id: 1, kind: 'ped', mover: { x: next.x, y: next.y, path: [{ x: hole.x, y: hole.y }] }, down: 0, target: null, work: 0, leaving: false, variant: 0 }];
+      s.agents = [{ id: 1, kind: 'ped', mover: { x: next.x, y: next.y, path: [{ x: hole.x, y: hole.y }] }, down: 0, target: null, work: 0, leaving: false, variant: 0, load: 0 }];
       const events = run(s, 1, still, rng(i));
       if (events.some((e) => e.type === 'fell')) {
         expect(s.agents).toHaveLength(0);
@@ -308,7 +310,7 @@ describe('austrian economics: money', () => {
     expect(s.player.pry!.total).toBeCloseTo(CONFIG.pryTime * CONFIG.brassPry);
 
     const t = quiet();
-    t.agents.push({ id: 1, kind: 'cop', mover: { x: 16, y: 9, path: [] }, down: 0, target: null, work: 0, leaving: false, variant: 0 });
+    t.agents.push({ id: 1, kind: 'cop', mover: { x: 16, y: 9, path: [] }, down: 0, target: null, work: 0, leaving: false, variant: 0, load: 0 });
     const fed = t.manholes.find((h) => h.kind === 'fed')!;
     expect(fed).toMatchObject({ x: FED_COVER.x, y: FED_COVER.y, state: 'covered' });
     teleport(t, fed.x, fed.y);
@@ -330,6 +332,99 @@ describe('austrian economics: money', () => {
   });
 });
 
+describe('austrian economics: the city', () => {
+  it('both districts: doors and manholes on the streets, nothing on a door, every street connected', () => {
+    for (const d of DISTRICTS) {
+      setDistrict(d.id);
+      for (const p of PLACES) expect(isRoad(p.door.x, p.door.y), `${d.id} ${p.id}`).toBe(true);
+      for (const h of [...MANHOLE_SLOTS, FED_COVER, d.start, d.depot, d.copStart]) expect(isRoad(h.x, h.y), `${d.id} ${h.x},${h.y}`).toBe(true);
+      for (const h of [...MANHOLE_SLOTS, FED_COVER]) expect(placeAtDoor(h), `${d.id} ${h.x},${h.y}`).toBeNull();
+      for (const t of ROAD_TILES) expect(findPath(d.start, t).length > 0 || (t.x === d.start.x && t.y === d.start.y)).toBe(true);
+    }
+    setDistrict('downtown');
+  });
+
+  it('the suburbs: a bigger map, no cops at first, more brass', () => {
+    const s = newGame(rng(3), 'suburbs');
+    expect([COLS, ROWS]).toEqual([21, 13]);
+    expect(s.district).toBe('suburbs');
+    expect(s.agents.filter((a) => a.kind === 'cop')).toHaveLength(0);
+    expect(s.player.mover).toMatchObject({ x: 3, y: 6 });
+    expect(context(s)).toEqual({ kind: 'stash' });
+    newGame(rng(1));
+    expect([COLS, ROWS]).toEqual([18, 11]);
+  });
+
+  it('events: cash for clunkers doubles scrap, a minimum wage raises the Corner, a stimulus pays then inflates', () => {
+    const s = quiet();
+    const scrap = scrapPrice(s, 'yard-near');
+    const crack = drugPrice(s, 'crack');
+    s.event = { kind: 'clunkers', left: 10 };
+    expect(scrapPrice(s, 'yard-near')).toBeCloseTo(scrap * 2);
+    s.event = { kind: 'min-wage', left: 10 };
+    expect(drugPrice(s, 'crack')).toBeCloseTo(crack * 1.3);
+    s.event = null;
+    // A stimulus check (the second event in the list)
+    const t = quiet();
+    t.nextEventAt = 0;
+    const pick = () => 0.3;
+    expect(run(t, 0.05, still, pick, true)).toContainEqual({ type: 'city-event', kind: 'stimulus' });
+    expect(t.cash).toBeCloseTo(CONFIG.startCash + 50, 0);
+    const level = t.priceLevel;
+    const later = run(t, 7, still, pick, true);
+    expect(later).toContainEqual({ type: 'city-event-over', kind: 'stimulus' });
+    expect(t.priceLevel).toBeGreaterThan(level * 1.09);
+  });
+
+  it('a recall swaps the iron covers for plastic, and back when it ends', () => {
+    const s = quiet();
+    s.nextEventAt = 0;
+    const pick = () => 0.6; // the third event: the recall
+    const brass = s.manholes.filter((h) => h.kind === 'brass').length;
+    expect(run(s, 0.05, still, pick, true)).toContainEqual({ type: 'city-event', kind: 'recall' });
+    expect(s.manholes.filter((h) => h.state === 'covered' && h.kind === 'iron')).toHaveLength(0);
+    expect(s.manholes.filter((h) => h.kind === 'brass')).toHaveLength(brass);
+    run(s, 26, still, pick, true);
+    expect(s.manholes.some((h) => h.kind === 'plastic' && h.state === 'covered')).toBe(false);
+  });
+
+  it('the rival scrapper steals covers and sells them', () => {
+    const s = quiet();
+    s.rivals = 0;
+    s.time = CONFIG.rival.first;
+    const events = run(s, 25, still, rng(5), true);
+    expect(events).toContainEqual({ type: 'rival-arrives' });
+    expect(events.some((e) => e.type === 'rival-stole')).toBe(true);
+    expect(s.manholes.some((h) => h.state === 'open' && !h.yours)).toBe(true);
+  });
+
+  it('shove him into an open manhole, or take his cover', () => {
+    const s = quiet();
+    const hole = s.manholes.find((h) => h.state === 'covered' && h.kind !== 'fed' && h.y === 5)!;
+    hole.state = 'open';
+    const rival = { id: 7, kind: 'rival' as const, mover: { x: hole.x + 1, y: hole.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant: 0, load: 1 };
+    s.agents.push(rival);
+    teleport(s, hole.x + 1, hole.y);
+    expect(context(s)).toMatchObject({ kind: 'shove' });
+    expect(act(s)).toContainEqual({ type: 'rival-fell', x: hole.x, y: hole.y, pushed: true });
+    expect(rival.down).toBe(CONFIG.rival.inHole);
+    expect(rival.load).toBe(0);
+
+    const t = quiet();
+    const other = { id: 8, kind: 'rival' as const, mover: { x: 8, y: 9, path: [] }, down: 0, target: null, work: 0, leaving: false, variant: 0, load: 1 };
+    t.agents.push(other);
+    teleport(t, 8, 9);
+    t.manholes.forEach((h) => { if (h.state === 'open') h.state = 'covered'; });
+    expect(act(t)).toContainEqual({ type: 'shoved', took: true });
+    expect(t.cargo).toEqual(['iron']);
+    expect(other.down).toBe(CONFIG.rival.stunned);
+  });
+
+  it('every event has a name and runs out', () => {
+    for (const e of CITY_EVENTS) expect(e.name && e.description && e.seconds > 0).toBeTruthy();
+  });
+});
+
 describe('austrian economics: achievements', () => {
   it('unique ids, all filled in', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
@@ -339,7 +434,7 @@ describe('austrian economics: achievements', () => {
   it("selling the top at the Fed's yard, and both drugs", () => {
     const t = new Tracker(new Set());
     const s = newGame();
-    expect(t.update(s, [{ type: 'sold', count: 1, total: 40, yard: 'yard-near', price: 40, otherPrice: 25, multiplier: 2.3 }])).toEqual(['peak', 'cantillon']);
+    expect(t.update(s, [{ type: 'sold', count: 1, total: 40, yard: 'yard-near', price: 40, otherPrice: 25, multiplier: 2.3, plastic: false }])).toEqual(['peak', 'cantillon']);
     t.update(s, [{ type: 'bought', drug: 'heroin', price: 40, dea: false }]);
     expect(t.update(s, [{ type: 'bought', drug: 'crack', price: 30, dea: true }])).toEqual(['both', 'dea']);
   });

@@ -103,6 +103,67 @@ body {
     color: var(--green);
 }
 
+.event {
+    padding: 3px 8px;
+    border: 2px dashed #ffd54f;
+    color: #ffd54f;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.event[hidden] {
+    display: none;
+}
+
+.districts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.district {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 8px;
+    padding: 8px 10px;
+    border: 2px solid #335a5a;
+    background: #021014;
+    color: var(--cyan);
+    font: 13px var(--font);
+    text-align: left;
+    cursor: pointer;
+}
+
+.district.selected {
+    border-color: var(--green);
+    box-shadow: 0 0 10px rgba(95, 255, 143, 0.4);
+}
+
+.district.locked {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.district .icon {
+    grid-row: span 3;
+    font-size: 26px;
+}
+
+.district b {
+    color: #fff;
+}
+
+.district small {
+    color: #8fb8b5;
+}
+
+.district em {
+    color: #ffd54f;
+    font-style: normal;
+    font-size: 12px;
+}
+
 .ticker {
     flex: 1;
     min-width: 0;
@@ -627,6 +688,13 @@ kbd {
     color: #8fb8b5;
 }
 
+.how {
+    margin: 16px 0 6px;
+    font-size: 14px;
+    color: var(--green);
+    text-transform: uppercase;
+}
+
 .rules {
     margin: 0 0 12px;
     padding-left: 22px;
@@ -844,7 +912,7 @@ kbd {
     }
 
     .map-wrap {
-        aspect-ratio: 18 / 11;
+        aspect-ratio: var(--map-aspect, 18 / 11);
         min-height: 220px;
     }
 

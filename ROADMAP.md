@@ -598,3 +598,18 @@ wait for replacement.
   - 8 more achievements (26 in all): Interest on Reserve Balances, Cheap
     Credit, Sound Finances, Too Small to Bail Out, Gold Bug, Barbarous Relic,
     Historical Revisionism, End the Fed('s Manhole).
+- More of the city:
+  - City events about every 40–60 s, on the news ticker with a countdown
+    banner: 🚗 Cash for Clunkers (scrap ×2 for 15 s), 🚁 Stimulus Check (+$50,
+    then prices jump 10%), 🥤 Cover Recall (iron covers turn to plastic, worth
+    a tenth, for 25 s), 📜 Minimum Wage Hike (the Corner +30% for 25 s).
+  - 🦺 A rival scrapper in a hi-vis vest from 40 s in (a second at 200 s): he
+    pries the nearest cover, sells it at the nearer yard and repeats; the crews
+    leave him alone. Walk up and press E to shove him: into an open manhole if
+    there's one next to him (down 20 s), otherwise he's stunned and you take
+    his cover. Cops don't like seeing it.
+  - 🏡 The Suburbs (`map.ts` districts, picked on the title screen once you've
+    scored 150 utils downtown): a 21×13 map with long streets, the Fed far
+    away, no cops at first (two at most) and more brass. Best scores per
+    district.
+  - 6 more achievements (32 in all).

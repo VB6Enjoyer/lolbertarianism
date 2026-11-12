@@ -2,8 +2,8 @@ import './style.css';
 import { note, playTone, getAudioContext } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { isRoad, nearestRoad, placeAtBlock, type Tile } from './map.ts';
-import { act, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
+import { COLS, DISTRICTS, isRoad, nearestRoad, placeAtBlock, ROWS, type DistrictId, type Tile } from './map.ts';
+import { act, cityEvent, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked, Tracker } from './achievements.ts';
 import { fitView, render, type View } from './render.ts';
 
@@ -32,6 +32,8 @@ const els = {
   debt: byId('debt'),
   gold: byId('gold'),
   finance: document.querySelector<HTMLElement>('.finance')!,
+  event: byId('event'),
+  districts: byId('districts'),
   laps: byId('laps'),
   cycle: document.querySelector<HTMLElement>('.cycle')!,
   priceNear: byId('price-near'),
@@ -59,10 +61,13 @@ rothbard.src = `${import.meta.env.BASE_URL}vidya/img/rothbard.webp`;
 // ---------------------------------------------------------------------------
 
 interface Save {
+  /** The best downtown (kept under its old name), and in the suburbs. */
   best: number;
+  bestSuburbs: number;
   muted: boolean;
   achievements: string[];
   runs: number;
+  district: DistrictId;
 }
 
 const slot = createSaveSlot<Save>({ game: 'austrian-economics-simulator', version: 1 });
@@ -72,7 +77,13 @@ const save: Save = {
   muted: saved?.muted === true,
   achievements: [...normalizeUnlocked(saved?.achievements)],
   runs: Math.max(0, Math.floor(Number(saved?.runs) || 0)),
+  bestSuburbs: Math.max(0, Math.floor(Number(saved?.bestSuburbs) || 0)),
+  district: saved?.district === 'suburbs' ? 'suburbs' : 'downtown',
 };
+
+const bestIn = (id: DistrictId) => (id === 'suburbs' ? save.bestSuburbs : save.best);
+const districtOpen = (id: DistrictId) => save.best >= DISTRICTS.find((d) => d.id === id)!.unlockUtils;
+if (!districtOpen(save.district)) save.district = 'downtown';
 const unlocked = new Set(save.achievements);
 const tracker = new Tracker(unlocked);
 
@@ -374,11 +385,12 @@ function shopKey(i: number) {
 
 type Mode = 'title' | 'playing' | 'paused' | 'over';
 let mode: Mode = 'title';
-let state: GameState = newGame();
+let state: GameState = newGame(Math.random, save.district);
 let runUnlocked: string[] = [];
 
 function startGame() {
-  state = newGame();
+  state = newGame(Math.random, save.district);
+  fitMap();
   mode = 'playing';
   runUnlocked = [];
   tracker.startRun();
@@ -429,8 +441,9 @@ function gameOver() {
   play('over');
   closeShop();
   const reason = state.over ?? 'withdrawal';
-  const isBest = state.utils > save.best;
-  save.best = Math.max(save.best, state.utils);
+  const isBest = state.utils > bestIn(state.district);
+  if (state.district === 'suburbs') save.bestSuburbs = Math.max(save.bestSuburbs, state.utils);
+  else save.best = Math.max(save.best, state.utils);
   save.runs++;
   slot.save(save);
   byId('over-title').textContent = OVER_TEXT[reason].title;
@@ -439,7 +452,8 @@ function gameOver() {
   byId('final-laps').textContent = String(state.laps);
   byId('final-covers').textContent = `${state.stats.stolen} / ${state.stats.sold}`;
   byId('final-time').textContent = clock(state.time);
-  byId('final-best').textContent = String(save.best);
+  byId('final-best').textContent = String(bestIn(state.district));
+  renderDistricts();
   byId('new-best').hidden = !isBest;
   byId('run-achievements').hidden = runUnlocked.length === 0;
   byId('run-achievements-list').replaceChildren(
@@ -588,6 +602,36 @@ function handle(events: GameEvent[]) {
         news(`DEFAULT! THE BANK SEIZED EVERYTHING YOU OWNED (${money(e.lost)}). NO BAILOUT FOR YOU.`, 10);
         floater('💸 DEFAULT: EVERYTHING SEIZED', playerTile(), '#ff5f5f');
         break;
+      case 'city-event': {
+        const ce = cityEvent(e.kind);
+        play('bell');
+        news(`${ce.icon} ${ce.name.toUpperCase()}: ${ce.description.toUpperCase()}`, ce.seconds);
+        break;
+      }
+      case 'city-event-over':
+        if (e.kind === 'stimulus') news('THE STIMULUS IS SPENT. PRICES UP 10%. ECONOMISTS BAFFLED.');
+        else if (e.kind === 'recall') news('RECALL OVER: THE CITY PUTS THE IRON COVERS BACK.');
+        else if (e.kind === 'clunkers') news('CASH FOR CLUNKERS ENDS. THE JUNKYARDS GO BACK TO NORMAL.');
+        break;
+      case 'stimulus':
+        play('cash');
+        floater(`🚁 STIMULUS CHECK +${money(e.amount)}`, playerTile(), '#5fff8f');
+        break;
+      case 'rival-arrives':
+        news('NEW IN TOWN: A RIVAL SCRAPPER IN A HI-VIS VEST. THE CREWS THINK HE WORKS FOR THE CITY.');
+        break;
+      case 'rival-stole':
+        floater('🦺 THE RIVAL GOT ONE', e, '#ffab40');
+        break;
+      case 'rival-fell':
+        play('fell');
+        floater(e.pushed ? '🕳️ OUTCOMPETED!' : '🕳️ RIVAL FELL IN', e, '#5fff8f');
+        if (e.pushed) news('SCRAPPER FALLS INTO MANHOLE. "THE MARKET IS BRUTAL," SAYS WITNESS.');
+        break;
+      case 'shoved':
+        play('clank');
+        floater(e.took ? '🤼 TOOK HIS COVER' : '🤼 SHOVED', playerTile(), '#ffd54f');
+        break;
       case 'gold-bought':
         play('coin');
         floater('🪙 +1 OZ', playerTile(), '#ffd54f');
@@ -687,6 +731,7 @@ const ACTION_TEXT: Record<string, string> = {
   prying: 'Prying…',
   full: 'Hands full: sell or stash first',
   stash: 'E · Stash covers / take them',
+  shove: 'E · Shove the competition',
   dealer: '1 · Heroin   2 · Crack',
   hardware: '1–4 · Buy capital goods',
   bank: '1–4 · Save, withdraw, borrow, repay',
@@ -742,7 +787,15 @@ function updateHud() {
   else if (state.cargo.length > 0) text = 'Take it to a junkyard (or your squat)';
   else if (state.fix < 0.35) text = 'Get to the Corner before the fix wears off';
   setText(els.action, text);
-  els.action.disabled = !(kind === 'pry' || kind === 'sell' || kind === 'stash');
+  els.action.disabled = !(kind === 'pry' || kind === 'sell' || kind === 'stash' || kind === 'shove');
+
+  // The city event going on
+  els.event.hidden = !state.event;
+  if (state.event) {
+    const e = cityEvent(state.event.kind);
+    setText(els.event, `${e.icon} ${e.name.toUpperCase()} ${Math.ceil(state.event.left)}s`);
+    els.event.title = e.description;
+  }
 }
 
 function drawGraph(canvas: HTMLCanvasElement, series: { values: number[]; color: string }[]) {
@@ -790,6 +843,7 @@ function resize() {
   els.map.height = Math.round(rect.height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   view = fitView(cssW, cssH);
+  els.mapWrap.style.setProperty('--map-aspect', `${COLS} / ${ROWS}`);
   for (const c of [els.graphScrap, els.graphDrugs]) {
     const r = c.getBoundingClientRect();
     c.width = Math.round(r.width * dpr);
@@ -829,4 +883,41 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 
-els.titleBest.textContent = save.best ? `🏆 Your best: ${save.best} utils` : '';
+// ---------------------------------------------------------------------------
+// Districts
+// ---------------------------------------------------------------------------
+
+/** Re-measures the map (each district has its own size). */
+function fitMap() {
+  els.mapWrap.style.setProperty('--map-aspect', `${COLS} / ${ROWS}`);
+  resize();
+}
+
+function renderDistricts() {
+  els.districts.replaceChildren(
+    ...DISTRICTS.map((d) => {
+      const open = districtOpen(d.id);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `district${d.id === save.district ? ' selected' : ''}${open ? '' : ' locked'}`;
+      b.disabled = !open;
+      b.innerHTML = '<span class="icon"></span><b></b><small></small><em></em>';
+      b.querySelector('.icon')!.textContent = open ? d.icon : '🔒';
+      b.querySelector('b')!.textContent = d.name;
+      b.querySelector('small')!.textContent = open ? d.description : `Score ${d.unlockUtils} utils downtown to move here.`;
+      b.querySelector('em')!.textContent = open && bestIn(d.id) ? `Best: ${bestIn(d.id)} utils` : '';
+      b.addEventListener('click', () => {
+        save.district = d.id;
+        slot.save(save);
+        state = newGame(Math.random, d.id);
+        fitMap();
+        renderDistricts();
+      });
+      return b;
+    }),
+  );
+  els.titleBest.textContent = bestIn(save.district) ? `🏆 Your best here: ${bestIn(save.district)} utils` : '';
+}
+
+renderDistricts();
+fitMap();

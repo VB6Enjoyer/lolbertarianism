@@ -1,20 +1,14 @@
 // The city: a grid of streets and blocks. Tile (x, y) has its center at (x, y);
 // streets run along a few columns and rows, everything else is buildings.
-
-export const COLS = 18;
-export const ROWS = 11;
-export const ROAD_COLS: readonly number[] = [1, 6, 11, 16];
-export const ROAD_ROWS: readonly number[] = [1, 5, 9];
+//
+// There are two districts. The exports below describe the current one and
+// change with setDistrict() (ES modules hand out live bindings, so every
+// importer sees the switch).
 
 export interface Tile {
   x: number;
   y: number;
 }
-
-export const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
-export const isRoad = (x: number, y: number) => inBounds(x, y) && (ROAD_COLS.includes(x) || ROAD_ROWS.includes(y));
-export const isIntersection = (x: number, y: number) => ROAD_COLS.includes(x) && ROAD_ROWS.includes(y);
-export const sameTile = (a: Tile, b: Tile) => a.x === b.x && a.y === b.y;
 
 export type PlaceId = 'fed' | 'pawn' | 'yard-near' | 'hardware' | 'squat' | 'dealer' | 'yard-far';
 
@@ -27,15 +21,161 @@ export interface Place {
   door: Tile;
 }
 
-export const PLACES: readonly Place[] = [
-  { id: 'fed', name: 'Federal Reserve', icon: '🏛️', block: { x: 2, y: 2, w: 4, h: 3 }, door: { x: 3, y: 1 } },
-  { id: 'pawn', name: 'Gresham Pawn & Gold', icon: '🪙', block: { x: 7, y: 0, w: 2, h: 1 }, door: { x: 7, y: 1 } },
-  { id: 'yard-near', name: 'Cantillon Scrap & Salvage', icon: '🏗️', block: { x: 7, y: 2, w: 4, h: 3 }, door: { x: 9, y: 1 } },
-  { id: 'hardware', name: 'Roundabout Hardware', icon: '🔧', block: { x: 12, y: 2, w: 4, h: 3 }, door: { x: 13, y: 5 } },
-  { id: 'squat', name: 'Your Squat', icon: '🛏️', block: { x: 2, y: 6, w: 4, h: 3 }, door: { x: 4, y: 5 } },
-  { id: 'dealer', name: 'The Corner', icon: '💊', block: { x: 7, y: 6, w: 4, h: 3 }, door: { x: 8, y: 9 } },
-  { id: 'yard-far', name: 'Last-in-Line Recycling', icon: '♻️', block: { x: 12, y: 6, w: 4, h: 3 }, door: { x: 14, y: 9 } },
+export type DistrictId = 'downtown' | 'suburbs';
+
+export interface District {
+  id: DistrictId;
+  name: string;
+  icon: string;
+  description: string;
+  cols: number;
+  rows: number;
+  roadCols: readonly number[];
+  roadRows: readonly number[];
+  places: readonly Place[];
+  /** Where manholes can be (street tiles away from doors and crossings), and how many have a cover at the start. */
+  slots: readonly Tile[];
+  startingSlots: number;
+  /** The Fed's own manhole, right outside: worth a fortune, and alarmed. */
+  fedCover: Tile;
+  /** City Works trucks come in from here. */
+  depot: Tile;
+  /** Where you start (your squat's door), and where the first cop starts. */
+  start: Tile;
+  copStart: Tile;
+  /** Cops on patrol at the start, and at most. */
+  startCops: number;
+  maxCops: number;
+  /** How often a cover is brass. */
+  brassChance: number;
+  /** Utils you need downtown to move here (0: open from the start). */
+  unlockUtils: number;
+}
+
+const NAMES: Record<PlaceId, [string, string]> = {
+  fed: ['Federal Reserve', '🏛️'],
+  pawn: ['Gresham Pawn & Gold', '🪙'],
+  'yard-near': ['Cantillon Scrap & Salvage', '🏗️'],
+  hardware: ['Roundabout Hardware', '🔧'],
+  squat: ['Your Squat', '🛏️'],
+  dealer: ['The Corner', '💊'],
+  'yard-far': ['Last-in-Line Recycling', '♻️'],
+};
+
+const place = (id: PlaceId, block: Place['block'], door: Tile): Place => ({ id, name: NAMES[id][0], icon: NAMES[id][1], block, door });
+
+export const DISTRICTS: readonly District[] = [
+  {
+    id: 'downtown',
+    name: 'Downtown',
+    icon: '🏙️',
+    description: 'Tight streets, the Fed next door, and cops everywhere.',
+    cols: 18,
+    rows: 11,
+    roadCols: [1, 6, 11, 16],
+    roadRows: [1, 5, 9],
+    places: [
+      place('fed', { x: 2, y: 2, w: 4, h: 3 }, { x: 3, y: 1 }),
+      place('pawn', { x: 7, y: 0, w: 2, h: 1 }, { x: 7, y: 1 }),
+      place('yard-near', { x: 7, y: 2, w: 4, h: 3 }, { x: 9, y: 1 }),
+      place('hardware', { x: 12, y: 2, w: 4, h: 3 }, { x: 13, y: 5 }),
+      place('squat', { x: 2, y: 6, w: 4, h: 3 }, { x: 4, y: 5 }),
+      place('dealer', { x: 7, y: 6, w: 4, h: 3 }, { x: 8, y: 9 }),
+      place('yard-far', { x: 12, y: 6, w: 4, h: 3 }, { x: 14, y: 9 }),
+    ],
+    slots: [
+      { x: 4, y: 1 }, { x: 13, y: 1 }, { x: 15, y: 1 },
+      { x: 2, y: 5 }, { x: 8, y: 5 }, { x: 10, y: 5 }, { x: 14, y: 5 },
+      { x: 3, y: 9 }, { x: 10, y: 9 }, { x: 12, y: 9 }, { x: 15, y: 9 },
+      { x: 1, y: 3 }, { x: 1, y: 7 }, { x: 6, y: 3 }, { x: 6, y: 7 },
+      { x: 11, y: 3 }, { x: 11, y: 7 }, { x: 16, y: 3 }, { x: 16, y: 7 },
+    ],
+    startingSlots: 11,
+    fedCover: { x: 2, y: 1 },
+    depot: { x: 17, y: 5 },
+    start: { x: 4, y: 5 },
+    copStart: { x: 16, y: 1 },
+    startCops: 1,
+    maxCops: 3,
+    brassChance: 0.15,
+    unlockUtils: 0,
+  },
+  {
+    id: 'suburbs',
+    name: 'The Suburbs',
+    icon: '🏡',
+    description: 'Long streets, more brass, fewer cops (at first). The Fed is far, far away.',
+    cols: 21,
+    rows: 13,
+    roadCols: [1, 7, 13, 19],
+    roadRows: [1, 6, 11],
+    places: [
+      place('squat', { x: 2, y: 2, w: 5, h: 4 }, { x: 3, y: 6 }),
+      place('pawn', { x: 9, y: 0, w: 2, h: 1 }, { x: 9, y: 1 }),
+      place('hardware', { x: 8, y: 2, w: 5, h: 4 }, { x: 10, y: 6 }),
+      place('fed', { x: 14, y: 2, w: 5, h: 4 }, { x: 15, y: 1 }),
+      place('yard-far', { x: 2, y: 7, w: 5, h: 4 }, { x: 4, y: 11 }),
+      place('dealer', { x: 8, y: 7, w: 5, h: 4 }, { x: 10, y: 11 }),
+      place('yard-near', { x: 14, y: 7, w: 5, h: 4 }, { x: 16, y: 6 }),
+    ],
+    slots: [
+      { x: 3, y: 1 }, { x: 5, y: 1 }, { x: 11, y: 1 }, { x: 12, y: 1 },
+      { x: 5, y: 6 }, { x: 9, y: 6 }, { x: 12, y: 6 }, { x: 14, y: 6 }, { x: 18, y: 6 },
+      { x: 2, y: 11 }, { x: 6, y: 11 }, { x: 9, y: 11 }, { x: 12, y: 11 }, { x: 15, y: 11 }, { x: 18, y: 11 },
+      { x: 1, y: 3 }, { x: 1, y: 9 }, { x: 7, y: 4 }, { x: 7, y: 9 },
+      { x: 13, y: 3 }, { x: 13, y: 8 }, { x: 19, y: 4 }, { x: 19, y: 9 },
+    ],
+    startingSlots: 13,
+    fedCover: { x: 17, y: 1 },
+    depot: { x: 20, y: 6 },
+    start: { x: 3, y: 6 },
+    copStart: { x: 19, y: 11 },
+    startCops: 0,
+    maxCops: 2,
+    brassChance: 0.25,
+    unlockUtils: 150,
+  },
 ];
+
+export const districtById = (id: DistrictId) => DISTRICTS.find((d) => d.id === id) ?? DISTRICTS[0];
+
+export let DISTRICT: District = DISTRICTS[0];
+export let COLS = 0;
+export let ROWS = 0;
+export let ROAD_COLS: readonly number[] = [];
+export let ROAD_ROWS: readonly number[] = [];
+export let PLACES: readonly Place[] = [];
+export let MANHOLE_SLOTS: readonly Tile[] = [];
+export let STARTING_SLOTS = 0;
+export let FED_COVER: Tile = { x: 0, y: 0 };
+export let DEPOT: Tile = { x: 0, y: 0 };
+export let ROAD_TILES: readonly Tile[] = [];
+
+export const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
+export const isRoad = (x: number, y: number) => inBounds(x, y) && (ROAD_COLS.includes(x) || ROAD_ROWS.includes(y));
+export const isIntersection = (x: number, y: number) => ROAD_COLS.includes(x) && ROAD_ROWS.includes(y);
+export const sameTile = (a: Tile, b: Tile) => a.x === b.x && a.y === b.y;
+
+/** Switches the whole map to another district. */
+export function setDistrict(id: DistrictId): District {
+  const d = districtById(id);
+  DISTRICT = d;
+  COLS = d.cols;
+  ROWS = d.rows;
+  ROAD_COLS = d.roadCols;
+  ROAD_ROWS = d.roadRows;
+  PLACES = d.places;
+  MANHOLE_SLOTS = d.slots;
+  STARTING_SLOTS = d.startingSlots;
+  FED_COVER = d.fedCover;
+  DEPOT = d.depot;
+  const tiles: Tile[] = [];
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (isRoad(x, y)) tiles.push({ x, y });
+  ROAD_TILES = tiles;
+  return d;
+}
+
+setDistrict('downtown');
 
 export const placeById = (id: PlaceId) => PLACES.find((p) => p.id === id)!;
 
@@ -45,30 +185,6 @@ export const placeAtDoor = (t: Tile) => PLACES.find((p) => sameTile(p.door, t)) 
 /** The place whose block covers this tile. */
 export const placeAtBlock = (t: Tile) =>
   PLACES.find((p) => t.x >= p.block.x && t.x < p.block.x + p.block.w && t.y >= p.block.y && t.y < p.block.y + p.block.h) ?? null;
-
-/** Where manholes can be: street tiles away from doors and crossings. */
-export const MANHOLE_SLOTS: readonly Tile[] = [
-  { x: 4, y: 1 }, { x: 13, y: 1 }, { x: 15, y: 1 },
-  { x: 2, y: 5 }, { x: 8, y: 5 }, { x: 10, y: 5 }, { x: 14, y: 5 },
-  { x: 3, y: 9 }, { x: 10, y: 9 }, { x: 12, y: 9 }, { x: 15, y: 9 },
-  { x: 1, y: 3 }, { x: 1, y: 7 }, { x: 6, y: 3 }, { x: 6, y: 7 },
-  { x: 11, y: 3 }, { x: 11, y: 7 }, { x: 16, y: 3 }, { x: 16, y: 7 },
-];
-
-/** The Fed's own manhole, right outside: worth a fortune, and alarmed. */
-export const FED_COVER: Tile = { x: 2, y: 1 };
-
-/** The ones with a cover at the start; the rest come with infrastructure bills. */
-export const STARTING_SLOTS = 11;
-
-/** City Works trucks come in from here (the right end of the middle street). */
-export const DEPOT: Tile = { x: 17, y: 5 };
-
-export const ROAD_TILES: readonly Tile[] = (() => {
-  const tiles: Tile[] = [];
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (isRoad(x, y)) tiles.push({ x, y });
-  return tiles;
-})();
 
 const DIRS: readonly Tile[] = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
 

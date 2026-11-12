@@ -7,7 +7,7 @@
 // moves the scrap price (the near junkyard first: the Cantillon effect),
 // everything inflates, and the city's crews and covers come and go with it.
 
-import { COLS, DEPOT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, ROAD_TILES, sameTile, STARTING_SLOTS, type Tile } from './map.ts';
+import { COLS, DEPOT, DISTRICT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, placeById, ROAD_ROWS, ROAD_TILES, sameTile, setDistrict, STARTING_SLOTS, type DistrictId, type Tile } from './map.ts';
 
 export const CONFIG = {
   startCash: 98,
@@ -55,9 +55,12 @@ export const CONFIG = {
   drugInflation: 1.4,
   copFallUtils: 3,
   dea: { first: 70, every: 60, spread: 40, seconds: 15, markup: 1.6 },
-  maxCops: 3,
-  /** Covers: brass ones show up this often (and the Fed has its own). */
-  brassChance: 0.15,
+  /** Mid-run events: the first, then one every `every` to `every + spread` seconds. */
+  events: { first: 50, every: 40, spread: 20 },
+  /** The rival scrapper: when he shows up (a second one later), how fast he walks and pries, and how long a fall or a shove keeps him down. */
+  rival: { first: 40, second: 200, speed: 2.4, pry: 2.2, fallChance: 0.25, inHole: 20, stunned: 3 },
+  /** Heat if a cop sees you shove him. */
+  shoveHeat: 20,
   /** Prying brass / the Fed's cover takes this many times as long. */
   brassPry: 1.3,
   fedPry: 2,
@@ -76,13 +79,13 @@ export const CONFIG = {
   goldSpread: 0.06,
 };
 
-export type CoverKind = 'iron' | 'brass' | 'fed';
+export type CoverKind = 'iron' | 'brass' | 'fed' | 'plastic';
 
 /** What each kind of cover is worth, compared with plain iron. */
-export const COVER_VALUE: Record<CoverKind, number> = { iron: 1, brass: 3, fed: 8 };
+export const COVER_VALUE: Record<CoverKind, number> = { iron: 1, brass: 3, fed: 8, plastic: 0.1 };
 
 /** Heat per second from a cop seeing you carry one, compared with iron. */
-const COVER_HEAT: Record<CoverKind, number> = { iron: 1, brass: 1.5, fed: 6 };
+const COVER_HEAT: Record<CoverKind, number> = { iron: 1, brass: 1.5, fed: 6, plastic: 1 };
 
 /** The Fed's schedule: a calm start, then booms and busts, announced a few seconds ahead. */
 export const SCHEDULE = { calm: 30, boom: 45, bust: 35, warn: 8, lag: 12 };
@@ -128,6 +131,25 @@ export function scrapMultiplier(t: number): number {
 }
 
 export type Yard = 'yard-near' | 'yard-far';
+
+export type CityEventKind = 'clunkers' | 'stimulus' | 'recall' | 'min-wage';
+
+export interface CityEvent {
+  kind: CityEventKind;
+  name: string;
+  icon: string;
+  description: string;
+  seconds: number;
+}
+
+export const CITY_EVENTS: readonly CityEvent[] = [
+  { kind: 'clunkers', icon: '🚗', name: 'Cash for Clunkers', description: 'The junkyards pay double for scrap.', seconds: 15 },
+  { kind: 'stimulus', icon: '🚁', name: 'Stimulus Check', description: 'Free money for everyone! Prices jump 10% right after.', seconds: 6 },
+  { kind: 'recall', icon: '🥤', name: 'Cover Recall', description: 'The city swaps the iron covers for plastic ones, worth next to nothing.', seconds: 25 },
+  { kind: 'min-wage', icon: '📜', name: 'Minimum Wage Hike', description: 'The Corner passes its new labor costs on to you: +30%.', seconds: 25 },
+];
+
+export const cityEvent = (kind: CityEventKind) => CITY_EVENTS.find((e) => e.kind === kind)!;
 export type Drug = 'heroin' | 'crack';
 export type GearId = 'crowbar' | 'cart' | 'vest' | 'bike';
 
@@ -167,7 +189,7 @@ export interface Manhole {
   yours: boolean;
 }
 
-export type AgentKind = 'cop' | 'ped' | 'crew';
+export type AgentKind = 'cop' | 'ped' | 'crew' | 'rival';
 
 export interface Agent {
   id: number;
@@ -181,6 +203,8 @@ export interface Agent {
   leaving: boolean;
   /** Looks (shirt color etc.). */
   variant: number;
+  /** The rival: covers he's carrying. */
+  load: number;
 }
 
 export interface Player {
@@ -244,7 +268,12 @@ export interface GameState {
   lastSeenEvent: number;
   warnedWithdrawal: boolean;
   warnedHeat: boolean;
-  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number; interest: number };
+  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number; interest: number; rivalsFell: number };
+  district: DistrictId;
+  /** The event going on (and seconds left), and when the next one comes. */
+  event: { kind: CityEventKind; left: number } | null;
+  nextEventAt: number;
+  rivals: number;
   over: OverReason | null;
 }
 
@@ -253,7 +282,7 @@ export type GameEvent =
   | { type: 'pry-cancel' }
   | { type: 'stole'; underCrewsNose: boolean; kind: CoverKind }
   | { type: 'alarm' }
-  | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number }
+  | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number; plastic: boolean }
   | { type: 'deposited'; amount: number }
   | { type: 'withdrew'; amount: number }
   | { type: 'borrowed'; amount: number; phase: Phase }
@@ -263,6 +292,13 @@ export type GameEvent =
   | { type: 'gold-bought'; price: number }
   | { type: 'gold-sold'; count: number; total: number; phase: Phase }
   | { type: 'fed-refit' }
+  | { type: 'city-event'; kind: CityEventKind }
+  | { type: 'city-event-over'; kind: CityEventKind }
+  | { type: 'stimulus'; amount: number }
+  | { type: 'rival-arrives' }
+  | { type: 'rival-stole'; x: number; y: number }
+  | { type: 'rival-fell'; x: number; y: number; pushed: boolean }
+  | { type: 'shoved'; took: boolean }
   | { type: 'stashed'; count: number }
   | { type: 'took'; count: number }
   | { type: 'bought'; drug: Drug; price: number; dea: boolean }
@@ -289,15 +325,19 @@ export interface Input {
 
 const PED_COUNT = 4;
 
+/** The two ends of town people walk in from: the left end of the bottom street, the right end of the top one. */
+const edges = (): [Tile, Tile] => [{ x: 0, y: ROAD_ROWS[ROAD_ROWS.length - 1] }, { x: COLS - 1, y: ROAD_ROWS[0] }];
+
 function randomRoad(rng: () => number): Tile {
   return ROAD_TILES[Math.floor(rng() * ROAD_TILES.length)];
 }
 
 function makeAgent(state: GameState, kind: AgentKind, at: Tile, variant = 0): Agent {
-  return { id: state.nextId++, kind, mover: { x: at.x, y: at.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant };
+  return { id: state.nextId++, kind, mover: { x: at.x, y: at.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant, load: 0 };
 }
 
-export function newGame(rng: () => number = Math.random): GameState {
+export function newGame(rng: () => number = Math.random, district: DistrictId = 'downtown'): GameState {
+  const d = setDistrict(district);
   const state: GameState = {
     time: 0,
     cash: CONFIG.startCash,
@@ -319,9 +359,9 @@ export function newGame(rng: () => number = Math.random): GameState {
     dea: 0,
     nextDeaAt: CONFIG.dea.first,
     // You start at your squat's door.
-    player: { mover: { x: 4, y: 5, path: [] }, walking: false, pry: null, nod: 0, rush: 0 },
+    player: { mover: { x: d.start.x, y: d.start.y, path: [] }, walking: false, pry: null, nod: 0, rush: 0 },
     manholes: [
-      ...MANHOLE_SLOTS.map((t, i): Manhole => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', kind: rng() < CONFIG.brassChance ? 'brass' : 'iron', openedAt: 0, yours: false })),
+      ...MANHOLE_SLOTS.map((t, i): Manhole => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', kind: rng() < d.brassChance ? 'brass' : 'iron', openedAt: 0, yours: false })),
       { id: MANHOLE_SLOTS.length, x: FED_COVER.x, y: FED_COVER.y, state: 'covered', kind: 'fed', openedAt: 0, yours: false },
     ],
     agents: [],
@@ -335,10 +375,14 @@ export function newGame(rng: () => number = Math.random): GameState {
     lastSeenEvent: -99,
     warnedWithdrawal: false,
     warnedHeat: false,
-    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0, interest: 0 },
+    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0, interest: 0, rivalsFell: 0 },
+    district: d.id,
+    event: null,
+    nextEventAt: CONFIG.events.first,
+    rivals: 0,
     over: null,
   };
-  state.agents.push(makeAgent(state, 'cop', { x: 16, y: 1 }));
+  for (let i = 0; i < d.startCops; i++) state.agents.push(makeAgent(state, 'cop', d.copStart));
   for (let i = 0; i < PED_COUNT; i++) state.agents.push(makeAgent(state, 'ped', randomRoad(rng), i));
   sample(state);
   return state;
@@ -352,12 +396,14 @@ export function newGame(rng: () => number = Math.random): GameState {
 export function scrapPrice(state: GameState, yard: Yard, t = state.time): number {
   const lag = yard === 'yard-far' ? SCHEDULE.lag : 0;
   const wobble = 1 + 0.05 * Math.sin(t * 0.7 + (yard === 'yard-far' ? 2 : 0));
-  return CONFIG.baseScrap * state.priceLevel * scrapMultiplier(t - lag) * wobble;
+  const clunkers = state.event?.kind === 'clunkers' ? 2 : 1;
+  return CONFIG.baseScrap * state.priceLevel * scrapMultiplier(t - lag) * wobble * clunkers;
 }
 
 export function drugPrice(state: GameState, drug: Drug, t = state.time): number {
   const wobble = 1 + 0.08 * Math.sin(t * (drug === 'heroin' ? 0.5 : 0.63) + (drug === 'heroin' ? 0 : 1));
-  return CONFIG[drug].price * state.priceLevel ** CONFIG.drugInflation * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1);
+  const minWage = state.event?.kind === 'min-wage' ? 1.3 : 1;
+  return CONFIG[drug].price * state.priceLevel ** CONFIG.drugInflation * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1) * minWage;
 }
 
 /**
@@ -502,14 +548,17 @@ export type Context =
   | { kind: 'hardware' }
   | { kind: 'bank' }
   | { kind: 'pawn' }
+  | { kind: 'shove'; rival: Agent }
   | null;
 
 export function context(state: GameState): Context {
   const p = state.player;
   if (p.pry) return { kind: 'prying' };
   const here = tileOf(p.mover);
-  if (!standingOn(p.mover, here)) return null;
+  const rival = state.agents.find((a) => a.kind === 'rival' && a.down === 0 && Math.hypot(a.mover.x - p.mover.x, a.mover.y - p.mover.y) < 0.9);
+  if (!standingOn(p.mover, here)) return rival ? { kind: 'shove', rival } : null;
   const manhole = state.manholes.find((h) => h.state === 'covered' && sameTile(h, here));
+  if (rival && !manhole) return { kind: 'shove', rival };
   if (manhole) return state.cargo.length >= capacity(state) ? { kind: 'full' } : { kind: 'pry', manhole };
   const place = placeAtDoor(here);
   if (!place) return null;
@@ -552,12 +601,14 @@ export function act(state: GameState): GameEvent[] {
     const price = scrapPrice(state, c.yard);
     const total = price * cargoValue(state.cargo);
     const count = state.cargo.length;
-    events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0)) });
+    events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0)), plastic: state.cargo.includes('plastic') });
     state.cash += total;
     state.stats.sold += count;
     state.stats.earned += total;
     state.cargo = [];
     advanceStep(state, 1, events);
+  } else if (c.kind === 'shove') {
+    events.push(...shove(state, c.rival));
   } else if (c.kind === 'stash') {
     if (state.cargo.length > 0) {
       events.push({ type: 'stashed', count: state.cargo.length });
@@ -714,6 +765,10 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
       updateCrew(state, a, dt, rng, events, gone);
       continue;
     }
+    if (a.kind === 'rival') {
+      updateRival(state, a, dt, rng, events);
+      continue;
+    }
     if (!a.mover.path.length) a.mover.path = findPath(tileOf(a.mover), randomRoad(rng));
     const reached = walk(a.mover, (a.kind === 'cop' ? CONFIG.copSpeed : CONFIG.pedSpeed) * dt);
     for (const t of reached) {
@@ -740,7 +795,7 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
   const due = state.pedRespawns.filter((t) => t <= state.time);
   if (due.length) {
     state.pedRespawns = state.pedRespawns.filter((t) => t > state.time);
-    for (let i = 0; i < due.length; i++) state.agents.push(makeAgent(state, 'ped', rng() < 0.5 ? { x: 0, y: 9 } : { x: COLS - 1, y: 1 }, Math.floor(rng() * PED_COUNT)));
+    for (let i = 0; i < due.length; i++) state.agents.push(makeAgent(state, 'ped', edges()[rng() < 0.5 ? 0 : 1], Math.floor(rng() * PED_COUNT)));
   }
   // City Works sends trucks for open manholes.
   if (state.time >= state.nextCrewAt) {
@@ -774,7 +829,7 @@ function updateCrew(state: GameState, a: Agent, dt: number, rng: () => number, e
     a.work -= dt;
     if (a.work > 0) return;
     job.state = 'covered';
-    job.kind = rng() < CONFIG.brassChance ? 'brass' : 'iron';
+    job.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < DISTRICT.brassChance ? 'brass' : 'iron';
     events.push({ type: 'replaced', yours: job.yours, x: job.x, y: job.y });
     if (job.yours) advanceStep(state, 3, events);
     job.yours = false;
@@ -789,6 +844,92 @@ function updateCrew(state: GameState, a: Agent, dt: number, rng: () => number, e
   } else if (a.target === null) {
     a.leaving = true;
     a.mover.path = findPath(tileOf(a.mover), DEPOT);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The rival scrapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Shove the rival: into an open manhole if there's one next to him; otherwise
+ * he's stunned for a moment and you take the cover he's carrying (if you have
+ * room). A cop who sees it doesn't like it.
+ */
+export function shove(state: GameState, rival: Agent): GameEvent[] {
+  const events: GameEvent[] = [];
+  const hole = state.manholes.find((h) => h.state === 'open' && Math.hypot(h.x - rival.mover.x, h.y - rival.mover.y) < 1.5);
+  if (hole) {
+    rival.mover = { x: hole.x, y: hole.y, path: [] };
+    rival.down = CONFIG.rival.inHole;
+    rival.load = 0;
+    rival.target = null;
+    rival.work = 0;
+    state.stats.rivalsFell++;
+    events.push({ type: 'rival-fell', x: hole.x, y: hole.y, pushed: true });
+  } else {
+    rival.down = CONFIG.rival.stunned;
+    rival.work = 0;
+    const took = rival.load > 0 && state.cargo.length < capacity(state);
+    if (took) {
+      rival.load--;
+      state.cargo.push('iron');
+    }
+    events.push({ type: 'shoved', took });
+  }
+  const copSees = state.agents.some((a) => a.kind === 'cop' && a.down === 0 && Math.hypot(a.mover.x - state.player.mover.x, a.mover.y - state.player.mover.y) <= CONFIG.copSight);
+  if (copSees) {
+    state.heat = Math.min(100, state.heat + CONFIG.shoveHeat);
+    events.push({ type: 'seen', by: 'cop' });
+  }
+  return events;
+}
+
+/** He does what you do: pry the nearest cover, sell it, repeat. The crews take him for one of theirs. */
+function updateRival(state: GameState, a: Agent, dt: number, rng: () => number, events: GameEvent[]) {
+  const here = tileOf(a.mover);
+  if (a.load > 0) {
+    // Off to the nearer junkyard
+    if (!a.mover.path.length) {
+      const doors = (['yard-near', 'yard-far'] as const).map((id) => placeById(id).door);
+      const door = doors.sort((x, y) => Math.abs(x.x - here.x) + Math.abs(x.y - here.y) - (Math.abs(y.x - here.x) + Math.abs(y.y - here.y)))[0];
+      if (sameTile(here, door)) a.load = 0;
+      else a.mover.path = findPath(here, door);
+    }
+  } else {
+    const target = state.manholes.find((h) => h.id === a.target);
+    if (!target || target.state !== 'covered') {
+      const taken = new Set(state.agents.filter((r) => r.kind === 'rival' && r !== a).map((r) => r.target));
+      const next = state.manholes
+        .filter((h) => h.state === 'covered' && h.kind !== 'fed' && !taken.has(h.id) && !sameTile(h, tileOf(state.player.mover)))
+        .sort((x, y) => Math.abs(x.x - here.x) + Math.abs(x.y - here.y) - (Math.abs(y.x - here.x) + Math.abs(y.y - here.y)))[0];
+      a.target = next?.id ?? null;
+      a.work = 0;
+      a.mover.path = next ? findPath(here, next) : findPath(here, randomRoad(rng));
+    } else if (!a.mover.path.length && sameTile(here, target)) {
+      if (a.work <= 0) a.work = CONFIG.rival.pry;
+      a.work -= dt;
+      if (a.work <= 0) {
+        target.state = 'open';
+        target.openedAt = state.time;
+        target.yours = false;
+        a.load = 1;
+        a.target = null;
+        events.push({ type: 'rival-stole', x: target.x, y: target.y });
+      }
+      return;
+    }
+  }
+  const reached = walk(a.mover, CONFIG.rival.speed * dt);
+  for (const t of reached) {
+    if (!openManholeAt(state, t) || rng() > CONFIG.rival.fallChance) continue;
+    a.mover.path = [];
+    a.down = CONFIG.rival.inHole;
+    a.load = 0;
+    a.target = null;
+    state.stats.rivalsFell++;
+    events.push({ type: 'rival-fell', x: t.x, y: t.y, pushed: false });
+    break;
   }
 }
 
@@ -851,7 +992,7 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
       const paved = state.manholes.filter((h) => h.state === 'paved').slice(0, 3);
       for (const h of paved) {
         h.state = 'covered';
-        h.kind = rng() < CONFIG.brassChance ? 'brass' : 'iron';
+        h.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < DISTRICT.brassChance ? 'brass' : 'iron';
       }
       if (paved.length) events.push({ type: 'new-covers', count: paved.length });
       const fed = state.manholes.find((h) => h.kind === 'fed' && h.state === 'open');
@@ -860,9 +1001,9 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
         fed.yours = false;
         events.push({ type: 'fed-refit' });
       }
-    } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < CONFIG.maxCops) {
+    } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < DISTRICT.maxCops) {
       // Tough times: more police.
-      state.agents.push(makeAgent(state, 'cop', { x: 0, y: 1 }));
+      state.agents.push(makeAgent(state, 'cop', edges()[0]));
       events.push({ type: 'cop-joins' });
     }
   }
@@ -897,6 +1038,38 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     state.dea = CONFIG.dea.seconds;
     state.nextDeaAt = t + CONFIG.dea.every + rng() * CONFIG.dea.spread;
     events.push({ type: 'dea' });
+  }
+
+  // City events
+  if (state.event) {
+    state.event.left -= dt;
+    if (state.event.left <= 0) {
+      const kind = state.event.kind;
+      state.event = null;
+      if (kind === 'stimulus') state.priceLevel *= 1.1;
+      if (kind === 'recall') for (const h of state.manholes) if (h.kind === 'plastic' && h.state === 'covered') h.kind = 'iron';
+      events.push({ type: 'city-event-over', kind });
+    }
+  } else if (t >= state.nextEventAt) {
+    const e = CITY_EVENTS[Math.floor(rng() * CITY_EVENTS.length)];
+    state.event = { kind: e.kind, left: e.seconds };
+    state.nextEventAt = t + e.seconds + CONFIG.events.every + rng() * CONFIG.events.spread;
+    events.push({ type: 'city-event', kind: e.kind });
+    if (e.kind === 'stimulus') {
+      const amount = 50 * state.priceLevel;
+      state.cash += amount;
+      events.push({ type: 'stimulus', amount });
+    } else if (e.kind === 'recall') {
+      for (const h of state.manholes) if (h.kind === 'iron' && h.state === 'covered') h.kind = 'plastic';
+    }
+  }
+
+  // The competition shows up
+  const wanted = (t >= CONFIG.rival.first ? 1 : 0) + (t >= CONFIG.rival.second ? 1 : 0);
+  if (state.rivals < wanted) {
+    state.rivals++;
+    state.agents.push(makeAgent(state, 'rival', edges()[state.rivals % 2]));
+    events.push({ type: 'rival-arrives' });
   }
 
   // Your body

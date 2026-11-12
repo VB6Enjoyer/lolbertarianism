@@ -2,7 +2,7 @@
 // passers-by and City Works trucks, and you (Rothbard, with a manhole cover).
 
 import { COLS, isIntersection, isRoad, PLACES, ROWS, type Place } from './map.ts';
-import { capacity, drugPrice, goldPrice, scrapPrice, type Agent, type CoverKind, type GameState } from './logic.ts';
+import { capacity, CONFIG, drugPrice, goldPrice, scrapPrice, type Agent, type CoverKind, type GameState } from './logic.ts';
 
 export interface View {
   /** Tile size and the map's top-left corner, in CSS pixels. */
@@ -58,6 +58,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
   for (const a of state.agents) {
     if (a.kind === 'cop') drawCop(ctx, v, a, state.time);
     else if (a.kind === 'ped') drawPed(ctx, v, a, state.time);
+    else if (a.kind === 'rival') drawRival(ctx, v, a, state.time);
     else drawCrew(ctx, v, a, state.time);
   }
   drawPlayer(ctx, v, state, images);
@@ -239,6 +240,7 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
       ctx.lineTo(left + W * 0.55, top + H * 0.22);
       ctx.stroke();
       const price = scrapPrice(state, p.id);
+      if (state.event?.kind === 'clunkers') sign(ctx, cx, top + H * 0.5, '🚗 CASH FOR CLUNKERS ×2', T * 0.8, '#ffd54f', '#3e2723', W);
       sign(ctx, cx, top + H * 0.17, `${p.id === 'yard-near' ? 'CANTILLON SCRAP' : 'LAST-IN-LINE'} ${money(price)}`, T, '#263238', '#5fff8f', W);
       break;
     }
@@ -298,6 +300,7 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
       ctx.arc(left + W * 0.5, top + H * 0.86, T * 0.08, 0, Math.PI * 2);
       ctx.fill();
       sign(ctx, cx, top + H * 0.2, 'THE CORNER', T, '#120d1a', '#ff4dd2', W);
+      if (state.event?.kind === 'min-wage') sign(ctx, cx, top + H * 0.72, '📜 NEW MINIMUM WAGE +30%', T * 0.75, '#ffd54f', '#3e2723', W);
       sign(ctx, cx, top + H * 0.5, `H ${money(drugPrice(state, 'heroin'))} · C ${money(drugPrice(state, 'crack'))}`, T * 0.85, state.dea > 0 ? '#b71c1c' : '#1a1325', '#5ffbf1', W);
       break;
     }
@@ -310,6 +313,7 @@ const COVER_LOOK: Record<CoverKind, { fill: string; edge: string; grid: string }
   iron: { fill: '#56595e', edge: '#2a2c30', grid: '#3d4044' },
   brass: { fill: '#c9a227', edge: '#6d5200', grid: '#9c7a10' },
   fed: { fill: '#ffd54f', edge: '#b71c1c', grid: '#e0a800' },
+  plastic: { fill: '#b3e5fc', edge: '#4fc3f7', grid: '#e1f5fe' },
 };
 
 function drawManhole(ctx: CanvasRenderingContext2D, x: number, y: number, T: number, open: boolean, time: number, kind: CoverKind) {
@@ -395,6 +399,54 @@ const bobFor = (a: Agent, time: number, T: number) => (a.mover.path.length ? Mat
 function drawPed(ctx: CanvasRenderingContext2D, v: View, a: Agent, time: number) {
   const [x, y] = at(v, a.mover.x, a.mover.y);
   person(ctx, x, y, v.tile, PED_COLORS[a.variant % PED_COLORS.length], '#f1c27d', bobFor(a, time, v.tile));
+}
+
+/** The rival scrapper: hi-vis vest, hard hat, and a cover on his back when he has one. */
+function drawRival(ctx: CanvasRenderingContext2D, v: View, a: Agent, time: number) {
+  const T = v.tile;
+  const [x, y] = at(v, a.mover.x, a.mover.y);
+  if (a.down > CONFIG.rival.stunned) {
+    // Down a manhole: just the hard hat, and stars
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x, y, T * 0.14, T * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = `${Math.round(T * 0.28)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💫', x + Math.cos(time * 4) * T * 0.2, y - T * 0.3);
+    return;
+  }
+  const bob = bobFor(a, time, T);
+  person(ctx, x, y, T, '#ff9100', '#d7a77a', bob);
+  // Reflective stripes and the hard hat
+  ctx.fillStyle = '#eeeeee';
+  ctx.fillRect(x - T * 0.15, y + T * 0.02 + bob, T * 0.3, T * 0.04);
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(x, y - T * 0.2 + bob, T * 0.13, T * 0.07, 0, Math.PI, 0);
+  ctx.fill();
+  if (a.load > 0) {
+    ctx.fillStyle = '#56595e';
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x - T * 0.28, y + T * 0.1, T * 0.18, T * 0.07, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  if (a.work > 0) {
+    ctx.strokeStyle = '#ff9100';
+    ctx.lineWidth = Math.max(2, T * 0.06);
+    ctx.beginPath();
+    ctx.arc(x, y, T * 0.44, -Math.PI / 2, -Math.PI / 2 + (1 - a.work / CONFIG.rival.pry) * Math.PI * 2);
+    ctx.stroke();
+  }
+  if (a.down > 0) {
+    ctx.font = `${Math.round(T * 0.24)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('💫', x, y - T * 0.45);
+  }
 }
 
 function drawCop(ctx: CanvasRenderingContext2D, v: View, a: Agent, time: number) {

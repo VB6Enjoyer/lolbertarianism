@@ -37,6 +37,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'gold-bust', icon: '🥇', name: 'Barbarous Relic', description: 'Sell gold during a bust.' },
   { id: 'brass', icon: '🎺', name: 'Historical Revisionism', description: 'Steal a brass cover.' },
   { id: 'fed-cover', icon: '🏛️', name: "End the Fed('s Manhole)", description: "Steal the Fed's own manhole cover." },
+  { id: 'clunkers', icon: '🚗', name: 'Cash for Clunkers', description: 'Sell covers during Cash for Clunkers.' },
+  { id: 'stimulus', icon: '🚁', name: 'Helicopter Money', description: 'Get a stimulus check.' },
+  { id: 'plastic', icon: '🥤', name: 'Malinvestment', description: 'Sell a plastic cover. Worth it?' },
+  { id: 'rival-hole', icon: '🕳️', name: 'Creative Destruction of the Competition', description: 'Shove the rival scrapper into an open manhole.' },
+  { id: 'rival-rob', icon: '🤼', name: 'Competition Is a Discovery Procedure', description: 'Shove the rival and take his cover.' },
+  { id: 'suburbs', icon: '🏡', name: 'Exit, Not Voice', description: 'Play a run in the suburbs.' },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -77,6 +83,15 @@ export class Tracker {
         case 'default':
           add('default');
           break;
+        case 'city-event':
+          if (e.kind === 'stimulus') add('stimulus');
+          break;
+        case 'rival-fell':
+          if (e.pushed) add('rival-hole');
+          break;
+        case 'shoved':
+          if (e.took) add('rival-rob');
+          break;
         case 'gold-sold':
           if (e.phase === 'bust') add('gold-bust');
           break;
@@ -87,6 +102,8 @@ export class Tracker {
         case 'sold':
           if (e.multiplier >= 2) add('peak');
           if (e.yard === 'yard-near' && e.price >= e.otherPrice * 1.3) add('cantillon');
+          if (state.event?.kind === 'clunkers') add('clunkers');
+          if (e.plastic) add('plastic');
           break;
         case 'bought':
           this.bought.add(e.drug);
@@ -102,6 +119,7 @@ export class Tracker {
       }
     }
     if (state.stash.length >= 5) add('stash-5');
+    if (state.district === 'suburbs' && state.time > 1) add('suburbs');
     if (state.stats.interest >= 50) add('interest');
     if (state.gold >= 5) add('gold-5');
     if (GEAR.every((g) => state.gear[g.id])) add('capital');
