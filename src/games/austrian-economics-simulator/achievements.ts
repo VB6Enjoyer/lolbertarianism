@@ -29,6 +29,25 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'utils-100', icon: '😌', name: 'Marginal Utility', description: 'Get 100 utils in one run.' },
   { id: 'utils-300', icon: '🤤', name: 'Diminishing Returns? Never Heard of Them', description: 'Get 300 utils in one run.' },
   { id: 'arrested', icon: '⛓️', name: 'Victimless Crime', description: 'Get arrested.' },
+  { id: 'interest', icon: '🏦', name: 'Interest on Reserve Balances', description: 'Earn $50 in interest in one run.' },
+  { id: 'cheap-credit', icon: '💳', name: 'Cheap Credit', description: 'Borrow during a boom.' },
+  { id: 'repaid', icon: '🤝', name: 'Sound Finances', description: 'Pay off a called loan before the bust ends.' },
+  { id: 'default', icon: '💸', name: 'Too Small to Bail Out', description: 'Default on a loan.' },
+  { id: 'gold-5', icon: '🪙', name: 'Gold Bug', description: 'Own 5 ounces of gold.' },
+  { id: 'gold-bust', icon: '🥇', name: 'Barbarous Relic', description: 'Sell gold during a bust.' },
+  { id: 'brass', icon: '🎺', name: 'Historical Revisionism', description: 'Steal a brass cover.' },
+  { id: 'fed-cover', icon: '🏛️', name: "End the Fed('s Manhole)", description: "Steal the Fed's own manhole cover." },
+  { id: 'clunkers', icon: '🚗', name: 'Cash for Clunkers', description: 'Sell covers during Cash for Clunkers.' },
+  { id: 'stimulus', icon: '🚁', name: 'Helicopter Money', description: 'Get a stimulus check.' },
+  { id: 'plastic', icon: '🥤', name: 'Malinvestment', description: 'Sell a plastic cover. Worth it?' },
+  { id: 'rival-hole', icon: '🕳️', name: 'Creative Destruction of the Competition', description: 'Shove the rival scrapper into an open manhole.' },
+  { id: 'rival-rob', icon: '🤼', name: 'Competition Is a Discovery Procedure', description: 'Shove the rival and take his cover.' },
+  { id: 'suburbs', icon: '🏡', name: 'Exit, Not Voice', description: 'Play a run in the suburbs.' },
+  { id: 'contract', icon: '📋', name: 'Freedom of Contract', description: "Fill a junkyard's order." },
+  { id: 'contracts-5', icon: '📚', name: 'Order Book', description: 'Fill 5 orders in one run.' },
+  { id: 'wheelbarrow', icon: '🛒', name: 'Wheelbarrow of Cash', description: 'Hold $10,000 in cash at once (hyperinflation helps).' },
+  { id: 'daily', icon: '📅', name: 'Daily Cycle', description: 'Finish a daily cycle.' },
+  { id: 'daily-7', icon: '🗓️', name: 'A Week of Cycles', description: 'Play the daily cycle on 7 different days.' },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -57,6 +76,33 @@ export class Tracker {
         case 'stole':
           add('first-cover');
           if (e.underCrewsNose) add('vest');
+          if (e.kind === 'brass') add('brass');
+          if (e.kind === 'fed') add('fed-cover');
+          break;
+        case 'borrowed':
+          if (e.phase === 'boom') add('cheap-credit');
+          break;
+        case 'repaid':
+          if (e.cleared && e.called) add('repaid');
+          break;
+        case 'default':
+          add('default');
+          break;
+        case 'city-event':
+          if (e.kind === 'stimulus') add('stimulus');
+          break;
+        case 'rival-fell':
+          if (e.pushed) add('rival-hole');
+          break;
+        case 'shoved':
+          if (e.took) add('rival-rob');
+          break;
+        case 'contract-done':
+          add('contract');
+          if (state.stats.contracts >= 5) add('contracts-5');
+          break;
+        case 'gold-sold':
+          if (e.phase === 'bust') add('gold-bust');
           break;
         case 'lap':
           add('lap');
@@ -65,6 +111,8 @@ export class Tracker {
         case 'sold':
           if (e.multiplier >= 2) add('peak');
           if (e.yard === 'yard-near' && e.price >= e.otherPrice * 1.3) add('cantillon');
+          if (state.event?.kind === 'clunkers') add('clunkers');
+          if (e.plastic) add('plastic');
           break;
         case 'bought':
           this.bought.add(e.drug);
@@ -79,14 +127,26 @@ export class Tracker {
           break;
       }
     }
-    if (state.stash >= 5) add('stash-5');
+    if (state.stash.length >= 5) add('stash-5');
+    if (state.district === 'suburbs' && state.time > 1) add('suburbs');
+    if (state.stats.interest >= 50) add('interest');
+    if (state.gold >= 5) add('gold-5');
     if (GEAR.every((g) => state.gear[g.id])) add('capital');
     if (state.stats.pedsFell >= 3) add('peds-3');
     if (state.stats.bustsSurvived >= 1) add('bust');
     if (state.time >= 300) add('survive-5');
     if (state.cash >= 500) add('rich');
+    if (state.cash >= 10_000) add('wheelbarrow');
     if (state.utils >= 100) add('utils-100');
     if (state.utils >= 300) add('utils-300');
+    return found;
+  }
+
+  /** After a daily cycle: `days` is how many different days you've played one. */
+  checkDaily(days: number): string[] {
+    const found: string[] = [];
+    this.unlock('daily', found);
+    if (days >= 7) this.unlock('daily-7', found);
     return found;
   }
 }

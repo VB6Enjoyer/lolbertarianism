@@ -7,7 +7,8 @@
 // moves the scrap price (the near junkyard first: the Cantillon effect),
 // everything inflates, and the city's crews and covers come and go with it.
 
-import { COLS, DEPOT, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, ROAD_TILES, sameTile, STARTING_SLOTS, type Tile } from './map.ts';
+import type { TwistId } from './daily.ts';
+import { COLS, DEPOT, DISTRICT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, placeById, ROAD_ROWS, ROAD_TILES, sameTile, setDistrict, STARTING_SLOTS, type DistrictId, type Tile } from './map.ts';
 
 export const CONFIG = {
   startCash: 98,
@@ -55,8 +56,40 @@ export const CONFIG = {
   drugInflation: 1.4,
   copFallUtils: 3,
   dea: { first: 70, every: 60, spread: 40, seconds: 15, markup: 1.6 },
-  maxCops: 3,
+  /** Mid-run events: the first, then one every `every` to `every + spread` seconds. */
+  events: { first: 50, every: 40, spread: 20 },
+  /** The rival scrapper: when he shows up (a second one later), how fast he walks and pries, and how long a fall or a shove keeps him down. */
+  rival: { first: 40, second: 200, speed: 2.4, pry: 2.2, fallChance: 0.25, inHole: 20, stunned: 3 },
+  /** Heat if a cop sees you shove him, and seconds before you can shove again. */
+  shoveHeat: 20,
+  shoveCooldown: 4,
+  /** Contracts: the first, the gap after each, and what a finished one pays in utils. */
+  contracts: { first: 35, gap: 15, spread: 15, utils: 20, pay: 2, minSeconds: 20 },
+  /** Prying brass / the Fed's cover takes this many times as long. */
+  brassPry: 1.3,
+  fedPry: 2,
+  /** Heat when you lift the Fed's cover (it's alarmed). */
+  fedAlarm: 35,
+  /** The bank: interest per second is the rate (in %) × this; loans cost the rate plus a spread. */
+  interestScale: 0.08,
+  loanSpread: 3,
+  /** Each loan, and the most you can owe, in today's dollars. */
+  loanSize: 100,
+  creditLimit: 300,
+  /** What a default costs you in heat (on top of losing everything you own). */
+  defaultHeat: 30,
+  /** Gold, per ounce in today's dollars, and the pawn shop's cut each way. */
+  goldPrice: 60,
+  goldSpread: 0.06,
 };
+
+export type CoverKind = 'iron' | 'brass' | 'fed' | 'plastic';
+
+/** What each kind of cover is worth, compared with plain iron. */
+export const COVER_VALUE: Record<CoverKind, number> = { iron: 1, brass: 3, fed: 8, plastic: 0.1 };
+
+/** Heat per second from a cop seeing you carry one, compared with iron. */
+const COVER_HEAT: Record<CoverKind, number> = { iron: 1, brass: 1.5, fed: 6, plastic: 1 };
 
 /** The Fed's schedule: a calm start, then booms and busts, announced a few seconds ahead. */
 export const SCHEDULE = { calm: 30, boom: 45, bust: 35, warn: 8, lag: 12 };
@@ -71,37 +104,80 @@ export interface PhaseInfo {
   length: number;
 }
 
-export function phaseAt(t: number): PhaseInfo {
+/** Zero Rates Day: long booms, short busts. */
+const ZIRP = { boom: 65, bust: 15 };
+
+/** Where the economy is at time `t` (a daily twist can change the schedule). */
+export function phaseAt(t: number, twist: TwistId | null = null): PhaseInfo {
+  // On the gold standard, nothing ever happens.
+  if (twist === 'gold-standard') return { phase: 'calm', cycle: -1, into: Math.max(0, t), length: Infinity };
   if (t < SCHEDULE.calm) return { phase: 'calm', cycle: -1, into: Math.max(0, t), length: SCHEDULE.calm };
-  const period = SCHEDULE.boom + SCHEDULE.bust;
-  const cycle = Math.floor((t - SCHEDULE.calm) / period);
-  const r = t - SCHEDULE.calm - cycle * period;
-  return r < SCHEDULE.boom
-    ? { phase: 'boom', cycle, into: r, length: SCHEDULE.boom }
-    : { phase: 'bust', cycle, into: r - SCHEDULE.boom, length: SCHEDULE.bust };
+  const boom = twist === 'zirp' ? ZIRP.boom : SCHEDULE.boom;
+  const bust = twist === 'zirp' ? ZIRP.bust : SCHEDULE.bust;
+  const cycle = Math.floor((t - SCHEDULE.calm) / (boom + bust));
+  const r = t - SCHEDULE.calm - cycle * (boom + bust);
+  return r < boom ? { phase: 'boom', cycle, into: r, length: boom } : { phase: 'bust', cycle, into: r - boom, length: bust };
 }
 
+/** When the current phase ends (Infinity on the gold standard). */
+export const phaseEnd = (t: number, twist: TwistId | null = null) => {
+  const p = phaseAt(t, twist);
+  return t + (p.length - p.into);
+};
+
 /** The federal funds rate the Fed sets for a phase (busts get harsher each cycle). */
-export function rateFor(p: PhaseInfo): number {
+export function rateFor(p: PhaseInfo, twist: TwistId | null = null): number {
+  if (twist === 'gold-standard') return 4;
+  if (twist === 'zirp') return p.phase === 'bust' ? 2 : 0;
   if (p.phase === 'calm') return 2.5;
   if (p.phase === 'boom') return 0.25;
   return Math.min(9, 5.25 + 0.75 * p.cycle);
 }
 
-const peakFor = (cycle: number) => 2.2 + 0.2 * cycle;
+const peakFor = (cycle: number, twist: TwistId | null) => (twist === 'stagflation' ? 1.25 : twist === 'zirp' ? 2.8 + 0.2 * cycle : 2.2 + 0.2 * cycle);
 
 /** How much scrap is worth compared with normal: a bubble through the boom, a crash at the start of the bust. */
-export function scrapMultiplier(t: number): number {
-  const p = phaseAt(t);
+export function scrapMultiplier(t: number, twist: TwistId | null = null): number {
+  const p = phaseAt(t, twist);
   if (p.phase === 'calm') return 1;
   const u = p.into / p.length;
-  if (p.phase === 'boom') return 1 + (peakFor(p.cycle) - 1) * u ** 1.6;
+  const peak = peakFor(p.cycle, twist);
+  if (p.phase === 'boom') return 1 + (peak - 1) * u ** 1.6;
   const crash = 4;
-  if (p.into < crash) return peakFor(p.cycle) + (0.35 - peakFor(p.cycle)) * (p.into / crash);
+  if (p.into < crash) return peak + (0.35 - peak) * (p.into / crash);
   return 0.35 + 0.65 * ((p.into - crash) / (p.length - crash));
 }
 
 export type Yard = 'yard-near' | 'yard-far';
+
+export type CityEventKind = 'clunkers' | 'stimulus' | 'recall' | 'min-wage';
+
+/** A junkyard's order: so many covers (or brass ones) by the deadline, each paid at `pay` times the price. */
+export interface Contract {
+  yard: Yard;
+  kind: 'any' | 'brass';
+  count: number;
+  delivered: number;
+  deadline: number;
+  pay: number;
+}
+
+export interface CityEvent {
+  kind: CityEventKind;
+  name: string;
+  icon: string;
+  description: string;
+  seconds: number;
+}
+
+export const CITY_EVENTS: readonly CityEvent[] = [
+  { kind: 'clunkers', icon: '🚗', name: 'Cash for Clunkers', description: 'The junkyards pay double for scrap.', seconds: 15 },
+  { kind: 'stimulus', icon: '🚁', name: 'Stimulus Check', description: 'Free money for everyone! Prices jump 10% right after.', seconds: 6 },
+  { kind: 'recall', icon: '🥤', name: 'Cover Recall', description: 'The city swaps the iron covers for plastic ones, worth next to nothing.', seconds: 25 },
+  { kind: 'min-wage', icon: '📜', name: 'Minimum Wage Hike', description: 'The Corner passes its new labor costs on to you: +30%.', seconds: 25 },
+];
+
+export const cityEvent = (kind: CityEventKind) => CITY_EVENTS.find((e) => e.kind === kind)!;
 export type Drug = 'heroin' | 'crack';
 export type GearId = 'crowbar' | 'cart' | 'vest' | 'bike';
 
@@ -135,12 +211,13 @@ export interface Manhole {
   x: number;
   y: number;
   state: ManholeState;
+  kind: CoverKind;
   /** When it was opened (so crews fix the oldest first), and whether you did it. */
   openedAt: number;
   yours: boolean;
 }
 
-export type AgentKind = 'cop' | 'ped' | 'crew';
+export type AgentKind = 'cop' | 'ped' | 'crew' | 'rival';
 
 export interface Agent {
   id: number;
@@ -154,6 +231,8 @@ export interface Agent {
   leaving: boolean;
   /** Looks (shirt color etc.). */
   variant: number;
+  /** The rival: covers he's carrying. */
+  load: number;
 }
 
 export interface Player {
@@ -161,7 +240,7 @@ export interface Player {
   /** Walking to a tapped spot (instead of following the keys). */
   walking: boolean;
   /** Prying a cover: which manhole, seconds left. */
-  pry: { id: number; left: number } | null;
+  pry: { id: number; left: number; total: number } | null;
   /** Seconds of heroin nod / crack rush left. */
   nod: number;
   rush: number;
@@ -184,8 +263,15 @@ export interface GameState {
   /** 0..100: at 100 you're arrested. */
   heat: number;
   utils: number;
-  carried: number;
-  stash: number;
+  /** The covers you're carrying, and the ones saved in your squat. */
+  cargo: CoverKind[];
+  stash: CoverKind[];
+  /** The bank: savings, debt, and when the loan's called in (the end of the bust), or null. */
+  savings: number;
+  debt: number;
+  loanDue: number | null;
+  /** Ounces of gold. */
+  gold: number;
   gear: Record<GearId, boolean>;
   priceLevel: number;
   phase: Phase;
@@ -210,15 +296,46 @@ export interface GameState {
   lastSeenEvent: number;
   warnedWithdrawal: boolean;
   warnedHeat: boolean;
-  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number };
+  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number; interest: number; rivalsFell: number; contracts: number };
+  district: DistrictId;
+  /** The event going on (and seconds left), and when the next one comes. */
+  event: { kind: CityEventKind; left: number } | null;
+  nextEventAt: number;
+  rivals: number;
+  /** The daily cycle's twist, or null on a normal run. */
+  daily: TwistId | null;
+  contract: Contract | null;
+  nextContractAt: number;
+  /** When you last shoved the rival. */
+  lastShove: number;
   over: OverReason | null;
 }
 
 export type GameEvent =
   | { type: 'pry-start' }
   | { type: 'pry-cancel' }
-  | { type: 'stole'; underCrewsNose: boolean }
-  | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number }
+  | { type: 'stole'; underCrewsNose: boolean; kind: CoverKind }
+  | { type: 'alarm' }
+  | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number; plastic: boolean; contract: number }
+  | { type: 'deposited'; amount: number }
+  | { type: 'withdrew'; amount: number }
+  | { type: 'borrowed'; amount: number; phase: Phase }
+  | { type: 'repaid'; amount: number; cleared: boolean; called: boolean }
+  | { type: 'loan-called'; debt: number; seconds: number }
+  | { type: 'default'; lost: number }
+  | { type: 'gold-bought'; price: number }
+  | { type: 'gold-sold'; count: number; total: number; phase: Phase }
+  | { type: 'fed-refit' }
+  | { type: 'city-event'; kind: CityEventKind }
+  | { type: 'city-event-over'; kind: CityEventKind }
+  | { type: 'stimulus'; amount: number }
+  | { type: 'rival-arrives' }
+  | { type: 'rival-stole'; x: number; y: number }
+  | { type: 'rival-fell'; x: number; y: number; pushed: boolean }
+  | { type: 'shoved'; took: boolean }
+  | { type: 'contract-new'; contract: Contract }
+  | { type: 'contract-done'; utils: number }
+  | { type: 'contract-failed' }
   | { type: 'stashed'; count: number }
   | { type: 'took'; count: number }
   | { type: 'bought'; drug: Drug; price: number; dea: boolean }
@@ -245,23 +362,31 @@ export interface Input {
 
 const PED_COUNT = 4;
 
+/** The two ends of town people walk in from: the left end of the bottom street, the right end of the top one. */
+const edges = (): [Tile, Tile] => [{ x: 0, y: ROAD_ROWS[ROAD_ROWS.length - 1] }, { x: COLS - 1, y: ROAD_ROWS[0] }];
+
 function randomRoad(rng: () => number): Tile {
   return ROAD_TILES[Math.floor(rng() * ROAD_TILES.length)];
 }
 
 function makeAgent(state: GameState, kind: AgentKind, at: Tile, variant = 0): Agent {
-  return { id: state.nextId++, kind, mover: { x: at.x, y: at.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant };
+  return { id: state.nextId++, kind, mover: { x: at.x, y: at.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant, load: 0 };
 }
 
-export function newGame(rng: () => number = Math.random): GameState {
+export function newGame(rng: () => number = Math.random, district: DistrictId = 'downtown', daily: TwistId | null = null): GameState {
+  const d = setDistrict(district);
   const state: GameState = {
     time: 0,
     cash: CONFIG.startCash,
     fix: 1,
     heat: 0,
     utils: 0,
-    carried: 0,
-    stash: 0,
+    cargo: [],
+    stash: [],
+    savings: 0,
+    debt: 0,
+    loanDue: null,
+    gold: 0,
     gear: { crowbar: false, cart: false, vest: false, bike: false },
     priceLevel: 1,
     phase: 'calm',
@@ -271,8 +396,11 @@ export function newGame(rng: () => number = Math.random): GameState {
     dea: 0,
     nextDeaAt: CONFIG.dea.first,
     // You start at your squat's door.
-    player: { mover: { x: 4, y: 5, path: [] }, walking: false, pry: null, nod: 0, rush: 0 },
-    manholes: MANHOLE_SLOTS.map((t, i) => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', openedAt: 0, yours: false })),
+    player: { mover: { x: d.start.x, y: d.start.y, path: [] }, walking: false, pry: null, nod: 0, rush: 0 },
+    manholes: [
+      ...MANHOLE_SLOTS.map((t, i): Manhole => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', kind: rng() < brassChance(daily) ? 'brass' : 'iron', openedAt: 0, yours: false })),
+      { id: MANHOLE_SLOTS.length, x: FED_COVER.x, y: FED_COVER.y, state: 'covered', kind: 'fed', openedAt: 0, yours: false },
+    ],
     agents: [],
     nextId: 100,
     nextCrewAt: 8,
@@ -284,10 +412,19 @@ export function newGame(rng: () => number = Math.random): GameState {
     lastSeenEvent: -99,
     warnedWithdrawal: false,
     warnedHeat: false,
-    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0 },
+    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0, interest: 0, rivalsFell: 0, contracts: 0 },
+    daily,
+    contract: null,
+    nextContractAt: CONFIG.contracts.first,
+    lastShove: -99,
+    district: d.id,
+    event: null,
+    nextEventAt: CONFIG.events.first,
+    rivals: 0,
     over: null,
   };
-  state.agents.push(makeAgent(state, 'cop', { x: 16, y: 1 }));
+  const cops = daily === 'police-state' ? 3 : d.startCops;
+  for (let i = 0; i < cops; i++) state.agents.push(makeAgent(state, 'cop', i === 0 ? d.copStart : edges()[i % 2]));
   for (let i = 0; i < PED_COUNT; i++) state.agents.push(makeAgent(state, 'ped', randomRoad(rng), i));
   sample(state);
   return state;
@@ -301,18 +438,51 @@ export function newGame(rng: () => number = Math.random): GameState {
 export function scrapPrice(state: GameState, yard: Yard, t = state.time): number {
   const lag = yard === 'yard-far' ? SCHEDULE.lag : 0;
   const wobble = 1 + 0.05 * Math.sin(t * 0.7 + (yard === 'yard-far' ? 2 : 0));
-  return CONFIG.baseScrap * state.priceLevel * scrapMultiplier(t - lag) * wobble;
+  const clunkers = state.event?.kind === 'clunkers' ? 2 : 1;
+  return CONFIG.baseScrap * state.priceLevel * scrapMultiplier(t - lag, state.daily) * wobble * clunkers;
 }
 
 export function drugPrice(state: GameState, drug: Drug, t = state.time): number {
   const wobble = 1 + 0.08 * Math.sin(t * (drug === 'heroin' ? 0.5 : 0.63) + (drug === 'heroin' ? 0 : 1));
-  return CONFIG[drug].price * state.priceLevel ** CONFIG.drugInflation * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1);
+  const minWage = state.event?.kind === 'min-wage' ? 1.3 : 1;
+  // In a hyperinflation everything inflates alike (it's all just paper).
+  const power = state.daily === 'weimar' ? 1.1 : CONFIG.drugInflation;
+  return CONFIG[drug].price * state.priceLevel ** power * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1) * minWage;
 }
+
+/**
+ * Gold, per ounce: it keeps up with inflation, dips a little in the boom and
+ * rallies in the bust (a flight to safety). `side` is what the pawn shop
+ * charges (buy) or pays (sell).
+ */
+export function goldPrice(state: GameState, side: 'buy' | 'sell' = 'buy', t = state.time): number {
+  const p = phaseAt(t, state.daily);
+  const mood = p.phase === 'boom' ? 1 - 0.08 * (p.into / p.length) : p.phase === 'bust' ? 0.92 + 0.28 * Math.min(1, p.into / 10) : 1;
+  const wobble = 1 + 0.04 * Math.sin(t * 0.45 + 3);
+  const spread = side === 'buy' ? 1 + CONFIG.goldSpread : 1 - CONFIG.goldSpread;
+  return CONFIG.goldPrice * state.priceLevel * mood * wobble * spread;
+}
+
+/** Interest per second on savings, and on debt, at the Fed's current rate. */
+export const savingsRate = (state: GameState) => (state.rate / 100) * CONFIG.interestScale;
+export const loanRate = (state: GameState) => ((state.rate + CONFIG.loanSpread) / 100) * CONFIG.interestScale;
+export const loanSize = (state: GameState) => CONFIG.loanSize * state.priceLevel;
+export const creditLimit = (state: GameState) => CONFIG.creditLimit * state.priceLevel;
 
 export const gearPrice = (state: GameState, id: GearId) => GEAR.find((g) => g.id === id)!.price * state.priceLevel;
 
 /** Inflation per second, by phase. */
 const INFLATION: Record<Phase, number> = { calm: 0.002, boom: 0.006, bust: 0.001 };
+
+/** Inflation per second right now, with the daily twist. */
+export function inflation(phase: Phase, twist: TwistId | null): number {
+  if (twist === 'gold-standard') return 0;
+  if (twist === 'weimar') return INFLATION[phase] * 3 + 0.004;
+  if (twist === 'stagflation') return 0.005;
+  return INFLATION[phase];
+}
+
+const brassChance = (twist: TwistId | null) => (twist === 'gilded-age' ? 0.5 : DISTRICT.brassChance);
 
 function sample(state: GameState) {
   state.history.push({
@@ -360,7 +530,8 @@ export function playerSpeed(state: GameState): number {
   if (state.gear.bike) speed *= CONFIG.bikeSpeed;
   if (p.nod > 0) speed *= CONFIG.nodSpeed;
   else if (p.rush > 0) speed *= CONFIG.rushSpeed;
-  if (state.carried > 0) speed *= state.gear.cart ? 1 - CONFIG.cartSpeedPerCover * state.carried : CONFIG.carrySpeed;
+  const carried = state.cargo.length;
+  if (carried > 0) speed *= state.gear.cart ? 1 - CONFIG.cartSpeedPerCover * carried : CONFIG.carrySpeed;
   if (state.fix < CONFIG.withdrawal) speed *= CONFIG.withdrawalSpeed;
   return speed;
 }
@@ -429,18 +600,26 @@ export type Context =
   | { kind: 'stash' }
   | { kind: 'dealer' }
   | { kind: 'hardware' }
+  | { kind: 'bank' }
+  | { kind: 'pawn' }
+  | { kind: 'shove'; rival: Agent }
   | null;
 
 export function context(state: GameState): Context {
   const p = state.player;
   if (p.pry) return { kind: 'prying' };
   const here = tileOf(p.mover);
-  if (!standingOn(p.mover, here)) return null;
+  const canShove = state.time - state.lastShove >= CONFIG.shoveCooldown;
+  const rival = canShove ? state.agents.find((a) => a.kind === 'rival' && a.down === 0 && Math.hypot(a.mover.x - p.mover.x, a.mover.y - p.mover.y) < 0.9) : undefined;
+  if (!standingOn(p.mover, here)) return rival ? { kind: 'shove', rival } : null;
   const manhole = state.manholes.find((h) => h.state === 'covered' && sameTile(h, here));
-  if (manhole) return state.carried >= capacity(state) ? { kind: 'full' } : { kind: 'pry', manhole };
+  if (rival && !manhole) return { kind: 'shove', rival };
+  if (manhole) return state.cargo.length >= capacity(state) ? { kind: 'full' } : { kind: 'pry', manhole };
   const place = placeAtDoor(here);
   if (!place) return null;
-  if (place.id === 'yard-near' || place.id === 'yard-far') return state.carried > 0 ? { kind: 'sell', yard: place.id } : { kind: 'nothing-to-sell', yard: place.id };
+  if (place.id === 'yard-near' || place.id === 'yard-far') return state.cargo.length > 0 ? { kind: 'sell', yard: place.id } : { kind: 'nothing-to-sell', yard: place.id };
+  if (place.id === 'fed') return { kind: 'bank' };
+  if (place.id === 'pawn') return { kind: 'pawn' };
   if (place.id === 'squat') return { kind: 'stash' };
   if (place.id === 'dealer') return { kind: 'dealer' };
   if (place.id === 'hardware') return { kind: 'hardware' };
@@ -461,6 +640,51 @@ function advanceStep(state: GameState, done: number, events: GameEvent[]) {
   events.push({ type: 'lap', laps: state.laps, bonus });
 }
 
+/**
+ * Sell at the junkyard you're standing at: everything, or just one cover (the
+ * cheapest or the best), keeping the rest for later.
+ */
+export function sell(state: GameState, which: 'all' | 'cheapest' | 'best' = 'all'): GameEvent[] {
+  const c = context(state);
+  if (state.over || c?.kind !== 'sell') return [];
+  const events: GameEvent[] = [];
+  // Pick what goes: the order of value decides which one is "cheapest" or "best".
+  const sorted = [...state.cargo].sort((a, b) => COVER_VALUE[a] - COVER_VALUE[b]);
+  const selling = which === 'all' ? sorted : [which === 'cheapest' ? sorted[0] : sorted[sorted.length - 1]];
+  const keeping = [...state.cargo];
+  for (const k of selling) keeping.splice(keeping.indexOf(k), 1);
+  const other: Yard = c.yard === 'yard-near' ? 'yard-far' : 'yard-near';
+  const price = scrapPrice(state, c.yard);
+  // Covers that fill this yard's order are paid extra.
+  const order = state.contract?.yard === c.yard ? state.contract : null;
+  const fits = (k: CoverKind) => (order?.kind === 'brass' ? k === 'brass' : k !== 'plastic');
+  let matched = 0;
+  let total = 0;
+  for (const k of selling) {
+    const counts = order && matched < order.count - order.delivered && fits(k);
+    if (counts) matched++;
+    total += price * COVER_VALUE[k] * (counts ? order.pay : 1);
+  }
+  const count = selling.length;
+  events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0), state.daily), plastic: selling.includes('plastic'), contract: matched });
+  if (order && matched > 0) {
+    order.delivered += matched;
+    if (order.delivered >= order.count) {
+      state.contract = null;
+      state.nextContractAt = state.time + CONFIG.contracts.gap;
+      state.utils += CONFIG.contracts.utils;
+      state.stats.contracts++;
+      events.push({ type: 'contract-done', utils: CONFIG.contracts.utils });
+    }
+  }
+  state.cash += total;
+  state.stats.sold += count;
+  state.stats.earned += total;
+  state.cargo = keeping;
+  advanceStep(state, 1, events);
+  return events;
+}
+
 /** The action key (E / Space / the button): pry, sell, stash or take. */
 export function act(state: GameState): GameEvent[] {
   if (state.over) return [];
@@ -468,28 +692,24 @@ export function act(state: GameState): GameEvent[] {
   const c = context(state);
   if (!c) return events;
   if (c.kind === 'pry') {
-    state.player.pry = { id: c.manhole.id, left: state.gear.crowbar ? CONFIG.crowbarPryTime : CONFIG.pryTime };
+    const slower = c.manhole.kind === 'fed' ? CONFIG.fedPry : c.manhole.kind === 'brass' ? CONFIG.brassPry : 1;
+    const total = (state.gear.crowbar ? CONFIG.crowbarPryTime : CONFIG.pryTime) * slower;
+    state.player.pry = { id: c.manhole.id, left: total, total };
     events.push({ type: 'pry-start' });
   } else if (c.kind === 'sell') {
-    const other: Yard = c.yard === 'yard-near' ? 'yard-far' : 'yard-near';
-    const price = scrapPrice(state, c.yard);
-    const total = price * state.carried;
-    events.push({ type: 'sold', count: state.carried, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0)) });
-    state.cash += total;
-    state.stats.sold += state.carried;
-    state.stats.earned += total;
-    state.carried = 0;
-    advanceStep(state, 1, events);
+    events.push(...sell(state, 'all'));
+  } else if (c.kind === 'shove') {
+    events.push(...shove(state, c.rival));
   } else if (c.kind === 'stash') {
-    if (state.carried > 0) {
-      events.push({ type: 'stashed', count: state.carried });
-      state.stash += state.carried;
-      state.carried = 0;
-    } else if (state.stash > 0) {
-      const count = Math.min(capacity(state), state.stash);
-      state.stash -= count;
-      state.carried += count;
-      events.push({ type: 'took', count });
+    if (state.cargo.length > 0) {
+      events.push({ type: 'stashed', count: state.cargo.length });
+      state.stash.push(...state.cargo);
+      state.cargo = [];
+    } else if (state.stash.length > 0) {
+      // The most valuable first.
+      state.stash.sort((a, b) => COVER_VALUE[b] - COVER_VALUE[a]);
+      state.cargo = state.stash.splice(0, capacity(state));
+      events.push({ type: 'took', count: state.cargo.length });
     }
   }
   return events;
@@ -518,6 +738,86 @@ export function buyDrug(state: GameState, drug: Drug): GameEvent[] {
   return events;
 }
 
+/** How many iron covers' worth these are. */
+export const cargoValue = (covers: readonly CoverKind[]) => covers.reduce((sum, k) => sum + COVER_VALUE[k], 0);
+
+// ---------------------------------------------------------------------------
+// The bank (the Fed's discount window) and the pawn shop
+// ---------------------------------------------------------------------------
+
+const at = (state: GameState, kind: 'bank' | 'pawn') => !state.over && context(state)?.kind === kind;
+
+export function deposit(state: GameState): GameEvent[] {
+  if (!at(state, 'bank') || state.cash <= 0) return [];
+  const amount = state.cash;
+  state.savings += amount;
+  state.cash = 0;
+  return [{ type: 'deposited', amount }];
+}
+
+export function withdraw(state: GameState): GameEvent[] {
+  if (!at(state, 'bank') || state.savings <= 0) return [];
+  const amount = state.savings;
+  state.cash += amount;
+  state.savings = 0;
+  return [{ type: 'withdrew', amount }];
+}
+
+/** Borrow one loan's worth, up to the credit limit. In a bust it's due when the bust ends. */
+export function borrow(state: GameState): GameEvent[] {
+  if (!at(state, 'bank')) return [];
+  const amount = Math.min(loanSize(state), creditLimit(state) - state.debt);
+  if (amount < 1) return [];
+  state.debt += amount;
+  state.cash += amount;
+  const events: GameEvent[] = [{ type: 'borrowed', amount, phase: state.phase }];
+  callLoan(state, events);
+  return events;
+}
+
+/** Pay back as much as you can. */
+export function repay(state: GameState): GameEvent[] {
+  if (!at(state, 'bank') || state.debt <= 0 || state.cash <= 0) return [];
+  const amount = Math.min(state.cash, state.debt);
+  const called = state.loanDue !== null;
+  state.cash -= amount;
+  state.debt -= amount;
+  if (state.debt < 0.01) {
+    state.debt = 0;
+    state.loanDue = null;
+  }
+  return [{ type: 'repaid', amount, cleared: state.debt === 0, called }];
+}
+
+/** In a bust, the bank wants its money back by the end of it. */
+function callLoan(state: GameState, events: GameEvent[]) {
+  if (state.debt <= 0 || state.loanDue !== null) return;
+  const p = phaseAt(state.time, state.daily);
+  if (p.phase !== 'bust') return;
+  const seconds = p.length - p.into;
+  state.loanDue = state.time + seconds;
+  events.push({ type: 'loan-called', debt: state.debt, seconds });
+}
+
+export function buyGold(state: GameState): GameEvent[] {
+  if (!at(state, 'pawn')) return [];
+  const price = goldPrice(state, 'buy');
+  if (state.cash < price) return [{ type: 'broke', price }];
+  state.cash -= price;
+  state.gold++;
+  return [{ type: 'gold-bought', price }];
+}
+
+/** Sell one ounce, or all of it. */
+export function sellGold(state: GameState, all = false): GameEvent[] {
+  if (!at(state, 'pawn') || state.gold <= 0) return [];
+  const count = all ? state.gold : 1;
+  const total = goldPrice(state, 'sell') * count;
+  state.gold -= count;
+  state.cash += total;
+  return [{ type: 'gold-sold', count, total, phase: state.phase }];
+}
+
 export function buyGear(state: GameState, id: GearId): GameEvent[] {
   if (state.over || context(state)?.kind !== 'hardware' || state.gear[id]) return [];
   const price = gearPrice(state, id);
@@ -542,7 +842,9 @@ function crewLimits(phase: Phase) {
 /** The oldest open manhole no crew is on its way to. */
 function nextJob(state: GameState): Manhole | null {
   const taken = new Set(state.agents.filter((a) => a.kind === 'crew' && a.target !== null).map((a) => a.target));
-  return state.manholes.filter((h) => h.state === 'open' && !taken.has(h.id)).sort((a, b) => a.openedAt - b.openedAt)[0] ?? null;
+  // Not one with somebody still down it.
+  const occupied = (h: Manhole) => state.agents.some((a) => a.down > 0 && sameTile(tileOf(a.mover), h));
+  return state.manholes.filter((h) => h.state === 'open' && h.kind !== 'fed' && !taken.has(h.id) && !occupied(h)).sort((a, b) => a.openedAt - b.openedAt)[0] ?? null;
 }
 
 function updateAgents(state: GameState, dt: number, rng: () => number, events: GameEvent[]) {
@@ -553,7 +855,11 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
       continue;
     }
     if (a.kind === 'crew') {
-      updateCrew(state, a, dt, events, gone);
+      updateCrew(state, a, dt, rng, events, gone);
+      continue;
+    }
+    if (a.kind === 'rival') {
+      updateRival(state, a, dt, rng, events);
       continue;
     }
     if (!a.mover.path.length) a.mover.path = findPath(tileOf(a.mover), randomRoad(rng));
@@ -582,7 +888,7 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
   const due = state.pedRespawns.filter((t) => t <= state.time);
   if (due.length) {
     state.pedRespawns = state.pedRespawns.filter((t) => t > state.time);
-    for (let i = 0; i < due.length; i++) state.agents.push(makeAgent(state, 'ped', rng() < 0.5 ? { x: 0, y: 9 } : { x: COLS - 1, y: 1 }, Math.floor(rng() * PED_COUNT)));
+    for (let i = 0; i < due.length; i++) state.agents.push(makeAgent(state, 'ped', edges()[rng() < 0.5 ? 0 : 1], Math.floor(rng() * PED_COUNT)));
   }
   // City Works sends trucks for open manholes.
   if (state.time >= state.nextCrewAt) {
@@ -599,7 +905,7 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
   }
 }
 
-function updateCrew(state: GameState, a: Agent, dt: number, events: GameEvent[], gone: Set<number>) {
+function updateCrew(state: GameState, a: Agent, dt: number, rng: () => number, events: GameEvent[], gone: Set<number>) {
   if (a.leaving) {
     walk(a.mover, CONFIG.crewSpeed * dt);
     if (!a.mover.path.length) gone.add(a.id);
@@ -616,6 +922,7 @@ function updateCrew(state: GameState, a: Agent, dt: number, events: GameEvent[],
     a.work -= dt;
     if (a.work > 0) return;
     job.state = 'covered';
+    job.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < brassChance(state.daily) ? 'brass' : 'iron';
     events.push({ type: 'replaced', yours: job.yours, x: job.x, y: job.y });
     if (job.yours) advanceStep(state, 3, events);
     job.yours = false;
@@ -633,6 +940,118 @@ function updateCrew(state: GameState, a: Agent, dt: number, events: GameEvent[],
   }
 }
 
+/**
+ * A new order: 2–4 covers (or 1–2 brass ones) to one of the yards, due at the
+ * next FOMC meeting (the end of this phase, or the next one if that's too
+ * soon; on the gold standard, in 50 seconds).
+ */
+export function newContract(state: GameState, rng: () => number): Contract {
+  const t = state.time;
+  let deadline = phaseEnd(t, state.daily);
+  if (deadline - t < CONFIG.contracts.minSeconds) deadline = phaseEnd(deadline + 0.01, state.daily);
+  if (!Number.isFinite(deadline)) deadline = t + 50;
+  const brass = rng() < 0.25;
+  return {
+    yard: rng() < 0.5 ? 'yard-near' : 'yard-far',
+    kind: brass ? 'brass' : 'any',
+    count: brass ? 1 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 3),
+    delivered: 0,
+    deadline,
+    pay: CONFIG.contracts.pay,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The rival scrapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Shove the rival: into an open manhole if there's one next to him; otherwise
+ * he's stunned for a moment and you take the cover he's carrying (if you have
+ * room). A cop who sees it doesn't like it.
+ */
+export function shove(state: GameState, rival: Agent): GameEvent[] {
+  const events: GameEvent[] = [];
+  state.lastShove = state.time;
+  // A hole next to him (not the one he just climbed out of).
+  const hole = state.manholes.find((h) => {
+    const d = Math.hypot(h.x - rival.mover.x, h.y - rival.mover.y);
+    return h.state === 'open' && d > 0.5 && d < 1.5;
+  });
+  if (hole) {
+    rival.mover = { x: hole.x, y: hole.y, path: [] };
+    rival.down = CONFIG.rival.inHole;
+    rival.load = 0;
+    rival.target = null;
+    rival.work = 0;
+    state.stats.rivalsFell++;
+    events.push({ type: 'rival-fell', x: hole.x, y: hole.y, pushed: true });
+  } else {
+    rival.down = CONFIG.rival.stunned;
+    rival.work = 0;
+    const took = rival.load > 0 && state.cargo.length < capacity(state);
+    if (took) {
+      rival.load--;
+      state.cargo.push('iron');
+    }
+    events.push({ type: 'shoved', took });
+  }
+  const copSees = state.agents.some((a) => a.kind === 'cop' && a.down === 0 && Math.hypot(a.mover.x - state.player.mover.x, a.mover.y - state.player.mover.y) <= CONFIG.copSight);
+  if (copSees) {
+    state.heat = Math.min(100, state.heat + CONFIG.shoveHeat);
+    events.push({ type: 'seen', by: 'cop' });
+  }
+  return events;
+}
+
+/** He does what you do: pry the nearest cover, sell it, repeat. The crews take him for one of theirs. */
+function updateRival(state: GameState, a: Agent, dt: number, rng: () => number, events: GameEvent[]) {
+  const here = tileOf(a.mover);
+  if (a.load > 0) {
+    // Off to the nearer junkyard
+    if (!a.mover.path.length) {
+      const doors = (['yard-near', 'yard-far'] as const).map((id) => placeById(id).door);
+      const door = doors.sort((x, y) => Math.abs(x.x - here.x) + Math.abs(x.y - here.y) - (Math.abs(y.x - here.x) + Math.abs(y.y - here.y)))[0];
+      if (sameTile(here, door)) a.load = 0;
+      else a.mover.path = findPath(here, door);
+    }
+  } else {
+    const target = state.manholes.find((h) => h.id === a.target);
+    if (!target || target.state !== 'covered') {
+      const taken = new Set(state.agents.filter((r) => r.kind === 'rival' && r !== a).map((r) => r.target));
+      const next = state.manholes
+        .filter((h) => h.state === 'covered' && h.kind !== 'fed' && !taken.has(h.id) && !sameTile(h, tileOf(state.player.mover)))
+        .sort((x, y) => Math.abs(x.x - here.x) + Math.abs(x.y - here.y) - (Math.abs(y.x - here.x) + Math.abs(y.y - here.y)))[0];
+      a.target = next?.id ?? null;
+      a.work = 0;
+      a.mover.path = next ? findPath(here, next) : findPath(here, randomRoad(rng));
+    } else if (!a.mover.path.length && sameTile(here, target)) {
+      if (a.work <= 0) a.work = CONFIG.rival.pry;
+      a.work -= dt;
+      if (a.work <= 0) {
+        target.state = 'open';
+        target.openedAt = state.time;
+        target.yours = false;
+        a.load = 1;
+        a.target = null;
+        events.push({ type: 'rival-stole', x: target.x, y: target.y });
+      }
+      return;
+    }
+  }
+  const reached = walk(a.mover, CONFIG.rival.speed * dt);
+  for (const t of reached) {
+    if (!openManholeAt(state, t) || rng() > CONFIG.rival.fallChance) continue;
+    a.mover.path = [];
+    a.down = CONFIG.rival.inHole;
+    a.load = 0;
+    a.target = null;
+    state.stats.rivalsFell++;
+    events.push({ type: 'rival-fell', x: t.x, y: t.y, pushed: false });
+    break;
+  }
+}
+
 /** Heat from whoever's watching: prying in plain sight, or carrying covers past a cop. */
 function watchers(state: GameState): { gain: number; by: AgentKind | null; crewNear: boolean } {
   const p = state.player;
@@ -646,7 +1065,7 @@ function watchers(state: GameState): { gain: number; by: AgentKind | null; crewN
     const d = Math.hypot(a.mover.x - p.mover.x, a.mover.y - p.mover.y);
     if (a.kind === 'crew' && d <= CONFIG.crewSight) crewNear = true;
     if (a.kind === 'cop' && d <= CONFIG.copSight) {
-      const g = (prying ? CONFIG.copHeat : 0) + CONFIG.carryHeat * state.carried;
+      const g = (prying ? CONFIG.copHeat : 0) + CONFIG.carryHeat * state.cargo.reduce((sum, k) => sum + COVER_HEAT[k], 0);
       const seen = vest ? g * 0.5 : g;
       if (seen > 0) {
         gain += seen;
@@ -674,8 +1093,8 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const t = state.time;
 
   // The Fed
-  const info = phaseAt(t);
-  const upcoming = phaseAt(t + SCHEDULE.warn);
+  const info = phaseAt(t, state.daily);
+  const upcoming = phaseAt(t + SCHEDULE.warn, state.daily);
   const boundary = upcoming.phase === 'calm' ? -1 : upcoming.cycle * 2 + (upcoming.phase === 'bust' ? 1 : 0);
   if (upcoming.phase !== info.phase && boundary !== state.warnedFor) {
     state.warnedFor = boundary;
@@ -685,20 +1104,52 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     if (state.phase === 'bust') state.stats.bustsSurvived++;
     state.phase = info.phase;
     state.cycle = info.cycle;
-    state.rate = rateFor(info);
+    state.rate = rateFor(info, state.daily);
     events.push({ type: 'phase', phase: info.phase, rate: state.rate, cycle: info.cycle });
     if (info.phase === 'boom') {
       // Infrastructure bill: new manholes all over town.
       const paved = state.manholes.filter((h) => h.state === 'paved').slice(0, 3);
-      for (const h of paved) h.state = 'covered';
+      for (const h of paved) {
+        h.state = 'covered';
+        h.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < brassChance(state.daily) ? 'brass' : 'iron';
+      }
       if (paved.length) events.push({ type: 'new-covers', count: paved.length });
-    } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < CONFIG.maxCops) {
+      const fed = state.manholes.find((h) => h.kind === 'fed' && h.state === 'open');
+      if (fed) {
+        fed.state = 'covered';
+        fed.yours = false;
+        events.push({ type: 'fed-refit' });
+      }
+    } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < (state.daily === 'police-state' ? 5 : DISTRICT.maxCops)) {
       // Tough times: more police.
-      state.agents.push(makeAgent(state, 'cop', { x: 0, y: 1 }));
+      state.agents.push(makeAgent(state, 'cop', edges()[0]));
       events.push({ type: 'cop-joins' });
     }
   }
-  state.priceLevel *= 1 + INFLATION[state.phase] * dt;
+  state.priceLevel *= 1 + inflation(state.phase, state.daily) * dt;
+
+  // The bank: interest both ways, and loans called in the bust
+  if (state.savings > 0) {
+    const interest = state.savings * savingsRate(state) * dt;
+    state.savings += interest;
+    state.stats.interest += interest;
+  }
+  if (state.debt > 0) {
+    state.debt += state.debt * loanRate(state) * dt;
+    callLoan(state, events);
+    if (state.loanDue !== null && t >= state.loanDue) {
+      // Default: they take everything.
+      const lost = state.cash + state.savings + goldPrice(state, 'sell') * state.gold + state.stash.length * scrapPrice(state, 'yard-near');
+      state.cash = 0;
+      state.savings = 0;
+      state.gold = 0;
+      state.stash = [];
+      state.debt = 0;
+      state.loanDue = null;
+      state.heat = Math.min(100, state.heat + CONFIG.defaultHeat);
+      events.push({ type: 'default', lost });
+    }
+  }
 
   // The DEA
   if (state.dea > 0) state.dea = Math.max(0, state.dea - dt);
@@ -706,6 +1157,49 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     state.dea = CONFIG.dea.seconds;
     state.nextDeaAt = t + CONFIG.dea.every + rng() * CONFIG.dea.spread;
     events.push({ type: 'dea' });
+  }
+
+  // City events
+  if (state.event) {
+    state.event.left -= dt;
+    if (state.event.left <= 0) {
+      const kind = state.event.kind;
+      state.event = null;
+      if (kind === 'stimulus') state.priceLevel *= 1.1;
+      if (kind === 'recall') for (const h of state.manholes) if (h.kind === 'plastic' && h.state === 'covered') h.kind = 'iron';
+      events.push({ type: 'city-event-over', kind });
+    }
+  } else if (t >= state.nextEventAt) {
+    const e = state.daily === 'helicopter' ? cityEvent('stimulus') : CITY_EVENTS[Math.floor(rng() * CITY_EVENTS.length)];
+    state.event = { kind: e.kind, left: e.seconds };
+    state.nextEventAt = t + e.seconds + (state.daily === 'helicopter' ? 24 : CONFIG.events.every + rng() * CONFIG.events.spread);
+    events.push({ type: 'city-event', kind: e.kind });
+    if (e.kind === 'stimulus') {
+      const amount = 50 * state.priceLevel;
+      state.cash += amount;
+      events.push({ type: 'stimulus', amount });
+    } else if (e.kind === 'recall') {
+      for (const h of state.manholes) if (h.kind === 'iron' && h.state === 'covered') h.kind = 'plastic';
+    }
+  }
+
+  // Junkyard orders
+  if (state.contract && t >= state.contract.deadline) {
+    state.contract = null;
+    state.nextContractAt = t + CONFIG.contracts.gap + rng() * CONFIG.contracts.spread;
+    events.push({ type: 'contract-failed' });
+  } else if (!state.contract && t >= state.nextContractAt) {
+    const contract = newContract(state, rng);
+    state.contract = contract;
+    events.push({ type: 'contract-new', contract });
+  }
+
+  // The competition shows up
+  const wanted = (t >= CONFIG.rival.first ? 1 : 0) + (t >= CONFIG.rival.second ? 1 : 0);
+  if (state.rivals < wanted) {
+    state.rivals++;
+    state.agents.push(makeAgent(state, 'rival', edges()[state.rivals % 2]));
+    events.push({ type: 'rival-arrives' });
   }
 
   // Your body
@@ -732,9 +1226,16 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
         h.state = 'open';
         h.openedAt = t;
         h.yours = true;
-        state.carried++;
+        state.cargo.push(h.kind);
         state.stats.stolen++;
-        events.push({ type: 'stole', underCrewsNose: state.gear.vest && watchers(state).crewNear });
+        events.push({ type: 'stole', underCrewsNose: state.gear.vest && watchers(state).crewNear, kind: h.kind });
+        if (h.kind === 'fed') {
+          // The alarm goes off, and the nearest cop comes running.
+          state.heat = Math.min(100, state.heat + CONFIG.fedAlarm);
+          const cop = state.agents.filter((a) => a.kind === 'cop' && a.down === 0).sort((a, b) => Math.hypot(a.mover.x - h.x, a.mover.y - h.y) - Math.hypot(b.mover.x - h.x, b.mover.y - h.y))[0];
+          if (cop) cop.mover.path = findPath(tileOf(cop.mover), h);
+          events.push({ type: 'alarm' });
+        }
         advanceStep(state, 0, events);
       }
     }

@@ -582,3 +582,78 @@ wait for replacement.
   lap pays a bonus. Price graphs for both yards and both drugs, DEA raids, 18
   achievements, a personal best. Automated driver: ~8–10 min basic, longer
   with capital goods.
+- Deeper economics:
+  - 🏛️ The Fed's discount window (its door on the top street): deposit your
+    cash and it earns the Fed's rate (≈0.4%/s in a bust, next to nothing in a
+    boom while inflation eats it); borrow up to $300 (in today's dollars) at
+    the rate plus 3%. Loans are called in when a bust starts: repay before it
+    ends, or default and lose your cash, savings, gold and stash (plus heat).
+  - 🪙 Gresham Pawn & Gold (a kiosk by Cantillon Scrap): gold keeps up with
+    inflation, dips in the boom and rallies in the bust; the shop takes 6% each
+    way.
+  - Covers come in kinds: brass (one in seven; ×3 value, slower to pry, more
+    heat to carry) and the Fed's own gold cover outside its door (×8, twice as
+    slow, an alarm that brings the nearest cop; only the Fed replaces it, with
+    each boom).
+  - 8 more achievements (26 in all): Interest on Reserve Balances, Cheap
+    Credit, Sound Finances, Too Small to Bail Out, Gold Bug, Barbarous Relic,
+    Historical Revisionism, End the Fed('s Manhole).
+- More of the city:
+  - City events about every 40–60 s, on the news ticker with a countdown
+    banner: 🚗 Cash for Clunkers (scrap ×2 for 15 s), 🚁 Stimulus Check (+$50,
+    then prices jump 10%), 🥤 Cover Recall (iron covers turn to plastic, worth
+    a tenth, for 25 s), 📜 Minimum Wage Hike (the Corner +30% for 25 s).
+  - 🦺 A rival scrapper in a hi-vis vest from 40 s in (a second at 200 s): he
+    pries the nearest cover, sells it at the nearer yard and repeats; the crews
+    leave him alone. Walk up and press E to shove him: into an open manhole if
+    there's one next to him (down 20 s), otherwise he's stunned and you take
+    his cover. Cops don't like seeing it.
+  - 🏡 The Suburbs (`map.ts` districts, picked on the title screen once you've
+    scored 150 utils downtown): a 21×13 map with long streets, the Fed far
+    away, no cops at first (two at most) and more brass. Best scores per
+    district.
+  - 6 more achievements (32 in all).
+- Short-term goals:
+  - 📋 Contracts: a junkyard posts an order (2–4 covers, or 1–2 brass ones)
+    due at the next FOMC meeting (the one after if that's under 20 s away).
+    Matching covers sold there pay ×2; filling it pays 20 utils. Shown on the
+    HUD, on the yard's sign and on the ticker.
+  - 🗨️ Rothbard's commentary (`rothbard.ts`): a speech bubble with his face
+    for the start, the Fed's meetings, booms and busts, steals, sales at the
+    top or the bottom, the bank, gold, the rival, events and contracts, plus an
+    idle line now and then.
+  - 📅 The daily cycle (`daily.ts`): a seeded downtown run, the same for
+    everyone each day, with a twist that rotates through the week: Weimar Day
+    (hyperinflation), Gold Standard Day (no booms, busts or inflation),
+    Stagflation Day, Police State Day, Helicopter Money Day, Gilded Age Day
+    (half the covers brass), Zero Rates Day (long booms, short busts). Its own
+    best per day, kept off the district bests.
+  - 5 more achievements (37 in all): Freedom of Contract, Order Book,
+    Wheelbarrow of Cash, Daily Cycle, A Week of Cycles.
+- Polish:
+  - Selling one at a time: the junkyard panel sells the cheapest cover, the
+    best one, or all of them (E still sells everything), with the price of
+    each, contracts included. Hold the brass for the boom.
+  - Touch controls: on touch screens, a d-pad and a big action button under
+    the map; swipe on the map to walk in a direction (taps still walk you to
+    the spot).
+  - 🎵 Elevator jazz (`music.ts`), synthesized: electric piano comping, a
+    walking bass, brushed hi-hat and a noodling vibraphone. A ii–V–I in C at
+    88 bpm when calm, 118 bpm in the boom, C minor at 70 bpm in the bust. Its
+    own toggle in the top bar (saved); off with the sound, and while paused.
+- Bug hunt (a rules fuzzer: 225 runs, ~34 h of game time across both
+  districts and every twist, checking money, positions, covers and agents
+  every frame; plus a browser monkey test of every screen and flow):
+  - The rival could be stun-locked by shoving him over and over: shoves now
+    have a 4 s cooldown.
+  - …or shoved straight back into the hole he was climbing out of: a shove
+    only drops him into a neighbouring hole now.
+  - City crews covered manholes with a cop or the rival still down them; they
+    wait now.
+  - The music kept playing in a background tab (the pause came while the frame
+    loop was asleep); it stops on pause and on game over now.
+  - Clicked buttons kept the focus, so Space or Enter could click them again.
+  - A 0-point daily run said "today's best 0 utils" and counted as a day
+    played.
+- Declared finished (v1.0): the "In progress" badge is gone from the homepage,
+  with a new screenshot and link preview.
