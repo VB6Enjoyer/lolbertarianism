@@ -655,3 +655,5 @@ wait for replacement.
   - Clicked buttons kept the focus, so Space or Enter could click them again.
   - A 0-point daily run said "today's best 0 utils" and counted as a day
     played.
+- Declared finished (v1.0): the "In progress" badge is gone from the homepage,
+  with a new screenshot and link preview.
