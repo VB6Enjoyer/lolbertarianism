@@ -3,10 +3,11 @@ import { note, playTone, getAudioContext } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { COLS, DISTRICTS, isRoad, nearestRoad, placeAtBlock, ROWS, type DistrictId, type Tile } from './map.ts';
-import { act, cityEvent, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
+import { act, sell, cityEvent, COVER_VALUE, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked, Tracker } from './achievements.ts';
 import { fitView, render, type View } from './render.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
+import { Jazz } from './music.ts';
 import { dailyFor, normalizeDailyBests, seededRng, type Daily } from './daily.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -23,6 +24,7 @@ const els = {
   rate: byId('rate'),
   ticker: byId('ticker'),
   mute: byId<HTMLButtonElement>('mute'),
+  music: byId<HTMLButtonElement>('music'),
   cash: byId('cash'),
   utils: byId('utils'),
   fixBar: byId('fix-bar'),
@@ -77,6 +79,8 @@ interface Save {
   district: DistrictId;
   /** Your best daily-cycle score, per date. */
   dailyBests: Record<string, number>;
+  /** The elevator jazz (on unless you turned it off). */
+  music: boolean;
 }
 
 const slot = createSaveSlot<Save>({ game: 'austrian-economics-simulator', version: 1 });
@@ -89,6 +93,7 @@ const save: Save = {
   bestSuburbs: Math.max(0, Math.floor(Number(saved?.bestSuburbs) || 0)),
   district: saved?.district === 'suburbs' ? 'suburbs' : 'downtown',
   dailyBests: normalizeDailyBests(saved?.dailyBests),
+  music: saved?.music !== false,
 };
 
 const bestIn = (id: DistrictId) => (id === 'suburbs' ? save.bestSuburbs : save.best);
@@ -130,7 +135,29 @@ function toggleMute() {
   save.muted = !save.muted;
   slot.save(save);
   els.mute.textContent = save.muted ? '🔇' : '🔊';
+  syncMusic();
 }
+
+// ---------------------------------------------------------------------------
+// Music: elevator jazz, following the economy
+// ---------------------------------------------------------------------------
+
+const jazz = new Jazz();
+
+/** Plays while you're playing (and the sound and music are on); quiet otherwise. */
+function syncMusic() {
+  const want = mode === 'playing' && save.music && !save.muted;
+  if (want && !jazz.playing) jazz.start(getAudioContext());
+  else if (!want && jazz.playing) jazz.stop();
+  els.music.classList.toggle('off', !save.music);
+  els.music.setAttribute('aria-pressed', String(save.music));
+}
+
+els.music.addEventListener('click', () => {
+  save.music = !save.music;
+  slot.save(save);
+  syncMusic();
+});
 els.mute.textContent = save.muted ? '🔇' : '🔊';
 els.mute.addEventListener('click', toggleMute);
 
@@ -210,7 +237,13 @@ const KEY_DIRS: Record<string, Tile> = {
 /** The most recently pressed direction key wins. */
 let dirOrder: string[] = [];
 
+/** A direction held on the on-screen d-pad, or swiped on the map (finger still down). */
+let dpadDir: Tile | null = null;
+let swipe: { id: number; x: number; y: number; dir: Tile | null } | null = null;
+
 function heldDir(): Tile | null {
+  if (dpadDir) return dpadDir;
+  if (swipe?.dir) return swipe.dir;
   for (let i = dirOrder.length - 1; i >= 0; i--) if (keys.has(dirOrder[i])) return KEY_DIRS[dirOrder[i]];
   return null;
 }
@@ -251,17 +284,62 @@ document.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
 
 // Tap or click the map to walk there (a building takes you to its door).
-els.map.addEventListener('pointerdown', (e) => {
-  if (mode !== 'playing') return;
+// On the map: a tap walks you there (a building takes you to its door); a
+// swipe walks in that direction for as long as your finger stays down.
+const SWIPE = 22;
+
+function tapWalk(clientX: number, clientY: number) {
   const rect = els.map.getBoundingClientRect();
-  const tx = (e.clientX - rect.left - view.ox) / view.tile - 0.5;
-  const ty = (e.clientY - rect.top - view.oy) / view.tile - 0.5;
+  const tx = (clientX - rect.left - view.ox) / view.tile - 0.5;
+  const ty = (clientY - rect.top - view.oy) / view.tile - 0.5;
   const tile = { x: Math.round(tx), y: Math.round(ty) };
   const place = placeAtBlock(tile);
   const target = place ? place.door : isRoad(tile.x, tile.y) ? tile : nearestRoad(tx, ty);
   walkTo(state, target);
   ripple(target);
+}
+
+els.map.addEventListener('pointerdown', (e) => {
+  if (mode !== 'playing') return;
+  els.map.setPointerCapture(e.pointerId);
+  swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, dir: null };
 });
+els.map.addEventListener('pointermove', (e) => {
+  if (!swipe || swipe.id !== e.pointerId) return;
+  const dx = e.clientX - swipe.x;
+  const dy = e.clientY - swipe.y;
+  if (Math.hypot(dx, dy) < SWIPE) return;
+  swipe.dir = Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) };
+  // Re-anchor, so you can steer by moving your finger the other way.
+  swipe.x = e.clientX;
+  swipe.y = e.clientY;
+});
+for (const type of ['pointerup', 'pointercancel'] as const) {
+  els.map.addEventListener(type, (e) => {
+    if (!swipe || swipe.id !== e.pointerId) return;
+    const tapped = !swipe.dir && type === 'pointerup';
+    swipe = null;
+    if (tapped && mode === 'playing') tapWalk(e.clientX, e.clientY);
+  });
+}
+
+// The on-screen d-pad (on touch screens): hold a direction to walk.
+for (const b of document.querySelectorAll<HTMLButtonElement>('.dpad button')) {
+  const dir = KEY_DIRS[b.dataset.dir!];
+  b.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    b.setPointerCapture(e.pointerId);
+    dpadDir = dir;
+    b.classList.add('held');
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+    b.addEventListener(type, () => {
+      if (dpadDir === dir) dpadDir = null;
+      b.classList.remove('held');
+    });
+  }
+}
+byId('touch-action').addEventListener('click', () => doAction());
 
 els.action.addEventListener('click', () => doAction());
 
@@ -274,7 +352,7 @@ function doAction() {
 // The shops: the Corner, Roundabout Hardware, the Fed's discount window and the pawn shop
 // ---------------------------------------------------------------------------
 
-type ShopKind = 'dealer' | 'hardware' | 'bank' | 'pawn';
+type ShopKind = 'dealer' | 'hardware' | 'bank' | 'pawn' | 'yard';
 
 interface ShopItem {
   label: string;
@@ -287,7 +365,46 @@ interface ShopItem {
 
 const pct = (perSecond: number) => `${(perSecond * 100).toFixed(2)}%/s`;
 
+const coverName = { iron: 'iron', brass: 'brass', fed: "the Fed's", plastic: 'plastic' } as const;
+
+/** What you'd get for one cover here, contract and all. */
+function yardPrice(kind: keyof typeof coverName) {
+  const c = context(state);
+  if (c?.kind !== 'sell') return 0;
+  const order = state.contract?.yard === c.yard ? state.contract : null;
+  const fits = order && order.delivered < order.count && (order.kind === 'brass' ? kind === 'brass' : kind !== 'plastic');
+  return scrapPrice(state, c.yard) * COVER_VALUE[kind] * (fits ? order.pay : 1);
+}
+
+const byValue = () => [...state.cargo].sort((a, b) => COVER_VALUE[a] - COVER_VALUE[b]);
+
 const SHOPS: Record<ShopKind, { title: string; items: () => ShopItem[] }> = {
+  yard: {
+    title: '🏗️ The Junkyard',
+    items: () => [
+      {
+        label: '⚙️ Sell one (the cheapest)',
+        detail: () => (state.cargo.length ? `Your ${coverName[byValue()[0]]} cover. Keep the rest for the boom.` : 'Nothing to sell.'),
+        price: () => (state.cargo.length ? money(yardPrice(byValue()[0])) : '—'),
+        enabled: () => state.cargo.length > 0,
+        buy: () => sell(state, 'cheapest'),
+      },
+      {
+        label: '✨ Sell one (the best)',
+        detail: () => (state.cargo.length ? `Your ${coverName[byValue()[state.cargo.length - 1]]} cover.` : 'Nothing to sell.'),
+        price: () => (state.cargo.length ? money(yardPrice(byValue()[state.cargo.length - 1])) : '—'),
+        enabled: () => state.cargo.length > 0,
+        buy: () => sell(state, 'best'),
+      },
+      {
+        label: '💰 Sell them all (E)',
+        detail: () => `${state.cargo.length} cover${state.cargo.length === 1 ? '' : 's'}.`,
+        price: () => money(state.cargo.reduce((sum, k) => sum + yardPrice(k), 0)),
+        enabled: () => state.cargo.length > 0,
+        buy: () => sell(state, 'all'),
+      },
+    ],
+  },
   dealer: {
     title: '💊 The Corner',
     items: () =>
@@ -886,8 +1003,9 @@ function updateHud() {
   // The action button, and the shops
   const c = mode === 'playing' ? context(state) : null;
   const kind = c?.kind ?? null;
-  if (kind === 'dealer' || kind === 'hardware' || kind === 'bank' || kind === 'pawn') {
-    if (shopKind !== kind) openShop(kind);
+  const shop: ShopKind | null = kind === 'sell' ? 'yard' : kind === 'dealer' || kind === 'hardware' || kind === 'bank' || kind === 'pawn' ? kind : null;
+  if (shop) {
+    if (shopKind !== shop) openShop(shop);
     refreshShop();
   } else if (shopKind) closeShop();
   let text = 'Walk to a manhole cover (or tap the map)';
@@ -984,6 +1102,8 @@ function frame(now: number) {
   if (mode === 'playing') handle(update(state, { dir: heldDir() }, dt, runRng));
   else if (mode === 'title') state.time += dt; // let the title screen's city breathe
   updateSpeech();
+  syncMusic();
+  jazz.setPhase(state.phase);
 
   const c = mode === 'playing' ? context(state) : null;
   const highlight = c && c.kind !== 'pry' && c.kind !== 'prying' && c.kind !== 'full' ? playerTile() : null;

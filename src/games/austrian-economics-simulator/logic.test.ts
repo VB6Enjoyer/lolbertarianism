@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COLS, DISTRICTS, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, PLACES, placeAtDoor, placeById, ROAD_TILES, ROWS, setDistrict, STARTING_SLOTS } from './map.ts';
-import { act, CITY_EVENTS, inflation, newContract, phaseEnd, rateFor, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
+import { act, sell, CITY_EVENTS, inflation, newContract, phaseEnd, rateFor, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
 import { ACHIEVEMENTS, normalizeUnlocked, Tracker } from './achievements.ts';
 import { dailyFor, normalizeDailyBests, seededRng, TWISTS } from './daily.ts';
 import { LINES, pickLine } from './rothbard.ts';
@@ -476,6 +476,27 @@ describe('austrian economics: contracts', () => {
     s.contract = { yard: 'yard-far', kind: 'any', count: 3, delivered: 1, deadline: 1, pay: 2 };
     expect(run(s, 1.1, still, rng(1), true)).toContainEqual({ type: 'contract-failed' });
     expect(s.contract).toBeNull();
+  });
+});
+
+describe('austrian economics: selling one at a time', () => {
+  it('sell the cheapest or the best, and keep the rest for the boom', () => {
+    const s = quiet();
+    s.gear.cart = true;
+    s.cargo = ['brass', 'iron', 'iron'];
+    const door = placeById('yard-far').door;
+    teleport(s, door.x, door.y);
+    const price = scrapPrice(s, 'yard-far');
+    const [cheap] = sell(s, 'cheapest');
+    expect(cheap).toMatchObject({ type: 'sold', count: 1 });
+    expect(cheap.type === 'sold' && cheap.total).toBeCloseTo(price);
+    expect(s.cargo.sort()).toEqual(['brass', 'iron']);
+    const [best] = sell(s, 'best');
+    expect(best.type === 'sold' && best.total).toBeCloseTo(price * 3);
+    expect(s.cargo).toEqual(['iron']);
+    sell(s, 'all');
+    expect(s.cargo).toEqual([]);
+    expect(sell(s, 'all')).toEqual([]); // nothing left
   });
 });
 

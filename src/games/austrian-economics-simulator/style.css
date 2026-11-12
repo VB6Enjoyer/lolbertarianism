@@ -184,6 +184,86 @@ body {
     }
 }
 
+.icon-button.off {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+
+/* Touch controls: only on touch screens */
+.touch-controls {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 10px;
+    border: 2px solid var(--cyan);
+    background: var(--panel);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+@media (pointer: coarse) {
+    .touch-controls {
+        display: flex;
+    }
+}
+
+.dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 46px);
+    grid-template-rows: repeat(3, 46px);
+    grid-template-areas: '. up .' 'left . right' '. down .';
+    gap: 2px;
+}
+
+.dpad button,
+.touch-action {
+    border: 2px solid var(--cyan);
+    background: #021014;
+    color: var(--cyan);
+    font: bold 18px var(--font);
+    touch-action: none;
+}
+
+.dpad button.held,
+.touch-action:active {
+    background: var(--cyan);
+    color: #000;
+}
+
+.dpad .up {
+    grid-area: up;
+}
+
+.dpad .left {
+    grid-area: left;
+}
+
+.dpad .right {
+    grid-area: right;
+}
+
+.dpad .down {
+    grid-area: down;
+}
+
+.touch-hint {
+    flex: 1;
+    margin: 0;
+    color: #8fb8b5;
+    font-size: 11px;
+    text-align: center;
+}
+
+.touch-action {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    border-color: var(--green);
+    color: var(--green);
+    font-size: 28px;
+}
+
 .icon-button {
     width: 34px;
     height: 30px;
@@ -200,7 +280,19 @@ body {
     min-height: 0;
     display: grid;
     grid-template-columns: 1fr 300px;
+    grid-template-rows: 1fr auto;
     gap: 8px;
+}
+
+/* Wide screens: the map (and any touch controls under it) on the left, the HUD on the right. */
+.map-wrap,
+.touch-controls {
+    grid-column: 1;
+}
+
+.side {
+    grid-column: 2;
+    grid-row: 1 / span 2;
 }
 
 .map-wrap {
@@ -585,6 +677,25 @@ kbd {
 
 .speech b {
     color: #b71c1c;
+}
+
+/* A shop panel up top pushes Rothbard down, above the action button. */
+.map-wrap:has(.shop:not([hidden]):not(.bottom)) .speech {
+    top: auto;
+    bottom: 60px;
+}
+
+@media (max-width: 520px) {
+    .speech {
+        top: 6px;
+        left: 6px;
+        padding: 5px 8px 5px 5px;
+        font-size: 11px;
+    }
+
+    .speech img {
+        width: 22px;
+    }
 }
 
 @keyframes speech-in {
@@ -994,7 +1105,15 @@ kbd {
     .layout {
         flex: none;
         grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: none;
         align-content: start;
+    }
+
+    .map-wrap,
+    .touch-controls,
+    .side {
+        grid-column: 1;
+        grid-row: auto;
     }
 
     .map-wrap {

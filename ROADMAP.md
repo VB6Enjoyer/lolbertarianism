@@ -630,3 +630,14 @@ wait for replacement.
     best per day, kept off the district bests.
   - 5 more achievements (37 in all): Freedom of Contract, Order Book,
     Wheelbarrow of Cash, Daily Cycle, A Week of Cycles.
+- Polish:
+  - Selling one at a time: the junkyard panel sells the cheapest cover, the
+    best one, or all of them (E still sells everything), with the price of
+    each, contracts included. Hold the brass for the boom.
+  - Touch controls: on touch screens, a d-pad and a big action button under
+    the map; swipe on the map to walk in a direction (taps still walk you to
+    the spot).
+  - 🎵 Elevator jazz (`music.ts`), synthesized: electric piano comping, a
+    walking bass, brushed hi-hat and a noodling vibraphone. A ii–V–I in C at
+    88 bpm when calm, 118 bpm in the boom, C minor at 70 bpm in the bust. Its
+    own toggle in the top bar (saved); off with the sound, and while paused.

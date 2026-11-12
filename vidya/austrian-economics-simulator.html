@@ -18,6 +18,7 @@
             <div class="rate" title="The federal funds rate">FED <b id="rate">2.50%</b></div>
             <div id="event" class="event" hidden></div>
             <div class="ticker" aria-live="polite"><span id="ticker">FED CHAIR: "WE HAVE TOOLS."</span></div>
+            <button id="music" class="icon-button" type="button" aria-label="Toggle the music" title="Elevator jazz">🎵</button>
             <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
             <button id="pause" class="icon-button" type="button" aria-label="Pause">⏸</button>
         </header>
@@ -37,6 +38,18 @@
                     <div id="shop-items" class="shop-items"></div>
                 </div>
             </section>
+
+            <!-- Touch screens: a d-pad and a big action button under the map -->
+            <div class="touch-controls">
+                <div class="dpad" aria-label="Walk">
+                    <button type="button" data-dir="arrowup" class="up" aria-label="Up">▲</button>
+                    <button type="button" data-dir="arrowleft" class="left" aria-label="Left">◀</button>
+                    <button type="button" data-dir="arrowright" class="right" aria-label="Right">▶</button>
+                    <button type="button" data-dir="arrowdown" class="down" aria-label="Down">▼</button>
+                </div>
+                <p class="touch-hint">Swipe or tap the map to walk, too</p>
+                <button id="touch-action" class="touch-action" type="button" aria-label="Action">E</button>
+            </div>
 
             <aside class="side">
                 <!-- The meme, as the HUD: the arrows light up as you go around -->
@@ -120,7 +133,7 @@
                     <li>📋 <b>Fill the junkyards' orders</b> before the next FOMC meeting: those covers pay double.</li>
                     <li>🏦 <b>Bank at the Fed's discount window.</b> Savings earn the Fed's rate; loans are cheap in a boom and called in at the bust. 🪙 Gold at the pawn shop holds its value. Brass covers pay ×3, and the Fed's own pays ×8 (it's alarmed).</li>
                 </ol>
-                <p class="controls">Move: arrows / WASD, or tap the map · Action: <kbd>E</kbd> / <kbd>Space</kbd> · Buy: <kbd>1</kbd>–<kbd>4</kbd> · Pause: <kbd>P</kbd></p>
+                <p class="controls">Move: arrows / WASD, tap or swipe the map, or the d-pad on touch screens · Action: <kbd>E</kbd> / <kbd>Space</kbd> · Buy: <kbd>1</kbd>–<kbd>4</kbd> · Pause: <kbd>P</kbd></p>
             </div>
         </div>
 

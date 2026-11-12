@@ -635,6 +635,51 @@ function advanceStep(state: GameState, done: number, events: GameEvent[]) {
   events.push({ type: 'lap', laps: state.laps, bonus });
 }
 
+/**
+ * Sell at the junkyard you're standing at: everything, or just one cover (the
+ * cheapest or the best), keeping the rest for later.
+ */
+export function sell(state: GameState, which: 'all' | 'cheapest' | 'best' = 'all'): GameEvent[] {
+  const c = context(state);
+  if (state.over || c?.kind !== 'sell') return [];
+  const events: GameEvent[] = [];
+  // Pick what goes: the order of value decides which one is "cheapest" or "best".
+  const sorted = [...state.cargo].sort((a, b) => COVER_VALUE[a] - COVER_VALUE[b]);
+  const selling = which === 'all' ? sorted : [which === 'cheapest' ? sorted[0] : sorted[sorted.length - 1]];
+  const keeping = [...state.cargo];
+  for (const k of selling) keeping.splice(keeping.indexOf(k), 1);
+  const other: Yard = c.yard === 'yard-near' ? 'yard-far' : 'yard-near';
+  const price = scrapPrice(state, c.yard);
+  // Covers that fill this yard's order are paid extra.
+  const order = state.contract?.yard === c.yard ? state.contract : null;
+  const fits = (k: CoverKind) => (order?.kind === 'brass' ? k === 'brass' : k !== 'plastic');
+  let matched = 0;
+  let total = 0;
+  for (const k of selling) {
+    const counts = order && matched < order.count - order.delivered && fits(k);
+    if (counts) matched++;
+    total += price * COVER_VALUE[k] * (counts ? order.pay : 1);
+  }
+  const count = selling.length;
+  events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0), state.daily), plastic: selling.includes('plastic'), contract: matched });
+  if (order && matched > 0) {
+    order.delivered += matched;
+    if (order.delivered >= order.count) {
+      state.contract = null;
+      state.nextContractAt = state.time + CONFIG.contracts.gap;
+      state.utils += CONFIG.contracts.utils;
+      state.stats.contracts++;
+      events.push({ type: 'contract-done', utils: CONFIG.contracts.utils });
+    }
+  }
+  state.cash += total;
+  state.stats.sold += count;
+  state.stats.earned += total;
+  state.cargo = keeping;
+  advanceStep(state, 1, events);
+  return events;
+}
+
 /** The action key (E / Space / the button): pry, sell, stash or take. */
 export function act(state: GameState): GameEvent[] {
   if (state.over) return [];
@@ -647,35 +692,7 @@ export function act(state: GameState): GameEvent[] {
     state.player.pry = { id: c.manhole.id, left: total, total };
     events.push({ type: 'pry-start' });
   } else if (c.kind === 'sell') {
-    const other: Yard = c.yard === 'yard-near' ? 'yard-far' : 'yard-near';
-    const price = scrapPrice(state, c.yard);
-    // Covers that fill this yard's order are paid extra.
-    const order = state.contract?.yard === c.yard ? state.contract : null;
-    const fits = (k: CoverKind) => (order?.kind === 'brass' ? k === 'brass' : k !== 'plastic');
-    let matched = 0;
-    let total = 0;
-    for (const k of state.cargo) {
-      const counts = order && matched < order.count - order.delivered && fits(k);
-      if (counts) matched++;
-      total += price * COVER_VALUE[k] * (counts ? order.pay : 1);
-    }
-    const count = state.cargo.length;
-    events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0), state.daily), plastic: state.cargo.includes('plastic'), contract: matched });
-    if (order && matched > 0) {
-      order.delivered += matched;
-      if (order.delivered >= order.count) {
-        state.contract = null;
-        state.nextContractAt = state.time + CONFIG.contracts.gap;
-        state.utils += CONFIG.contracts.utils;
-        state.stats.contracts++;
-        events.push({ type: 'contract-done', utils: CONFIG.contracts.utils });
-      }
-    }
-    state.cash += total;
-    state.stats.sold += count;
-    state.stats.earned += total;
-    state.cargo = [];
-    advanceStep(state, 1, events);
+    events.push(...sell(state, 'all'));
   } else if (c.kind === 'shove') {
     events.push(...shove(state, c.rival));
   } else if (c.kind === 'stash') {
