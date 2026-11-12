@@ -348,6 +348,11 @@ function doAction() {
   handle(act(state));
 }
 
+/** Clicked buttons let go of the focus, so Space / Enter go back to the game instead of clicking them again. */
+document.addEventListener('click', (e) => {
+  if (e.target instanceof HTMLElement && e.target.closest('.shop-item, #action, #touch-action, .dpad button, #music, #mute')) (document.activeElement as HTMLElement | null)?.blur();
+});
+
 // ---------------------------------------------------------------------------
 // The shops: the Corner, Roundabout Hardware, the Fed's discount window and the pawn shop
 // ---------------------------------------------------------------------------
@@ -573,6 +578,10 @@ function pause() {
   mode = 'paused';
   els.paused.hidden = false;
   keys.clear();
+  dpadDir = null;
+  swipe = null;
+  // Background tabs stop the frame loop, so stop the music here, not there.
+  syncMusic();
 }
 
 function resume() {
@@ -619,18 +628,19 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
 
 function gameOver() {
   mode = 'over';
+  syncMusic();
   play('over');
   closeShop();
   const reason = state.over ?? 'withdrawal';
   // Daily runs have their own best per day, and don't count for the districts.
   const previousDaily = runDaily ? save.dailyBests[runDaily.key] ?? 0 : 0;
   const isBest = runDaily ? state.utils > previousDaily : state.utils > bestIn(state.district);
-  if (runDaily) save.dailyBests[runDaily.key] = Math.max(previousDaily, state.utils);
+  if (runDaily && state.utils > 0) save.dailyBests[runDaily.key] = Math.max(previousDaily, state.utils);
   else if (state.district === 'suburbs') save.bestSuburbs = Math.max(save.bestSuburbs, state.utils);
   else save.best = Math.max(save.best, state.utils);
   els.dailyLine.hidden = !runDaily;
   if (runDaily) {
-    els.dailyLine.textContent = `📅 ${runDaily.twist.name}: ${isBest ? 'a new best today!' : `today's best ${previousDaily} utils`}`;
+    els.dailyLine.textContent = `📅 ${runDaily.twist.name}: ${isBest ? 'a new best today!' : previousDaily ? `today's best ${previousDaily} utils` : 'no score on the board yet today'}`;
     announce(tracker.checkDaily(Object.keys(save.dailyBests).length));
   }
   save.runs++;
@@ -641,7 +651,7 @@ function gameOver() {
   byId('final-laps').textContent = String(state.laps);
   byId('final-covers').textContent = `${state.stats.stolen} / ${state.stats.sold}`;
   byId('final-time').textContent = clock(state.time);
-  byId('final-best').textContent = String(runDaily ? save.dailyBests[runDaily.key] : bestIn(state.district));
+  byId('final-best').textContent = String(runDaily ? save.dailyBests[runDaily.key] ?? 0 : bestIn(state.district));
   renderDistricts();
   byId('new-best').hidden = !isBest;
   byId('run-achievements').hidden = runUnlocked.length === 0;

@@ -641,3 +641,17 @@ wait for replacement.
     walking bass, brushed hi-hat and a noodling vibraphone. A ii–V–I in C at
     88 bpm when calm, 118 bpm in the boom, C minor at 70 bpm in the bust. Its
     own toggle in the top bar (saved); off with the sound, and while paused.
+- Bug hunt (a rules fuzzer: 225 runs, ~34 h of game time across both
+  districts and every twist, checking money, positions, covers and agents
+  every frame; plus a browser monkey test of every screen and flow):
+  - The rival could be stun-locked by shoving him over and over: shoves now
+    have a 4 s cooldown.
+  - …or shoved straight back into the hole he was climbing out of: a shove
+    only drops him into a neighbouring hole now.
+  - City crews covered manholes with a cop or the rival still down them; they
+    wait now.
+  - The music kept playing in a background tab (the pause came while the frame
+    loop was asleep); it stops on pause and on game over now.
+  - Clicked buttons kept the focus, so Space or Enter could click them again.
+  - A 0-point daily run said "today's best 0 utils" and counted as a day
+    played.

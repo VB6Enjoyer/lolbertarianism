@@ -60,8 +60,9 @@ export const CONFIG = {
   events: { first: 50, every: 40, spread: 20 },
   /** The rival scrapper: when he shows up (a second one later), how fast he walks and pries, and how long a fall or a shove keeps him down. */
   rival: { first: 40, second: 200, speed: 2.4, pry: 2.2, fallChance: 0.25, inHole: 20, stunned: 3 },
-  /** Heat if a cop sees you shove him. */
+  /** Heat if a cop sees you shove him, and seconds before you can shove again. */
   shoveHeat: 20,
+  shoveCooldown: 4,
   /** Contracts: the first, the gap after each, and what a finished one pays in utils. */
   contracts: { first: 35, gap: 15, spread: 15, utils: 20, pay: 2, minSeconds: 20 },
   /** Prying brass / the Fed's cover takes this many times as long. */
@@ -305,6 +306,8 @@ export interface GameState {
   daily: TwistId | null;
   contract: Contract | null;
   nextContractAt: number;
+  /** When you last shoved the rival. */
+  lastShove: number;
   over: OverReason | null;
 }
 
@@ -413,6 +416,7 @@ export function newGame(rng: () => number = Math.random, district: DistrictId = 
     daily,
     contract: null,
     nextContractAt: CONFIG.contracts.first,
+    lastShove: -99,
     district: d.id,
     event: null,
     nextEventAt: CONFIG.events.first,
@@ -605,7 +609,8 @@ export function context(state: GameState): Context {
   const p = state.player;
   if (p.pry) return { kind: 'prying' };
   const here = tileOf(p.mover);
-  const rival = state.agents.find((a) => a.kind === 'rival' && a.down === 0 && Math.hypot(a.mover.x - p.mover.x, a.mover.y - p.mover.y) < 0.9);
+  const canShove = state.time - state.lastShove >= CONFIG.shoveCooldown;
+  const rival = canShove ? state.agents.find((a) => a.kind === 'rival' && a.down === 0 && Math.hypot(a.mover.x - p.mover.x, a.mover.y - p.mover.y) < 0.9) : undefined;
   if (!standingOn(p.mover, here)) return rival ? { kind: 'shove', rival } : null;
   const manhole = state.manholes.find((h) => h.state === 'covered' && sameTile(h, here));
   if (rival && !manhole) return { kind: 'shove', rival };
@@ -837,7 +842,9 @@ function crewLimits(phase: Phase) {
 /** The oldest open manhole no crew is on its way to. */
 function nextJob(state: GameState): Manhole | null {
   const taken = new Set(state.agents.filter((a) => a.kind === 'crew' && a.target !== null).map((a) => a.target));
-  return state.manholes.filter((h) => h.state === 'open' && h.kind !== 'fed' && !taken.has(h.id)).sort((a, b) => a.openedAt - b.openedAt)[0] ?? null;
+  // Not one with somebody still down it.
+  const occupied = (h: Manhole) => state.agents.some((a) => a.down > 0 && sameTile(tileOf(a.mover), h));
+  return state.manholes.filter((h) => h.state === 'open' && h.kind !== 'fed' && !taken.has(h.id) && !occupied(h)).sort((a, b) => a.openedAt - b.openedAt)[0] ?? null;
 }
 
 function updateAgents(state: GameState, dt: number, rng: () => number, events: GameEvent[]) {
@@ -965,7 +972,12 @@ export function newContract(state: GameState, rng: () => number): Contract {
  */
 export function shove(state: GameState, rival: Agent): GameEvent[] {
   const events: GameEvent[] = [];
-  const hole = state.manholes.find((h) => h.state === 'open' && Math.hypot(h.x - rival.mover.x, h.y - rival.mover.y) < 1.5);
+  state.lastShove = state.time;
+  // A hole next to him (not the one he just climbed out of).
+  const hole = state.manholes.find((h) => {
+    const d = Math.hypot(h.x - rival.mover.x, h.y - rival.mover.y);
+    return h.state === 'open' && d > 0.5 && d < 1.5;
+  });
   if (hole) {
     rival.mover = { x: hole.x, y: hole.y, path: [] };
     rival.down = CONFIG.rival.inHole;
