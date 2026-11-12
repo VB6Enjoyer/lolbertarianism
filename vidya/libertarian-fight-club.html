@@ -1,389 +1,174 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Libertarian Lobster Showdown</title>
-    <style>
-        :root {
-            --floor-color: #dcbfa6;
-            --floor-accent: #c4a488;
-            --ui-bg: #2c3e50;
-            --ui-text: #ecf0f1;
-            --accent: #e74c3c;
-            --win: #27ae60;
-        }
-
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Courier New', Courier, monospace;
-            background-color: #222;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            overflow: hidden;
-            user-select: none;
-        }
-
-        #game-container {
-            width: 100%;
-            max-width: 800px;
-            height: 90vh;
-            background: var(--ui-bg);
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            position: relative;
-        }
-
-        /* Header / HUD */
-        header {
-            padding: 15px;
-            background: rgba(0,0,0,0.2);
-            color: var(--ui-text);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid rgba(255,255,255,0.1);
-        }
-
-        .stat-box {
-            text-align: center;
-        }
-
-        .stat-label {
-            font-size: 0.8rem;
-            opacity: 0.7;
-            text-transform: uppercase;
-        }
-
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #f1c40f;
-        }
-
-        /* The Arena (Floor) */
-        #arena {
-            flex-grow: 1;
-            background-color: var(--floor-color);
-            background-image: 
-                repeating-linear-gradient(45deg, var(--floor-accent) 25%, transparent 25%, transparent 75%, var(--floor-accent) 75%, var(--floor-accent)),
-                repeating-linear-gradient(45deg, var(--floor-accent) 25%, var(--floor-color) 25%, var(--floor-color) 75%, var(--floor-accent) 75%, var(--floor-accent));
-            background-position: 0 0, 10px 10px;
-            background-size: 20px 20px;
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            perspective: 1000px;
-            overflow: hidden;
-        }
-
-        /* Spectators */
-        .spectator {
-            position: absolute;
-            font-size: 4rem;
-            z-index: 10;
-            transition: transform 0.2s;
-            cursor: pointer;
-        }
-        .spectator:hover { transform: scale(1.1); }
-        .spectator.cheer { animation: bounce 0.5s infinite; }
-
-        /* Money on floor */
-        .floor-money {
-            position: absolute;
-            font-size: 1.5rem;
-            opacity: 0.8;
-            transform: rotate(var(--rot));
-            pointer-events: none;
-        }
-
-        /* Fighters */
-        .fighter-container {
-            position: absolute;
-            bottom: 20%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            transition: transform 0.3s ease;
-            width: 150px;
-        }
-
-        .fighter {
-            font-size: 6rem;
-            filter: drop-shadow(0 10px 5px rgba(0,0,0,0.3));
-            transition: transform 0.1s;
-            position: relative;
-        }
-
-        .fighter-name {
-            background: rgba(0,0,0,0.6);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            margin-bottom: 5px;
-            text-align: center;
-        }
-
-        .hp-bar-bg {
-            width: 100%;
-            height: 10px;
-            background: #555;
-            border-radius: 5px;
-            overflow: hidden;
-            border: 1px solid #000;
-        }
-
-        .hp-bar-fill {
-            height: 100%;
-            background: var(--win);
-            width: 100%;
-            transition: width 0.2s;
-        }
-
-        #left-fighter { left: 15%; }
-        #right-fighter { right: 15%; }
-        #right-fighter .fighter { transform: scaleX(-1); } /* Face left */
-
-        /* Controls */
-        #controls {
-            padding: 20px;
-            background: #34495e;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            z-index: 20;
-        }
-
-        .bet-row {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            align-items: center;
-        }
-
-        input[type="number"] {
-            padding: 10px;
-            border-radius: 5px;
-            border: none;
-            width: 100px;
-            text-align: center;
-            font-size: 1.2rem;
-            font-family: inherit;
-        }
-
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-family: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.1s, background 0.2s;
-            text-transform: uppercase;
-        }
-
-        button:active { transform: scale(0.95); }
-
-        .btn-left { background: #3498db; color: white; }
-        .btn-right { background: #e67e22; color: white; }
-        .btn-left:hover { background: #2980b9; }
-        .btn-right:hover { background: #d35400; }
-        
-        button:disabled {
-            background: #7f8c8d;
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-
-        /* Commentary Log */
-        #log {
-            height: 60px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 6px;
-            padding: 10px;
-            overflow-y: auto;
-            font-size: 0.9rem;
-            color: #bdc3c7;
-            text-align: center;
-            display: flex;
-            flex-direction: column-reverse; /* Newest at bottom visually, but we prepend */
-        }
-
-        .log-entry { margin-bottom: 4px; }
-        .log-entry.damage { color: #e74c3c; }
-        .log-entry.win { color: #2ecc71; font-weight: bold; }
-
-        /* Animations */
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
-        }
-
-        @keyframes attack-right {
-            0% { transform: translateX(0); }
-            50% { transform: translateX(50px) rotate(10deg); }
-            100% { transform: translateX(0); }
-        }
-
-        @keyframes attack-left {
-            0% { transform: scaleX(-1) translateX(0); }
-            50% { transform: scaleX(-1) translateX(50px) rotate(10deg); }
-            100% { transform: scaleX(-1) translateX(0); }
-        }
-
-        @keyframes shake {
-            0% { transform: translate(1px, 1px) rotate(0deg); }
-            10% { transform: translate(-1px, -2px) rotate(-1deg); }
-            20% { transform: translate(-3px, 0px) rotate(1deg); }
-            30% { transform: translate(3px, 2px) rotate(0deg); }
-            40% { transform: translate(1px, -1px) rotate(1deg); }
-            50% { transform: translate(-1px, 2px) rotate(-1deg); }
-            60% { transform: translate(-3px, 1px) rotate(0deg); }
-            70% { transform: translate(3px, 1px) rotate(-1deg); }
-            80% { transform: translate(-1px, -1px) rotate(1deg); }
-            90% { transform: translate(1px, 2px) rotate(0deg); }
-            100% { transform: translate(1px, -2px) rotate(-1deg); }
-        }
-
-        .hit-effect {
-            position: absolute;
-            font-size: 2rem;
-            color: red;
-            font-weight: bold;
-            animation: floatUp 1s forwards;
-            pointer-events: none;
-            z-index: 100;
-            text-shadow: 2px 2px 0 #000;
-        }
-
-        @keyframes floatUp {
-            0% { opacity: 1; transform: translateY(0) scale(1); }
-            100% { opacity: 0; transform: translateY(-50px) scale(1.5); }
-        }
-
-        /* Overlay for Game Over / Start */
-        #overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            display: none;
-        }
-        #overlay.active { display: flex; }
-        #overlay h1 { color: white; font-size: 3rem; text-align: center; margin-bottom: 10px; }
-        #overlay p { color: #ccc; font-size: 1.2rem; max-width: 600px; text-align: center; margin-bottom: 30px; }
-        #start-btn { font-size: 1.5rem; padding: 15px 40px; background: #27ae60; color: white; }
-
-        /* Speech bubbles */
-        .bubble {
-            position: absolute;
-            background: white;
-            color: black;
-            padding: 5px 10px;
-            border-radius: 10px;
-            font-size: 0.8rem;
-            top: -40px;
-            left: 50%;
-            transform: translateX(-50%);
-            white-space: nowrap;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-        }
-        .bubble::after {
-            content: '';
-            position: absolute;
-            bottom: -5px;
-            left: 50%;
-            margin-left: -5px;
-            border-width: 5px;
-            border-style: solid;
-            border-color: white transparent transparent transparent;
-        }
-        .spectator:hover .bubble { opacity: 1; }
-
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Libertarian Fight Club</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script type="module" src="/src/shared/arcade-button.ts"></script>
 </head>
+
 <body>
+    <div id="app">
+        <header class="topbar">
+            <div class="brand">🦞 LIBERTARIAN FIGHT CLUB <small>The Invisible Claw</small></div>
+            <div class="venue"><b id="venue-name">🍳 The Kitchen Floor</b><small id="night-info"></small></div>
+            <div class="bout">BOUT <b id="bout-number">1</b></div>
+            <button id="show-chart" class="small-button" type="button">📖 Matchup chart</button>
+            <div class="bankroll">BANKROLL <b id="bankroll">$500</b></div>
+            <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
+        </header>
 
-<div id="game-container">
-    <header>
-        <div style="font-weight:bold; font-size:1.2rem;">🦞 LIBERTARIAN FIGHT CLUB</div>
-        <div class="stat-box">
-            <div class="stat-label">Bankroll</div>
-            <div class="stat-value" id="bankroll">$500</div>
-        </div>
-    </header>
+        <!-- The tale of the tape -->
+        <section class="tape">
+            <div id="card-0" class="card"></div>
+            <div class="vs">VS</div>
+            <div id="card-1" class="card"></div>
+        </section>
 
-    <div id="arena">
-        <!-- Decor Money -->
-        <div class="floor-money" style="top: 60%; left: 40%; --rot: 12deg;">💵</div>
-        <div class="floor-money" style="top: 70%; left: 55%; --rot: -45deg;">💵</div>
-        <div class="floor-money" style="top: 50%; left: 48%; --rot: 80deg;">💵</div>
-        <div class="floor-money" style="top: 80%; left: 30%; --rot: 10deg;">💵</div>
+        <!-- The kitchen floor -->
+        <section id="arena" class="arena" aria-label="The fight">
+            <div class="crowd" aria-hidden="true">
+                <div class="spectator" data-i="0"><span class="face">😱</span><span class="shout"></span></div>
+                <div class="spectator" data-i="1"><span class="face">😏</span><span class="shout"></span></div>
+                <div class="spectator" data-i="2"><span class="face">🤪</span><span class="shout"></span></div>
+            </div>
+            <div class="floor-money" style="left: 22%; top: 70%; --r: 14deg">💵</div>
+            <div class="floor-money" style="left: 64%; top: 78%; --r: -30deg">💵</div>
+            <div class="floor-money" style="left: 47%; top: 86%; --r: 70deg">💵</div>
+            <div id="round" class="round"></div>
+            <div class="ring">
+                <div id="fighter-0" class="fighter left">
+                    <div class="hp"><i></i><span></span></div>
+                    <div class="say" hidden></div>
+                    <div class="lobster"></div>
+                </div>
+                <div id="fighter-1" class="fighter right">
+                    <div class="hp"><i></i><span></span></div>
+                    <div class="say" hidden></div>
+                    <div class="lobster"></div>
+                </div>
+            </div>
+            <div id="result" class="result" hidden></div>
+        </section>
 
-        <!-- Spectators -->
-        <div class="spectator" style="top: 10%; left: 10%;">
-            👩
-            <div class="bubble">Taxation is theft!</div>
-        </div>
-        <div class="spectator" style="top: 15%; right: 15%;">
-            👱‍♂️
-            <div class="bubble">What about roads?</div>
-        </div>
-        <div class="spectator" style="top: 5%; left: 50%;">
-            🧔
-            <div class="bubble">End the Fed!</div>
+        <!-- Betting -->
+        <section class="betbar">
+            <div class="tabs" role="tablist">
+                <button type="button" data-tab="winner" class="on">🏆 Winner</button>
+                <button type="button" data-tab="props">🎲 Props</button>
+                <button type="button" data-tab="parlay">🧾 Parlay</button>
+                <button type="button" data-tab="intel">🕵️ Intel</button>
+                <button type="button" data-tab="stable">🦞 Your lobster</button>
+            </div>
+            <!-- The pool: everyone's money, and the odds it makes -->
+            <div id="pool" class="pool tab-pane" data-tab="winner">
+                <div class="pool-head"><span id="pool-total">The crowd is placing its bets…</span><span class="pool-help" title="Pool betting: the pot, minus the house's cut, is split among whoever backed the winner. The odds are whatever the crowd makes them, and your own stake moves them.">ⓘ How the pool works</span></div>
+                <div class="pool-bar"><i id="pool-bar-0" class="left"></i><i id="pool-bar-1" class="right"></i></div>
+                <ul id="pool-bets" class="pool-bets"></ul>
+            </div>
+            <div class="tab-pane" data-tab="props" hidden>
+                <p class="pane-note">The house's fixed odds on how the fight goes. It reads the full matchup chart but can't see hidden traits. Props settle at the end (no cash-out).</p>
+                <div id="props" class="props"></div>
+            </div>
+            <div class="tab-pane" data-tab="parlay" hidden>
+                <p class="pane-note">Pick the winners of this bout and the next two on tonight's card. The odds multiply; one wrong pick and it's gone.</p>
+                <div id="parlay-legs" class="legs"></div>
+                <p id="parlay-summary" class="preview"></p>
+                <button id="parlay-place" type="button" class="next-button">Place the parlay</button>
+                <div id="parlay-active" class="parlay-active" hidden></div>
+            </div>
+            <div class="tab-pane" data-tab="stable" hidden>
+                <div id="stable" class="stable"></div>
+            </div>
+            <div class="tab-pane" data-tab="intel" hidden>
+                <p class="pane-note">Information costs money. Some of it is even true. Track records build up as their tips are tested.</p>
+                <div id="tipsters" class="tipsters"></div>
+                <div id="scouts" class="scouts"></div>
+                <ul id="notebook" class="notebook"></ul>
+            </div>
+            <div class="stake">
+                <label for="stake">Stake</label>
+                <input id="stake" type="number" min="10" step="10" value="50" inputmode="numeric">
+                <div class="chips">
+                    <button type="button" data-add="10">+10</button>
+                    <button type="button" data-add="50">+50</button>
+                    <button type="button" data-add="100">+100</button>
+                    <button type="button" data-add="max">MAX</button>
+                    <button type="button" data-add="clear">C</button>
+                </div>
+            </div>
+            <p id="preview" class="preview"></p>
+            <p id="slip" class="slip" hidden></p>
+            <div class="bets">
+                <button id="bet-0" class="bet-button left" type="button"></button>
+                <button id="watch" class="watch-button" type="button">Just watch</button>
+                <button id="bet-1" class="bet-button right" type="button"></button>
+            </div>
+            <!-- Between rounds -->
+            <div id="live" class="live" hidden>
+                <div class="live-head"><b id="live-title">⏸ The live market</b><div class="live-clock"><i id="live-timer"></i></div></div>
+                <ul id="your-bets" class="your-bets"></ul>
+                <div class="bets">
+                    <button id="live-bet-0" class="bet-button left" type="button"></button>
+                    <button id="live-continue" class="watch-button" type="button">Continue ▶</button>
+                    <button id="live-bet-1" class="bet-button right" type="button"></button>
+                </div>
+            </div>
+            <div class="after" hidden>
+                <button id="skip" class="watch-button" type="button">⏩ Skip to the result</button>
+                <button id="next" class="next-button" type="button" hidden>Next bout ▶</button>
+            </div>
+        </section>
+
+        <section id="log" class="log" aria-live="polite"></section>
+
+        <!-- Matchup chart -->
+        <div id="chart" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>📖 The Matchup Chart</h1>
+                <p class="tagline">Every faction argues in its own way, and some arguments land harder than others. The house only half-reads this chart.</p>
+                <div id="chart-body" class="chart-body"></div>
+                <div class="panel-buttons"><button id="hide-chart" type="button" class="big-button">Got it</button></div>
+            </div>
         </div>
 
-        <!-- Fighters -->
-        <div class="fighter-container" id="left-fighter">
-            <div class="hp-bar-bg"><div class="hp-bar-fill" id="hp-left"></div></div>
-            <div class="fighter-name">Austrian School</div>
-            <div class="fighter">🦞</div>
+        <!-- The end of a night -->
+        <div id="night" class="overlay" hidden>
+            <div class="panel">
+                <h1 id="night-title">End of the night</h1>
+                <div id="night-body" class="night-body"></div>
+                <div class="panel-buttons"><button id="night-next" type="button" class="big-button">Next night ▶</button></div>
+            </div>
         </div>
 
-        <div class="fighter-container" id="right-fighter">
-            <div class="hp-bar-bg"><div class="hp-bar-fill" id="hp-right"></div></div>
-            <div class="fighter-name">Chicago School</div>
-            <div class="fighter">🦞</div>
+        <!-- Title -->
+        <div id="title" class="overlay">
+            <div class="panel">
+                <h1>The Invisible Claw</h1>
+                <p class="tagline">Libertarians are fighting over who is the most libertarian. Bet your fiat on the winner.</p>
+                <ul class="rules">
+                    <li>🦞 Every lobster is a <b>faction</b>: Ancap, Minarchist, Austrian, Chicago, Objectivist, Georgist, Agorist, Hoppean, Bleeding-Heart, Mises Caucus.</li>
+                    <li>🗣️ Fights are <b>debates</b>: three rounds of arguments. Each faction is <b>weak</b> to one kind of argument and <b>shrugs off</b> another.</li>
+                    <li>📊 Read the tale of the tape: claw, shell, stamina, wits, record and form. Some lobsters hide a <b>trait</b>; once you've seen it, it's on the card.</li>
+                    <li>💸 It's <b>pool betting</b>: the crowd sets the odds. 😱 Screaming Susan backs whoever's popular, 😏 Squatting Sheila the underdog, 🤪 LMAO Larry whatever's funniest, and the rest follow the stats while only half-reading the matchup chart. <b>That's your edge.</b></li>
+                    <li>⏸ Between rounds the <b>live market</b> opens: bet on the fight as it stands, or <b>cash out</b> a bet early.</li>
+                    <li>🏟️ A <b>career</b>: five bouts a night. End a night with enough money to move up from the 🍳 Kitchen Floor to the 🚗 Garage, 🏕️ PorcFest, the 🏛️ Convention, and the 🏰 Liberland Championship. Go broke and you get thrown down a venue.</li>
+                    <li>🦞 Once you reach the Garage, <b>buy a lobster of your own</b> at the fish market, train it, and send it into the ring for purses.</li>
+                    <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
+                </ul>
+                <p id="title-best" class="best"></p>
+                <div class="panel-buttons">
+                    <button id="start" type="button" class="big-button">Enter the market</button>
+                </div>
+            </div>
         </div>
+
+        <div id="toasts" class="toasts" aria-live="polite"></div>
     </div>
 
-    <div id="controls">
-        <div id="log">
-            <div class="log-entry">Welcome to the Free Market of Violence. Place your bets.</div>
-        </div>
-        <div class="bet-row">
-            <input type="number" id="bet-amount" value="50" min="10" step="10">
-            <button class="btn-left" onclick="placeBet('left')">Bet Left</button>
-            <div style="color: #95a5a6; font-weight: bold;">VS</div>
-            <button class="btn-right" onclick="placeBet('right')">Bet Right</button>
-        </div>
-    </div>
-
-    <div id="overlay" class="active">
-        <h1>THE INVISIBLE CLAW</h1>
-        <p>Libertarians are fighting over who is the most libertarian. <br>Bet your fiat currency on the winner.</p>
-        <button id="start-btn" onclick="startGame()">ENTER THE MARKET</button>
-    </div>
-</div>
-
-<script type="module" src="/src/games/libertarian-fight-club/main.js"></script>
+    <script type="module" src="/src/games/libertarian-fight-club/main.ts"></script>
 </body>
+
 </html>

@@ -32,7 +32,7 @@ export const games: Game[] = [
   {
     slug: 'libertarian-fight-club',
     title: 'Libertarian Fight Club',
-    blurb: 'Austrian School vs. Chicago School lobsters. Bet your fiat on the winner.',
+    blurb: 'Lobsters from ten libertarian factions debate to the death. Read the matchups, beat the house’s odds.',
     status: 'prototype',
     legacyPaths: ['libertarian_fight_club.html'],
   },

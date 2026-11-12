@@ -657,3 +657,89 @@ wait for replacement.
     played.
 - Declared finished (v1.0): the "In progress" badge is gone from the homepage,
   with a new screenshot and link preview.
+
+### Libertarian Fight Club: step 1, lobsters and debates ✅
+
+Rebuilt in TypeScript (`src/games/libertarian-fight-club/`), from a coin flip
+into a handicapping game. Steps 1 and 2 of the plan:
+
+- A league of 16 lobsters (`lobsters.ts`) from ten factions: Ancap,
+  Minarchist, Austrian, Chicago, Objectivist, Georgist, Agorist, Hoppean,
+  Bleeding-Heart, Mises Caucus. Each has claw, shell, stamina, wits, a weight,
+  a record and recent form, and a hidden trait (Coward, Glass Shell, Comeback
+  Kid, Hungry, Molting, Lazy, Debate Champion, Pre-Cooked, Crowd Favorite)
+  that shows on its card once you've seen it. Saved between visits, records
+  and all.
+- Fights are debates (`fight.ts`): three rounds of arguments of five kinds
+  (⚖️ moral, 📈 economic, 🛣️ practical, 🧪 purity test, 🤡 meme). Every
+  faction is weak to one kind (×1.5) and shrugs off another (×0.65); misses
+  ("strawmanned!"), critical hits, KOs, lobsters fleeing the ring, judges'
+  decisions. A matchup chart on screen.
+- The house line: the bookmaker simulates each bout 300 times counting only
+  half of each matchup and no traits, then takes an 8% cut. Simulated over
+  20,000 bouts: backing the favorite blindly loses ~8%; betting the matchup
+  edge at decent odds wins ~20%.
+- The kitchen floor from the meme: SVG lobsters in faction colors, the three
+  bettors yelling "OTHER LIBERTARIANS LMAO", speech bubbles with each
+  argument, damage, a result banner, a log. Stakes with chips, skip to the
+  result, and your uncle the Bitcoin maximalist spots you $500 when you're
+  broke.
+
+### Libertarian Fight Club: step 2, the pool and the live market ✅
+
+- Pool betting (`pool.ts`) instead of a house line: each bout opens with the
+  crowd putting its money in, one by one. 😱 Screaming Susan bets big on
+  whoever's popular (record, form, crowd favorites), 😏 Squatting Sheila backs
+  the underdog, 🤪 LMAO Larry bets on whatever's funniest, and the rest of the
+  crowd follows the stats while half-reading the matchup chart. The pot, minus
+  a 10% cut, is split among the winners, so the odds are whatever the crowd
+  makes them; your stake moves them too (the projected payout updates as you
+  type), and someone may throw in a late bet after you.
+- The live market between rounds: odds re-figured from both lobsters' health
+  (from the crowd's stats-only view). Bet live on either side, or cash out
+  any open bet for its value now minus the cut. An 8-second clock and a
+  Continue button; skipping jumps past it. Every bet settles at the end, and
+  the result shows your net on the bout.
+- Simulated over 6,000 bouts: backing the pool favorite blindly about breaks
+  even (−1%), a crude "always bet the matchup side" rule loses (−4%), and
+  someone who really reads the fight wins ~+20% before it and ~+23% live.
+
+### Libertarian Fight Club: step 3, intel and more bets ✅
+
+- Tabs under the arena: 🏆 Winner (the pool), 🎲 Props, 🧾 Parlay, 🕵️ Intel.
+- Intel (`intel.ts`): tipsters with track records kept on your save (the
+  market for lemons). 🐟 Fishmonger Frank ($15) whispers a hidden trait, right
+  two times in three; 🕵️ The Insider ($60) names who has the real edge, right
+  nine times in ten; 📱 @AlphaGuru (free) posts a 🔒 LOCK, a coin flip.
+  Scouting: $10 to watch a lobster in the tank for a tell ("hides behind the
+  treasure chest", "smells faintly of butter"), always true, never spelled
+  out. Rumors and tells stay on the cards.
+- Props (`props.ts`), at the house's fixed odds: ends by KO, goes to the
+  judges, KO in round 1/2/3, a lobster flees, 3+ critical hits, 4+ strawmen,
+  5+ super-effective arguments. The house reads the full matchup chart and
+  assumes the league's usual mix of traits, so its average prices are within
+  a point or two of reality; long shots are capped at 8×. Private
+  information pays: with a known coward in the ring, "a lobster flees" returns
+  about +38%.
+- Parlays: tonight's card is the current bout and the next two (saved). Pick
+  all three winners at the multiplied odds (each leg up to 10×, the parlay up
+  to 250×); legs settle bout by bout.
+
+### Libertarian Fight Club: step 4, the career and your own lobster ✅
+
+- Career (`career.ts`): nights of five bouts at five venues, each with its
+  own floor, bigger pools and higher stake limits: 🍳 the Kitchen Floor (max
+  $250), 🚗 the Garage ($100 a night at the door), 🏕️ PorcFest, 🏛️ the
+  Convention, 🏰 the Liberland Championship. End a night with the venue's
+  target ($1,000, $4,000, $15,000, $60,000) to be invited up; $250,000 at
+  Liberland makes you champion. A night summary after each. Go broke and your
+  uncle bails you out, but the bouncers throw you down a venue; can't pay the
+  door fee and you drop too.
+- Your own lobster: the fish market opens at the Garage, with three lots a
+  night ($700 to $1,400), weaker than league fighters, traits hidden until you
+  buy (a lemon is possible). Name it; train claw, shell and wits (+1) or
+  stamina (+10) at rising prices; pay a therapist ($400) to cure a bad trait.
+  Sign it up for the next bout against an easy, even or hard opponent for a
+  purse that grows with the tier and the venue, and bet on it in the pool
+  (no parlays on its bouts: conflict of interest). A loss means rest (two
+  bouts after a KO) and a 35% chance of an injury that costs a point.
