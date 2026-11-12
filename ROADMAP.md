@@ -657,3 +657,34 @@ wait for replacement.
     played.
 - Declared finished (v1.0): the "In progress" badge is gone from the homepage,
   with a new screenshot and link preview.
+
+### Libertarian Fight Club: step 1, lobsters and debates ✅
+
+Rebuilt in TypeScript (`src/games/libertarian-fight-club/`), from a coin flip
+into a handicapping game. Steps 1 and 2 of the plan:
+
+- A league of 16 lobsters (`lobsters.ts`) from ten factions: Ancap,
+  Minarchist, Austrian, Chicago, Objectivist, Georgist, Agorist, Hoppean,
+  Bleeding-Heart, Mises Caucus. Each has claw, shell, stamina, wits, a weight,
+  a record and recent form, and a hidden trait (Coward, Glass Shell, Comeback
+  Kid, Hungry, Molting, Lazy, Debate Champion, Pre-Cooked, Crowd Favorite)
+  that shows on its card once you've seen it. Saved between visits, records
+  and all.
+- Fights are debates (`fight.ts`): three rounds of arguments of five kinds
+  (⚖️ moral, 📈 economic, 🛣️ practical, 🧪 purity test, 🤡 meme). Every
+  faction is weak to one kind (×1.5) and shrugs off another (×0.65); misses
+  ("strawmanned!"), critical hits, KOs, lobsters fleeing the ring, judges'
+  decisions. A matchup chart on screen.
+- The house line: the bookmaker simulates each bout 300 times counting only
+  half of each matchup and no traits, then takes an 8% cut. Simulated over
+  20,000 bouts: backing the favorite blindly loses ~8%; betting the matchup
+  edge at decent odds wins ~20%.
+- The kitchen floor from the meme: SVG lobsters in faction colors, the three
+  bettors yelling "OTHER LIBERTARIANS LMAO", speech bubbles with each
+  argument, damage, a result banner, a log. Stakes with chips, skip to the
+  result, and your uncle the Bitcoin maximalist spots you $500 when you're
+  broke.
+
+Next: crowd odds (a betting pool with the meme's three bettors), live betting
+and cash-out, tipsters and scouting, more bet types, a career of fight nights,
+and your own lobster to train and fight.
