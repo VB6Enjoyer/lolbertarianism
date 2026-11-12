@@ -6,6 +6,8 @@ import { COLS, DISTRICTS, isRoad, nearestRoad, placeAtBlock, ROWS, type District
 import { act, cityEvent, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked, Tracker } from './achievements.ts';
 import { fitView, render, type View } from './render.ts';
+import { pickLine, URGENT, type Cue } from './rothbard.ts';
+import { dailyFor, normalizeDailyBests, seededRng, type Daily } from './daily.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -33,6 +35,11 @@ const els = {
   gold: byId('gold'),
   finance: document.querySelector<HTMLElement>('.finance')!,
   event: byId('event'),
+  speech: byId('speech'),
+  speechText: byId('speech-text'),
+  contract: byId('contract'),
+  daily: byId('daily'),
+  dailyLine: byId('daily-line'),
   districts: byId('districts'),
   laps: byId('laps'),
   cycle: document.querySelector<HTMLElement>('.cycle')!,
@@ -68,6 +75,8 @@ interface Save {
   achievements: string[];
   runs: number;
   district: DistrictId;
+  /** Your best daily-cycle score, per date. */
+  dailyBests: Record<string, number>;
 }
 
 const slot = createSaveSlot<Save>({ game: 'austrian-economics-simulator', version: 1 });
@@ -79,6 +88,7 @@ const save: Save = {
   runs: Math.max(0, Math.floor(Number(saved?.runs) || 0)),
   bestSuburbs: Math.max(0, Math.floor(Number(saved?.bestSuburbs) || 0)),
   district: saved?.district === 'suburbs' ? 'suburbs' : 'downtown',
+  dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
 
 const bestIn = (id: DistrictId) => (id === 'suburbs' ? save.bestSuburbs : save.best);
@@ -157,6 +167,36 @@ function news(text: string, seconds = 8) {
 const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
 
 // ---------------------------------------------------------------------------
+// Rothbard, in a speech bubble
+// ---------------------------------------------------------------------------
+
+/** Seconds (page time): when he last spoke, and when the bubble goes. */
+let lastSpoke = -99;
+let speechUntil = 0;
+const lastLine: Partial<Record<Cue, string>> = {};
+const nowSeconds = () => performance.now() / 1000;
+
+function say(cue: Cue) {
+  const now = nowSeconds();
+  if (now - lastSpoke < (URGENT.has(cue) ? 1.5 : 6)) return;
+  const line = pickLine(cue, Math.random(), lastLine[cue]);
+  lastLine[cue] = line;
+  lastSpoke = now;
+  speechUntil = now + 4.2;
+  els.speechText.textContent = line;
+  els.speech.hidden = false;
+  els.speech.style.animation = 'none';
+  void els.speech.offsetWidth;
+  els.speech.style.animation = '';
+}
+
+function updateSpeech() {
+  const now = nowSeconds();
+  if (!els.speech.hidden && (now > speechUntil || mode === 'title')) els.speech.hidden = true;
+  if (mode === 'playing' && now - lastSpoke > 25) say('idle');
+}
+
+// ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
 
@@ -196,7 +236,7 @@ document.addEventListener('keydown', (e) => {
     if ((key === 'enter' || key === ' ') && !e.repeat && els.achievements.hidden && (document.activeElement === document.body || document.activeElement?.id === 'start' || document.activeElement?.id === 'restart')) {
       e.preventDefault();
       if (mode === 'paused') resume();
-      else startGame();
+      else startGame(mode === 'over' && runDaily !== null);
     }
     return;
   }
@@ -387,10 +427,17 @@ type Mode = 'title' | 'playing' | 'paused' | 'over';
 let mode: Mode = 'title';
 let state: GameState = newGame(Math.random, save.district);
 let runUnlocked: string[] = [];
+/** Today's daily cycle while playing one (null for a normal run), and the random numbers driving the run. */
+let runDaily: Daily | null = null;
+let runRng: () => number = Math.random;
 
-function startGame() {
-  state = newGame(Math.random, save.district);
+function startGame(daily = false) {
+  runDaily = daily ? dailyFor(new Date()) : null;
+  runRng = runDaily ? seededRng(runDaily.seed) : Math.random;
+  state = runDaily ? newGame(runRng, 'downtown', runDaily.twist.id) : newGame(Math.random, save.district);
   fitMap();
+  els.daily.hidden = true;
+  lastSpoke = -99;
   mode = 'playing';
   runUnlocked = [];
   tracker.startRun();
@@ -400,7 +447,8 @@ function startGame() {
   closeShop();
   keys.clear();
   getAudioContext();
-  news('THE FED IS HOLDING RATES AT 2.50%. FOR NOW.');
+  news(runDaily ? `📅 DAILY CYCLE ${runDaily.key}: ${runDaily.twist.name.toUpperCase()}. ${runDaily.twist.description.toUpperCase()}` : 'THE FED IS HOLDING RATES AT 2.50%. FOR NOW.', 10);
+  say('start');
   if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { aes: state });
 }
 
@@ -417,8 +465,24 @@ function resume() {
 
 byId('pause').addEventListener('click', () => (mode === 'playing' ? pause() : mode === 'paused' ? resume() : undefined));
 byId('resume').addEventListener('click', resume);
-byId('start').addEventListener('click', startGame);
-byId('restart').addEventListener('click', startGame);
+byId('start').addEventListener('click', () => startGame(false));
+byId('restart').addEventListener('click', () => startGame(runDaily !== null));
+byId('start-daily').addEventListener('click', () => startGame(true));
+byId('show-daily').addEventListener('click', () => {
+  const today = dailyFor(new Date());
+  byId('daily-icon').textContent = today.twist.icon;
+  byId('daily-name').textContent = today.twist.name;
+  byId('daily-description').textContent = today.twist.description;
+  const best = save.dailyBests[today.key];
+  byId('daily-best').textContent = best ? `${best} utils` : 'none yet';
+  els.title.hidden = true;
+  els.daily.hidden = false;
+  byId('start-daily').focus();
+});
+byId('hide-daily').addEventListener('click', () => {
+  els.daily.hidden = true;
+  els.title.hidden = false;
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && mode === 'playing') pause();
 });
@@ -441,9 +505,17 @@ function gameOver() {
   play('over');
   closeShop();
   const reason = state.over ?? 'withdrawal';
-  const isBest = state.utils > bestIn(state.district);
-  if (state.district === 'suburbs') save.bestSuburbs = Math.max(save.bestSuburbs, state.utils);
+  // Daily runs have their own best per day, and don't count for the districts.
+  const previousDaily = runDaily ? save.dailyBests[runDaily.key] ?? 0 : 0;
+  const isBest = runDaily ? state.utils > previousDaily : state.utils > bestIn(state.district);
+  if (runDaily) save.dailyBests[runDaily.key] = Math.max(previousDaily, state.utils);
+  else if (state.district === 'suburbs') save.bestSuburbs = Math.max(save.bestSuburbs, state.utils);
   else save.best = Math.max(save.best, state.utils);
+  els.dailyLine.hidden = !runDaily;
+  if (runDaily) {
+    els.dailyLine.textContent = `📅 ${runDaily.twist.name}: ${isBest ? 'a new best today!' : `today's best ${previousDaily} utils`}`;
+    announce(tracker.checkDaily(Object.keys(save.dailyBests).length));
+  }
   save.runs++;
   slot.save(save);
   byId('over-title').textContent = OVER_TEXT[reason].title;
@@ -452,7 +524,7 @@ function gameOver() {
   byId('final-laps').textContent = String(state.laps);
   byId('final-covers').textContent = `${state.stats.stolen} / ${state.stats.sold}`;
   byId('final-time').textContent = clock(state.time);
-  byId('final-best').textContent = String(bestIn(state.district));
+  byId('final-best').textContent = String(runDaily ? save.dailyBests[runDaily.key] : bestIn(state.district));
   renderDistricts();
   byId('new-best').hidden = !isBest;
   byId('run-achievements').hidden = runUnlocked.length === 0;
@@ -564,6 +636,7 @@ function handle(events: GameEvent[]) {
         floater('INTERRUPTED', playerTile(), '#ffab40');
         break;
       case 'stole':
+        say(e.kind === 'fed' ? 'stole-fed' : e.kind === 'brass' ? 'stole-brass' : 'stole');
         play('clank');
         floater(e.kind === 'fed' ? '+1 FED COVER (×8)' : e.kind === 'brass' ? '+1 BRASS COVER (×3)' : '+1 COVER', playerTile(), e.kind === 'iron' ? '#5fff8f' : '#ffd54f');
         break;
@@ -576,6 +649,7 @@ function handle(events: GameEvent[]) {
         news('THE FED REPLACES ITS OWN MANHOLE COVER. PAID FOR WITH NEW MONEY.');
         break;
       case 'deposited':
+        say('saved');
         play('cash');
         floater(`🏦 ${money(e.amount)} SAVED`, playerTile(), '#80d8ff');
         break;
@@ -584,6 +658,7 @@ function handle(events: GameEvent[]) {
         floater(`💵 +${money(e.amount)}`, playerTile(), '#80d8ff');
         break;
       case 'borrowed':
+        if (e.phase === 'boom') say('borrowed');
         play('cash');
         floater(`💳 +${money(e.amount)} ON CREDIT`, playerTile(), '#ffab40');
         if (e.phase === 'boom') news('CHEAP CREDIT! WHAT COULD POSSIBLY GO WRONG?');
@@ -593,17 +668,20 @@ function handle(events: GameEvent[]) {
         floater(e.cleared ? '🤝 DEBT-FREE' : `🤝 -${money(e.amount)} OWED`, playerTile(), '#80d8ff');
         break;
       case 'loan-called':
+        say('loan-called');
         play('bell');
         news(`📞 YOUR LOAN HAS BEEN CALLED: REPAY ${money(e.debt)} AT THE FED WITHIN ${Math.ceil(e.seconds)}s`);
         floater('📞 LOAN CALLED!', playerTile(), '#ff5f5f');
         break;
       case 'default':
+        say('default');
         play('over');
         news(`DEFAULT! THE BANK SEIZED EVERYTHING YOU OWNED (${money(e.lost)}). NO BAILOUT FOR YOU.`, 10);
         floater('💸 DEFAULT: EVERYTHING SEIZED', playerTile(), '#ff5f5f');
         break;
       case 'city-event': {
         const ce = cityEvent(e.kind);
+        say(e.kind === 'stimulus' ? 'stimulus' : e.kind === 'recall' ? 'recall' : e.kind === 'clunkers' ? 'clunkers' : 'min-wage');
         play('bell');
         news(`${ce.icon} ${ce.name.toUpperCase()}: ${ce.description.toUpperCase()}`, ce.seconds);
         break;
@@ -618,21 +696,25 @@ function handle(events: GameEvent[]) {
         floater(`🚁 STIMULUS CHECK +${money(e.amount)}`, playerTile(), '#5fff8f');
         break;
       case 'rival-arrives':
+        say('rival-arrives');
         news('NEW IN TOWN: A RIVAL SCRAPPER IN A HI-VIS VEST. THE CREWS THINK HE WORKS FOR THE CITY.');
         break;
       case 'rival-stole':
         floater('🦺 THE RIVAL GOT ONE', e, '#ffab40');
         break;
       case 'rival-fell':
+        if (e.pushed) say('rival-fell');
         play('fell');
         floater(e.pushed ? '🕳️ OUTCOMPETED!' : '🕳️ RIVAL FELL IN', e, '#5fff8f');
         if (e.pushed) news('SCRAPPER FALLS INTO MANHOLE. "THE MARKET IS BRUTAL," SAYS WITNESS.');
         break;
       case 'shoved':
+        say('shoved');
         play('clank');
         floater(e.took ? '🤼 TOOK HIS COVER' : '🤼 SHOVED', playerTile(), '#ffd54f');
         break;
       case 'gold-bought':
+        say('gold');
         play('coin');
         floater('🪙 +1 OZ', playerTile(), '#ffd54f');
         break;
@@ -641,10 +723,13 @@ function handle(events: GameEvent[]) {
         floater(`🪙 +${money(e.total)}`, playerTile(), '#ffd54f');
         break;
       case 'sold':
+        if (e.multiplier >= 2) say('sold-peak');
+        else if (e.multiplier < 0.6) say('sold-crash');
         play('cash');
         floater(`+${money(e.total)}${e.multiplier >= 2 ? ' 📈' : e.multiplier < 0.6 ? ' 📉' : ''}`, playerTile());
         break;
       case 'stashed':
+        say('stash');
         play('clank');
         floater(`${e.count} SAVED FOR LATER`, playerTile(), '#ffe082');
         break;
@@ -653,10 +738,12 @@ function handle(events: GameEvent[]) {
         floater(`TOOK ${e.count}`, playerTile(), '#ffe082');
         break;
       case 'bought':
+        say('bought');
         play('buy');
         floater(e.drug === 'heroin' ? '💉 AAAH' : '🪨 ZOOM', playerTile(), '#ff80ab');
         break;
       case 'gear':
+        say('gear');
         play('gear');
         floater(`${GEAR.find((g) => g.id === e.id)!.icon} CAPITAL GOOD ACQUIRED`, playerTile(), '#80d8ff');
         break;
@@ -671,14 +758,17 @@ function handle(events: GameEvent[]) {
         news(`INFRASTRUCTURE BILL: ${e.count} NEW MANHOLES INSTALLED`);
         break;
       case 'phase':
+        say(e.phase === 'boom' ? 'boom' : 'bust');
         play(e.phase === 'boom' ? 'boom' : 'bust');
         news(pick(e.phase === 'boom' ? BOOM_NEWS : BUST_NEWS).replace('HIKES RATES', `HIKES RATES TO ${e.rate.toFixed(2)}%`));
         break;
       case 'fomc':
+        say(e.next === 'boom' ? 'fomc-boom' : 'fomc-bust');
         play('bell');
         news(`🔔 FOMC MEETING IN ${e.seconds}s · ${e.next === 'boom' ? 'RATE CUT EXPECTED: SAVE COVERS FOR THE BOOM?' : 'RATE HIKE EXPECTED: SELL WHILE YOU CAN'}`);
         break;
       case 'fell':
+        say(e.who === 'cop' ? 'cop-fell' : 'ped-fell');
         play('fell');
         floater(e.who === 'cop' ? '👮 OFFICER DOWN (THE HOLE)' : '🤕 AAAAH', e, e.who === 'cop' ? '#5fff8f' : '#ff5f5f');
         news(e.who === 'cop' ? 'OFFICER FALLS INTO MANHOLE. SUSPECT STILL AT LARGE.' : 'LOCAL MAN FALLS INTO MANHOLE. MAYOR BLAMES "GREED".');
@@ -686,6 +776,7 @@ function handle(events: GameEvent[]) {
       case 'step':
         break;
       case 'lap':
+        say('lap');
         play('lap');
         floater(`🔄 BUSINESS CYCLE COMPLETE! +${e.bonus} UTILS`, playerTile(), '#ffd54f');
         els.cycle.classList.remove('lapped');
@@ -693,19 +784,39 @@ function handle(events: GameEvent[]) {
         els.cycle.classList.add('lapped');
         break;
       case 'dea':
+        say('dea');
         play('alert');
         news('🚨 DEA RAID ON THE CORNER: STREET PRICES UP 60%. A SUPPLY SHOCK, LITERALLY.');
         break;
       case 'seen':
+        say('seen');
         play('alert');
         floater(e.by === 'cop' ? '👀 COP!' : e.by === 'crew' ? '👀 CITY CREW!' : '👀 WITNESS!', playerTile(), '#ff5f5f');
         break;
       case 'withdrawal':
+        say('withdrawal');
         play('alert');
         floater('🤢 WITHDRAWAL! GET TO THE CORNER', playerTile(), '#ff5f5f');
         break;
       case 'heat':
+        say('heat');
         floater('🚨 HEAT RISING: LAY LOW', playerTile(), '#ff5f5f');
+        break;
+      case 'contract-new': {
+        say('contract-new');
+        play('bell');
+        const k = e.contract;
+        news(`📋 ORDER: ${k.yard === 'yard-near' ? 'CANTILLON SCRAP' : 'LAST-IN-LINE RECYCLING'} WANTS ${k.count} ${k.kind === 'brass' ? 'BRASS ' : ''}COVER${k.count > 1 ? 'S' : ''} BY THE NEXT FOMC MEETING. PAYS ×${k.pay}.`);
+        break;
+      }
+      case 'contract-done':
+        say('contract-done');
+        play('lap');
+        floater(`📋 ORDER FILLED! +${e.utils} UTILS`, playerTile(), '#ffd54f');
+        break;
+      case 'contract-failed':
+        say('contract-failed');
+        news('📋 ORDER EXPIRED. THE JUNKYARD WILL REMEMBER THIS.');
         break;
       case 'cop-joins':
         news('CITY HIRES MORE POLICE TO FIGHT THE "MANHOLE CRISIS"');
@@ -741,8 +852,8 @@ const ACTION_TEXT: Record<string, string> = {
 let lastStepClass = -1;
 
 function updateHud() {
-  const info = phaseAt(state.time);
-  setText(els.phase, info.phase === 'calm' ? 'CALM' : info.phase === 'boom' ? `📈 BOOM ${Math.ceil(info.length - info.into)}s` : `📉 BUST ${Math.ceil(info.length - info.into)}s`);
+  const info = phaseAt(state.time, state.daily);
+  setText(els.phase, info.phase === 'calm' ? (state.daily === 'gold-standard' ? '🥇 GOLD STANDARD' : 'CALM') : info.phase === 'boom' ? `📈 BOOM ${Math.ceil(info.length - info.into)}s` : `📉 BUST ${Math.ceil(info.length - info.into)}s`);
   els.phase.className = `phase ${info.phase}`;
   setText(els.rate, `${state.rate.toFixed(2)}%`);
   setText(els.cash, money(state.cash));
@@ -788,6 +899,16 @@ function updateHud() {
   else if (state.fix < 0.35) text = 'Get to the Corner before the fix wears off';
   setText(els.action, text);
   els.action.disabled = !(kind === 'pry' || kind === 'sell' || kind === 'stash' || kind === 'shove');
+
+  // The junkyard's order
+  els.contract.hidden = !state.contract;
+  if (state.contract) {
+    const k = state.contract;
+    const yard = k.yard === 'yard-near' ? 'CANTILLON SCRAP' : 'LAST-IN-LINE';
+    const what = k.kind === 'brass' ? `${k.count} BRASS COVER${k.count > 1 ? 'S' : ''}` : `${k.count} COVERS`;
+    setText(els.contract, `📋 ${yard} WANTS ${what} · ${k.delivered}/${k.count} · ${Math.max(0, Math.ceil(k.deadline - state.time))}s · PAYS ×${k.pay}`);
+    els.contract.classList.toggle('urgent', k.deadline - state.time < 10);
+  }
 
   // The city event going on
   els.event.hidden = !state.event;
@@ -860,8 +981,9 @@ let graphAt = 0;
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (mode === 'playing') handle(update(state, { dir: heldDir() }, dt));
+  if (mode === 'playing') handle(update(state, { dir: heldDir() }, dt, runRng));
   else if (mode === 'title') state.time += dt; // let the title screen's city breathe
+  updateSpeech();
 
   const c = mode === 'playing' ? context(state) : null;
   const highlight = c && c.kind !== 'pry' && c.kind !== 'prying' && c.kind !== 'full' ? playerTile() : null;

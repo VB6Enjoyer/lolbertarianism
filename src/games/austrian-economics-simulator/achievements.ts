@@ -43,6 +43,11 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'rival-hole', icon: '🕳️', name: 'Creative Destruction of the Competition', description: 'Shove the rival scrapper into an open manhole.' },
   { id: 'rival-rob', icon: '🤼', name: 'Competition Is a Discovery Procedure', description: 'Shove the rival and take his cover.' },
   { id: 'suburbs', icon: '🏡', name: 'Exit, Not Voice', description: 'Play a run in the suburbs.' },
+  { id: 'contract', icon: '📋', name: 'Freedom of Contract', description: "Fill a junkyard's order." },
+  { id: 'contracts-5', icon: '📚', name: 'Order Book', description: 'Fill 5 orders in one run.' },
+  { id: 'wheelbarrow', icon: '🛒', name: 'Wheelbarrow of Cash', description: 'Hold $10,000 in cash at once (hyperinflation helps).' },
+  { id: 'daily', icon: '📅', name: 'Daily Cycle', description: 'Finish a daily cycle.' },
+  { id: 'daily-7', icon: '🗓️', name: 'A Week of Cycles', description: 'Play the daily cycle on 7 different days.' },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -92,6 +97,10 @@ export class Tracker {
         case 'shoved':
           if (e.took) add('rival-rob');
           break;
+        case 'contract-done':
+          add('contract');
+          if (state.stats.contracts >= 5) add('contracts-5');
+          break;
         case 'gold-sold':
           if (e.phase === 'bust') add('gold-bust');
           break;
@@ -127,8 +136,17 @@ export class Tracker {
     if (state.stats.bustsSurvived >= 1) add('bust');
     if (state.time >= 300) add('survive-5');
     if (state.cash >= 500) add('rich');
+    if (state.cash >= 10_000) add('wheelbarrow');
     if (state.utils >= 100) add('utils-100');
     if (state.utils >= 300) add('utils-300');
+    return found;
+  }
+
+  /** After a daily cycle: `days` is how many different days you've played one. */
+  checkDaily(days: number): string[] {
+    const found: string[] = [];
+    this.unlock('daily', found);
+    if (days >= 7) this.unlock('daily-7', found);
     return found;
   }
 }

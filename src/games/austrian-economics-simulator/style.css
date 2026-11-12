@@ -532,6 +532,91 @@ kbd {
     letter-spacing: 2px;
 }
 
+.contract {
+    grid-column: span 2;
+    padding: 4px 6px;
+    border: 1px dashed #ffd54f;
+    color: #ffd54f;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.contract[hidden] {
+    display: none;
+}
+
+.contract.urgent {
+    color: var(--red);
+    border-color: var(--red);
+}
+
+.speech {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 4;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: min(420px, calc(100% - 20px));
+    padding: 8px 12px 8px 8px;
+    border: 2px solid #111;
+    border-radius: 12px;
+    background: #fffde7;
+    color: #111;
+    font: 14px/1.3 Georgia, serif;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    animation: speech-in 0.25s ease-out;
+}
+
+.speech[hidden] {
+    display: none;
+}
+
+.speech img {
+    width: 34px;
+    flex: none;
+}
+
+.speech p {
+    margin: 0;
+}
+
+.speech b {
+    color: #b71c1c;
+}
+
+@keyframes speech-in {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+}
+
+.daily-card {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 12px;
+    border: 2px solid #ffd54f;
+    text-align: center;
+}
+
+.daily-icon {
+    font-size: 40px;
+}
+
+.daily-card b {
+    color: #fff;
+    font-size: 18px;
+}
+
+.daily-card small {
+    color: #8fb8b5;
+}
+
 .finance {
     grid-column: span 2;
     display: flex;
@@ -781,6 +866,7 @@ kbd {
     font-weight: bold;
 }
 
+#daily-line[hidden],
 .new-best[hidden],
 .run-achievements[hidden] {
     display: none;
@@ -985,7 +1071,8 @@ kbd {
 
     .meter,
     .inventory,
-    .finance {
+    .finance,
+    .contract {
         grid-column: auto;
     }
 

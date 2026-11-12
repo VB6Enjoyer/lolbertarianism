@@ -240,6 +240,10 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
       ctx.lineTo(left + W * 0.55, top + H * 0.22);
       ctx.stroke();
       const price = scrapPrice(state, p.id);
+      if (state.contract?.yard === p.id) {
+        const k = state.contract;
+        sign(ctx, cx, top + H * 0.82, `📋 ORDER ${k.delivered}/${k.count}${k.kind === 'brass' ? ' BRASS' : ''} · ×${k.pay}`, T * 0.8, '#ffd54f', '#3e2723', W);
+      }
       if (state.event?.kind === 'clunkers') sign(ctx, cx, top + H * 0.5, '🚗 CASH FOR CLUNKERS ×2', T * 0.8, '#ffd54f', '#3e2723', W);
       sign(ctx, cx, top + H * 0.17, `${p.id === 'yard-near' ? 'CANTILLON SCRAP' : 'LAST-IN-LINE'} ${money(price)}`, T, '#263238', '#5fff8f', W);
       break;

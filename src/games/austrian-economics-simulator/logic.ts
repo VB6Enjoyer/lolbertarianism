@@ -7,6 +7,7 @@
 // moves the scrap price (the near junkyard first: the Cantillon effect),
 // everything inflates, and the city's crews and covers come and go with it.
 
+import type { TwistId } from './daily.ts';
 import { COLS, DEPOT, DISTRICT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, placeById, ROAD_ROWS, ROAD_TILES, sameTile, setDistrict, STARTING_SLOTS, type DistrictId, type Tile } from './map.ts';
 
 export const CONFIG = {
@@ -61,6 +62,8 @@ export const CONFIG = {
   rival: { first: 40, second: 200, speed: 2.4, pry: 2.2, fallChance: 0.25, inHole: 20, stunned: 3 },
   /** Heat if a cop sees you shove him. */
   shoveHeat: 20,
+  /** Contracts: the first, the gap after each, and what a finished one pays in utils. */
+  contracts: { first: 35, gap: 15, spread: 15, utils: 20, pay: 2, minSeconds: 20 },
   /** Prying brass / the Fed's cover takes this many times as long. */
   brassPry: 1.3,
   fedPry: 2,
@@ -100,39 +103,63 @@ export interface PhaseInfo {
   length: number;
 }
 
-export function phaseAt(t: number): PhaseInfo {
+/** Zero Rates Day: long booms, short busts. */
+const ZIRP = { boom: 65, bust: 15 };
+
+/** Where the economy is at time `t` (a daily twist can change the schedule). */
+export function phaseAt(t: number, twist: TwistId | null = null): PhaseInfo {
+  // On the gold standard, nothing ever happens.
+  if (twist === 'gold-standard') return { phase: 'calm', cycle: -1, into: Math.max(0, t), length: Infinity };
   if (t < SCHEDULE.calm) return { phase: 'calm', cycle: -1, into: Math.max(0, t), length: SCHEDULE.calm };
-  const period = SCHEDULE.boom + SCHEDULE.bust;
-  const cycle = Math.floor((t - SCHEDULE.calm) / period);
-  const r = t - SCHEDULE.calm - cycle * period;
-  return r < SCHEDULE.boom
-    ? { phase: 'boom', cycle, into: r, length: SCHEDULE.boom }
-    : { phase: 'bust', cycle, into: r - SCHEDULE.boom, length: SCHEDULE.bust };
+  const boom = twist === 'zirp' ? ZIRP.boom : SCHEDULE.boom;
+  const bust = twist === 'zirp' ? ZIRP.bust : SCHEDULE.bust;
+  const cycle = Math.floor((t - SCHEDULE.calm) / (boom + bust));
+  const r = t - SCHEDULE.calm - cycle * (boom + bust);
+  return r < boom ? { phase: 'boom', cycle, into: r, length: boom } : { phase: 'bust', cycle, into: r - boom, length: bust };
 }
 
+/** When the current phase ends (Infinity on the gold standard). */
+export const phaseEnd = (t: number, twist: TwistId | null = null) => {
+  const p = phaseAt(t, twist);
+  return t + (p.length - p.into);
+};
+
 /** The federal funds rate the Fed sets for a phase (busts get harsher each cycle). */
-export function rateFor(p: PhaseInfo): number {
+export function rateFor(p: PhaseInfo, twist: TwistId | null = null): number {
+  if (twist === 'gold-standard') return 4;
+  if (twist === 'zirp') return p.phase === 'bust' ? 2 : 0;
   if (p.phase === 'calm') return 2.5;
   if (p.phase === 'boom') return 0.25;
   return Math.min(9, 5.25 + 0.75 * p.cycle);
 }
 
-const peakFor = (cycle: number) => 2.2 + 0.2 * cycle;
+const peakFor = (cycle: number, twist: TwistId | null) => (twist === 'stagflation' ? 1.25 : twist === 'zirp' ? 2.8 + 0.2 * cycle : 2.2 + 0.2 * cycle);
 
 /** How much scrap is worth compared with normal: a bubble through the boom, a crash at the start of the bust. */
-export function scrapMultiplier(t: number): number {
-  const p = phaseAt(t);
+export function scrapMultiplier(t: number, twist: TwistId | null = null): number {
+  const p = phaseAt(t, twist);
   if (p.phase === 'calm') return 1;
   const u = p.into / p.length;
-  if (p.phase === 'boom') return 1 + (peakFor(p.cycle) - 1) * u ** 1.6;
+  const peak = peakFor(p.cycle, twist);
+  if (p.phase === 'boom') return 1 + (peak - 1) * u ** 1.6;
   const crash = 4;
-  if (p.into < crash) return peakFor(p.cycle) + (0.35 - peakFor(p.cycle)) * (p.into / crash);
+  if (p.into < crash) return peak + (0.35 - peak) * (p.into / crash);
   return 0.35 + 0.65 * ((p.into - crash) / (p.length - crash));
 }
 
 export type Yard = 'yard-near' | 'yard-far';
 
 export type CityEventKind = 'clunkers' | 'stimulus' | 'recall' | 'min-wage';
+
+/** A junkyard's order: so many covers (or brass ones) by the deadline, each paid at `pay` times the price. */
+export interface Contract {
+  yard: Yard;
+  kind: 'any' | 'brass';
+  count: number;
+  delivered: number;
+  deadline: number;
+  pay: number;
+}
 
 export interface CityEvent {
   kind: CityEventKind;
@@ -268,12 +295,16 @@ export interface GameState {
   lastSeenEvent: number;
   warnedWithdrawal: boolean;
   warnedHeat: boolean;
-  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number; interest: number; rivalsFell: number };
+  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number; interest: number; rivalsFell: number; contracts: number };
   district: DistrictId;
   /** The event going on (and seconds left), and when the next one comes. */
   event: { kind: CityEventKind; left: number } | null;
   nextEventAt: number;
   rivals: number;
+  /** The daily cycle's twist, or null on a normal run. */
+  daily: TwistId | null;
+  contract: Contract | null;
+  nextContractAt: number;
   over: OverReason | null;
 }
 
@@ -282,7 +313,7 @@ export type GameEvent =
   | { type: 'pry-cancel' }
   | { type: 'stole'; underCrewsNose: boolean; kind: CoverKind }
   | { type: 'alarm' }
-  | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number; plastic: boolean }
+  | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number; plastic: boolean; contract: number }
   | { type: 'deposited'; amount: number }
   | { type: 'withdrew'; amount: number }
   | { type: 'borrowed'; amount: number; phase: Phase }
@@ -299,6 +330,9 @@ export type GameEvent =
   | { type: 'rival-stole'; x: number; y: number }
   | { type: 'rival-fell'; x: number; y: number; pushed: boolean }
   | { type: 'shoved'; took: boolean }
+  | { type: 'contract-new'; contract: Contract }
+  | { type: 'contract-done'; utils: number }
+  | { type: 'contract-failed' }
   | { type: 'stashed'; count: number }
   | { type: 'took'; count: number }
   | { type: 'bought'; drug: Drug; price: number; dea: boolean }
@@ -336,7 +370,7 @@ function makeAgent(state: GameState, kind: AgentKind, at: Tile, variant = 0): Ag
   return { id: state.nextId++, kind, mover: { x: at.x, y: at.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant, load: 0 };
 }
 
-export function newGame(rng: () => number = Math.random, district: DistrictId = 'downtown'): GameState {
+export function newGame(rng: () => number = Math.random, district: DistrictId = 'downtown', daily: TwistId | null = null): GameState {
   const d = setDistrict(district);
   const state: GameState = {
     time: 0,
@@ -361,7 +395,7 @@ export function newGame(rng: () => number = Math.random, district: DistrictId = 
     // You start at your squat's door.
     player: { mover: { x: d.start.x, y: d.start.y, path: [] }, walking: false, pry: null, nod: 0, rush: 0 },
     manholes: [
-      ...MANHOLE_SLOTS.map((t, i): Manhole => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', kind: rng() < d.brassChance ? 'brass' : 'iron', openedAt: 0, yours: false })),
+      ...MANHOLE_SLOTS.map((t, i): Manhole => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', kind: rng() < brassChance(daily) ? 'brass' : 'iron', openedAt: 0, yours: false })),
       { id: MANHOLE_SLOTS.length, x: FED_COVER.x, y: FED_COVER.y, state: 'covered', kind: 'fed', openedAt: 0, yours: false },
     ],
     agents: [],
@@ -375,14 +409,18 @@ export function newGame(rng: () => number = Math.random, district: DistrictId = 
     lastSeenEvent: -99,
     warnedWithdrawal: false,
     warnedHeat: false,
-    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0, interest: 0, rivalsFell: 0 },
+    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0, interest: 0, rivalsFell: 0, contracts: 0 },
+    daily,
+    contract: null,
+    nextContractAt: CONFIG.contracts.first,
     district: d.id,
     event: null,
     nextEventAt: CONFIG.events.first,
     rivals: 0,
     over: null,
   };
-  for (let i = 0; i < d.startCops; i++) state.agents.push(makeAgent(state, 'cop', d.copStart));
+  const cops = daily === 'police-state' ? 3 : d.startCops;
+  for (let i = 0; i < cops; i++) state.agents.push(makeAgent(state, 'cop', i === 0 ? d.copStart : edges()[i % 2]));
   for (let i = 0; i < PED_COUNT; i++) state.agents.push(makeAgent(state, 'ped', randomRoad(rng), i));
   sample(state);
   return state;
@@ -397,13 +435,15 @@ export function scrapPrice(state: GameState, yard: Yard, t = state.time): number
   const lag = yard === 'yard-far' ? SCHEDULE.lag : 0;
   const wobble = 1 + 0.05 * Math.sin(t * 0.7 + (yard === 'yard-far' ? 2 : 0));
   const clunkers = state.event?.kind === 'clunkers' ? 2 : 1;
-  return CONFIG.baseScrap * state.priceLevel * scrapMultiplier(t - lag) * wobble * clunkers;
+  return CONFIG.baseScrap * state.priceLevel * scrapMultiplier(t - lag, state.daily) * wobble * clunkers;
 }
 
 export function drugPrice(state: GameState, drug: Drug, t = state.time): number {
   const wobble = 1 + 0.08 * Math.sin(t * (drug === 'heroin' ? 0.5 : 0.63) + (drug === 'heroin' ? 0 : 1));
   const minWage = state.event?.kind === 'min-wage' ? 1.3 : 1;
-  return CONFIG[drug].price * state.priceLevel ** CONFIG.drugInflation * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1) * minWage;
+  // In a hyperinflation everything inflates alike (it's all just paper).
+  const power = state.daily === 'weimar' ? 1.1 : CONFIG.drugInflation;
+  return CONFIG[drug].price * state.priceLevel ** power * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1) * minWage;
 }
 
 /**
@@ -412,7 +452,7 @@ export function drugPrice(state: GameState, drug: Drug, t = state.time): number 
  * charges (buy) or pays (sell).
  */
 export function goldPrice(state: GameState, side: 'buy' | 'sell' = 'buy', t = state.time): number {
-  const p = phaseAt(t);
+  const p = phaseAt(t, state.daily);
   const mood = p.phase === 'boom' ? 1 - 0.08 * (p.into / p.length) : p.phase === 'bust' ? 0.92 + 0.28 * Math.min(1, p.into / 10) : 1;
   const wobble = 1 + 0.04 * Math.sin(t * 0.45 + 3);
   const spread = side === 'buy' ? 1 + CONFIG.goldSpread : 1 - CONFIG.goldSpread;
@@ -429,6 +469,16 @@ export const gearPrice = (state: GameState, id: GearId) => GEAR.find((g) => g.id
 
 /** Inflation per second, by phase. */
 const INFLATION: Record<Phase, number> = { calm: 0.002, boom: 0.006, bust: 0.001 };
+
+/** Inflation per second right now, with the daily twist. */
+export function inflation(phase: Phase, twist: TwistId | null): number {
+  if (twist === 'gold-standard') return 0;
+  if (twist === 'weimar') return INFLATION[phase] * 3 + 0.004;
+  if (twist === 'stagflation') return 0.005;
+  return INFLATION[phase];
+}
+
+const brassChance = (twist: TwistId | null) => (twist === 'gilded-age' ? 0.5 : DISTRICT.brassChance);
 
 function sample(state: GameState) {
   state.history.push({
@@ -599,9 +649,28 @@ export function act(state: GameState): GameEvent[] {
   } else if (c.kind === 'sell') {
     const other: Yard = c.yard === 'yard-near' ? 'yard-far' : 'yard-near';
     const price = scrapPrice(state, c.yard);
-    const total = price * cargoValue(state.cargo);
+    // Covers that fill this yard's order are paid extra.
+    const order = state.contract?.yard === c.yard ? state.contract : null;
+    const fits = (k: CoverKind) => (order?.kind === 'brass' ? k === 'brass' : k !== 'plastic');
+    let matched = 0;
+    let total = 0;
+    for (const k of state.cargo) {
+      const counts = order && matched < order.count - order.delivered && fits(k);
+      if (counts) matched++;
+      total += price * COVER_VALUE[k] * (counts ? order.pay : 1);
+    }
     const count = state.cargo.length;
-    events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0)), plastic: state.cargo.includes('plastic') });
+    events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0), state.daily), plastic: state.cargo.includes('plastic'), contract: matched });
+    if (order && matched > 0) {
+      order.delivered += matched;
+      if (order.delivered >= order.count) {
+        state.contract = null;
+        state.nextContractAt = state.time + CONFIG.contracts.gap;
+        state.utils += CONFIG.contracts.utils;
+        state.stats.contracts++;
+        events.push({ type: 'contract-done', utils: CONFIG.contracts.utils });
+      }
+    }
     state.cash += total;
     state.stats.sold += count;
     state.stats.earned += total;
@@ -701,7 +770,7 @@ export function repay(state: GameState): GameEvent[] {
 /** In a bust, the bank wants its money back by the end of it. */
 function callLoan(state: GameState, events: GameEvent[]) {
   if (state.debt <= 0 || state.loanDue !== null) return;
-  const p = phaseAt(state.time);
+  const p = phaseAt(state.time, state.daily);
   if (p.phase !== 'bust') return;
   const seconds = p.length - p.into;
   state.loanDue = state.time + seconds;
@@ -829,7 +898,7 @@ function updateCrew(state: GameState, a: Agent, dt: number, rng: () => number, e
     a.work -= dt;
     if (a.work > 0) return;
     job.state = 'covered';
-    job.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < DISTRICT.brassChance ? 'brass' : 'iron';
+    job.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < brassChance(state.daily) ? 'brass' : 'iron';
     events.push({ type: 'replaced', yours: job.yours, x: job.x, y: job.y });
     if (job.yours) advanceStep(state, 3, events);
     job.yours = false;
@@ -845,6 +914,27 @@ function updateCrew(state: GameState, a: Agent, dt: number, rng: () => number, e
     a.leaving = true;
     a.mover.path = findPath(tileOf(a.mover), DEPOT);
   }
+}
+
+/**
+ * A new order: 2–4 covers (or 1–2 brass ones) to one of the yards, due at the
+ * next FOMC meeting (the end of this phase, or the next one if that's too
+ * soon; on the gold standard, in 50 seconds).
+ */
+export function newContract(state: GameState, rng: () => number): Contract {
+  const t = state.time;
+  let deadline = phaseEnd(t, state.daily);
+  if (deadline - t < CONFIG.contracts.minSeconds) deadline = phaseEnd(deadline + 0.01, state.daily);
+  if (!Number.isFinite(deadline)) deadline = t + 50;
+  const brass = rng() < 0.25;
+  return {
+    yard: rng() < 0.5 ? 'yard-near' : 'yard-far',
+    kind: brass ? 'brass' : 'any',
+    count: brass ? 1 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 3),
+    delivered: 0,
+    deadline,
+    pay: CONFIG.contracts.pay,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -974,8 +1064,8 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
   const t = state.time;
 
   // The Fed
-  const info = phaseAt(t);
-  const upcoming = phaseAt(t + SCHEDULE.warn);
+  const info = phaseAt(t, state.daily);
+  const upcoming = phaseAt(t + SCHEDULE.warn, state.daily);
   const boundary = upcoming.phase === 'calm' ? -1 : upcoming.cycle * 2 + (upcoming.phase === 'bust' ? 1 : 0);
   if (upcoming.phase !== info.phase && boundary !== state.warnedFor) {
     state.warnedFor = boundary;
@@ -985,14 +1075,14 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     if (state.phase === 'bust') state.stats.bustsSurvived++;
     state.phase = info.phase;
     state.cycle = info.cycle;
-    state.rate = rateFor(info);
+    state.rate = rateFor(info, state.daily);
     events.push({ type: 'phase', phase: info.phase, rate: state.rate, cycle: info.cycle });
     if (info.phase === 'boom') {
       // Infrastructure bill: new manholes all over town.
       const paved = state.manholes.filter((h) => h.state === 'paved').slice(0, 3);
       for (const h of paved) {
         h.state = 'covered';
-        h.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < DISTRICT.brassChance ? 'brass' : 'iron';
+        h.kind = state.event?.kind === 'recall' ? 'plastic' : rng() < brassChance(state.daily) ? 'brass' : 'iron';
       }
       if (paved.length) events.push({ type: 'new-covers', count: paved.length });
       const fed = state.manholes.find((h) => h.kind === 'fed' && h.state === 'open');
@@ -1001,13 +1091,13 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
         fed.yours = false;
         events.push({ type: 'fed-refit' });
       }
-    } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < DISTRICT.maxCops) {
+    } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < (state.daily === 'police-state' ? 5 : DISTRICT.maxCops)) {
       // Tough times: more police.
       state.agents.push(makeAgent(state, 'cop', edges()[0]));
       events.push({ type: 'cop-joins' });
     }
   }
-  state.priceLevel *= 1 + INFLATION[state.phase] * dt;
+  state.priceLevel *= 1 + inflation(state.phase, state.daily) * dt;
 
   // The bank: interest both ways, and loans called in the bust
   if (state.savings > 0) {
@@ -1051,9 +1141,9 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
       events.push({ type: 'city-event-over', kind });
     }
   } else if (t >= state.nextEventAt) {
-    const e = CITY_EVENTS[Math.floor(rng() * CITY_EVENTS.length)];
+    const e = state.daily === 'helicopter' ? cityEvent('stimulus') : CITY_EVENTS[Math.floor(rng() * CITY_EVENTS.length)];
     state.event = { kind: e.kind, left: e.seconds };
-    state.nextEventAt = t + e.seconds + CONFIG.events.every + rng() * CONFIG.events.spread;
+    state.nextEventAt = t + e.seconds + (state.daily === 'helicopter' ? 24 : CONFIG.events.every + rng() * CONFIG.events.spread);
     events.push({ type: 'city-event', kind: e.kind });
     if (e.kind === 'stimulus') {
       const amount = 50 * state.priceLevel;
@@ -1062,6 +1152,17 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     } else if (e.kind === 'recall') {
       for (const h of state.manholes) if (h.kind === 'iron' && h.state === 'covered') h.kind = 'plastic';
     }
+  }
+
+  // Junkyard orders
+  if (state.contract && t >= state.contract.deadline) {
+    state.contract = null;
+    state.nextContractAt = t + CONFIG.contracts.gap + rng() * CONFIG.contracts.spread;
+    events.push({ type: 'contract-failed' });
+  } else if (!state.contract && t >= state.nextContractAt) {
+    const contract = newContract(state, rng);
+    state.contract = contract;
+    events.push({ type: 'contract-new', contract });
   }
 
   // The competition shows up

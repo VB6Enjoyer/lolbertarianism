@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { COLS, DISTRICTS, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, PLACES, placeAtDoor, placeById, ROAD_TILES, ROWS, setDistrict, STARTING_SLOTS } from './map.ts';
-import { act, CITY_EVENTS, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
+import { act, CITY_EVENTS, inflation, newContract, phaseEnd, rateFor, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
 import { ACHIEVEMENTS, normalizeUnlocked, Tracker } from './achievements.ts';
+import { dailyFor, normalizeDailyBests, seededRng, TWISTS } from './daily.ts';
+import { LINES, pickLine } from './rothbard.ts';
 
 function rng(seed: number) {
   let s = seed;
@@ -32,6 +34,7 @@ function quiet(): GameState {
   s.nextDeaAt = Infinity;
   s.nextEventAt = Infinity;
   s.rivals = 99; // no rival scrappers
+  s.nextContractAt = Infinity;
   return s;
 }
 
@@ -425,6 +428,111 @@ describe('austrian economics: the city', () => {
   });
 });
 
+describe('austrian economics: contracts', () => {
+  it('due at the next FOMC meeting (or the one after, if that is too soon)', () => {
+    const s = quiet();
+    s.time = 5;
+    const k = newContract(s, () => 0.9);
+    expect(k.deadline).toBe(SCHEDULE.calm);
+    expect(k).toMatchObject({ kind: 'any', count: 4, yard: 'yard-far', delivered: 0, pay: CONFIG.contracts.pay });
+    s.time = SCHEDULE.calm - 5;
+    expect(newContract(s, () => 0.1).deadline).toBe(SCHEDULE.calm + SCHEDULE.boom);
+    expect(newContract(s, () => 0.1).kind).toBe('brass');
+  });
+
+  it('matching covers pay double at that yard; filling the order pays utils', () => {
+    const s = quiet();
+    s.contract = { yard: 'yard-near', kind: 'any', count: 2, delivered: 0, deadline: 999, pay: 2 };
+    s.gear.cart = true;
+    s.cargo = ['iron', 'iron', 'iron'];
+    const door = placeById('yard-near').door;
+    teleport(s, door.x, door.y);
+    const price = scrapPrice(s, 'yard-near');
+    const events = act(s);
+    expect(events[0]).toMatchObject({ type: 'sold', count: 3, contract: 2 });
+    expect(events[0].type === 'sold' && events[0].total).toBeCloseTo(price * (2 * 2 + 1));
+    expect(events).toContainEqual({ type: 'contract-done', utils: CONFIG.contracts.utils });
+    expect(s.contract).toBeNull();
+    expect(s.utils).toBe(CONFIG.contracts.utils);
+  });
+
+  it('brass orders only take brass, and the other yard pays normally', () => {
+    const s = quiet();
+    s.contract = { yard: 'yard-far', kind: 'brass', count: 1, delivered: 0, deadline: 999, pay: 2 };
+    s.cargo = ['iron'];
+    const near = placeById('yard-near').door;
+    teleport(s, near.x, near.y);
+    expect(act(s)[0]).toMatchObject({ contract: 0 });
+    const far = placeById('yard-far').door;
+    teleport(s, far.x, far.y);
+    s.cargo = ['iron'];
+    expect(act(s)[0]).toMatchObject({ contract: 0 });
+    s.cargo = ['brass'];
+    expect(act(s)).toContainEqual({ type: 'contract-done', utils: CONFIG.contracts.utils });
+  });
+
+  it('expire at the deadline', () => {
+    const s = quiet();
+    s.contract = { yard: 'yard-far', kind: 'any', count: 3, delivered: 1, deadline: 1, pay: 2 };
+    expect(run(s, 1.1, still, rng(1), true)).toContainEqual({ type: 'contract-failed' });
+    expect(s.contract).toBeNull();
+  });
+});
+
+describe('austrian economics: the daily cycle', () => {
+  it('the same day is the same seed and twist; a week shows every twist once', () => {
+    const a = dailyFor(new Date(2026, 10, 12, 8));
+    expect(dailyFor(new Date(2026, 10, 12, 23, 59))).toEqual(a);
+    expect(a.key).toBe('2026-11-12');
+    const week = Array.from({ length: 7 }, (_, i) => dailyFor(new Date(2026, 10, 12 + i)).twist.id);
+    expect(new Set(week).size).toBe(TWISTS.length);
+    const r1 = seededRng(a.seed);
+    const r2 = seededRng(a.seed);
+    for (let i = 0; i < 10; i++) expect(r1()).toBe(r2());
+  });
+
+  it('the same seed plays out the same', () => {
+    const play = () => {
+      const r = seededRng(1234);
+      const s = newGame(r, 'downtown', 'helicopter');
+      run(s, 60, still, r, true);
+      return [s.cash, s.priceLevel, s.agents.map((a) => `${a.kind}${a.mover.x},${a.mover.y}`).join('|')];
+    };
+    expect(play()).toEqual(play());
+  });
+
+  it('twists: the gold standard never moves; Weimar inflates; Zero Rates booms longer; police state; gilded age', () => {
+    expect(phaseAt(500, 'gold-standard').phase).toBe('calm');
+    expect(phaseEnd(500, 'gold-standard')).toBe(Infinity);
+    expect(scrapMultiplier(70, 'gold-standard')).toBe(1);
+    expect(inflation('boom', 'gold-standard')).toBe(0);
+    expect(inflation('calm', 'weimar')).toBeGreaterThan(inflation('boom', null));
+    expect(phaseAt(SCHEDULE.calm + 60, 'zirp').phase).toBe('boom');
+    expect(rateFor(phaseAt(SCHEDULE.calm + 1, 'zirp'), 'zirp')).toBe(0);
+    expect(scrapMultiplier(SCHEDULE.calm + SCHEDULE.boom - 0.1, 'stagflation')).toBeLessThan(1.3);
+    expect(newGame(rng(1), 'downtown', 'police-state').agents.filter((a) => a.kind === 'cop')).toHaveLength(3);
+    const gilded = newGame(rng(1), 'downtown', 'gilded-age').manholes.filter((h) => h.kind === 'brass').length;
+    expect(gilded).toBeGreaterThan(newGame(rng(1)).manholes.filter((h) => h.kind === 'brass').length);
+    // Helicopter money: every event is a stimulus check
+    const s = quiet();
+    s.daily = 'helicopter';
+    s.nextEventAt = 0;
+    expect(run(s, 0.05, still, () => 0.9, true)).toContainEqual({ type: 'city-event', kind: 'stimulus' });
+  });
+
+  it('daily bests keep valid dates only', () => {
+    expect(normalizeDailyBests({ '2026-11-12': 120, nope: 3, '2026-11-13': 0 })).toEqual({ '2026-11-12': 120 });
+  });
+});
+
+describe('austrian economics: Rothbard', () => {
+  it('has something to say for every cue, and never repeats himself twice in a row', () => {
+    for (const [cue, lines] of Object.entries(LINES)) expect(lines.length, cue).toBeGreaterThan(0);
+    const first = pickLine('stole', 0);
+    for (let i = 0; i < 10; i++) expect(pickLine('stole', i / 10, first)).not.toBe(first);
+  });
+});
+
 describe('austrian economics: achievements', () => {
   it('unique ids, all filled in', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
@@ -434,7 +542,7 @@ describe('austrian economics: achievements', () => {
   it("selling the top at the Fed's yard, and both drugs", () => {
     const t = new Tracker(new Set());
     const s = newGame();
-    expect(t.update(s, [{ type: 'sold', count: 1, total: 40, yard: 'yard-near', price: 40, otherPrice: 25, multiplier: 2.3, plastic: false }])).toEqual(['peak', 'cantillon']);
+    expect(t.update(s, [{ type: 'sold', count: 1, total: 40, yard: 'yard-near', price: 40, otherPrice: 25, multiplier: 2.3, plastic: false, contract: 0 }])).toEqual(['peak', 'cantillon']);
     t.update(s, [{ type: 'bought', drug: 'heroin', price: 40, dea: false }]);
     expect(t.update(s, [{ type: 'bought', drug: 'crack', price: 30, dea: true }])).toEqual(['both', 'dea']);
   });

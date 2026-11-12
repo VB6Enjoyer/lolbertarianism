@@ -613,3 +613,20 @@ wait for replacement.
     away, no cops at first (two at most) and more brass. Best scores per
     district.
   - 6 more achievements (32 in all).
+- Short-term goals:
+  - 📋 Contracts: a junkyard posts an order (2–4 covers, or 1–2 brass ones)
+    due at the next FOMC meeting (the one after if that's under 20 s away).
+    Matching covers sold there pay ×2; filling it pays 20 utils. Shown on the
+    HUD, on the yard's sign and on the ticker.
+  - 🗨️ Rothbard's commentary (`rothbard.ts`): a speech bubble with his face
+    for the start, the Fed's meetings, booms and busts, steals, sales at the
+    top or the bottom, the bank, gold, the rival, events and contracts, plus an
+    idle line now and then.
+  - 📅 The daily cycle (`daily.ts`): a seeded downtown run, the same for
+    everyone each day, with a twist that rotates through the week: Weimar Day
+    (hyperinflation), Gold Standard Day (no booms, busts or inflation),
+    Stagflation Day, Police State Day, Helicopter Money Day, Gilded Age Day
+    (half the covers brass), Zero Rates Day (long booms, short busts). Its own
+    best per day, kept off the district bests.
+  - 5 more achievements (37 in all): Freedom of Contract, Order Book,
+    Wheelbarrow of Cash, Daily Cycle, A Week of Cycles.
