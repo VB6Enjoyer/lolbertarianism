@@ -15,7 +15,16 @@ const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getEl
 
 const els = {
   bankroll: byId('bankroll'),
-  bout: byId('bout-number'),
+  nightLabel: byId('night-label'),
+  boutDots: byId('bout-dots'),
+  goalFill: byId('goal-fill'),
+  goalText: byId('goal-text'),
+  guide: byId('guide'),
+  guideText: byId('guide-text'),
+  stakeCap: byId('stake-cap'),
+  liveSeconds: byId('live-seconds'),
+  logToggle: byId<HTMLButtonElement>('log-toggle'),
+  sharkLabel: byId('shark-label'),
   cards: [byId('card-0'), byId('card-1')] as const,
   fighters: [byId('fighter-0'), byId('fighter-1')] as const,
   round: byId('round'),
@@ -60,7 +69,6 @@ const els = {
   slip: byId('slip'),
   tabbar: document.querySelector<HTMLElement>('.tabs')!,
   venueName: byId('venue-name'),
-  nightInfo: byId('night-info'),
   stable: byId('stable'),
   night: byId('night'),
   nightTitle: byId('night-title'),
@@ -198,30 +206,139 @@ function lobsterSvg(f: Faction): string {
 
 const pips = (n: number, max = 10) => `<span class="pips">${'▮'.repeat(Math.round(n))}<i>${'▮'.repeat(Math.max(0, max - Math.round(n)))}</i></span>`;
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const firstName = (l: Lobster) => l.name.split(' ')[0];
+
+/** A stat as a bar with its number, so you can compare the two cards at a glance. */
+const STATS = [
+  { key: 'claw', icon: '🦀', name: 'Claw', max: 10, help: 'How hard its arguments hit' },
+  { key: 'shell', icon: '🛡️', name: 'Shell', max: 10, help: 'How much damage it blocks' },
+  { key: 'wits', icon: '🧠', name: 'Wits', max: 10, help: 'Critical hits, and who strikes first' },
+  { key: 'stamina', icon: '❤️', name: 'Stamina', max: 160, help: 'How much it can take' },
+] as const;
+
+function statBars(l: Lobster, other?: Lobster) {
+  return `<div class="stats">${STATS.map((st) => {
+    const v = l[st.key];
+    const better = other && v > other[st.key] ? ' better' : '';
+    return `<div class="stat${better}" title="${st.name}: ${st.help}"><span class="stat-name">${st.icon} ${st.name}</span><span class="bar"><i style="width:${Math.min(100, (v / st.max) * 100)}%"></i></span><b>${v}</b></div>`;
+  }).join('')}</div>`;
+}
+
+/** How this lobster's arguments fare against the other one: the matchup chart, worked out for you. */
+function edgeChips(side: Side) {
+  const me = bout.lobsters[side];
+  const them = bout.lobsters[side === 0 ? 1 : 0];
+  const tf = factionById(them.faction);
+  const moves = factionById(me.faction).moves;
+  const hits = moves.filter((m) => m.type === tf.weak).length;
+  const blocked = moves.filter((m) => m.type === tf.resists).length;
+  const who = escapeHtml(firstName(them));
+  const chips: string[] = [];
+  if (hits) chips.push(`<span class="edge good" title="${hits} of its ${moves.length} arguments are ${ARG_TYPES[tf.weak].name}: ×1.5 damage against a ${tf.name}">🎯 ${hits} of ${moves.length} args hit ${who}’s weak spot</span>`);
+  if (blocked) chips.push(`<span class="edge bad" title="${blocked} of its ${moves.length} arguments are ${ARG_TYPES[tf.resists].name}: ×0.65 damage against a ${tf.name}">🧱 ${blocked} of ${moves.length} bounce off ${who}</span>`);
+  if (!chips.length) chips.push('<span class="edge even" title="None of its arguments hit the other’s weak spot, and none bounce off">➖ No matchup edge</span>');
+  return `<div class="matchup">${chips.join('')}</div>`;
+}
 
 function renderCard(side: Side) {
   const l = bout.lobsters[side];
+  const other = bout.lobsters[side === 0 ? 1 : 0];
   const f = factionById(l.faction);
   const trait = traitById(l.trait);
-  const types = argTypesOf(l).map((t) => `<span title="${ARG_TYPES[t].name}">${ARG_TYPES[t].icon}</span>`).join('');
-  const form = l.form.length ? l.form.map((r) => `<i class="${r}">${r}</i>`).join('') : '<em>no fights yet</em>';
+  const types = argTypesOf(l);
+  const form = l.form.length ? l.form.map((r) => `<i class="${r}">${r}</i>`).join('') : '<em>debut</em>';
+  const corner = bout.entry && side === 0 ? '🦞 YOUR LOBSTER' : side === 0 ? 'RED CORNER' : 'BLUE CORNER';
   els.cards[side].style.setProperty('--shell', f.color);
   els.cards[side].style.setProperty('--accent', f.accent);
   els.cards[side].innerHTML = `
-    <div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(l.name)}</b><small>${f.name} · ${l.weight} lb</small></div></div>
-    <div class="record">${l.wins}–${l.losses} <span class="form">${form}</span></div>
-    <dl class="stats">
-      <dt>Claw</dt><dd>${pips(l.claw)}</dd>
-      <dt>Shell</dt><dd>${pips(l.shell)}</dd>
-      <dt>Wits</dt><dd>${pips(l.wits)}</dd>
-      <dt>Stamina</dt><dd><b>${l.stamina}</b></dd>
-    </dl>
-    <div class="args"><span class="label">Argues with</span> <span class="types">${types}</span></div>
-    <div class="args"><span class="label">Weak to</span> <b class="weak">${ARG_TYPES[f.weak].icon} ${ARG_TYPES[f.weak].name}</b></div>
-    <div class="args"><span class="label">Shrugs off</span> <b class="resist">${ARG_TYPES[f.resists].icon} ${ARG_TYPES[f.resists].name}</b></div>
-    <div class="trait" title="${l.traitKnown ? escapeHtml(trait.description) : 'Watch it fight to find out'}"><span class="label">Trait</span> ${l.traitKnown ? `<b>${trait.name}</b>` : '<b class="unknown">???</b>'}</div>
+    <div class="corner"><kbd>${side + 1}</kbd> ${corner}</div>
+    <div class="card-head"><span class="badge">${f.icon}</span><div class="who"><b>${escapeHtml(l.name)}</b><small>${f.name} · ${l.weight} lb</small></div><div class="record" title="Wins–losses, and the last five fights">${l.wins}–${l.losses}<span class="form">${form}</span></div></div>
+    ${statBars(l, other)}
+    ${edgeChips(side)}
+    <div class="tags">
+      <span class="tag" title="Argues with: ${types.map((t) => ARG_TYPES[t].name).join(', ')}">🗣️ ${types.map((t) => ARG_TYPES[t].icon).join(' ')}</span>
+      <span class="tag weak" title="Weak to ${ARG_TYPES[f.weak].name} arguments (×1.5 damage)">💔 ${ARG_TYPES[f.weak].icon} ${ARG_TYPES[f.weak].name}</span>
+      <span class="tag resist" title="Shrugs off ${ARG_TYPES[f.resists].name} arguments (×0.65 damage)">🛡️ ${ARG_TYPES[f.resists].icon} ${ARG_TYPES[f.resists].name}</span>
+      ${l.traitKnown ? `<span class="tag trait" title="${escapeHtml(trait.description)}">🧬 ${trait.name}</span>` : '<span class="tag trait unknown" title="Hidden. Watch it fight, buy a tip, or scout it (Intel) to find out">❓ Hidden trait</span>'}
+    </div>
     ${!l.traitKnown && l.rumor ? `<div class="rumor" title="A tip, not a fact">🗣️ ${tipsterById(l.rumor.by as TipsterId)?.name ?? 'Someone'} says: <b>${traitById(l.rumor.trait).name}</b>?</div>` : ''}
     ${!l.traitKnown && l.scouted ? `<div class="tell">👀 In the tank, it ${escapeHtml(TELLS[l.trait][l.id % 2])}</div>` : ''}`;
+  markPicks();
+}
+
+/** Ribbons on the cards of the lobsters you've got money on. */
+function markPicks() {
+  for (const side of [0, 1] as Side[]) {
+    const riding = yourBets.filter((b) => b.kind !== 'prop' && b.side === side && b.cashedOut === null).reduce((sum, b) => sum + b.stake, 0);
+    if (riding) els.cards[side].dataset.pick = `💵 ${money(riding)} ON IT`;
+    else delete els.cards[side].dataset.pick;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The guide: what's going on, and what to do now
+// ---------------------------------------------------------------------------
+
+let resultNote = '';
+let flashTimer = 0;
+
+function renderGuide() {
+  if (flashTimer) return;
+  const riding = yourBets.filter((b) => b.cashedOut === null).reduce((sum, b) => sum + b.stake, 0);
+  let step: 'bet' | 'fight' | 'collect' = 'bet';
+  let tone = '';
+  let text = '';
+  switch (phase) {
+    case 'opening':
+      text = '💬 The crowd is placing its bets. Watch the odds move…';
+      break;
+    case 'betting':
+      text = bout.entry
+        ? `🦞 Your lobster fights for a <b>${money(purseFor(bout.entry, save.career.venue))}</b> purse. Back it too, or just watch.`
+        : save.bouts < 3
+          ? '👇 <b>Set your stake</b>, then back a lobster. <b>🎯</b> on a card means its arguments hit the other’s weak spot.'
+          : '👇 <b>Set your stake</b> and back a lobster, or try <b>Props</b>, <b>Parlay</b> or <b>Intel</b> first.';
+      break;
+    case 'fighting':
+      step = 'fight';
+      text = `🥊 Fight on! ${riding ? `You’ve got <b>${money(riding)}</b> riding on it. ` : ''}<kbd>Space</kbd> skips to the result.`;
+      break;
+    case 'live':
+      step = 'fight';
+      tone = 'live';
+      text = '⏸ <b>Live market:</b> cash out a bet, bet on the fight as it stands, or continue.';
+      break;
+    case 'done':
+      step = 'collect';
+      tone = resultNote.startsWith('💰') ? 'good' : resultNote.startsWith('📉') ? 'bad' : '';
+      text = `${resultNote} <b>${save.career.bout >= NIGHT_BOUTS ? 'End of the night ▶' : 'Next bout ▶'}</b> when you’re ready.`;
+      break;
+  }
+  els.guide.dataset.step = step;
+  els.guide.dataset.tone = tone;
+  els.guideText.innerHTML = text;
+  const nudge = phase === 'betting' && save.bouts < 3 && yourBets.length === 0;
+  for (const b of els.bets) b.classList.toggle('nudge', nudge);
+}
+
+/** Something you tried didn't work: say so where you're looking. */
+function warn(text: string) {
+  log(text, 'warn');
+  clearTimeout(flashTimer);
+  els.guide.dataset.tone = 'warn';
+  els.guideText.textContent = `⚠️ ${text}`;
+  pulse(els.guide, 'shake');
+  flashTimer = window.setTimeout(() => {
+    flashTimer = 0;
+    renderGuide();
+  }, 2600);
+}
+
+function setPhase(p: Phase) {
+  phase = p;
+  els.preview.hidden = p === 'fighting' || p === 'done';
+  renderGuide();
+  renderSlip();
 }
 
 function renderChart() {
@@ -295,9 +412,9 @@ async function newBout() {
   voidStaleParlay();
   parlayPicks = [null, null, null];
   persist();
-  phase = 'opening';
   yourBets = [];
-  els.bout.textContent = String(save.bouts + 1);
+  resultNote = '';
+  setPhase('opening');
   els.round.textContent = '';
   els.result.hidden = true;
   els.live.hidden = true;
@@ -308,6 +425,7 @@ async function newBout() {
     el.className = `fighter ${side === 0 ? 'left' : 'right'}`;
     el.style.setProperty('--shell', f.color);
     el.querySelector('.lobster')!.innerHTML = `<span class="badge">${f.icon}</span>${lobsterSvg(f)}`;
+    el.querySelector('.nameplate')!.textContent = lobsters[side].name;
     setHp(side, lobsters[side].stamina, lobsters[side].stamina);
     el.querySelector<HTMLElement>('.say')!.hidden = true;
   }
@@ -339,7 +457,7 @@ async function newBout() {
     await wait(b.who === 'public' ? 150 : 380);
   }
   if (token !== boutToken) return;
-  phase = 'betting';
+  setPhase('betting');
   setBetButtons(true);
   renderPool();
   renderProps();
@@ -378,21 +496,22 @@ function showTab(name: string) {
 
 for (const t of els.tabs) t.addEventListener('click', () => showTab(t.dataset.tab!));
 
+/** Why this stake can't be placed (or null if it can). */
+function stakeProblem(amount: number): string | null {
+  if (amount < 10) return 'The minimum stake is $10. Even the free market has standards.';
+  if (amount > venue().maxStake) return `${venue().name} takes bets up to ${money(venue().maxStake)}.`;
+  if (amount > save.bankroll) return `You don’t have the capital for that (you’ve got ${money(save.bankroll)}).`;
+  return null;
+}
+
 /** Takes a stake from your bankroll (or explains why not). */
 function takeStake(): number | null {
+  const problem = stakeProblem(stake());
+  if (problem) {
+    warn(problem);
+    return null;
+  }
   const amount = stake();
-  if (amount > venue().maxStake) {
-    log(`${venue().name} takes bets up to ${money(venue().maxStake)}.`, 'warn');
-    return null;
-  }
-  if (amount < 10) {
-    log('The minimum stake is $10. Even the free market has standards.', 'warn');
-    return null;
-  }
-  if (amount > save.bankroll) {
-    log('You don’t have the capital for that.', 'warn');
-    return null;
-  }
   save.bankroll -= amount;
   updateBankroll();
   return amount;
@@ -400,10 +519,33 @@ function takeStake(): number | null {
 
 /** Your side bets on this bout, and the main button's label. */
 function renderSlip() {
-  const side = yourBets.filter((b) => b.kind === 'prop');
-  els.slip.hidden = side.length === 0;
-  els.slip.textContent = side.length ? `Your props: ${side.map((b) => `${propById(b.prop!).icon} ${money(b.stake)}`).join(' · ')}` : '';
-  els.watch.textContent = side.length || save.parlay ? 'No winner bet: start ▶' : 'Just watch';
+  const open = yourBets.filter((b) => b.cashedOut === null);
+  const chips = open.map((b) => {
+    const what = b.kind === 'prop' ? `${propById(b.prop!).icon} ${propById(b.prop!).name}` : `${b.kind === 'live' ? '⚡' : '💵'} ${escapeHtml(firstName(bout.lobsters[b.side]))}`;
+    return `<span class="ticket-chip side-${b.kind === 'prop' ? 'x' : b.side}">${what} <b>${money(b.stake)}</b> → ${money(b.payout)}</span>`;
+  });
+  if (save.parlay) chips.push(`<span class="ticket-chip side-x">🧾 Parlay <b>${money(save.parlay.stake)}</b> → ${money(save.parlay.stake * parlayOdds(save.parlay.legs))}</span>`);
+  els.slip.hidden = !chips.length || phase === 'live' || phase === 'done';
+  els.slip.innerHTML = chips.length ? `<span class="ticket-label">Your ticket</span>${chips.join('')}` : '';
+  const sideBets = open.some((b) => b.kind === 'prop') || !!save.parlay;
+  els.watch.textContent = sideBets ? '▶ Start (no winner bet)' : '👀 Just watch';
+  renderBadges();
+}
+
+/** Little counters on the tabs, so you can see what's going on in each without opening it. */
+function renderBadges() {
+  const set = (tab: string, text: string) => {
+    const b = els.tabs.find((t) => t.dataset.tab === tab)?.querySelector<HTMLElement>('.badge-count');
+    if (!b) return;
+    b.hidden = !text;
+    b.textContent = text;
+    b.classList.toggle('emoji', !!text && !/^[\d✓!]+$/.test(text));
+  };
+  set('props', String(yourBets.filter((b) => b.kind === 'prop').length || ''));
+  set('parlay', save.parlay ? '✓' : '');
+  set('intel', bout?.tips.length ? String(bout.tips.length) : '');
+  const st = save.stable;
+  set('stable', st ? (st.rest ? '🩹' : save.entry ? '🥊' : '!') : save.career.venue >= MARKET_VENUE ? '🐟' : '');
 }
 
 // --- Props ---
@@ -529,6 +671,7 @@ function voidStaleParlay() {
 // --- Intel: tipsters and scouting ---
 
 function renderIntel() {
+  renderBadges();
   els.tipsters.replaceChildren(
     ...TIPSTERS.map((t) => {
       const rec = save.tipsters[t.id];
@@ -625,8 +768,7 @@ function renderPool() {
   for (const side of [0, 1] as Side[]) {
     els.poolBar[side].style.flexGrow = String(Math.max(1, t[side]));
     els.poolBar[side].textContent = total ? `${money(t[side])}` : '';
-    const name = bout.lobsters[side].name;
-    els.bets[side].innerHTML = `Bet on <b>${escapeHtml(name)}</b> <span>${total ? `${odds[side].toFixed(2)}×` : '…'}</span>`;
+    els.bets[side].dataset.odds = total ? `${odds[side].toFixed(2)}×` : '…';
   }
   els.poolTotal.textContent = total ? `POOL ${money(total)} · house cut ${Math.round(TAKEOUT * 100)}%` : 'The crowd is placing its bets…';
   const rows = bout.pool.filter((b) => b.who !== 'public');
@@ -635,8 +777,8 @@ function renderPool() {
       const li = document.createElement('li');
       const face = b.who === 'you' ? '🫵' : bettorById(b.who).face;
       const who = b.who === 'you' ? 'You' : bettorById(b.who).name;
-      li.className = b.who === 'you' ? 'you' : '';
-      li.textContent = `${face} ${who}: ${money(b.amount)} on ${bout.lobsters[b.side].name}${b.late ? ' (late!)' : ''}`;
+      li.className = `side-${b.side}${b.who === 'you' ? ' you' : ''}`;
+      li.textContent = `${face} ${who} ${money(b.amount)} on ${firstName(bout.lobsters[b.side])}${b.late ? ' (late!)' : ''}`;
       li.title = b.who === 'you' ? '' : bettorById(b.who).style;
       return li;
     }),
@@ -646,16 +788,25 @@ function renderPool() {
 
 /** What your stake would pay on each side right now (your own money moves the odds). */
 function updatePreview() {
-  els.preview.hidden = phase !== 'betting' && phase !== 'opening';
-  if (els.preview.hidden) return;
-  const t = totals(bout.pool);
   const amount = stake();
-  if (!t[0] || !t[1] || amount < 10) {
-    els.preview.textContent = amount < 10 ? 'Minimum stake: $10' : '';
-    return;
+  const problem = stakeProblem(amount);
+  els.preview.textContent = problem ? `⚠️ ${problem}` : '';
+  els.preview.classList.toggle('problem', !!problem);
+  els.stakeCap.textContent = `max ${money(Math.min(venue().maxStake, Math.max(0, save.bankroll)))}`;
+  const t = totals(bout.pool);
+  const ready = t[0] > 0 && t[1] > 0 && !problem;
+  for (const side of [0, 1] as Side[]) {
+    const pays = ready ? projectedPayout(t, side, amount) : 0;
+    els.bets[side].innerHTML = betLabel(side, 'Bet on', els.bets[side].dataset.odds ?? '…', pays ? `${money(amount)} pays ${money(pays)}` : '');
   }
-  const pay = [projectedPayout(t, 0, amount), projectedPayout(t, 1, amount)];
-  els.preview.textContent = `${money(amount)} pays ${money(pay[0])} on ${bout.lobsters[0].name.split(' ')[0]} or ${money(pay[1])} on ${bout.lobsters[1].name.split(' ')[0]} (if nobody else bets after you).`;
+  if (phase === 'live') {
+    const odds = liveOddsPair();
+    for (const side of [0, 1] as Side[]) els.liveBets[side].innerHTML = betLabel(side, 'Bet live on', `${odds[side].toFixed(2)}×`, problem ? '' : `${money(amount)} pays ${money(Math.floor(amount * odds[side]))}`);
+  }
+}
+
+function betLabel(side: Side, verb: string, odds: string, pays: string) {
+  return `<kbd>${side + 1}</kbd><span class="who">${verb} <b>${escapeHtml(bout.lobsters[side].name)}</b></span><span class="odds">${odds}</span><small class="pays">${pays || '&nbsp;'}</small>`;
 }
 
 els.stake.addEventListener('input', () => {
@@ -672,8 +823,15 @@ function setHp(side: Side, hp: number, max: number) {
 }
 
 function updateBankroll() {
+  const before = Number(els.bankroll.dataset.value ?? save.bankroll);
   els.bankroll.textContent = money(save.bankroll);
+  els.bankroll.dataset.value = String(save.bankroll);
   els.bankroll.classList.toggle('broke', save.bankroll < 10);
+  if (save.bankroll !== before) pulse(els.bankroll, save.bankroll > before ? 'up' : 'down');
+  if (bout) {
+    renderVenue();
+    updatePreview();
+  }
 }
 
 const money = (n: number) => `$${Math.floor(n).toLocaleString('en-US')}`;
@@ -685,6 +843,12 @@ function log(text: string, kind = '') {
   els.log.prepend(div);
   while (els.log.children.length > 60) els.log.lastChild!.remove();
 }
+
+els.logToggle.addEventListener('click', () => {
+  const open = els.log.classList.toggle('collapsed') === false;
+  els.logToggle.setAttribute('aria-expanded', String(open));
+  els.logToggle.querySelector('span')!.textContent = open ? 'show less ▴' : 'show all ▾';
+});
 
 /** Unlocks an achievement (once), with a pop-up. */
 function award(id: string) {
@@ -723,6 +887,8 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.chips button')) {
     if (add === 'max') els.stake.value = String(Math.min(save.bankroll, venue().maxStake));
     else if (add === 'clear') els.stake.value = '0';
     else els.stake.value = String(Math.min(save.bankroll, venue().maxStake, stake() + Number(add)));
+    updatePreview();
+    if (!save.parlay && phase === 'betting') renderParlay();
   });
 }
 
@@ -731,16 +897,9 @@ function placeBet(side: Side | null) {
   getAudioContext();
   if (side !== null) {
     const amount = stake();
-    if (amount > venue().maxStake) {
-      log(`${venue().name} takes bets up to ${money(venue().maxStake)}.`, 'warn');
-      return;
-    }
-    if (amount < 10) {
-      log('The minimum stake is $10. Even the free market has standards.', 'warn');
-      return;
-    }
-    if (amount > save.bankroll) {
-      log('You don’t have the capital for that.', 'warn');
+    const problem = stakeProblem(amount);
+    if (problem) {
+      warn(problem);
       return;
     }
     save.bankroll -= amount;
@@ -753,7 +912,6 @@ function placeBet(side: Side | null) {
   }
   // Betting closes; somebody might still sneak a late bet in.
   phase = 'fighting';
-  els.preview.hidden = true;
   showTab('winner');
   els.tabbar.hidden = true;
   const late = lateBet(Math.random, venue().scale);
@@ -770,6 +928,8 @@ function placeBet(side: Side | null) {
     log(`Betting is closed. Final odds: ${odds[0].toFixed(2)}× / ${odds[1].toFixed(2)}×.`, 'bell');
   }
   renderPool();
+  markPicks();
+  setPhase('fighting');
   persist();
   void fight();
 }
@@ -826,13 +986,15 @@ function cashOut(b: YourBet, value: number) {
   play('cashout');
   log(`💸 Cashed out your ${money(b.stake)} on ${bout.lobsters[b.side].name} for ${money(value)}. ${value >= b.stake ? 'Profit locked in.' : 'Salvaged what you could.'}`, value >= b.stake ? 'win' : 'warn');
   renderYourBets();
+  markPicks();
 }
 
 function liveBet(side: Side) {
   if (phase !== 'live') return;
   const amount = stake();
-  if (amount < 10 || amount > save.bankroll || amount > venue().maxStake) {
-    log(amount < 10 ? 'The minimum stake is $10.' : amount > venue().maxStake ? `${venue().name} takes bets up to ${money(venue().maxStake)}.` : 'You don’t have the capital for that.', 'warn');
+  const problem = stakeProblem(amount);
+  if (problem) {
+    warn(problem);
     return;
   }
   const odds = liveOddsPair()[side];
@@ -844,6 +1006,7 @@ function liveBet(side: Side) {
   award('first-bet');
   log(`⚡ Live bet: ${money(amount)} on ${bout.lobsters[side].name} at ${odds.toFixed(2)}×.`, 'bet');
   renderYourBets();
+  markPicks();
 }
 
 els.liveBets[0].addEventListener('click', () => liveBet(0));
@@ -854,10 +1017,10 @@ els.liveContinue.addEventListener('click', () => continueLive?.());
 async function liveBreak(result: FightResult, roundDone: number) {
   const [a, b] = bout.lobsters;
   liveP = publicChance(a, b, stateAfterRound(a, b, result, roundDone), 200);
-  phase = 'live';
+  setPhase('live');
   const odds = liveOddsPair();
   els.liveTitle.textContent = `⏸ After round ${roundDone}: the live market`;
-  for (const side of [0, 1] as Side[]) els.liveBets[side].innerHTML = `Bet live on <b>${escapeHtml(bout.lobsters[side].name)}</b> <span>${odds[side].toFixed(2)}×</span>`;
+  updatePreview();
   renderYourBets();
   els.live.hidden = false;
   els.stakeRow.hidden = false;
@@ -871,6 +1034,7 @@ async function liveBreak(result: FightResult, roundDone: number) {
       if (!continueLive) return;
       const left = Math.max(0, LIVE_SECONDS - (performance.now() - started) / 1000);
       els.liveTimer.style.width = `${(left / LIVE_SECONDS) * 100}%`;
+      els.liveSeconds.textContent = `${Math.ceil(left)}s`;
       if (left <= 0) continueLive();
       else requestAnimationFrame(tick);
     };
@@ -883,7 +1047,7 @@ async function liveBreak(result: FightResult, roundDone: number) {
   els.live.hidden = true;
   els.stakeRow.hidden = true;
   els.skip.hidden = false;
-  phase = 'fighting';
+  setPhase('fighting');
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,7 +1178,7 @@ function revealTrait(side: Side) {
 }
 
 async function fight() {
-  phase = 'fighting';
+  setPhase('fighting');
   skipping = false;
   els.betRow.hidden = true;
   els.stakeRow.hidden = true;
@@ -1156,6 +1320,10 @@ function finish(result: FightResult) {
   if (save.bankroll < 10) setTimeout(showBroke, 900);
   persist();
   updateBankroll();
+  resultNote = betted ? (net > 0 ? `💰 ${line}` : net < 0 ? `📉 ${line}` : `🤝 ${line}`) : `👀 ${winner.name} wins ${how}.`;
+  renderGuide();
+  renderSlip();
+  markPicks();
   els.result.innerHTML = `<b>${escapeHtml(winner.name)}</b> wins ${how}<small>${escapeHtml(line) || 'You watched from the sidelines.'}</small>`;
   els.result.hidden = false;
   els.result.classList.toggle('won', betted && net > 0);
@@ -1190,8 +1358,24 @@ function clampStake() {
 
 function renderVenue() {
   const v = venue();
+  const c = save.career;
   els.venueName.textContent = `${v.icon} ${v.name}`;
-  els.nightInfo.textContent = `Night ${save.career.night} · bout ${Math.min(NIGHT_BOUTS, save.career.bout + (phase === 'done' ? 0 : 1))} of ${NIGHT_BOUTS} · max stake ${money(v.maxStake)}${save.career.venue < VENUES.length - 1 ? ` · next venue at ${money(v.target)}` : ` · ${money(v.target)} wins it all`}`;
+  els.venueName.title = `${v.name}: bets up to ${money(v.maxStake)}`;
+  els.nightLabel.textContent = `Night ${c.night} · bout ${Math.min(NIGHT_BOUTS, c.bout + (phase === 'done' ? 0 : 1))}/${NIGHT_BOUTS}`;
+  els.boutDots.replaceChildren(
+    ...Array.from({ length: NIGHT_BOUTS }, (_, i) => {
+      const dot = document.createElement('i');
+      dot.className = i < c.bout ? 'done' : i === c.bout && phase !== 'done' ? 'now' : '';
+      dot.title = `Bout ${i + 1} of ${NIGHT_BOUTS}`;
+      return dot;
+    }),
+  );
+  const next = VENUES[c.venue + 1];
+  els.goalFill.style.width = `${Math.min(100, (save.bankroll / v.target) * 100)}%`;
+  els.goalFill.parentElement!.classList.toggle('reached', save.bankroll >= v.target);
+  els.goalText.textContent = save.bankroll >= v.target
+    ? `✅ ${next ? `${next.icon} ${next.name} after tonight` : 'Champion after tonight'}`
+    : `${money(v.target)} → ${next ? `${next.icon} ${next.name}` : '🏆 the title'}`;
   els.arena.dataset.venue = v.id;
 }
 
@@ -1254,6 +1438,7 @@ function statPips(l: Lobster) {
 }
 
 function renderStable() {
+  renderBadges();
   const st = save.stable;
   if (!st) {
     if (save.career.venue < MARKET_VENUE) {
@@ -1309,6 +1494,7 @@ function renderStable() {
       save.entry = save.entry === tier ? null : tier;
       persist();
       renderStable();
+      renderBadges();
       if (save.entry) log(`🥊 ${l.name} is signed up for the next bout: ${tier === 'easy' ? 'an easy' : tier === 'even' ? 'an even' : 'a hard'} fight for ${money(purseFor(tier, save.career.venue))}.`, 'bell');
     });
   }
@@ -1373,7 +1559,7 @@ const SHARK_LINES = [
 
 function renderSharkButton() {
   const d = save.shark.debt;
-  els.sharkButton.textContent = d > 0 ? `🦈 ${money(d)}` : '🦈 Vinny';
+  els.sharkLabel.textContent = d > 0 ? money(d) : 'Vinny';
   els.sharkButton.classList.toggle('owing', d > 0);
   els.sharkButton.classList.toggle('danger', d > 0 && save.shark.nightsUnpaid >= SHARK_PATIENCE - 1);
 }

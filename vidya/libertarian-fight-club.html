@@ -12,21 +12,29 @@
 <body>
     <div id="app">
         <header class="topbar">
-            <div class="brand">🦞 LIBERTARIAN FIGHT CLUB <small>The Invisible Claw</small></div>
-            <div class="venue"><b id="venue-name">🍳 The Kitchen Floor</b><small id="night-info"></small></div>
-            <div class="bout">BOUT <b id="bout-number">1</b></div>
-            <button id="show-chart" class="small-button" type="button">📖 Matchup chart</button>
-            <button id="show-achievements" class="small-button" type="button" aria-label="Achievements">🏅</button>
-            <button id="show-shark" class="small-button shark-button" type="button">🦈 Vinny</button>
-            <div class="bankroll">BANKROLL <b id="bankroll">$500</b></div>
-            <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
+            <div class="brand"><span class="brand-icon">🦞</span><div>LIBERTARIAN FIGHT CLUB<small>The Invisible Claw</small></div></div>
+            <div class="venue">
+                <div class="venue-line"><b id="venue-name">🍳 The Kitchen Floor</b><span id="night-label" class="night-label">Night 1</span></div>
+                <div id="bout-dots" class="bout-dots" aria-label="Tonight's bouts"></div>
+                <div class="goal" title="End a night with this much to move up a venue">
+                    <div class="goal-bar"><i id="goal-fill"></i></div>
+                    <small id="goal-text"></small>
+                </div>
+            </div>
+            <div class="bankroll"><small>BANKROLL</small><b id="bankroll">$500</b></div>
+            <nav class="tools" aria-label="Menu">
+                <button id="show-chart" class="tool-button" type="button" title="Which arguments hurt which faction">📖<span>Chart</span></button>
+                <button id="show-achievements" class="tool-button" type="button" title="Achievements">🏅<span>Awards</span></button>
+                <button id="show-shark" class="tool-button shark-button" type="button" title="Vinny the Fin, loan shark">🦈<span id="shark-label">Vinny</span></button>
+                <button id="mute" class="tool-button" type="button" aria-label="Toggle sound" title="Sound">🔊</button>
+            </nav>
         </header>
 
         <!-- The tale of the tape -->
         <section class="tape">
-            <div id="card-0" class="card"></div>
+            <div id="card-0" class="card side-0"></div>
             <div class="vs">VS</div>
-            <div id="card-1" class="card"></div>
+            <div id="card-1" class="card side-1"></div>
         </section>
 
         <!-- The kitchen floor -->
@@ -42,11 +50,13 @@
             <div id="round" class="round"></div>
             <div class="ring">
                 <div id="fighter-0" class="fighter left">
+                    <div class="nameplate"></div>
                     <div class="hp"><i></i><span></span></div>
                     <div class="say" hidden></div>
                     <div class="lobster"></div>
                 </div>
                 <div id="fighter-1" class="fighter right">
+                    <div class="nameplate"></div>
                     <div class="hp"><i></i><span></span></div>
                     <div class="say" hidden></div>
                     <div class="lobster"></div>
@@ -55,27 +65,37 @@
             <div id="result" class="result" hidden></div>
         </section>
 
+        <!-- What to do now -->
+        <section id="guide" class="guide" aria-live="polite">
+            <ol class="steps" aria-hidden="true">
+                <li data-step="bet"><i>1</i><span>Bet</span></li>
+                <li data-step="fight"><i>2</i><span>Fight</span></li>
+                <li data-step="collect"><i>3</i><span>Collect</span></li>
+            </ol>
+            <p id="guide-text" class="guide-text"></p>
+        </section>
+
         <!-- Betting -->
         <section class="betbar">
             <div class="tabs" role="tablist">
-                <button type="button" data-tab="winner" class="on">🏆 Winner</button>
-                <button type="button" data-tab="props">🎲 Props</button>
-                <button type="button" data-tab="parlay">🧾 Parlay</button>
-                <button type="button" data-tab="intel">🕵️ Intel</button>
-                <button type="button" data-tab="stable">🦞 Your lobster</button>
+                <button type="button" data-tab="winner" class="on" title="Bet on who wins, against the crowd">🏆<span>Winner</span></button>
+                <button type="button" data-tab="props" title="The house's fixed odds on how it ends">🎲<span>Props</span><em class="badge-count" hidden></em></button>
+                <button type="button" data-tab="parlay" title="Three winners in a row, odds multiplied">🧾<span>Parlay</span><em class="badge-count" hidden></em></button>
+                <button type="button" data-tab="intel" title="Buy tips, scout lobsters">🕵️<span>Intel</span><em class="badge-count" hidden></em></button>
+                <button type="button" data-tab="stable" title="Buy, train and fight your own lobster">🦞<span>Your lobster</span><em class="badge-count" hidden></em></button>
             </div>
             <!-- The pool: everyone's money, and the odds it makes -->
             <div id="pool" class="pool tab-pane" data-tab="winner">
-                <div class="pool-head"><span id="pool-total">The crowd is placing its bets…</span><span class="pool-help" title="Pool betting: the pot, minus the house's cut, is split among whoever backed the winner. The odds are whatever the crowd makes them, and your own stake moves them.">ⓘ How the pool works</span></div>
+                <div class="pool-head"><span id="pool-total">The crowd is placing its bets…</span><span class="pool-help" tabindex="0" title="Pool betting: the pot, minus the house's cut, is split among whoever backed the winner. The odds are whatever the crowd makes them, and your own stake moves them.">ⓘ How the pool works</span></div>
                 <div class="pool-bar"><i id="pool-bar-0" class="left"></i><i id="pool-bar-1" class="right"></i></div>
                 <ul id="pool-bets" class="pool-bets"></ul>
             </div>
             <div class="tab-pane" data-tab="props" hidden>
-                <p class="pane-note">The house's fixed odds on how the fight goes. It reads the full matchup chart but can't see hidden traits. Props settle at the end (no cash-out).</p>
+                <p class="pane-note">Fixed odds from the house on <b>how</b> the fight goes. It reads the matchup chart but can't see hidden traits. Uses your stake below. No cash-out.</p>
                 <div id="props" class="props"></div>
             </div>
             <div class="tab-pane" data-tab="parlay" hidden>
-                <p class="pane-note">Pick the winners of this bout and the next two on tonight's card. The odds multiply; one wrong pick and it's gone.</p>
+                <p class="pane-note">Pick the winner of this bout and the next two. The odds multiply; one wrong pick and it's gone.</p>
                 <div id="parlay-legs" class="legs"></div>
                 <p id="parlay-summary" class="preview"></p>
                 <button id="parlay-place" type="button" class="next-button">Place the parlay</button>
@@ -91,26 +111,28 @@
                 <ul id="notebook" class="notebook"></ul>
             </div>
             <div class="stake">
-                <label for="stake">Stake</label>
-                <input id="stake" type="number" min="10" step="10" value="50" inputmode="numeric">
+                <label for="stake">Your stake</label>
+                <div class="stake-input"><span>$</span><input id="stake" type="number" min="10" step="10" value="50" inputmode="numeric"></div>
                 <div class="chips">
-                    <button type="button" data-add="10">+10</button>
-                    <button type="button" data-add="50">+50</button>
-                    <button type="button" data-add="100">+100</button>
-                    <button type="button" data-add="max">MAX</button>
-                    <button type="button" data-add="clear">C</button>
+                    <button type="button" data-add="10" class="chip c10">+10</button>
+                    <button type="button" data-add="50" class="chip c50">+50</button>
+                    <button type="button" data-add="100" class="chip c100">+100</button>
+                    <button type="button" data-add="max" class="chip cmax">MAX</button>
+                    <button type="button" data-add="clear" class="chip cclear" aria-label="Clear">✕</button>
                 </div>
+                <small id="stake-cap" class="stake-cap"></small>
             </div>
             <p id="preview" class="preview"></p>
-            <p id="slip" class="slip" hidden></p>
+            <div id="slip" class="ticket" hidden></div>
             <div class="bets">
                 <button id="bet-0" class="bet-button left" type="button"></button>
-                <button id="watch" class="watch-button" type="button">Just watch</button>
+                <button id="watch" class="watch-button" type="button">👀 Just watch</button>
                 <button id="bet-1" class="bet-button right" type="button"></button>
             </div>
             <!-- Between rounds -->
             <div id="live" class="live" hidden>
-                <div class="live-head"><b id="live-title">⏸ The live market</b><div class="live-clock"><i id="live-timer"></i></div></div>
+                <div class="live-head"><b id="live-title">⏸ The live market</b><span id="live-seconds" class="live-seconds">8</span></div>
+                <div class="live-clock"><i id="live-timer"></i></div>
                 <ul id="your-bets" class="your-bets"></ul>
                 <div class="bets">
                     <button id="live-bet-0" class="bet-button left" type="button"></button>
@@ -119,12 +141,15 @@
                 </div>
             </div>
             <div class="after" hidden>
-                <button id="skip" class="watch-button" type="button">⏩ Skip to the result</button>
+                <button id="skip" class="watch-button" type="button">⏩ Skip to the result <kbd>Space</kbd></button>
                 <button id="next" class="next-button" type="button" hidden>Next bout ▶</button>
             </div>
         </section>
 
-        <section id="log" class="log" aria-live="polite"></section>
+        <section class="log-wrap">
+            <button id="log-toggle" class="log-toggle" type="button" aria-expanded="false">📜 Fight log <span>show all ▾</span></button>
+            <div id="log" class="log collapsed" aria-live="polite"></div>
+        </section>
 
         <!-- Matchup chart -->
         <div id="chart" class="overlay" hidden>
@@ -186,17 +211,26 @@
             <div class="panel">
                 <h1>The Invisible Claw</h1>
                 <p class="tagline">Libertarians are fighting over who is the most libertarian. Bet your fiat on the winner.</p>
-                <ul class="rules">
-                    <li>🦞 Every lobster is a <b>faction</b>: Ancap, Minarchist, Austrian, Chicago, Objectivist, Georgist, Agorist, Hoppean, Bleeding-Heart, Mises Caucus.</li>
-                    <li>🗣️ Fights are <b>debates</b>: three rounds of arguments. Each faction is <b>weak</b> to one kind of argument and <b>shrugs off</b> another.</li>
-                    <li>📊 Read the tale of the tape: claw, shell, stamina, wits, record and form. Some lobsters hide a <b>trait</b>; once you've seen it, it's on the card.</li>
-                    <li>💸 It's <b>pool betting</b>: the crowd sets the odds. 😱 Screaming Susan backs whoever's popular, 😏 Squatting Sheila the underdog, 🤪 LMAO Larry whatever's funniest, and the rest follow the stats while only half-reading the matchup chart. <b>That's your edge.</b></li>
-                    <li>⏸ Between rounds the <b>live market</b> opens: bet on the fight as it stands, or <b>cash out</b> a bet early.</li>
-                    <li>🏟️ A <b>career</b>: five bouts a night. End a night with enough money to move up from the 🍳 Kitchen Floor to the 🚗 Garage, 🏕️ PorcFest, the 🏛️ Convention, and the 🏰 Liberland Championship. Go broke and you get thrown down a venue.</li>
-                    <li>🦈 Broke? <b>Vinny the Fin</b> lends at 20% a night, and collects after three unpaid nights. Or call your uncle and get thrown down a venue.</li>
-                    <li>🦞 Once you reach the Garage, <b>buy a lobster of your own</b> at the fish market, train it, and send it into the ring for purses.</li>
-                    <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
-                </ul>
+                <div class="how">
+                    <div><span>📊</span><b>Read the tape</b><small>Each faction is weak to one kind of argument. 🎯 shows who hits whose weak spot.</small></div>
+                    <div><span>💸</span><b>Bet against the crowd</b><small>The crowd sets the odds, and it only half-reads the matchups. That's your edge.</small></div>
+                    <div><span>🏟️</span><b>Climb the venues</b><small>Five bouts a night. End a night rich enough to move up, all the way to Liberland.</small></div>
+                </div>
+                <details class="all-rules">
+                    <summary>All the rules</summary>
+                    <ul class="rules">
+                        <li>🦞 Every lobster is a <b>faction</b>: Ancap, Minarchist, Austrian, Chicago, Objectivist, Georgist, Agorist, Hoppean, Bleeding-Heart, Mises Caucus.</li>
+                        <li>🗣️ Fights are <b>debates</b>: three rounds of arguments. Each faction is <b>weak</b> to one kind of argument (×1.5) and <b>shrugs off</b> another (×0.65).</li>
+                        <li>📊 Read the tale of the tape: claw, shell, stamina, wits, record and form. Some lobsters hide a <b>trait</b>; once you've seen it, it's on the card.</li>
+                        <li>💸 It's <b>pool betting</b>: the crowd sets the odds. 😱 Screaming Susan backs whoever's popular, 😏 Squatting Sheila the underdog, 🤪 LMAO Larry whatever's funniest, and the rest follow the stats while only half-reading the matchup chart.</li>
+                        <li>⏸ Between rounds the <b>live market</b> opens: bet on the fight as it stands, or <b>cash out</b> a bet early.</li>
+                        <li>🏟️ A <b>career</b>: five bouts a night, from the 🍳 Kitchen Floor to the 🚗 Garage, 🏕️ PorcFest, the 🏛️ Convention, and the 🏰 Liberland Championship. Go broke and you get thrown down a venue.</li>
+                        <li>🦈 Broke? <b>Vinny the Fin</b> lends at 20% a night, and collects after three unpaid nights. Or call your uncle and get thrown down a venue.</li>
+                        <li>🦞 Once you reach the Garage, <b>buy a lobster of your own</b> at the fish market, train it, and send it into the ring for purses.</li>
+                        <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
+                        <li>⌨️ Keys: <kbd>1</kbd>/<kbd>2</kbd> bet on a lobster, <kbd>Space</kbd> skips, continues, or goes to the next bout.</li>
+                    </ul>
+                </details>
                 <p id="title-best" class="best"></p>
                 <div class="panel-buttons">
                     <button id="start" type="button" class="big-button">Enter the market</button>
