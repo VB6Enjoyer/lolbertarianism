@@ -725,4 +725,21 @@ into a handicapping game. Steps 1 and 2 of the plan:
   all three winners at the multiplied odds (each leg up to 10×, the parlay up
   to 250×); legs settle bout by bout.
 
-Next: a career of fight nights, and your own lobster to train and fight.
+### Libertarian Fight Club: step 4, the career and your own lobster ✅
+
+- Career (`career.ts`): nights of five bouts at five venues, each with its
+  own floor, bigger pools and higher stake limits: 🍳 the Kitchen Floor (max
+  $250), 🚗 the Garage ($100 a night at the door), 🏕️ PorcFest, 🏛️ the
+  Convention, 🏰 the Liberland Championship. End a night with the venue's
+  target ($1,000, $4,000, $15,000, $60,000) to be invited up; $250,000 at
+  Liberland makes you champion. A night summary after each. Go broke and your
+  uncle bails you out, but the bouncers throw you down a venue; can't pay the
+  door fee and you drop too.
+- Your own lobster: the fish market opens at the Garage, with three lots a
+  night ($700 to $1,400), weaker than league fighters, traits hidden until you
+  buy (a lemon is possible). Name it; train claw, shell and wits (+1) or
+  stamina (+10) at rising prices; pay a therapist ($400) to cure a bad trait.
+  Sign it up for the next bout against an easy, even or hard opponent for a
+  purse that grows with the tier and the venue, and bet on it in the pool
+  (no parlays on its bouts: conflict of interest). A loss means rest (two
+  bouts after a KO) and a 35% chance of an injury that costs a point.

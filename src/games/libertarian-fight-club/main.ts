@@ -6,6 +6,7 @@ import { ARG_TYPES, FACTIONS, factionById, makeRoster, normalizeRoster, traitByI
 import { argTypesOf, pickBout, publicChance, revealedSides, ROUNDS, simulate, stateAfterRound, weighIn, type FightEvent, type FightResult, type Side } from './fight.ts';
 import { BETTORS, bettorById, cashOutValue, crowdBets, lateBet, liveOdds, poolOdds, projectedPayout, TAKEOUT, totals, type PoolBet } from './pool.ts';
 import { buyTip, normalizeRecords, SCOUT_PRICE, TELLS, TIPSTERS, tipsterById, type Tip, type TipsterId, type TrackRecords } from './intel.ts';
+import { afterLoss, bailout, BAD_TRAITS, endNight, MARKET_VENUE, marketOffers, MINE_ID, NIGHT_BOUTS, normalizeCareer, normalizeStable, pickOpponent, purseFor, startNight, suggestName, THERAPY_PRICE, TIERS, train, trainingCost, VENUES, type Career, type NightOutcome, type Offer, type Stable, type Tier, type TrainStat } from './career.ts';
 import { MAX_LEG_ODDS, normalizeParlay, parlayOdds, PROPS, propById, propChances, propOdds, propOutcomes, settleLeg, type Parlay, type PropId } from './props.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -56,6 +57,13 @@ const els = {
   notebook: byId('notebook'),
   slip: byId('slip'),
   tabbar: document.querySelector<HTMLElement>('.tabs')!,
+  venueName: byId('venue-name'),
+  nightInfo: byId('night-info'),
+  stable: byId('stable'),
+  night: byId('night'),
+  nightTitle: byId('night-title'),
+  nightBody: byId('night-body'),
+  nightNext: byId<HTMLButtonElement>('night-next'),
 };
 
 // ---------------------------------------------------------------------------
@@ -73,6 +81,12 @@ interface Save {
   /** The next bouts on tonight's card (pairs of roster ids), and your parlay on them. */
   card: [number, number][];
   parlay: Parlay | null;
+  /** The career: venue, night, and how tonight is going. */
+  career: Career;
+  /** Your own lobster, today's fish market, and the fight you've signed it up for. */
+  stable: Stable | null;
+  market: Offer[];
+  entry: Tier | null;
 }
 
 const START_BANKROLL = 500;
@@ -87,7 +101,14 @@ const save: Save = {
   tipsters: normalizeRecords(saved?.tipsters),
   card: (Array.isArray(saved?.card) ? saved!.card : []).filter((c): c is [number, number] => Array.isArray(c) && c.length === 2 && c.every((x) => Number.isInteger(x) && x >= 0 && x < 16) && c[0] !== c[1]).slice(0, 2),
   parlay: normalizeParlay(saved?.parlay),
+  career: normalizeCareer(saved?.career, Math.max(0, Math.floor(Number(saved?.bankroll ?? START_BANKROLL) || 0))),
+  stable: normalizeStable(saved?.stable),
+  market: [],
+  entry: saved?.entry === 'easy' || saved?.entry === 'even' || saved?.entry === 'hard' ? saved.entry : null,
 };
+// The market's lots are regenerated on load (they're cheap to make, and it keeps saves honest).
+save.market = marketOffers(Math.random, save.career.night);
+const venue = () => VENUES[save.career.venue];
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -204,6 +225,8 @@ interface Bout {
   propOdds: Record<PropId, number>;
   /** Tips you bought for this bout. */
   tips: Tip[];
+  /** Your lobster's fight: the tier you signed up for (null for a league bout). */
+  entry: Tier | null;
 }
 
 /** Your bets on this bout: the pool bet, and any live bets. `payout` is what it pays if it wins. */
@@ -227,12 +250,22 @@ let boutToken = 0;
 
 async function newBout() {
   const token = ++boutToken;
-  // Tonight's card: the next bout comes off the queue, and the queue is topped up.
-  const ids = save.card.shift() ?? pickBout(save.roster.length, Math.random, lastPair);
-  lastPair = ids;
-  while (save.card.length < 2) save.card.push(pickBout(save.roster.length, Math.random, save.card[save.card.length - 1] ?? ids));
-  const lobsters: [Lobster, Lobster] = [save.roster[ids[0]], save.roster[ids[1]]];
-  bout = { lobsters, ids, publicP: publicChance(lobsters[0], lobsters[1]), pool: [], propOdds: propOdds(propChances(lobsters[0], lobsters[1])), tips: [] };
+  // Your lobster's fight goes in before the card's next bout; otherwise the next bout comes off the card.
+  const entry = save.entry && save.stable && save.stable.rest === 0 ? save.entry : null;
+  save.entry = null;
+  let ids: [number, number];
+  let lobsters: [Lobster, Lobster];
+  if (entry && save.stable) {
+    const opponent = pickOpponent(save.roster, entry, Math.random);
+    ids = [MINE_ID, opponent.id];
+    lobsters = [save.stable.lobster, opponent];
+  } else {
+    ids = save.card.shift() ?? pickBout(save.roster.length, Math.random, lastPair);
+    lastPair = ids;
+    lobsters = [save.roster[ids[0]], save.roster[ids[1]]];
+  }
+  while (save.card.length < 2) save.card.push(pickBout(save.roster.length, Math.random, save.card[save.card.length - 1] ?? lastPair ?? [0, 1]));
+  bout = { lobsters, ids, publicP: publicChance(lobsters[0], lobsters[1]), pool: [], propOdds: propOdds(propChances(lobsters[0], lobsters[1])), tips: [], entry };
   voidStaleParlay();
   parlayPicks = [null, null, null];
   persist();
@@ -256,18 +289,20 @@ async function newBout() {
   els.stakeRow.hidden = false;
   els.after.hidden = true;
   setBetButtons(false);
-  // Lost some? Don't leave a stake you can't cover.
-  if (stake() > save.bankroll) els.stake.value = String(save.bankroll);
+  // Lost some? Don't leave a stake you can't cover (or the venue won't take).
+  clampStake();
   updateBankroll();
+  renderVenue();
+  renderStable();
   renderPool();
   renderProps();
   renderParlay();
   renderIntel();
   renderSlip();
   els.tabbar.hidden = false;
-  log(`🔔 Bout ${save.bouts + 1}: ${lobsters[0].name} (${factionById(lobsters[0].faction).name}) vs ${lobsters[1].name} (${factionById(lobsters[1].faction).name}). The pool is open.`, 'bell');
+  log(entry ? `🦞 Your lobster ${lobsters[0].name} steps into the ring against ${lobsters[1].name} (${factionById(lobsters[1].faction).name}), ${TIERS.find((t) => t.id === entry)!.name.toLowerCase()} fight, purse ${money(purseFor(entry, save.career.venue))}.` : `🔔 Bout ${save.bouts + 1}: ${lobsters[0].name} (${factionById(lobsters[0].faction).name}) vs ${lobsters[1].name} (${factionById(lobsters[1].faction).name}). The pool is open.`, 'bell');
   // The crowd puts its money down first, one by one.
-  for (const b of crowdBets(lobsters[0], lobsters[1], bout.publicP, Math.random)) {
+  for (const b of crowdBets(lobsters[0], lobsters[1], bout.publicP, Math.random, venue().scale)) {
     if (token !== boutToken) return;
     bout.pool.push(b);
     if (b.who !== 'public') {
@@ -320,6 +355,10 @@ for (const t of els.tabs) t.addEventListener('click', () => showTab(t.dataset.ta
 /** Takes a stake from your bankroll (or explains why not). */
 function takeStake(): number | null {
   const amount = stake();
+  if (amount > venue().maxStake) {
+    log(`${venue().name} takes bets up to ${money(venue().maxStake)}.`, 'warn');
+    return null;
+  }
   if (amount < 10) {
     log('The minimum stake is $10. Even the free market has standards.', 'warn');
     return null;
@@ -383,6 +422,14 @@ function parlayCard(): { ids: [number, number]; odds: [number, number] }[] {
 
 function renderParlay() {
   const active = save.parlay;
+  if (!active && bout.entry) {
+    els.parlayLegs.replaceChildren();
+    els.parlayPlace.hidden = true;
+    els.parlaySummary.hidden = false;
+    els.parlayActive.hidden = true;
+    els.parlaySummary.textContent = 'No parlays on a bout with your own lobster in it. Conflict of interest. Come back next bout.';
+    return;
+  }
   els.parlayPlace.hidden = !!active;
   els.parlayLegs.hidden = !!active;
   els.parlaySummary.hidden = !!active;
@@ -629,9 +676,9 @@ function stake(): number {
 for (const b of document.querySelectorAll<HTMLButtonElement>('.chips button')) {
   b.addEventListener('click', () => {
     const add = b.dataset.add!;
-    if (add === 'max') els.stake.value = String(save.bankroll);
+    if (add === 'max') els.stake.value = String(Math.min(save.bankroll, venue().maxStake));
     else if (add === 'clear') els.stake.value = '0';
-    else els.stake.value = String(Math.min(save.bankroll, stake() + Number(add)));
+    else els.stake.value = String(Math.min(save.bankroll, venue().maxStake, stake() + Number(add)));
   });
 }
 
@@ -640,6 +687,10 @@ function placeBet(side: Side | null) {
   getAudioContext();
   if (side !== null) {
     const amount = stake();
+    if (amount > venue().maxStake) {
+      log(`${venue().name} takes bets up to ${money(venue().maxStake)}.`, 'warn');
+      return;
+    }
     if (amount < 10) {
       log('The minimum stake is $10. Even the free market has standards.', 'warn');
       return;
@@ -660,7 +711,7 @@ function placeBet(side: Side | null) {
   els.preview.hidden = true;
   showTab('winner');
   els.tabbar.hidden = true;
-  const late = lateBet(Math.random);
+  const late = lateBet(Math.random, venue().scale);
   if (late) {
     bout.pool.push(late);
     crowdShout(late);
@@ -734,8 +785,8 @@ function cashOut(b: YourBet, value: number) {
 function liveBet(side: Side) {
   if (phase !== 'live') return;
   const amount = stake();
-  if (amount < 10 || amount > save.bankroll) {
-    log(amount < 10 ? 'The minimum stake is $10.' : 'You don’t have the capital for that.', 'warn');
+  if (amount < 10 || amount > save.bankroll || amount > venue().maxStake) {
+    log(amount < 10 ? 'The minimum stake is $10.' : amount > venue().maxStake ? `${venue().name} takes bets up to ${money(venue().maxStake)}.` : 'You don’t have the capital for that.', 'warn');
     return;
   }
   const odds = liveOddsPair()[side];
@@ -764,7 +815,7 @@ async function liveBreak(result: FightResult, roundDone: number) {
   els.live.hidden = false;
   els.stakeRow.hidden = false;
   els.live.scrollIntoView({ block: 'end', behavior: 'smooth' });
-  if (stake() > save.bankroll) els.stake.value = String(save.bankroll);
+  clampStake();
   els.skip.hidden = true;
   log(`⏸ Live market after round ${roundDone}: ${odds[0].toFixed(2)}× / ${odds[1].toFixed(2)}×.`, 'bell');
   await new Promise<void>((resolve) => {
@@ -960,6 +1011,21 @@ function finish(result: FightResult) {
     else save.tipsters[tip.by].wrong++;
   }
   save.bouts++;
+  save.career.bout++;
+  // Your lobster: a purse for a win; rest (and maybe an injury) after a loss. Otherwise it rests up.
+  const stable = save.stable;
+  if (stable && bout.entry) {
+    if (result.winner === 0) {
+      const purse = purseFor(bout.entry, save.career.venue);
+      save.bankroll += purse;
+      stable.purses += purse;
+      log(`🏆 ${stable.lobster.name} wins! The purse: ${money(purse)}.`, 'win');
+      toast('🏆', 'YOUR LOBSTER WON', `${stable.lobster.name} · +${money(purse)}`);
+    } else {
+      const hurt = afterLoss(stable, result.ending === 'ko', Math.random);
+      log(`🩹 ${stable.lobster.name} lost${hurt ? ` and hurt its ${hurt} (−${hurt === 'stamina' ? 10 : 1})` : ''}. It needs ${stable.rest} bout${stable.rest > 1 ? 's' : ''} of rest.`, 'lose');
+    }
+  } else if (stable && stable.rest > 0) stable.rest--;
   const how = result.ending === 'ko' ? 'by KO' : result.ending === 'flee' ? 'when the other one ran away' : 'on the judges’ cards';
   // Settle every bet you didn't cash out; the net counts cash-outs too.
   let net = 0;
@@ -1011,10 +1077,14 @@ function finish(result: FightResult) {
     } else log(line, '');
   }
   save.best = Math.max(save.best, save.bankroll);
-  // Broke: your uncle spots you a fresh bankroll (the loan shark comes later).
+  // Broke: your uncle spots you a fresh bankroll, and the bouncers throw you down a venue.
   if (save.bankroll < 10) {
     save.bankroll = START_BANKROLL;
-    log('💸 You’re broke. Your uncle the Bitcoin maximalist spots you $500. “Have fun staying poor.”', 'warn');
+    const was = save.career.venue;
+    save.career = bailout(save.career);
+    save.career.startBankroll = save.bankroll;
+    log(`💸 You’re broke. Your uncle the Bitcoin maximalist spots you $500. “Have fun staying poor.”${save.career.venue < was ? ` The bouncers throw you out of ${VENUES[was].name}: back to ${venue().name}.` : ''}`, 'warn');
+    renderVenue();
   }
   persist();
   updateBankroll();
@@ -1024,12 +1094,15 @@ function finish(result: FightResult) {
   els.result.classList.toggle('lost', betted && net < 0);
   els.skip.hidden = true;
   els.next.hidden = false;
+  els.next.textContent = save.career.bout >= NIGHT_BOUTS ? 'End of the night ▶' : 'Next bout ▶';
   els.next.focus();
+  renderVenue();
+  renderStable();
   for (const side of [0, 1] as Side[]) renderCard(side);
   els.fighters[result.winner].classList.add('winner');
 }
 
-els.next.addEventListener('click', () => void newBout());
+els.next.addEventListener('click', () => (save.career.bout >= NIGHT_BOUTS ? showNightEnd() : void newBout()));
 
 function rain() {
   for (let i = 0; i < 18; i++) {
@@ -1038,12 +1111,184 @@ function rain() {
 }
 
 // ---------------------------------------------------------------------------
+// The career: venues and nights
+// ---------------------------------------------------------------------------
+
+function clampStake() {
+  const cap = Math.min(save.bankroll, venue().maxStake);
+  if (stake() > cap) els.stake.value = String(cap);
+  els.stake.max = String(venue().maxStake);
+}
+
+function renderVenue() {
+  const v = venue();
+  els.venueName.textContent = `${v.icon} ${v.name}`;
+  els.nightInfo.textContent = `Night ${save.career.night} · bout ${Math.min(NIGHT_BOUTS, save.career.bout + (phase === 'done' ? 0 : 1))} of ${NIGHT_BOUTS} · max stake ${money(v.maxStake)}${save.career.venue < VENUES.length - 1 ? ` · next venue at ${money(v.target)}` : ` · ${money(v.target)} wins it all`}`;
+  els.arena.dataset.venue = v.id;
+}
+
+let nightOutcome: NightOutcome | null = null;
+
+function showNightEnd() {
+  const c = save.career;
+  const v = venue();
+  nightOutcome = endNight(c, save.bankroll);
+  const profit = save.bankroll - c.startBankroll;
+  const next = VENUES[c.venue + 1];
+  els.nightTitle.textContent = nightOutcome === 'champion' ? '🏆 CHAMPION OF THE INVISIBLE CLAW' : `${v.icon} End of night ${c.night}`;
+  const lines = [
+    `You started the night with ${money(c.startBankroll)} and leave with ${money(save.bankroll)}: ${profit >= 0 ? `up ${money(profit)}` : `down ${money(-profit)}`}.`,
+    nightOutcome === 'promoted'
+      ? `🎟️ Word gets around. You're invited to ${next.icon} ${next.name}: ${next.blurb} Entry ${money(next.fee)} a night.`
+      : nightOutcome === 'champion'
+        ? `You turned a kitchen-floor bet into ${money(save.bankroll)} at the Liberland Championship. Rothbard would be proud. Hoppe would physically remove your competitors. You can keep playing.`
+        : save.career.venue < VENUES.length - 1
+          ? `You need ${money(v.target)} at the end of a night to move up to ${next.icon} ${next.name}.`
+          : `${money(v.target)} at the end of a night wins the championship.`,
+  ];
+  if (save.stable) lines.push(`🦞 ${save.stable.lobster.name}: ${save.stable.lobster.wins}–${save.stable.lobster.losses}, ${money(save.stable.purses)} in purses.`);
+  els.nightBody.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
+  els.nightNext.textContent = `Start night ${c.night + 1} ▶`;
+  els.night.hidden = false;
+  els.nightNext.focus();
+  if (nightOutcome !== 'stayed') play('win');
+}
+
+els.nightNext.addEventListener('click', () => {
+  const r = startNight(save.career, save.bankroll, nightOutcome);
+  save.career = r.career;
+  save.bankroll = r.bankroll;
+  save.market = marketOffers(Math.random, save.career.night);
+  if (nightOutcome === 'champion') toast('🏆', 'CHAMPION', 'The Invisible Claw');
+  if (r.demoted) log(`🚪 You can't afford ${VENUES[save.career.venue + 1].name}'s door fee. Back to ${venue().name}.`, 'warn');
+  if (r.fee) log(`🎟️ ${venue().name}: ${money(r.fee)} at the door.`, 'bell');
+  log(`🌙 Night ${save.career.night} at ${venue().icon} ${venue().name}.`, 'bell');
+  nightOutcome = null;
+  els.night.hidden = true;
+  persist();
+  void newBout();
+});
+
+// ---------------------------------------------------------------------------
+// Your lobster: the fish market, training, and the ring
+// ---------------------------------------------------------------------------
+
+let nameDraft = suggestName(Math.random);
+
+function statPips(l: Lobster) {
+  return `<dl class="stats"><dt>Claw</dt><dd>${pips(l.claw)}</dd><dt>Shell</dt><dd>${pips(l.shell)}</dd><dt>Wits</dt><dd>${pips(l.wits)}</dd><dt>Stamina</dt><dd><b>${l.stamina}</b></dd></dl>`;
+}
+
+function renderStable() {
+  const st = save.stable;
+  if (!st) {
+    if (save.career.venue < MARKET_VENUE) {
+      els.stable.innerHTML = `<p class="pane-note">🔒 The fish market only deals with people who've made it out of the kitchen. Reach ${VENUES[MARKET_VENUE].icon} ${VENUES[MARKET_VENUE].name} (end a night with ${money(VENUES[0].target)}) to buy a lobster of your own.</p>`;
+      return;
+    }
+    els.stable.innerHTML = `<p class="pane-note">🐟 The fish market. Three lots tonight, cheaper (and weaker) than league fighters. You won't know its trait until it's yours.</p>
+      <label class="name-field">Name it: <input id="lobster-name" maxlength="30" value="${escapeHtml(nameDraft)}"></label>
+      <div class="offers"></div>`;
+    els.stable.querySelector<HTMLInputElement>('#lobster-name')!.addEventListener('input', (e) => (nameDraft = (e.target as HTMLInputElement).value));
+    els.stable.querySelector('.offers')!.replaceChildren(
+      ...save.market.map((o, i) => {
+        const f = factionById(o.lobster.faction);
+        const card = document.createElement('div');
+        card.className = 'offer';
+        card.style.setProperty('--shell', f.color);
+        card.innerHTML = `<div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(o.lobster.name)}</b><small>${f.name} · ${o.lobster.weight} lb</small></div></div>${statPips(o.lobster)}<div class="args"><span class="label">Trait</span> <b class="unknown">???</b></div><button type="button" class="next-button">Buy · ${money(o.price)}</button>`;
+        const b = card.querySelector('button')!;
+        b.disabled = save.bankroll < o.price || phase === 'fighting' || phase === 'live';
+        b.addEventListener('click', () => buyLobster(i));
+        return card;
+      }),
+    );
+    return;
+  }
+  const l = st.lobster;
+  const f = factionById(l.faction);
+  const t = traitById(l.trait);
+  // No training while it's in tonight's bout (the odds are already set).
+  const busy = !!bout?.entry && phase !== 'done';
+  const training = (['claw', 'shell', 'wits', 'stamina'] as TrainStat[])
+    .map((stat) => {
+      const cost = trainingCost(l, stat);
+      return `<button type="button" class="train" data-stat="${stat}" ${busy || cost === null || save.bankroll < cost ? 'disabled' : ''}>${stat === 'stamina' ? 'Stamina +10' : `${stat[0].toUpperCase()}${stat.slice(1)} +1`} · ${cost === null ? 'MAX' : money(cost)}</button>`;
+    })
+    .join('');
+  const therapy = BAD_TRAITS.has(l.trait) ? `<button type="button" class="train therapy" ${busy || save.bankroll < THERAPY_PRICE ? 'disabled' : ''}>🛋️ Therapy for its ${t.name.toLowerCase()} streak · ${money(THERAPY_PRICE)}</button>` : '';
+  const entries = TIERS.map((tier) => `<button type="button" class="enter${save.entry === tier.id ? ' on' : ''}" data-tier="${tier.id}" ${st.rest > 0 ? 'disabled' : ''}>${tier.name} opponent · purse ${money(purseFor(tier.id, save.career.venue))}</button>`).join('');
+  els.stable.innerHTML = `<div class="mine" style="--shell:${f.color}">
+      <div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(l.name)}</b><small>${f.name} · ${l.weight} lb · ${l.wins}–${l.losses} · ${money(st.purses)} in purses</small></div></div>
+      ${statPips(l)}
+      <div class="args"><span class="label">Trait</span> <b title="${escapeHtml(t.description)}">${t.name}</b></div>
+      <div class="args"><span class="label">Weak to</span> <b class="weak">${ARG_TYPES[f.weak].icon} ${ARG_TYPES[f.weak].name}</b> · <span class="label">Shrugs off</span> <b class="resist">${ARG_TYPES[f.resists].icon} ${ARG_TYPES[f.resists].name}</b></div>
+      ${st.rest > 0 ? `<p class="rest">🩹 Resting: ${st.rest} more bout${st.rest > 1 ? 's' : ''}.</p>` : ''}
+    </div>
+    <p class="pane-note">🏋️ Training</p><div class="training">${training}${therapy}</div>
+    <p class="pane-note">🥊 ${save.entry ? 'Signed up for the next bout (click again to cancel).' : 'Sign it up for the next bout. Losing means rest, and maybe an injury.'}</p><div class="entries">${entries}</div>`;
+  for (const b of els.stable.querySelectorAll<HTMLButtonElement>('.train[data-stat]')) b.addEventListener('click', () => trainMine(b.dataset.stat as TrainStat));
+  els.stable.querySelector<HTMLButtonElement>('.therapy')?.addEventListener('click', therapy_);
+  for (const b of els.stable.querySelectorAll<HTMLButtonElement>('.enter')) {
+    b.addEventListener('click', () => {
+      const tier = b.dataset.tier as Tier;
+      save.entry = save.entry === tier ? null : tier;
+      persist();
+      renderStable();
+      if (save.entry) log(`🥊 ${l.name} is signed up for the next bout: ${tier === 'easy' ? 'an easy' : tier === 'even' ? 'an even' : 'a hard'} fight for ${money(purseFor(tier, save.career.venue))}.`, 'bell');
+    });
+  }
+}
+
+function buyLobster(i: number) {
+  const o = save.market[i];
+  if (!o || save.stable || save.bankroll < o.price) return;
+  save.bankroll -= o.price;
+  const name = nameDraft.trim().slice(0, 30) || suggestName(Math.random);
+  save.stable = { lobster: { ...o.lobster, name, traitKnown: true }, rest: 0, purses: 0 };
+  save.market = [];
+  updateBankroll();
+  play('cashout');
+  const t = traitById(save.stable.lobster.trait);
+  log(`🦞 You bought ${name} for ${money(o.price)}. Now that it's yours, you can see it: ${t.id === 'none' ? 'nothing special.' : `it's a ${t.name}. ${t.description}`}`, BAD_TRAITS.has(t.id) ? 'warn' : 'win');
+  toast('🦞', 'YOUR OWN LOBSTER', name);
+  persist();
+  renderStable();
+}
+
+function trainMine(stat: TrainStat) {
+  const st = save.stable;
+  if (!st) return;
+  const cost = trainingCost(st.lobster, stat);
+  if (cost === null || save.bankroll < cost) return;
+  save.bankroll -= cost;
+  train(st.lobster, stat);
+  updateBankroll();
+  play('coin');
+  persist();
+  renderStable();
+}
+
+function therapy_() {
+  const st = save.stable;
+  if (!st || !BAD_TRAITS.has(st.lobster.trait) || save.bankroll < THERAPY_PRICE) return;
+  const was = traitById(st.lobster.trait).name;
+  save.bankroll -= THERAPY_PRICE;
+  st.lobster.trait = 'none';
+  updateBankroll();
+  play('reveal');
+  log(`🛋️ After a few sessions, ${st.lobster.name} is no longer a ${was}.`, 'win');
+  persist();
+  renderStable();
+}
+
+// ---------------------------------------------------------------------------
 // Keys, screens, start
 // ---------------------------------------------------------------------------
 
 document.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
-  if (!els.title.hidden || !els.chart.hidden) return;
+  if (!els.title.hidden || !els.chart.hidden || !els.night.hidden) return;
   if (phase === 'betting' && (e.key === '1' || e.key === 'ArrowLeft')) placeBet(0);
   else if (phase === 'betting' && (e.key === '2' || e.key === 'ArrowRight')) placeBet(1);
   else if (phase === 'fighting' && (e.key === ' ' || e.key === 'Enter')) {
@@ -1056,7 +1301,8 @@ document.addEventListener('keydown', (e) => {
     liveBet(e.key === '1' ? 0 : 1);
   } else if (phase === 'done' && (e.key === ' ' || e.key === 'Enter')) {
     e.preventDefault();
-    void newBout();
+    if (save.career.bout >= NIGHT_BOUTS) showNightEnd();
+    else void newBout();
   }
 });
 
@@ -1073,6 +1319,6 @@ byId('hide-chart').addEventListener('click', () => {
   els.chart.hidden = true;
 });
 
-byId('title-best').textContent = save.bouts ? `Bankroll ${money(save.bankroll)} · best ${money(save.best)} · ${save.bouts} bouts watched` : '';
+byId('title-best').textContent = save.bouts ? `${venue().icon} ${venue().name} · night ${save.career.night} · bankroll ${money(save.bankroll)} · best ${money(save.best)}${save.career.champion ? ' · 🏆 champion' : ''}` : '';
 log('Welcome to the free market of violence. Read the tale of the tape and the pool, then place your bet.');
 void newBout();

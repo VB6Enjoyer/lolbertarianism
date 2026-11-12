@@ -265,3 +265,96 @@ describe('fight club: props and parlays', () => {
     expect(normalizeParlay({ legs: [], stake: 5 })).toBeNull();
   });
 });
+
+describe('fight club: the career', () => {
+  it('five venues, each bigger than the last', async () => {
+    const { VENUES } = await import('./career.ts');
+    expect(VENUES).toHaveLength(5);
+    for (let i = 1; i < VENUES.length; i++) {
+      expect(VENUES[i].scale).toBeGreaterThan(VENUES[i - 1].scale);
+      expect(VENUES[i].maxStake).toBeGreaterThan(VENUES[i - 1].maxStake);
+      expect(VENUES[i].target).toBeGreaterThan(VENUES[i - 1].target);
+    }
+  });
+
+  it('end a night at the target to move up; the top target wins it all', async () => {
+    const { endNight, newCareer, startNight, VENUES } = await import('./career.ts');
+    const c = newCareer(500);
+    expect(endNight(c, 900)).toBe('stayed');
+    expect(endNight(c, 1000)).toBe('promoted');
+    const next = startNight(c, 1000, 'promoted');
+    expect(next.career).toMatchObject({ venue: 1, night: 2, bout: 0 });
+    expect(next.fee).toBe(VENUES[1].fee);
+    expect(next.bankroll).toBe(1000 - VENUES[1].fee);
+    expect(endNight({ ...c, venue: 4 }, VENUES[4].target)).toBe('champion');
+    expect(startNight({ ...c, venue: 4 }, VENUES[4].target, 'champion').career.champion).toBe(true);
+  });
+
+  it("can't afford the door? Back down a venue. Broke? The uncle bails you out and you drop one", async () => {
+    const { bailout, newCareer, startNight } = await import('./career.ts');
+    const c = { ...newCareer(500), venue: 3 };
+    const r = startNight(c, 1000, null);
+    expect(r.demoted).toBe(true);
+    expect(r.career.venue).toBeLessThan(3);
+    expect(bailout(c)).toMatchObject({ venue: 2, bailouts: 1 });
+    expect(bailout(newCareer(500)).venue).toBe(0);
+  });
+
+  it('the fish market: three cheaper, weaker lots, traits hidden', async () => {
+    const { marketOffers, MINE_ID } = await import('./career.ts');
+    const offers = marketOffers(rng(3), 2);
+    expect(offers).toHaveLength(3);
+    for (const o of offers) {
+      expect(o.lobster.id).toBe(MINE_ID);
+      expect(o.lobster.claw).toBeLessThanOrEqual(6);
+      expect(o.lobster.traitKnown).toBe(false);
+      expect(o.price).toBeGreaterThanOrEqual(600);
+      expect(o.price).toBeLessThanOrEqual(1600);
+    }
+  });
+
+  it('training costs more each time and stops at the cap', async () => {
+    const { train, trainingCost, STAT_CAP } = await import('./career.ts');
+    const l = lobster({ claw: 3 });
+    const first = trainingCost(l, 'claw')!;
+    train(l, 'claw');
+    expect(l.claw).toBe(4);
+    expect(trainingCost(l, 'claw')!).toBeGreaterThan(first);
+    l.claw = STAT_CAP;
+    expect(trainingCost(l, 'claw')).toBeNull();
+    const s = lobster({ stamina: 100 });
+    train(s, 'stamina');
+    expect(s.stamina).toBe(110);
+  });
+
+  it('opponents by tier, purses by tier and venue, and losses cost rest (and sometimes a point)', async () => {
+    const { afterLoss, pickOpponent, purseFor, rating } = await import('./career.ts');
+    const roster = makeRoster(rng(12));
+    const avg = (tier: 'easy' | 'even' | 'hard') => {
+      let sum = 0;
+      for (let i = 0; i < 50; i++) sum += rating(pickOpponent(roster, tier, rng(i)));
+      return sum / 50;
+    };
+    expect(avg('easy')).toBeLessThan(avg('even'));
+    expect(avg('even')).toBeLessThan(avg('hard'));
+    expect(purseFor('hard', 2)).toBeGreaterThan(purseFor('easy', 2));
+    expect(purseFor('even', 3)).toBeGreaterThan(purseFor('even', 1));
+    let hurt = 0;
+    const r = rng(77);
+    for (let i = 0; i < 200; i++) {
+      const stable = { lobster: lobster({ claw: 5, shell: 5, wits: 5, stamina: 100 }), rest: 0, purses: 0 };
+      if (afterLoss(stable, i % 2 === 0, r)) hurt++;
+      expect(stable.rest).toBe(i % 2 === 0 ? 2 : 1);
+    }
+    expect(hurt / 200).toBeGreaterThan(0.2);
+    expect(hurt / 200).toBeLessThan(0.5);
+  });
+
+  it('saves are cleaned up', async () => {
+    const { normalizeCareer, normalizeStable } = await import('./career.ts');
+    expect(normalizeCareer({ venue: 99, night: -3 }, 700)).toMatchObject({ venue: 4, night: 1, startBankroll: 700 });
+    expect(normalizeStable(null)).toBeNull();
+    expect(normalizeStable({ lobster: { faction: 'nope' } })).toBeNull();
+    expect(normalizeStable({ rest: 9, purses: 50, lobster: { faction: 'ancap', name: 'Pinchy', claw: 99, trait: 'coward' } })).toMatchObject({ rest: 5, lobster: { claw: 10, traitKnown: true, trait: 'coward', id: 100 } });
+  });
+});
