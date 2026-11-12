@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { findPath, isRoad, MANHOLE_SLOTS, PLACES, placeById, STARTING_SLOTS } from './map.ts';
-import { act, buyDrug, buyGear, CONFIG, context, drugPrice, newGame, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
+import { FED_COVER, findPath, isRoad, MANHOLE_SLOTS, PLACES, placeById, STARTING_SLOTS } from './map.ts';
+import { act, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
 import { ACHIEVEMENTS, normalizeUnlocked, Tracker } from './achievements.ts';
 
 function rng(seed: number) {
@@ -78,7 +78,7 @@ describe('austrian economics: the Fed', () => {
     expect(fomc.map((e) => e.type === 'fomc' && e.next)).toEqual(['boom', 'bust']);
     expect(events).toContainEqual({ type: 'phase', phase: 'boom', rate: 0.25, cycle: 0 });
     expect(events).toContainEqual({ type: 'new-covers', count: 3 });
-    expect(s.manholes.filter((h) => h.state === 'covered')).toHaveLength(STARTING_SLOTS + 3);
+    expect(s.manholes.filter((h) => h.state === 'covered' && h.kind !== 'fed')).toHaveLength(STARTING_SLOTS + 3);
     expect(events.some((e) => e.type === 'cop-joins')).toBe(true);
     expect(s.priceLevel).toBeGreaterThan(1.2); // inflation
   });
@@ -93,8 +93,8 @@ describe('austrian economics: the loop', () => {
     expect(context(s)).toMatchObject({ kind: 'pry' });
     expect(act(s)).toEqual([{ type: 'pry-start' }]);
     const stolen = run(s, CONFIG.pryTime + 0.1);
-    expect(stolen).toContainEqual({ type: 'stole', underCrewsNose: false });
-    expect(s.carried).toBe(1);
+    expect(stolen).toContainEqual({ type: 'stole', underCrewsNose: false, kind: hole.kind });
+    expect(s.cargo).toEqual([hole.kind]);
     expect(hole.state).toBe('open');
     expect(context(s)).toBeNull(); // nothing left to pry here
 
@@ -102,7 +102,7 @@ describe('austrian economics: the loop', () => {
     teleport(s, yard.x, yard.y);
     const sold = act(s);
     expect(sold[0]).toMatchObject({ type: 'sold', count: 1, yard: 'yard-near' });
-    expect(s.cash).toBeCloseTo(CONFIG.startCash + scrapPrice(s, 'yard-near'), 0);
+    expect(s.cash).toBeCloseTo(CONFIG.startCash + scrapPrice(s, 'yard-near') * COVER_VALUE[hole.kind], 0);
 
     const dealer = placeById('dealer').door;
     teleport(s, dealer.x, dealer.y);
@@ -132,7 +132,7 @@ describe('austrian economics: the loop', () => {
 
   it('you carry one cover by hand (and you are slow with it); a cart carries three', () => {
     const s = quiet();
-    s.carried = 1;
+    s.cargo = ['iron'];
     const hole = s.manholes.find((h) => h.state === 'covered')!;
     teleport(s, hole.x, hole.y);
     expect(context(s)).toEqual({ kind: 'full' });
@@ -144,11 +144,11 @@ describe('austrian economics: the loop', () => {
     const s = quiet();
     const squat = placeById('squat').door;
     teleport(s, squat.x, squat.y);
-    s.carried = 1;
+    s.cargo = ['brass'];
     expect(act(s)).toEqual([{ type: 'stashed', count: 1 }]);
-    expect(s.stash).toBe(1);
+    expect(s.stash).toEqual(['brass']);
     expect(act(s)).toEqual([{ type: 'took', count: 1 }]);
-    expect(s.carried).toBe(1);
+    expect(s.cargo).toEqual(['brass']);
   });
 
   it('capital goods cost money, and only at the hardware store', () => {
@@ -206,7 +206,7 @@ describe('austrian economics: losing', () => {
         events.push(...update(s, still, 1 / 60, rng(2)));
       }
       hole.state = 'covered';
-      s.carried = 0;
+      s.cargo = [];
     }
     expect(events).toContainEqual({ type: 'seen', by: 'cop' });
     expect(s.over).toBe('arrested');
@@ -230,6 +230,106 @@ describe('austrian economics: losing', () => {
   });
 });
 
+describe('austrian economics: money', () => {
+  const atBank = (s: GameState) => teleport(s, placeById('fed').door.x, placeById('fed').door.y);
+
+  it('savings earn the Fed rate: little in a boom, a lot in a bust', () => {
+    const boom = quiet();
+    const bust = quiet();
+    for (const [s, t] of [[boom, SCHEDULE.calm + 1], [bust, SCHEDULE.calm + SCHEDULE.boom + 1]] as const) {
+      s.time = t;
+      run(s, 0.1, still, rng(1), true);
+      atBank(s);
+      expect(deposit(s)[0]).toMatchObject({ type: 'deposited', amount: CONFIG.startCash });
+      run(s, 20, still, rng(1), true);
+    }
+    expect(boom.savings).toBeLessThan(CONFIG.startCash * 1.01);
+    expect(bust.savings).toBeGreaterThan(CONFIG.startCash * 1.07);
+    expect(withdraw(bust)[0]).toMatchObject({ type: 'withdrew' });
+    expect(bust.cash).toBeGreaterThan(CONFIG.startCash * 1.07);
+  });
+
+  it('loans are called in at the bust; repay in time, or lose everything', () => {
+    const s = quiet();
+    s.time = SCHEDULE.calm + 1;
+    run(s, 0.1, still, rng(1), true);
+    atBank(s);
+    expect(borrow(s)[0]).toMatchObject({ type: 'borrowed', phase: 'boom' });
+    borrow(s);
+    borrow(s);
+    expect(borrow(s)).toEqual([]); // credit limit
+    expect(s.debt).toBeCloseTo(300 * s.priceLevel, 0);
+    // Into the bust: the loan is called
+    const called = run(s, SCHEDULE.boom, still, rng(1), true);
+    expect(called.find((e) => e.type === 'loan-called')).toBeTruthy();
+    expect(s.loanDue).toBeCloseTo(SCHEDULE.calm + SCHEDULE.boom + SCHEDULE.bust, 0);
+    // Pay it off: no default
+    const owed = s.debt;
+    s.cash = owed + 10;
+    expect(repay(s)).toEqual([{ type: 'repaid', amount: owed, cleared: true, called: true }]);
+    expect(s.loanDue).toBeNull();
+
+    // Again, but don't pay
+    const t = quiet();
+    t.time = SCHEDULE.calm + 1;
+    run(t, 0.1, still, rng(1), true);
+    atBank(t);
+    borrow(t);
+    t.stash = ['brass'];
+    t.gold = 2;
+    const later = run(t, SCHEDULE.boom + SCHEDULE.bust, still, rng(1), true);
+    expect(later.find((e) => e.type === 'default')).toBeTruthy();
+    expect([t.cash, t.savings, t.gold, t.stash.length, t.debt]).toEqual([0, 0, 0, 0, 0]);
+    expect(t.heat).toBeGreaterThan(0);
+  });
+
+  it('gold keeps up with inflation and rallies in the bust; the pawn shop takes a cut', () => {
+    const s = quiet();
+    const pawn = placeById('pawn').door;
+    teleport(s, pawn.x, pawn.y);
+    expect(context(s)).toEqual({ kind: 'pawn' });
+    expect(goldPrice(s, 'sell')).toBeLessThan(goldPrice(s, 'buy'));
+    expect(buyGold(s)[0]).toMatchObject({ type: 'gold-bought' });
+    const paid = CONFIG.startCash - s.cash;
+    // A boom and into the bust: the price level is up, and gold with it
+    s.time = SCHEDULE.calm + SCHEDULE.boom + 15;
+    s.priceLevel = 1.3;
+    const [sold] = sellGold(s);
+    expect(sold).toMatchObject({ type: 'gold-sold', count: 1, phase: 'calm' }); // the phase updates on the next frame
+    expect(sold.type === 'gold-sold' && sold.total).toBeGreaterThan(paid * 1.25);
+  });
+
+  it("brass covers pay three times as much and take longer; the Fed's is alarmed", () => {
+    const s = quiet();
+    const brass = s.manholes.find((h) => h.state === 'covered' && h.kind !== 'fed')!;
+    brass.kind = 'brass';
+    teleport(s, brass.x, brass.y);
+    act(s);
+    expect(s.player.pry!.total).toBeCloseTo(CONFIG.pryTime * CONFIG.brassPry);
+
+    const t = quiet();
+    t.agents.push({ id: 1, kind: 'cop', mover: { x: 16, y: 9, path: [] }, down: 0, target: null, work: 0, leaving: false, variant: 0 });
+    const fed = t.manholes.find((h) => h.kind === 'fed')!;
+    expect(fed).toMatchObject({ x: FED_COVER.x, y: FED_COVER.y, state: 'covered' });
+    teleport(t, fed.x, fed.y);
+    act(t);
+    const events = run(t, CONFIG.pryTime * CONFIG.fedPry + 0.1);
+    expect(events).toContainEqual({ type: 'alarm' });
+    expect(t.heat).toBeGreaterThanOrEqual(CONFIG.fedAlarm - 1);
+    expect(t.agents[0].mover.path.length).toBeGreaterThan(0); // a cop is on the way
+    const yard = placeById('yard-near').door;
+    teleport(t, yard.x, yard.y);
+    const [sold] = act(t);
+    expect(sold.type === 'sold' && sold.total).toBeCloseTo(sold.type === 'sold' ? sold.price * 8 : 0);
+    // Crews leave it alone; the Fed refits it with the next boom
+    t.nextCrewAt = 0;
+    t.time = SCHEDULE.calm - 1;
+    const boom = run(t, 2, still, rng(1), true);
+    expect(boom).toContainEqual({ type: 'fed-refit' });
+    expect(fed.state).toBe('covered');
+  });
+});
+
 describe('austrian economics: achievements', () => {
   it('unique ids, all filled in', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
@@ -247,7 +347,7 @@ describe('austrian economics: achievements', () => {
   it('saving up, capital goods and staying alive', () => {
     const t = new Tracker(new Set());
     const s = newGame();
-    s.stash = 5;
+    s.stash = ['iron', 'iron', 'iron', 'iron', 'brass'];
     s.gear = { crowbar: true, cart: true, vest: true, bike: true };
     s.time = 301;
     expect(t.update(s, [])).toEqual(expect.arrayContaining(['stash-5', 'capital', 'survive-5']));

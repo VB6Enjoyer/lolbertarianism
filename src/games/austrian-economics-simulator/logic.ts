@@ -7,7 +7,7 @@
 // moves the scrap price (the near junkyard first: the Cantillon effect),
 // everything inflates, and the city's crews and covers come and go with it.
 
-import { COLS, DEPOT, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, ROAD_TILES, sameTile, STARTING_SLOTS, type Tile } from './map.ts';
+import { COLS, DEPOT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, ROAD_TILES, sameTile, STARTING_SLOTS, type Tile } from './map.ts';
 
 export const CONFIG = {
   startCash: 98,
@@ -56,7 +56,33 @@ export const CONFIG = {
   copFallUtils: 3,
   dea: { first: 70, every: 60, spread: 40, seconds: 15, markup: 1.6 },
   maxCops: 3,
+  /** Covers: brass ones show up this often (and the Fed has its own). */
+  brassChance: 0.15,
+  /** Prying brass / the Fed's cover takes this many times as long. */
+  brassPry: 1.3,
+  fedPry: 2,
+  /** Heat when you lift the Fed's cover (it's alarmed). */
+  fedAlarm: 35,
+  /** The bank: interest per second is the rate (in %) × this; loans cost the rate plus a spread. */
+  interestScale: 0.08,
+  loanSpread: 3,
+  /** Each loan, and the most you can owe, in today's dollars. */
+  loanSize: 100,
+  creditLimit: 300,
+  /** What a default costs you in heat (on top of losing everything you own). */
+  defaultHeat: 30,
+  /** Gold, per ounce in today's dollars, and the pawn shop's cut each way. */
+  goldPrice: 60,
+  goldSpread: 0.06,
 };
+
+export type CoverKind = 'iron' | 'brass' | 'fed';
+
+/** What each kind of cover is worth, compared with plain iron. */
+export const COVER_VALUE: Record<CoverKind, number> = { iron: 1, brass: 3, fed: 8 };
+
+/** Heat per second from a cop seeing you carry one, compared with iron. */
+const COVER_HEAT: Record<CoverKind, number> = { iron: 1, brass: 1.5, fed: 6 };
 
 /** The Fed's schedule: a calm start, then booms and busts, announced a few seconds ahead. */
 export const SCHEDULE = { calm: 30, boom: 45, bust: 35, warn: 8, lag: 12 };
@@ -135,6 +161,7 @@ export interface Manhole {
   x: number;
   y: number;
   state: ManholeState;
+  kind: CoverKind;
   /** When it was opened (so crews fix the oldest first), and whether you did it. */
   openedAt: number;
   yours: boolean;
@@ -161,7 +188,7 @@ export interface Player {
   /** Walking to a tapped spot (instead of following the keys). */
   walking: boolean;
   /** Prying a cover: which manhole, seconds left. */
-  pry: { id: number; left: number } | null;
+  pry: { id: number; left: number; total: number } | null;
   /** Seconds of heroin nod / crack rush left. */
   nod: number;
   rush: number;
@@ -184,8 +211,15 @@ export interface GameState {
   /** 0..100: at 100 you're arrested. */
   heat: number;
   utils: number;
-  carried: number;
-  stash: number;
+  /** The covers you're carrying, and the ones saved in your squat. */
+  cargo: CoverKind[];
+  stash: CoverKind[];
+  /** The bank: savings, debt, and when the loan's called in (the end of the bust), or null. */
+  savings: number;
+  debt: number;
+  loanDue: number | null;
+  /** Ounces of gold. */
+  gold: number;
   gear: Record<GearId, boolean>;
   priceLevel: number;
   phase: Phase;
@@ -210,15 +244,25 @@ export interface GameState {
   lastSeenEvent: number;
   warnedWithdrawal: boolean;
   warnedHeat: boolean;
-  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number };
+  stats: { stolen: number; sold: number; doses: number; earned: number; pedsFell: number; copsFell: number; bustsSurvived: number; interest: number };
   over: OverReason | null;
 }
 
 export type GameEvent =
   | { type: 'pry-start' }
   | { type: 'pry-cancel' }
-  | { type: 'stole'; underCrewsNose: boolean }
+  | { type: 'stole'; underCrewsNose: boolean; kind: CoverKind }
+  | { type: 'alarm' }
   | { type: 'sold'; count: number; total: number; yard: Yard; price: number; otherPrice: number; multiplier: number }
+  | { type: 'deposited'; amount: number }
+  | { type: 'withdrew'; amount: number }
+  | { type: 'borrowed'; amount: number; phase: Phase }
+  | { type: 'repaid'; amount: number; cleared: boolean; called: boolean }
+  | { type: 'loan-called'; debt: number; seconds: number }
+  | { type: 'default'; lost: number }
+  | { type: 'gold-bought'; price: number }
+  | { type: 'gold-sold'; count: number; total: number; phase: Phase }
+  | { type: 'fed-refit' }
   | { type: 'stashed'; count: number }
   | { type: 'took'; count: number }
   | { type: 'bought'; drug: Drug; price: number; dea: boolean }
@@ -260,8 +304,12 @@ export function newGame(rng: () => number = Math.random): GameState {
     fix: 1,
     heat: 0,
     utils: 0,
-    carried: 0,
-    stash: 0,
+    cargo: [],
+    stash: [],
+    savings: 0,
+    debt: 0,
+    loanDue: null,
+    gold: 0,
     gear: { crowbar: false, cart: false, vest: false, bike: false },
     priceLevel: 1,
     phase: 'calm',
@@ -272,7 +320,10 @@ export function newGame(rng: () => number = Math.random): GameState {
     nextDeaAt: CONFIG.dea.first,
     // You start at your squat's door.
     player: { mover: { x: 4, y: 5, path: [] }, walking: false, pry: null, nod: 0, rush: 0 },
-    manholes: MANHOLE_SLOTS.map((t, i) => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', openedAt: 0, yours: false })),
+    manholes: [
+      ...MANHOLE_SLOTS.map((t, i): Manhole => ({ id: i, x: t.x, y: t.y, state: i < STARTING_SLOTS ? 'covered' : 'paved', kind: rng() < CONFIG.brassChance ? 'brass' : 'iron', openedAt: 0, yours: false })),
+      { id: MANHOLE_SLOTS.length, x: FED_COVER.x, y: FED_COVER.y, state: 'covered', kind: 'fed', openedAt: 0, yours: false },
+    ],
     agents: [],
     nextId: 100,
     nextCrewAt: 8,
@@ -284,7 +335,7 @@ export function newGame(rng: () => number = Math.random): GameState {
     lastSeenEvent: -99,
     warnedWithdrawal: false,
     warnedHeat: false,
-    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0 },
+    stats: { stolen: 0, sold: 0, doses: 0, earned: 0, pedsFell: 0, copsFell: 0, bustsSurvived: 0, interest: 0 },
     over: null,
   };
   state.agents.push(makeAgent(state, 'cop', { x: 16, y: 1 }));
@@ -308,6 +359,25 @@ export function drugPrice(state: GameState, drug: Drug, t = state.time): number 
   const wobble = 1 + 0.08 * Math.sin(t * (drug === 'heroin' ? 0.5 : 0.63) + (drug === 'heroin' ? 0 : 1));
   return CONFIG[drug].price * state.priceLevel ** CONFIG.drugInflation * wobble * (state.dea > 0 ? CONFIG.dea.markup : 1);
 }
+
+/**
+ * Gold, per ounce: it keeps up with inflation, dips a little in the boom and
+ * rallies in the bust (a flight to safety). `side` is what the pawn shop
+ * charges (buy) or pays (sell).
+ */
+export function goldPrice(state: GameState, side: 'buy' | 'sell' = 'buy', t = state.time): number {
+  const p = phaseAt(t);
+  const mood = p.phase === 'boom' ? 1 - 0.08 * (p.into / p.length) : p.phase === 'bust' ? 0.92 + 0.28 * Math.min(1, p.into / 10) : 1;
+  const wobble = 1 + 0.04 * Math.sin(t * 0.45 + 3);
+  const spread = side === 'buy' ? 1 + CONFIG.goldSpread : 1 - CONFIG.goldSpread;
+  return CONFIG.goldPrice * state.priceLevel * mood * wobble * spread;
+}
+
+/** Interest per second on savings, and on debt, at the Fed's current rate. */
+export const savingsRate = (state: GameState) => (state.rate / 100) * CONFIG.interestScale;
+export const loanRate = (state: GameState) => ((state.rate + CONFIG.loanSpread) / 100) * CONFIG.interestScale;
+export const loanSize = (state: GameState) => CONFIG.loanSize * state.priceLevel;
+export const creditLimit = (state: GameState) => CONFIG.creditLimit * state.priceLevel;
 
 export const gearPrice = (state: GameState, id: GearId) => GEAR.find((g) => g.id === id)!.price * state.priceLevel;
 
@@ -360,7 +430,8 @@ export function playerSpeed(state: GameState): number {
   if (state.gear.bike) speed *= CONFIG.bikeSpeed;
   if (p.nod > 0) speed *= CONFIG.nodSpeed;
   else if (p.rush > 0) speed *= CONFIG.rushSpeed;
-  if (state.carried > 0) speed *= state.gear.cart ? 1 - CONFIG.cartSpeedPerCover * state.carried : CONFIG.carrySpeed;
+  const carried = state.cargo.length;
+  if (carried > 0) speed *= state.gear.cart ? 1 - CONFIG.cartSpeedPerCover * carried : CONFIG.carrySpeed;
   if (state.fix < CONFIG.withdrawal) speed *= CONFIG.withdrawalSpeed;
   return speed;
 }
@@ -429,6 +500,8 @@ export type Context =
   | { kind: 'stash' }
   | { kind: 'dealer' }
   | { kind: 'hardware' }
+  | { kind: 'bank' }
+  | { kind: 'pawn' }
   | null;
 
 export function context(state: GameState): Context {
@@ -437,10 +510,12 @@ export function context(state: GameState): Context {
   const here = tileOf(p.mover);
   if (!standingOn(p.mover, here)) return null;
   const manhole = state.manholes.find((h) => h.state === 'covered' && sameTile(h, here));
-  if (manhole) return state.carried >= capacity(state) ? { kind: 'full' } : { kind: 'pry', manhole };
+  if (manhole) return state.cargo.length >= capacity(state) ? { kind: 'full' } : { kind: 'pry', manhole };
   const place = placeAtDoor(here);
   if (!place) return null;
-  if (place.id === 'yard-near' || place.id === 'yard-far') return state.carried > 0 ? { kind: 'sell', yard: place.id } : { kind: 'nothing-to-sell', yard: place.id };
+  if (place.id === 'yard-near' || place.id === 'yard-far') return state.cargo.length > 0 ? { kind: 'sell', yard: place.id } : { kind: 'nothing-to-sell', yard: place.id };
+  if (place.id === 'fed') return { kind: 'bank' };
+  if (place.id === 'pawn') return { kind: 'pawn' };
   if (place.id === 'squat') return { kind: 'stash' };
   if (place.id === 'dealer') return { kind: 'dealer' };
   if (place.id === 'hardware') return { kind: 'hardware' };
@@ -468,28 +543,31 @@ export function act(state: GameState): GameEvent[] {
   const c = context(state);
   if (!c) return events;
   if (c.kind === 'pry') {
-    state.player.pry = { id: c.manhole.id, left: state.gear.crowbar ? CONFIG.crowbarPryTime : CONFIG.pryTime };
+    const slower = c.manhole.kind === 'fed' ? CONFIG.fedPry : c.manhole.kind === 'brass' ? CONFIG.brassPry : 1;
+    const total = (state.gear.crowbar ? CONFIG.crowbarPryTime : CONFIG.pryTime) * slower;
+    state.player.pry = { id: c.manhole.id, left: total, total };
     events.push({ type: 'pry-start' });
   } else if (c.kind === 'sell') {
     const other: Yard = c.yard === 'yard-near' ? 'yard-far' : 'yard-near';
     const price = scrapPrice(state, c.yard);
-    const total = price * state.carried;
-    events.push({ type: 'sold', count: state.carried, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0)) });
+    const total = price * cargoValue(state.cargo);
+    const count = state.cargo.length;
+    events.push({ type: 'sold', count, total, yard: c.yard, price, otherPrice: scrapPrice(state, other), multiplier: scrapMultiplier(state.time - (c.yard === 'yard-far' ? SCHEDULE.lag : 0)) });
     state.cash += total;
-    state.stats.sold += state.carried;
+    state.stats.sold += count;
     state.stats.earned += total;
-    state.carried = 0;
+    state.cargo = [];
     advanceStep(state, 1, events);
   } else if (c.kind === 'stash') {
-    if (state.carried > 0) {
-      events.push({ type: 'stashed', count: state.carried });
-      state.stash += state.carried;
-      state.carried = 0;
-    } else if (state.stash > 0) {
-      const count = Math.min(capacity(state), state.stash);
-      state.stash -= count;
-      state.carried += count;
-      events.push({ type: 'took', count });
+    if (state.cargo.length > 0) {
+      events.push({ type: 'stashed', count: state.cargo.length });
+      state.stash.push(...state.cargo);
+      state.cargo = [];
+    } else if (state.stash.length > 0) {
+      // The most valuable first.
+      state.stash.sort((a, b) => COVER_VALUE[b] - COVER_VALUE[a]);
+      state.cargo = state.stash.splice(0, capacity(state));
+      events.push({ type: 'took', count: state.cargo.length });
     }
   }
   return events;
@@ -518,6 +596,86 @@ export function buyDrug(state: GameState, drug: Drug): GameEvent[] {
   return events;
 }
 
+/** How many iron covers' worth these are. */
+export const cargoValue = (covers: readonly CoverKind[]) => covers.reduce((sum, k) => sum + COVER_VALUE[k], 0);
+
+// ---------------------------------------------------------------------------
+// The bank (the Fed's discount window) and the pawn shop
+// ---------------------------------------------------------------------------
+
+const at = (state: GameState, kind: 'bank' | 'pawn') => !state.over && context(state)?.kind === kind;
+
+export function deposit(state: GameState): GameEvent[] {
+  if (!at(state, 'bank') || state.cash <= 0) return [];
+  const amount = state.cash;
+  state.savings += amount;
+  state.cash = 0;
+  return [{ type: 'deposited', amount }];
+}
+
+export function withdraw(state: GameState): GameEvent[] {
+  if (!at(state, 'bank') || state.savings <= 0) return [];
+  const amount = state.savings;
+  state.cash += amount;
+  state.savings = 0;
+  return [{ type: 'withdrew', amount }];
+}
+
+/** Borrow one loan's worth, up to the credit limit. In a bust it's due when the bust ends. */
+export function borrow(state: GameState): GameEvent[] {
+  if (!at(state, 'bank')) return [];
+  const amount = Math.min(loanSize(state), creditLimit(state) - state.debt);
+  if (amount < 1) return [];
+  state.debt += amount;
+  state.cash += amount;
+  const events: GameEvent[] = [{ type: 'borrowed', amount, phase: state.phase }];
+  callLoan(state, events);
+  return events;
+}
+
+/** Pay back as much as you can. */
+export function repay(state: GameState): GameEvent[] {
+  if (!at(state, 'bank') || state.debt <= 0 || state.cash <= 0) return [];
+  const amount = Math.min(state.cash, state.debt);
+  const called = state.loanDue !== null;
+  state.cash -= amount;
+  state.debt -= amount;
+  if (state.debt < 0.01) {
+    state.debt = 0;
+    state.loanDue = null;
+  }
+  return [{ type: 'repaid', amount, cleared: state.debt === 0, called }];
+}
+
+/** In a bust, the bank wants its money back by the end of it. */
+function callLoan(state: GameState, events: GameEvent[]) {
+  if (state.debt <= 0 || state.loanDue !== null) return;
+  const p = phaseAt(state.time);
+  if (p.phase !== 'bust') return;
+  const seconds = p.length - p.into;
+  state.loanDue = state.time + seconds;
+  events.push({ type: 'loan-called', debt: state.debt, seconds });
+}
+
+export function buyGold(state: GameState): GameEvent[] {
+  if (!at(state, 'pawn')) return [];
+  const price = goldPrice(state, 'buy');
+  if (state.cash < price) return [{ type: 'broke', price }];
+  state.cash -= price;
+  state.gold++;
+  return [{ type: 'gold-bought', price }];
+}
+
+/** Sell one ounce, or all of it. */
+export function sellGold(state: GameState, all = false): GameEvent[] {
+  if (!at(state, 'pawn') || state.gold <= 0) return [];
+  const count = all ? state.gold : 1;
+  const total = goldPrice(state, 'sell') * count;
+  state.gold -= count;
+  state.cash += total;
+  return [{ type: 'gold-sold', count, total, phase: state.phase }];
+}
+
 export function buyGear(state: GameState, id: GearId): GameEvent[] {
   if (state.over || context(state)?.kind !== 'hardware' || state.gear[id]) return [];
   const price = gearPrice(state, id);
@@ -542,7 +700,7 @@ function crewLimits(phase: Phase) {
 /** The oldest open manhole no crew is on its way to. */
 function nextJob(state: GameState): Manhole | null {
   const taken = new Set(state.agents.filter((a) => a.kind === 'crew' && a.target !== null).map((a) => a.target));
-  return state.manholes.filter((h) => h.state === 'open' && !taken.has(h.id)).sort((a, b) => a.openedAt - b.openedAt)[0] ?? null;
+  return state.manholes.filter((h) => h.state === 'open' && h.kind !== 'fed' && !taken.has(h.id)).sort((a, b) => a.openedAt - b.openedAt)[0] ?? null;
 }
 
 function updateAgents(state: GameState, dt: number, rng: () => number, events: GameEvent[]) {
@@ -553,7 +711,7 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
       continue;
     }
     if (a.kind === 'crew') {
-      updateCrew(state, a, dt, events, gone);
+      updateCrew(state, a, dt, rng, events, gone);
       continue;
     }
     if (!a.mover.path.length) a.mover.path = findPath(tileOf(a.mover), randomRoad(rng));
@@ -599,7 +757,7 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
   }
 }
 
-function updateCrew(state: GameState, a: Agent, dt: number, events: GameEvent[], gone: Set<number>) {
+function updateCrew(state: GameState, a: Agent, dt: number, rng: () => number, events: GameEvent[], gone: Set<number>) {
   if (a.leaving) {
     walk(a.mover, CONFIG.crewSpeed * dt);
     if (!a.mover.path.length) gone.add(a.id);
@@ -616,6 +774,7 @@ function updateCrew(state: GameState, a: Agent, dt: number, events: GameEvent[],
     a.work -= dt;
     if (a.work > 0) return;
     job.state = 'covered';
+    job.kind = rng() < CONFIG.brassChance ? 'brass' : 'iron';
     events.push({ type: 'replaced', yours: job.yours, x: job.x, y: job.y });
     if (job.yours) advanceStep(state, 3, events);
     job.yours = false;
@@ -646,7 +805,7 @@ function watchers(state: GameState): { gain: number; by: AgentKind | null; crewN
     const d = Math.hypot(a.mover.x - p.mover.x, a.mover.y - p.mover.y);
     if (a.kind === 'crew' && d <= CONFIG.crewSight) crewNear = true;
     if (a.kind === 'cop' && d <= CONFIG.copSight) {
-      const g = (prying ? CONFIG.copHeat : 0) + CONFIG.carryHeat * state.carried;
+      const g = (prying ? CONFIG.copHeat : 0) + CONFIG.carryHeat * state.cargo.reduce((sum, k) => sum + COVER_HEAT[k], 0);
       const seen = vest ? g * 0.5 : g;
       if (seen > 0) {
         gain += seen;
@@ -690,8 +849,17 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     if (info.phase === 'boom') {
       // Infrastructure bill: new manholes all over town.
       const paved = state.manholes.filter((h) => h.state === 'paved').slice(0, 3);
-      for (const h of paved) h.state = 'covered';
+      for (const h of paved) {
+        h.state = 'covered';
+        h.kind = rng() < CONFIG.brassChance ? 'brass' : 'iron';
+      }
       if (paved.length) events.push({ type: 'new-covers', count: paved.length });
+      const fed = state.manholes.find((h) => h.kind === 'fed' && h.state === 'open');
+      if (fed) {
+        fed.state = 'covered';
+        fed.yours = false;
+        events.push({ type: 'fed-refit' });
+      }
     } else if (info.phase === 'bust' && state.agents.filter((a) => a.kind === 'cop').length < CONFIG.maxCops) {
       // Tough times: more police.
       state.agents.push(makeAgent(state, 'cop', { x: 0, y: 1 }));
@@ -699,6 +867,29 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
     }
   }
   state.priceLevel *= 1 + INFLATION[state.phase] * dt;
+
+  // The bank: interest both ways, and loans called in the bust
+  if (state.savings > 0) {
+    const interest = state.savings * savingsRate(state) * dt;
+    state.savings += interest;
+    state.stats.interest += interest;
+  }
+  if (state.debt > 0) {
+    state.debt += state.debt * loanRate(state) * dt;
+    callLoan(state, events);
+    if (state.loanDue !== null && t >= state.loanDue) {
+      // Default: they take everything.
+      const lost = state.cash + state.savings + goldPrice(state, 'sell') * state.gold + state.stash.length * scrapPrice(state, 'yard-near');
+      state.cash = 0;
+      state.savings = 0;
+      state.gold = 0;
+      state.stash = [];
+      state.debt = 0;
+      state.loanDue = null;
+      state.heat = Math.min(100, state.heat + CONFIG.defaultHeat);
+      events.push({ type: 'default', lost });
+    }
+  }
 
   // The DEA
   if (state.dea > 0) state.dea = Math.max(0, state.dea - dt);
@@ -732,9 +923,16 @@ export function update(state: GameState, input: Input, dt: number, rng: () => nu
         h.state = 'open';
         h.openedAt = t;
         h.yours = true;
-        state.carried++;
+        state.cargo.push(h.kind);
         state.stats.stolen++;
-        events.push({ type: 'stole', underCrewsNose: state.gear.vest && watchers(state).crewNear });
+        events.push({ type: 'stole', underCrewsNose: state.gear.vest && watchers(state).crewNear, kind: h.kind });
+        if (h.kind === 'fed') {
+          // The alarm goes off, and the nearest cop comes running.
+          state.heat = Math.min(100, state.heat + CONFIG.fedAlarm);
+          const cop = state.agents.filter((a) => a.kind === 'cop' && a.down === 0).sort((a, b) => Math.hypot(a.mover.x - h.x, a.mover.y - h.y) - Math.hypot(b.mover.x - h.x, b.mover.y - h.y))[0];
+          if (cop) cop.mover.path = findPath(tileOf(cop.mover), h);
+          events.push({ type: 'alarm' });
+        }
         advanceStep(state, 0, events);
       }
     }

@@ -582,3 +582,19 @@ wait for replacement.
   lap pays a bonus. Price graphs for both yards and both drugs, DEA raids, 18
   achievements, a personal best. Automated driver: ~8–10 min basic, longer
   with capital goods.
+- Deeper economics:
+  - 🏛️ The Fed's discount window (its door on the top street): deposit your
+    cash and it earns the Fed's rate (≈0.4%/s in a bust, next to nothing in a
+    boom while inflation eats it); borrow up to $300 (in today's dollars) at
+    the rate plus 3%. Loans are called in when a bust starts: repay before it
+    ends, or default and lose your cash, savings, gold and stash (plus heat).
+  - 🪙 Gresham Pawn & Gold (a kiosk by Cantillon Scrap): gold keeps up with
+    inflation, dips in the boom and rallies in the bust; the shop takes 6% each
+    way.
+  - Covers come in kinds: brass (one in seven; ×3 value, slower to pry, more
+    heat to carry) and the Fed's own gold cover outside its door (×8, twice as
+    slow, an alarm that brings the nearest cop; only the Fed replaces it, with
+    each boom).
+  - 8 more achievements (26 in all): Interest on Reserve Balances, Cheap
+    Credit, Sound Finances, Too Small to Bail Out, Gold Bug, Barbarous Relic,
+    Historical Revisionism, End the Fed('s Manhole).

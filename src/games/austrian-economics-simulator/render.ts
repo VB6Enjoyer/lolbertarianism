@@ -2,7 +2,7 @@
 // passers-by and City Works trucks, and you (Rothbard, with a manhole cover).
 
 import { COLS, isIntersection, isRoad, PLACES, ROWS, type Place } from './map.ts';
-import { capacity, CONFIG, drugPrice, scrapPrice, type Agent, type GameState } from './logic.ts';
+import { capacity, drugPrice, goldPrice, scrapPrice, type Agent, type CoverKind, type GameState } from './logic.ts';
 
 export interface View {
   /** Tile size and the map's top-left corner, in CSS pixels. */
@@ -52,7 +52,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
   for (const h of state.manholes) {
     if (h.state === 'paved') continue;
     const [x, y] = at(v, h.x, h.y);
-    drawManhole(ctx, x, y, T, h.state === 'open', state.time);
+    drawManhole(ctx, x, y, T, h.state === 'open', state.time, h.kind);
   }
 
   for (const a of state.agents) {
@@ -181,6 +181,7 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('FEDERAL RESERVE', cx, top + H * 0.24, W * 0.8);
+      sign(ctx, cx, top + H * 0.91, `DISCOUNT WINDOW ${state.rate.toFixed(2)}%`, T * 0.85, '#1b5e20', '#e8f5e9', W);
       // The money printer goes brrr in a boom
       if (state.phase === 'boom') {
         ctx.font = `bold ${Math.round(T * 0.34)}px sans-serif`;
@@ -192,6 +193,17 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
         }
         ctx.globalAlpha = 1;
       }
+      break;
+    }
+    case 'pawn': {
+      ctx.fillStyle = '#3e2723';
+      ctx.fillRect(left, top, W, H);
+      // Striped awning over the door (on the street side)
+      for (let i = 0; i < 8; i++) {
+        ctx.fillStyle = i % 2 ? '#ffd54f' : '#8d6e63';
+        ctx.fillRect(left + (W / 8) * i, top + H * 0.72, W / 8 + 0.5, H * 0.28);
+      }
+      sign(ctx, cx, top + H * 0.34, `PAWN · GOLD ${money(goldPrice(state, 'buy'))}`, T * 0.8, '#1a1200', '#ffd54f', W);
       break;
     }
     case 'yard-near':
@@ -256,11 +268,11 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
         ctx.fillRect(left + W * wx, top + H * 0.56, W * 0.22, H * 0.08);
       }
       // Your stash, stacked
-      const stash = Math.min(state.stash, 12);
-      for (let i = 0; i < stash; i++) {
+      const stash = state.stash.slice(0, 12);
+      for (let i = 0; i < stash.length; i++) {
         const sx = left + W * 0.5 + (i % 4) * T * 0.22 - T * 0.33;
         const sy = top + H * 0.86 - Math.floor(i / 4) * T * 0.12;
-        ctx.fillStyle = '#555';
+        ctx.fillStyle = COVER_LOOK[stash[i]].fill;
         ctx.beginPath();
         ctx.ellipse(sx, sy, T * 0.13, T * 0.06, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -268,7 +280,7 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
         ctx.lineWidth = 1;
         ctx.stroke();
       }
-      sign(ctx, cx, top + H * 0.2, state.stash ? `YOUR SQUAT · ${state.stash} SAVED` : 'YOUR SQUAT', T, '#3e2723', '#ffe082', W);
+      sign(ctx, cx, top + H * 0.2, state.stash.length ? `YOUR SQUAT · ${state.stash.length} SAVED` : 'YOUR SQUAT', T, '#3e2723', '#ffe082', W);
       break;
     }
     case 'dealer': {
@@ -293,8 +305,16 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
   ctx.restore();
 }
 
-function drawManhole(ctx: CanvasRenderingContext2D, x: number, y: number, T: number, open: boolean, time: number) {
+/** Cover colors: plain iron, brass, and the Fed's gold one. */
+const COVER_LOOK: Record<CoverKind, { fill: string; edge: string; grid: string }> = {
+  iron: { fill: '#56595e', edge: '#2a2c30', grid: '#3d4044' },
+  brass: { fill: '#c9a227', edge: '#6d5200', grid: '#9c7a10' },
+  fed: { fill: '#ffd54f', edge: '#b71c1c', grid: '#e0a800' },
+};
+
+function drawManhole(ctx: CanvasRenderingContext2D, x: number, y: number, T: number, open: boolean, time: number, kind: CoverKind) {
   const r = T * 0.3;
+  const look = COVER_LOOK[kind];
   if (open) {
     // A hole in the road, with a little warning glow
     ctx.fillStyle = `rgba(255, 82, 82, ${0.18 + 0.1 * Math.sin(time * 5)})`;
@@ -314,18 +334,26 @@ function drawManhole(ctx: CanvasRenderingContext2D, x: number, y: number, T: num
     ctx.fill();
     return;
   }
-  ctx.fillStyle = '#56595e';
+  if (kind === 'fed') {
+    // Alarmed: a red ring pulsing round it
+    ctx.strokeStyle = `rgba(255, 23, 68, ${0.35 + 0.3 * Math.sin(time * 4)})`;
+    ctx.lineWidth = Math.max(2, T * 0.05);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.35, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = look.fill;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#2a2c30';
+  ctx.strokeStyle = look.edge;
   ctx.lineWidth = Math.max(1.5, T * 0.04);
   ctx.stroke();
   ctx.save();
   ctx.beginPath();
   ctx.arc(x, y, r * 0.82, 0, Math.PI * 2);
   ctx.clip();
-  ctx.strokeStyle = '#3d4044';
+  ctx.strokeStyle = look.grid;
   ctx.lineWidth = Math.max(1, T * 0.025);
   for (let k = -3; k <= 3; k++) {
     ctx.beginPath();
@@ -336,6 +364,13 @@ function drawManhole(ctx: CanvasRenderingContext2D, x: number, y: number, T: num
     ctx.stroke();
   }
   ctx.restore();
+  if (kind === 'fed') {
+    ctx.fillStyle = '#6d4c00';
+    ctx.font = `bold ${Math.round(T * 0.32)}px Georgia, serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', x, y + 1);
+  }
 }
 
 const PED_COLORS = ['#ef5350', '#42a5f5', '#ab47bc', '#26a69a'];
@@ -473,18 +508,18 @@ function drawPlayer(ctx: CanvasRenderingContext2D, v: View, state: GameState, im
   const hh = hw * (182 / 140);
   if (images.rothbard.complete && images.rothbard.naturalWidth) ctx.drawImage(images.rothbard, x - hw / 2, y - T * 0.12 - hh * 0.72 + bob, hw, hh);
   // Covers on your back (or in the cart)
-  for (let i = 0; i < state.carried; i++) {
+  state.cargo.forEach((kind, i) => {
     const cx = x + T * (state.gear.cart ? 0.36 : 0.28);
     const cy = y + T * 0.12 - i * T * 0.1;
-    ctx.fillStyle = '#56595e';
+    ctx.fillStyle = COVER_LOOK[kind].fill;
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.ellipse(cx, cy, T * 0.2, T * 0.08, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-  }
-  if (state.gear.cart && state.carried < capacity(state)) {
+  });
+  if (state.gear.cart && state.cargo.length < capacity(state)) {
     ctx.strokeStyle = '#b0bec5';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x + T * 0.2, y + T * 0.02, T * 0.32, T * 0.2);
@@ -497,8 +532,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, v: View, state: GameState, im
   }
   // Prying: a progress ring
   if (p.pry) {
-    const total = state.gear.crowbar ? CONFIG.crowbarPryTime : CONFIG.pryTime;
-    const done = 1 - p.pry.left / total;
+    const done = 1 - p.pry.left / p.pry.total;
     ctx.strokeStyle = '#5fff8f';
     ctx.lineWidth = Math.max(3, T * 0.08);
     ctx.beginPath();

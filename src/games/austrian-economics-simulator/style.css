@@ -203,6 +203,11 @@ body {
     display: none;
 }
 
+.shop.bottom {
+    top: auto;
+    bottom: 64px;
+}
+
 .shop h2 {
     margin: 0 0 8px;
     font-size: 15px;
@@ -464,6 +469,23 @@ kbd {
 .gear {
     margin-left: auto;
     letter-spacing: 2px;
+}
+
+.finance {
+    grid-column: span 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 13px;
+}
+
+.finance b {
+    color: #fff;
+}
+
+.finance.due #debt {
+    color: var(--red);
+    animation: blink 0.4s infinite alternate;
 }
 
 .graphs {
@@ -894,7 +916,8 @@ kbd {
     }
 
     .meter,
-    .inventory {
+    .inventory,
+    .finance {
         grid-column: auto;
     }
 

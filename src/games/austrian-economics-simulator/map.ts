@@ -16,7 +16,7 @@ export const isRoad = (x: number, y: number) => inBounds(x, y) && (ROAD_COLS.inc
 export const isIntersection = (x: number, y: number) => ROAD_COLS.includes(x) && ROAD_ROWS.includes(y);
 export const sameTile = (a: Tile, b: Tile) => a.x === b.x && a.y === b.y;
 
-export type PlaceId = 'fed' | 'yard-near' | 'hardware' | 'squat' | 'dealer' | 'yard-far';
+export type PlaceId = 'fed' | 'pawn' | 'yard-near' | 'hardware' | 'squat' | 'dealer' | 'yard-far';
 
 export interface Place {
   id: PlaceId;
@@ -29,6 +29,7 @@ export interface Place {
 
 export const PLACES: readonly Place[] = [
   { id: 'fed', name: 'Federal Reserve', icon: '🏛️', block: { x: 2, y: 2, w: 4, h: 3 }, door: { x: 3, y: 1 } },
+  { id: 'pawn', name: 'Gresham Pawn & Gold', icon: '🪙', block: { x: 7, y: 0, w: 2, h: 1 }, door: { x: 7, y: 1 } },
   { id: 'yard-near', name: 'Cantillon Scrap & Salvage', icon: '🏗️', block: { x: 7, y: 2, w: 4, h: 3 }, door: { x: 9, y: 1 } },
   { id: 'hardware', name: 'Roundabout Hardware', icon: '🔧', block: { x: 12, y: 2, w: 4, h: 3 }, door: { x: 13, y: 5 } },
   { id: 'squat', name: 'Your Squat', icon: '🛏️', block: { x: 2, y: 6, w: 4, h: 3 }, door: { x: 4, y: 5 } },
@@ -38,8 +39,8 @@ export const PLACES: readonly Place[] = [
 
 export const placeById = (id: PlaceId) => PLACES.find((p) => p.id === id)!;
 
-/** The place whose door is on this tile (the Fed's door does nothing). */
-export const placeAtDoor = (t: Tile) => PLACES.find((p) => p.id !== 'fed' && sameTile(p.door, t)) ?? null;
+/** The place whose door is on this tile (the Fed's door is its discount window). */
+export const placeAtDoor = (t: Tile) => PLACES.find((p) => sameTile(p.door, t)) ?? null;
 
 /** The place whose block covers this tile. */
 export const placeAtBlock = (t: Tile) =>
@@ -53,6 +54,9 @@ export const MANHOLE_SLOTS: readonly Tile[] = [
   { x: 1, y: 3 }, { x: 1, y: 7 }, { x: 6, y: 3 }, { x: 6, y: 7 },
   { x: 11, y: 3 }, { x: 11, y: 7 }, { x: 16, y: 3 }, { x: 16, y: 7 },
 ];
+
+/** The Fed's own manhole, right outside: worth a fortune, and alarmed. */
+export const FED_COVER: Tile = { x: 2, y: 1 };
 
 /** The ones with a cover at the start; the rest come with infrastructure bills. */
 export const STARTING_SLOTS = 11;

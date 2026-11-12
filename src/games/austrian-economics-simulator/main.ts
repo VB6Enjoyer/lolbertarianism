@@ -3,7 +3,7 @@ import { note, playTone, getAudioContext } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { isRoad, nearestRoad, placeAtBlock, type Tile } from './map.ts';
-import { act, buyDrug, buyGear, capacity, context, drugPrice, GEAR, gearPrice, newGame, phaseAt, scrapPrice, tileOf, update, walkTo, type Drug, type GameEvent, type GameState, type GearId } from './logic.ts';
+import { act, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked, Tracker } from './achievements.ts';
 import { fitView, render, type View } from './render.ts';
 
@@ -28,6 +28,10 @@ const els = {
   carried: byId('carried'),
   stash: byId('stash'),
   gear: byId('gear'),
+  savings: byId('savings'),
+  debt: byId('debt'),
+  gold: byId('gold'),
+  finance: document.querySelector<HTMLElement>('.finance')!,
   laps: byId('laps'),
   cycle: document.querySelector<HTMLElement>('.cycle')!,
   priceNear: byId('price-near'),
@@ -93,6 +97,7 @@ const sfx = {
   lap: () => [523, 659, 784, 1047, 1319].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07)),
   over: () => [523, 440, 349, 262].forEach((hz, i) => playTone(note(hz, 0.25, 0.06), i * 0.22)),
   broke: () => playTone(note(150, 0.2, 0.06, 'square')),
+  coin: () => [1319, 1760].forEach((hz, i) => playTone(note(hz, 0.08, 0.05, 'triangle'), i * 0.06)),
   achievement: () => [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.04, 'triangle'), i * 0.07)),
 };
 
@@ -202,7 +207,7 @@ els.map.addEventListener('pointerdown', (e) => {
   const ty = (e.clientY - rect.top - view.oy) / view.tile - 0.5;
   const tile = { x: Math.round(tx), y: Math.round(ty) };
   const place = placeAtBlock(tile);
-  const target = place && place.id !== 'fed' ? place.door : isRoad(tile.x, tile.y) ? tile : nearestRoad(tx, ty);
+  const target = place ? place.door : isRoad(tile.x, tile.y) ? tile : nearestRoad(tx, ty);
   walkTo(state, target);
   ripple(target);
 });
@@ -215,33 +220,125 @@ function doAction() {
 }
 
 // ---------------------------------------------------------------------------
-// The shops: the Corner and Roundabout Hardware
+// The shops: the Corner, Roundabout Hardware, the Fed's discount window and the pawn shop
 // ---------------------------------------------------------------------------
 
-let shopKind: 'dealer' | 'hardware' | null = null;
+type ShopKind = 'dealer' | 'hardware' | 'bank' | 'pawn';
+
+interface ShopItem {
+  label: string;
+  detail: () => string;
+  /** What it costs or pays, shown on the right. */
+  price: () => string;
+  enabled: () => boolean;
+  buy: () => GameEvent[];
+}
+
+const pct = (perSecond: number) => `${(perSecond * 100).toFixed(2)}%/s`;
+
+const SHOPS: Record<ShopKind, { title: string; items: () => ShopItem[] }> = {
+  dealer: {
+    title: '💊 The Corner',
+    items: () =>
+      (['heroin', 'crack'] as const).map((drug) => ({
+        label: drug === 'heroin' ? '💉 Heroin' : '🪨 Crack',
+        detail: () => (drug === 'heroin' ? 'Full fix · slows you down a bit' : 'Half a fix · makes you fast'),
+        price: () => money(drugPrice(state, drug)),
+        enabled: () => state.cash >= drugPrice(state, drug),
+        buy: () => buyDrug(state, drug),
+      })),
+  },
+  hardware: {
+    title: '🔧 Roundabout Hardware',
+    items: () =>
+      GEAR.map((g) => ({
+        label: `${g.icon} ${g.name}`,
+        detail: () => g.description,
+        price: () => (state.gear[g.id] ? 'OWNED' : money(gearPrice(state, g.id))),
+        enabled: () => !state.gear[g.id] && state.cash >= gearPrice(state, g.id),
+        buy: () => buyGear(state, g.id),
+      })),
+  },
+  bank: {
+    title: '🏛️ The Discount Window',
+    items: () => [
+      {
+        label: '🏦 Deposit all your cash',
+        detail: () => `Earns ${pct(savingsRate(state))} at the Fed's ${state.rate.toFixed(2)}%. Inflation is ${state.phase === 'boom' ? 'eating it' : state.phase === 'bust' ? 'slow' : 'ticking along'}.`,
+        price: () => money(state.cash),
+        enabled: () => state.cash >= 1,
+        buy: () => deposit(state),
+      },
+      {
+        label: '💵 Withdraw your savings',
+        detail: () => (state.stats.interest > 0 ? `Interest earned this run: ${money(state.stats.interest)}` : 'Nothing saved yet.'),
+        price: () => money(state.savings),
+        enabled: () => state.savings >= 0.01,
+        buy: () => withdraw(state),
+      },
+      {
+        label: '💳 Borrow',
+        detail: () => `${pct(loanRate(state))}. The loan is called in at the next bust: repay before it ends or lose everything.`,
+        price: () => money(Math.min(loanSize(state), Math.max(0, creditLimit(state) - state.debt))),
+        enabled: () => creditLimit(state) - state.debt >= 1,
+        buy: () => borrow(state),
+      },
+      {
+        label: '🤝 Repay',
+        detail: () => (state.debt > 0 ? `You owe ${money(state.debt)}${state.loanDue !== null ? `, due in ${Math.ceil(state.loanDue - state.time)}s` : ''}.` : 'You owe nothing. Sound finances.'),
+        price: () => money(Math.min(state.cash, state.debt)),
+        enabled: () => state.debt > 0 && state.cash > 0,
+        buy: () => repay(state),
+      },
+    ],
+  },
+  pawn: {
+    title: '🪙 Gresham Pawn & Gold',
+    items: () => [
+      {
+        label: '🪙 Buy an ounce of gold',
+        detail: () => 'Keeps up with inflation, and rallies in a bust.',
+        price: () => money(goldPrice(state, 'buy')),
+        enabled: () => state.cash >= goldPrice(state, 'buy'),
+        buy: () => buyGold(state),
+      },
+      {
+        label: '💰 Sell an ounce',
+        detail: () => `You have ${state.gold} oz.`,
+        price: () => money(goldPrice(state, 'sell')),
+        enabled: () => state.gold > 0,
+        buy: () => sellGold(state),
+      },
+      {
+        label: '💰 Sell it all',
+        detail: () => 'The pawn shop takes its cut both ways.',
+        price: () => money(goldPrice(state, 'sell') * state.gold),
+        enabled: () => state.gold > 1,
+        buy: () => sellGold(state, true),
+      },
+    ],
+  },
+};
+
+let shopKind: ShopKind | null = null;
+let shopItems: ShopItem[] = [];
 const shopButtons: HTMLButtonElement[] = [];
 
-function openShop(kind: 'dealer' | 'hardware') {
+function openShop(kind: ShopKind) {
   shopKind = kind;
   els.shop.hidden = false;
-  els.shopTitle.textContent = kind === 'dealer' ? '💊 The Corner' : '🔧 Roundabout Hardware';
+  // Keep it clear of you: at the bottom when you're up top.
+  els.shop.classList.toggle('bottom', state.player.mover.y < 5);
+  els.shopTitle.textContent = SHOPS[kind].title;
+  shopItems = SHOPS[kind].items();
   shopButtons.length = 0;
-  const items: { label: string; detail: string; buy: () => GameEvent[] }[] =
-    kind === 'dealer'
-      ? (['heroin', 'crack'] as Drug[]).map((drug) => ({
-          label: drug === 'heroin' ? '💉 Heroin' : '🪨 Crack',
-          detail: drug === 'heroin' ? 'Full fix · slows you down a bit' : 'Half a fix · makes you fast',
-          buy: () => buyDrug(state, drug),
-        }))
-      : GEAR.map((g) => ({ label: `${g.icon} ${g.name}`, detail: g.description, buy: () => buyGear(state, g.id) }));
   els.shopItems.replaceChildren(
-    ...items.map((item, i) => {
+    ...shopItems.map((item, i) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'shop-item';
       b.innerHTML = `<kbd>${i + 1}</kbd><span class="name"></span><span class="price"></span><small></small>`;
       b.querySelector('.name')!.textContent = item.label;
-      b.querySelector('small')!.textContent = item.detail;
       b.addEventListener('click', () => handle(item.buy()));
       shopButtons.push(b);
       return b;
@@ -256,26 +353,19 @@ function closeShop() {
 }
 
 function refreshShop() {
-  if (!shopKind) return;
-  shopButtons.forEach((b, i) => {
-    let price: number;
-    let owned = false;
-    if (shopKind === 'dealer') price = drugPrice(state, i === 0 ? 'heroin' : 'crack');
-    else {
-      const id = GEAR[i].id as GearId;
-      price = gearPrice(state, id);
-      owned = state.gear[id];
-    }
-    const text = owned ? 'OWNED' : money(price);
-    const el = b.querySelector('.price')!;
-    if (el.textContent !== text) el.textContent = text;
-    b.disabled = owned || state.cash < price;
+  shopItems.forEach((item, i) => {
+    const b = shopButtons[i];
+    setText(b.querySelector<HTMLElement>('.price')!, item.price());
+    setText(b.querySelector<HTMLElement>('small')!, item.detail());
+    b.disabled = !item.enabled();
   });
 }
 
 function shopKey(i: number) {
-  if (shopKind && shopButtons[i] && !shopButtons[i].disabled) shopButtons[i].click();
-  else if (shopKind && shopButtons[i]) handle(shopKind === 'dealer' ? buyDrug(state, i === 0 ? 'heroin' : 'crack') : buyGear(state, GEAR[i].id));
+  const item = shopItems[i];
+  if (!shopKind || !item) return;
+  // Pressing a key for something you can't afford still says how much you need.
+  handle(item.buy());
 }
 
 // ---------------------------------------------------------------------------
@@ -461,7 +551,50 @@ function handle(events: GameEvent[]) {
         break;
       case 'stole':
         play('clank');
-        floater('+1 COVER', playerTile());
+        floater(e.kind === 'fed' ? '+1 FED COVER (×8)' : e.kind === 'brass' ? '+1 BRASS COVER (×3)' : '+1 COVER', playerTile(), e.kind === 'iron' ? '#5fff8f' : '#ffd54f');
+        break;
+      case 'alarm':
+        play('alert');
+        floater('🚨 ALARM! THE FED WANTS ITS COVER BACK', playerTile(), '#ff5f5f');
+        news('BREAKING: FEDERAL RESERVE MANHOLE COVER STOLEN. CHAIR CALLS IT "TRANSITORY".');
+        break;
+      case 'fed-refit':
+        news('THE FED REPLACES ITS OWN MANHOLE COVER. PAID FOR WITH NEW MONEY.');
+        break;
+      case 'deposited':
+        play('cash');
+        floater(`🏦 ${money(e.amount)} SAVED`, playerTile(), '#80d8ff');
+        break;
+      case 'withdrew':
+        play('cash');
+        floater(`💵 +${money(e.amount)}`, playerTile(), '#80d8ff');
+        break;
+      case 'borrowed':
+        play('cash');
+        floater(`💳 +${money(e.amount)} ON CREDIT`, playerTile(), '#ffab40');
+        if (e.phase === 'boom') news('CHEAP CREDIT! WHAT COULD POSSIBLY GO WRONG?');
+        break;
+      case 'repaid':
+        play('cash');
+        floater(e.cleared ? '🤝 DEBT-FREE' : `🤝 -${money(e.amount)} OWED`, playerTile(), '#80d8ff');
+        break;
+      case 'loan-called':
+        play('bell');
+        news(`📞 YOUR LOAN HAS BEEN CALLED: REPAY ${money(e.debt)} AT THE FED WITHIN ${Math.ceil(e.seconds)}s`);
+        floater('📞 LOAN CALLED!', playerTile(), '#ff5f5f');
+        break;
+      case 'default':
+        play('over');
+        news(`DEFAULT! THE BANK SEIZED EVERYTHING YOU OWNED (${money(e.lost)}). NO BAILOUT FOR YOU.`, 10);
+        floater('💸 DEFAULT: EVERYTHING SEIZED', playerTile(), '#ff5f5f');
+        break;
+      case 'gold-bought':
+        play('coin');
+        floater('🪙 +1 OZ', playerTile(), '#ffd54f');
+        break;
+      case 'gold-sold':
+        play('cash');
+        floater(`🪙 +${money(e.total)}`, playerTile(), '#ffd54f');
         break;
       case 'sold':
         play('cash');
@@ -556,6 +689,8 @@ const ACTION_TEXT: Record<string, string> = {
   stash: 'E · Stash covers / take them',
   dealer: '1 · Heroin   2 · Crack',
   hardware: '1–4 · Buy capital goods',
+  bank: '1–4 · Save, withdraw, borrow, repay',
+  pawn: '1–3 · Buy or sell gold',
 };
 
 let lastStepClass = -1;
@@ -571,8 +706,12 @@ function updateHud() {
   els.fixBar.parentElement!.parentElement!.classList.toggle('low', state.fix < 0.22);
   els.heatBar.style.width = `${state.heat}%`;
   els.heatBar.parentElement!.parentElement!.classList.toggle('high', state.heat > 70);
-  setText(els.carried, `${state.carried}/${capacity(state)}`);
-  setText(els.stash, String(state.stash));
+  setText(els.carried, `${state.cargo.length}/${capacity(state)}`);
+  setText(els.stash, String(state.stash.length));
+  setText(els.savings, money(state.savings));
+  setText(els.debt, state.debt > 0 ? `-${money(state.debt)}${state.loanDue !== null ? ` · ${Math.max(0, Math.ceil(state.loanDue - state.time))}s` : ''}` : '$0');
+  setText(els.gold, `${state.gold} oz`);
+  els.finance.classList.toggle('due', state.loanDue !== null);
   setText(els.gear, GEAR.filter((g) => state.gear[g.id]).map((g) => g.icon).join(''));
   setText(els.laps, `LAPS ${state.laps}`);
   setText(els.priceNear, money(scrapPrice(state, 'yard-near')));
@@ -591,15 +730,16 @@ function updateHud() {
   // The action button, and the shops
   const c = mode === 'playing' ? context(state) : null;
   const kind = c?.kind ?? null;
-  if (kind === 'dealer' || kind === 'hardware') {
+  if (kind === 'dealer' || kind === 'hardware' || kind === 'bank' || kind === 'pawn') {
     if (shopKind !== kind) openShop(kind);
     refreshShop();
   } else if (shopKind) closeShop();
   let text = 'Walk to a manhole cover (or tap the map)';
-  if (c?.kind === 'sell') text = `E · Sell ${state.carried} for ${money(scrapPrice(state, c.yard) * state.carried)}`;
+  if (c?.kind === 'sell') text = `E · Sell ${state.cargo.length} for ${money(scrapPrice(state, c.yard) * cargoValue(state.cargo))}`;
   else if (c?.kind === 'nothing-to-sell') text = `Paying ${money(scrapPrice(state, c.yard))} a cover`;
   else if (kind && ACTION_TEXT[kind]) text = ACTION_TEXT[kind];
-  else if (state.carried > 0) text = 'Take it to a junkyard (or your squat)';
+  else if (state.loanDue !== null && state.debt > 0) text = `Loan called! Repay ${money(state.debt)} at the Fed in ${Math.max(0, Math.ceil(state.loanDue - state.time))}s`;
+  else if (state.cargo.length > 0) text = 'Take it to a junkyard (or your squat)';
   else if (state.fix < 0.35) text = 'Get to the Corner before the fix wears off';
   setText(els.action, text);
   els.action.disabled = !(kind === 'pry' || kind === 'sell' || kind === 'stash');

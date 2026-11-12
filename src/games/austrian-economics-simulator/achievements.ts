@@ -29,6 +29,14 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'utils-100', icon: '😌', name: 'Marginal Utility', description: 'Get 100 utils in one run.' },
   { id: 'utils-300', icon: '🤤', name: 'Diminishing Returns? Never Heard of Them', description: 'Get 300 utils in one run.' },
   { id: 'arrested', icon: '⛓️', name: 'Victimless Crime', description: 'Get arrested.' },
+  { id: 'interest', icon: '🏦', name: 'Interest on Reserve Balances', description: 'Earn $50 in interest in one run.' },
+  { id: 'cheap-credit', icon: '💳', name: 'Cheap Credit', description: 'Borrow during a boom.' },
+  { id: 'repaid', icon: '🤝', name: 'Sound Finances', description: 'Pay off a called loan before the bust ends.' },
+  { id: 'default', icon: '💸', name: 'Too Small to Bail Out', description: 'Default on a loan.' },
+  { id: 'gold-5', icon: '🪙', name: 'Gold Bug', description: 'Own 5 ounces of gold.' },
+  { id: 'gold-bust', icon: '🥇', name: 'Barbarous Relic', description: 'Sell gold during a bust.' },
+  { id: 'brass', icon: '🎺', name: 'Historical Revisionism', description: 'Steal a brass cover.' },
+  { id: 'fed-cover', icon: '🏛️', name: "End the Fed('s Manhole)", description: "Steal the Fed's own manhole cover." },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -57,6 +65,20 @@ export class Tracker {
         case 'stole':
           add('first-cover');
           if (e.underCrewsNose) add('vest');
+          if (e.kind === 'brass') add('brass');
+          if (e.kind === 'fed') add('fed-cover');
+          break;
+        case 'borrowed':
+          if (e.phase === 'boom') add('cheap-credit');
+          break;
+        case 'repaid':
+          if (e.cleared && e.called) add('repaid');
+          break;
+        case 'default':
+          add('default');
+          break;
+        case 'gold-sold':
+          if (e.phase === 'bust') add('gold-bust');
           break;
         case 'lap':
           add('lap');
@@ -79,7 +101,9 @@ export class Tracker {
           break;
       }
     }
-    if (state.stash >= 5) add('stash-5');
+    if (state.stash.length >= 5) add('stash-5');
+    if (state.stats.interest >= 50) add('interest');
+    if (state.gold >= 5) add('gold-5');
     if (GEAR.every((g) => state.gear[g.id])) add('capital');
     if (state.stats.pedsFell >= 3) add('peds-3');
     if (state.stats.bustsSurvived >= 1) add('bust');
