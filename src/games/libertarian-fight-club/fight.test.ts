@@ -358,3 +358,63 @@ describe('fight club: the career', () => {
     expect(normalizeStable({ rest: 9, purses: 50, lobster: { faction: 'ancap', name: 'Pinchy', claw: 99, trait: 'coward' } })).toMatchObject({ rest: 5, lobster: { claw: 10, traitKnown: true, trait: 'coward', id: 100 } });
   });
 });
+
+describe('fight club: Vinny the Fin', () => {
+  it('lends in chunks up to a limit that grows with the venue', async () => {
+    const { borrow, creditLimit, loanChunk, newShark } = await import('./shark.ts');
+    expect(creditLimit(2)).toBeGreaterThan(creditLimit(0));
+    const s = newShark();
+    let total = 0;
+    for (let i = 0; i < 10; i++) total += borrow(s, 0);
+    expect(total).toBe(creditLimit(0));
+    expect(borrow(s, 0)).toBe(0);
+    expect(loanChunk(0)).toBe(250);
+  });
+
+  it('charges 20% a night; paying anything keeps him patient, three unpaid nights and he collects', async () => {
+    const { borrow, dueForCollection, newShark, nightPasses, repay } = await import('./shark.ts');
+    const s = newShark();
+    borrow(s, 0);
+    expect(nightPasses(s)).toBe(50);
+    expect(s.debt).toBe(300);
+    expect(s.nightsUnpaid).toBe(1);
+    repay(s, 10);
+    nightPasses(s);
+    expect(s.nightsUnpaid).toBe(0); // paid something: patience resets
+    nightPasses(s);
+    nightPasses(s);
+    expect(dueForCollection(s)).toBe(false);
+    nightPasses(s);
+    expect(dueForCollection(s)).toBe(true);
+    expect(repay(s, 1e9)).toBeGreaterThan(0);
+    expect(s.debt).toBe(0);
+    expect(nightPasses(s)).toBe(0);
+  });
+
+  it('collects your cash first, then a claw (or your venue), then halves the rest', async () => {
+    const { collect } = await import('./shark.ts');
+    const s = { debt: 1000, nightsUnpaid: 3, paidTonight: false };
+    expect(collect(s, 1500, true)).toEqual({ took: 1000, claw: false, demoted: false });
+    expect(s.debt).toBe(0);
+    const t = { debt: 1000, nightsUnpaid: 3, paidTonight: false };
+    expect(collect(t, 200, true)).toEqual({ took: 200, claw: true, demoted: false });
+    expect(t.debt).toBe(400);
+    expect(t.nightsUnpaid).toBe(0);
+    expect(collect({ debt: 500, nightsUnpaid: 3, paidTonight: false }, 0, false)).toMatchObject({ demoted: true });
+  });
+
+  it('saves are cleaned up', async () => {
+    const { normalizeShark } = await import('./shark.ts');
+    expect(normalizeShark({ debt: '420', nightsUnpaid: 99 })).toEqual({ debt: 420, nightsUnpaid: 3, paidTonight: false });
+    expect(normalizeShark(null)).toEqual({ debt: 0, nightsUnpaid: 0, paidTonight: false });
+  });
+});
+
+describe('fight club: achievements', () => {
+  it('unique ids, all filled in, and saves keep only known ones', async () => {
+    const { ACHIEVEMENTS, normalizeUnlocked } = await import('./achievements.ts');
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+    for (const a of ACHIEVEMENTS) expect(a.icon && a.name && a.description, a.id).toBeTruthy();
+    expect([...normalizeUnlocked(['parlay', 'nope', 4])]).toEqual(['parlay']);
+  });
+});
