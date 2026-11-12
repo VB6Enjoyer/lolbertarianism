@@ -3,7 +3,8 @@ import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ARG_TYPES, FACTIONS, factionById, makeRoster, normalizeRoster, traitById, type Faction, type Lobster } from './lobsters.ts';
-import { argTypesOf, houseOdds, pickBout, revealedSides, ROUNDS, simulate, weighIn, type FightEvent, type FightResult, type Side } from './fight.ts';
+import { argTypesOf, pickBout, publicChance, revealedSides, ROUNDS, simulate, stateAfterRound, weighIn, type FightEvent, type FightResult, type Side } from './fight.ts';
+import { BETTORS, bettorById, cashOutValue, crowdBets, lateBet, liveOdds, poolOdds, projectedPayout, TAKEOUT, totals, type PoolBet } from './pool.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -30,6 +31,17 @@ const els = {
   mute: byId<HTMLButtonElement>('mute'),
   toasts: byId('toasts'),
   spectators: [...document.querySelectorAll<HTMLElement>('.spectator')],
+  pool: byId('pool'),
+  poolBar: [byId('pool-bar-0'), byId('pool-bar-1')] as const,
+  poolTotal: byId('pool-total'),
+  poolBets: byId('pool-bets'),
+  preview: byId('preview'),
+  live: byId('live'),
+  liveTitle: byId('live-title'),
+  liveBets: [byId<HTMLButtonElement>('live-bet-0'), byId<HTMLButtonElement>('live-bet-1')] as const,
+  yourBets: byId('your-bets'),
+  liveTimer: byId('live-timer'),
+  liveContinue: byId<HTMLButtonElement>('live-continue'),
 };
 
 // ---------------------------------------------------------------------------
@@ -70,6 +82,7 @@ const sfx = {
   lose: () => [392, 330, 262].forEach((hz, i) => playTone(note(hz, 0.2, 0.06, 'triangle'), i * 0.15)),
   coin: () => playTone(note(1319, 0.08, 0.05, 'triangle')),
   reveal: () => [660, 990].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.08)),
+  cashout: () => [1047, 1319, 1568].forEach((hz, i) => playTone(note(hz, 0.08, 0.05, 'triangle'), i * 0.06)),
 };
 
 function play<K extends keyof typeof sfx>(name: K, ...args: Parameters<(typeof sfx)[K]>) {
@@ -154,29 +167,46 @@ function renderChart() {
 // Bouts
 // ---------------------------------------------------------------------------
 
-type Phase = 'betting' | 'fighting' | 'done';
+type Phase = 'opening' | 'betting' | 'fighting' | 'live' | 'done';
 
 interface Bout {
   lobsters: [Lobster, Lobster];
-  odds: [number, number];
   ids: [number, number];
+  /** The public's idea of A's chances (it moves its money accordingly). */
+  publicP: number;
+  /** Everyone's money in the pool, yours included. */
+  pool: PoolBet[];
 }
 
-let phase: Phase = 'betting';
+/** Your bets on this bout: the pool bet, and any live bets. `payout` is what it pays if it wins. */
+interface YourBet {
+  kind: 'pool' | 'live';
+  side: Side;
+  stake: number;
+  payout: number;
+  /** Cashed out for this much (and settled), or null. */
+  cashedOut: number | null;
+}
+
+let phase: Phase = 'opening';
 let bout: Bout;
 let lastPair: [number, number] | null = null;
-let bet: { side: Side; stake: number } | null = null;
+let yourBets: YourBet[] = [];
+/** Bumped with each new bout, so the old bout's timers know to stop. */
+let boutToken = 0;
 
-function newBout() {
+async function newBout() {
+  const token = ++boutToken;
   const ids = pickBout(save.roster.length, Math.random, lastPair);
   lastPair = ids;
   const lobsters: [Lobster, Lobster] = [save.roster[ids[0]], save.roster[ids[1]]];
-  bout = { lobsters, odds: houseOdds(lobsters[0], lobsters[1]), ids };
-  phase = 'betting';
-  bet = null;
+  bout = { lobsters, ids, publicP: publicChance(lobsters[0], lobsters[1]), pool: [] };
+  phase = 'opening';
+  yourBets = [];
   els.bout.textContent = String(save.bouts + 1);
   els.round.textContent = '';
   els.result.hidden = true;
+  els.live.hidden = true;
   for (const side of [0, 1] as Side[]) {
     renderCard(side);
     const f = factionById(lobsters[side].faction);
@@ -186,16 +216,95 @@ function newBout() {
     el.querySelector('.lobster')!.innerHTML = `<span class="badge">${f.icon}</span>${lobsterSvg(f)}`;
     setHp(side, lobsters[side].stamina, lobsters[side].stamina);
     el.querySelector<HTMLElement>('.say')!.hidden = true;
-    els.bets[side].innerHTML = `Bet on <b>${escapeHtml(lobsters[side].name)}</b> <span>${bout.odds[side].toFixed(2)}×</span>`;
   }
   els.betRow.hidden = false;
   els.stakeRow.hidden = false;
+  els.after.hidden = true;
+  setBetButtons(false);
   // Lost some? Don't leave a stake you can't cover.
   if (stake() > save.bankroll) els.stake.value = String(save.bankroll);
-  els.after.hidden = true;
   updateBankroll();
-  log(`🔔 Bout ${save.bouts + 1}: ${lobsters[0].name} (${factionById(lobsters[0].faction).name}) vs ${lobsters[1].name} (${factionById(lobsters[1].faction).name}). The house says ${bout.odds[0].toFixed(2)}× / ${bout.odds[1].toFixed(2)}×.`, 'bell');
+  renderPool();
+  log(`🔔 Bout ${save.bouts + 1}: ${lobsters[0].name} (${factionById(lobsters[0].faction).name}) vs ${lobsters[1].name} (${factionById(lobsters[1].faction).name}). The pool is open.`, 'bell');
+  // The crowd puts its money down first, one by one.
+  for (const b of crowdBets(lobsters[0], lobsters[1], bout.publicP, Math.random)) {
+    if (token !== boutToken) return;
+    bout.pool.push(b);
+    if (b.who !== 'public') {
+      crowdShout(b);
+      play('coin');
+    }
+    renderPool();
+    await wait(b.who === 'public' ? 150 : 380);
+  }
+  if (token !== boutToken) return;
+  phase = 'betting';
+  setBetButtons(true);
+  renderPool();
 }
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** A meme bettor yells as they put their money down. */
+function crowdShout(b: PoolBet) {
+  if (b.who === 'you' || b.who === 'public') return;
+  const bettor = bettorById(b.who);
+  const i = BETTORS.indexOf(bettor);
+  const spot = els.spectators[i];
+  const line = bettor.lines[Math.floor(Math.random() * bettor.lines.length)];
+  const el = spot.querySelector<HTMLElement>('.shout')!;
+  el.textContent = `${money(b.amount)} on ${bout.lobsters[b.side].name.split(' ')[0]}! ${line}`;
+  spot.classList.remove('shouting');
+  void spot.offsetWidth;
+  spot.classList.add('shouting');
+}
+
+function setBetButtons(open: boolean) {
+  for (const b of [...els.bets, els.watch]) b.disabled = !open;
+}
+
+/** The pool panel: each side's money, the odds, who bet what, and your projected payout. */
+function renderPool() {
+  const t = totals(bout.pool);
+  const odds = poolOdds(t);
+  const total = t[0] + t[1];
+  for (const side of [0, 1] as Side[]) {
+    els.poolBar[side].style.flexGrow = String(Math.max(1, t[side]));
+    els.poolBar[side].textContent = total ? `${money(t[side])}` : '';
+    const name = bout.lobsters[side].name;
+    els.bets[side].innerHTML = `Bet on <b>${escapeHtml(name)}</b> <span>${total ? `${odds[side].toFixed(2)}×` : '…'}</span>`;
+  }
+  els.poolTotal.textContent = total ? `POOL ${money(total)} · house cut ${Math.round(TAKEOUT * 100)}%` : 'The crowd is placing its bets…';
+  const rows = bout.pool.filter((b) => b.who !== 'public');
+  els.poolBets.replaceChildren(
+    ...rows.map((b) => {
+      const li = document.createElement('li');
+      const face = b.who === 'you' ? '🫵' : bettorById(b.who).face;
+      const who = b.who === 'you' ? 'You' : bettorById(b.who).name;
+      li.className = b.who === 'you' ? 'you' : '';
+      li.textContent = `${face} ${who}: ${money(b.amount)} on ${bout.lobsters[b.side].name}${b.late ? ' (late!)' : ''}`;
+      li.title = b.who === 'you' ? '' : bettorById(b.who).style;
+      return li;
+    }),
+  );
+  updatePreview();
+}
+
+/** What your stake would pay on each side right now (your own money moves the odds). */
+function updatePreview() {
+  els.preview.hidden = phase !== 'betting' && phase !== 'opening';
+  if (els.preview.hidden) return;
+  const t = totals(bout.pool);
+  const amount = stake();
+  if (!t[0] || !t[1] || amount < 10) {
+    els.preview.textContent = amount < 10 ? 'Minimum stake: $10' : '';
+    return;
+  }
+  const pay = [projectedPayout(t, 0, amount), projectedPayout(t, 1, amount)];
+  els.preview.textContent = `${money(amount)} pays ${money(pay[0])} on ${bout.lobsters[0].name.split(' ')[0]} or ${money(pay[1])} on ${bout.lobsters[1].name.split(' ')[0]} (if nobody else bets after you).`;
+}
+
+els.stake.addEventListener('input', updatePreview);
 
 function setHp(side: Side, hp: number, max: number) {
   const el = els.fighters[side].querySelector('.hp')!;
@@ -261,14 +370,30 @@ function placeBet(side: Side | null) {
       log('You don’t have the capital for that.', 'warn');
       return;
     }
-    bet = { side, stake: amount };
     save.bankroll -= amount;
+    bout.pool.push({ who: 'you', side, amount });
     updateBankroll();
     play('coin');
-    log(`💵 You put ${money(amount)} on ${bout.lobsters[side].name} at ${bout.odds[side].toFixed(2)}×.`, 'bet');
   } else {
     log('👀 You keep your money in your pocket and watch.', '');
   }
+  // Betting closes; somebody might still sneak a late bet in.
+  phase = 'fighting';
+  els.preview.hidden = true;
+  const late = lateBet(Math.random);
+  if (late) {
+    bout.pool.push(late);
+    crowdShout(late);
+  }
+  const odds = poolOdds(totals(bout.pool));
+  if (side !== null) {
+    const amount = bout.pool.find((b) => b.who === 'you')!.amount;
+    yourBets.push({ kind: 'pool', side, stake: amount, payout: Math.floor(amount * odds[side]), cashedOut: null });
+    log(`💵 You put ${money(amount)} on ${bout.lobsters[side].name}. ${late ? `${bettorById(late.who as 'susan').name} throws in ${money(late.amount)} late. ` : ''}Final odds: ${odds[0].toFixed(2)}× / ${odds[1].toFixed(2)}×.`, 'bet');
+  } else {
+    log(`Betting is closed. Final odds: ${odds[0].toFixed(2)}× / ${odds[1].toFixed(2)}×.`, 'bell');
+  }
+  renderPool();
   persist();
   void fight();
 }
@@ -276,6 +401,107 @@ function placeBet(side: Side | null) {
 els.bets[0].addEventListener('click', () => placeBet(0));
 els.bets[1].addEventListener('click', () => placeBet(1));
 els.watch.addEventListener('click', () => placeBet(null));
+
+// ---------------------------------------------------------------------------
+// The live market, between rounds
+// ---------------------------------------------------------------------------
+
+/** The live market's chance for A, and its odds on each side. */
+let liveP = 0.5;
+let continueLive: (() => void) | null = null;
+const LIVE_SECONDS = 8;
+
+function liveOddsPair(): [number, number] {
+  return [liveOdds(liveP), liveOdds(1 - liveP)];
+}
+
+/** Your open bets, each with what cashing out would pay now. */
+function renderYourBets() {
+  const open = yourBets.filter((b) => b.cashedOut === null);
+  els.yourBets.replaceChildren(
+    ...(open.length
+      ? open.map((b) => {
+          const li = document.createElement('li');
+          const p = b.side === 0 ? liveP : 1 - liveP;
+          const value = cashOutValue(b.payout, p);
+          li.innerHTML = '<span></span><button type="button" class="cashout"></button>';
+          li.querySelector('span')!.textContent = `${b.kind === 'live' ? '⚡' : '💵'} ${money(b.stake)} on ${bout.lobsters[b.side].name} → pays ${money(b.payout)}`;
+          const btn = li.querySelector('button')!;
+          btn.textContent = `Cash out ${money(value)}`;
+          btn.addEventListener('click', () => cashOut(b, value));
+          return li;
+        })
+      : [Object.assign(document.createElement('li'), { className: 'none', textContent: 'No open bets. Bet live, or just watch.' })]),
+  );
+}
+
+function cashOut(b: YourBet, value: number) {
+  if (phase !== 'live' || b.cashedOut !== null) return;
+  b.cashedOut = value;
+  save.bankroll += value;
+  updateBankroll();
+  persist();
+  play('cashout');
+  log(`💸 Cashed out your ${money(b.stake)} on ${bout.lobsters[b.side].name} for ${money(value)}. ${value >= b.stake ? 'Profit locked in.' : 'Salvaged what you could.'}`, value >= b.stake ? 'win' : 'warn');
+  renderYourBets();
+}
+
+function liveBet(side: Side) {
+  if (phase !== 'live') return;
+  const amount = stake();
+  if (amount < 10 || amount > save.bankroll) {
+    log(amount < 10 ? 'The minimum stake is $10.' : 'You don’t have the capital for that.', 'warn');
+    return;
+  }
+  const odds = liveOddsPair()[side];
+  save.bankroll -= amount;
+  yourBets.push({ kind: 'live', side, stake: amount, payout: Math.floor(amount * odds), cashedOut: null });
+  updateBankroll();
+  persist();
+  play('coin');
+  log(`⚡ Live bet: ${money(amount)} on ${bout.lobsters[side].name} at ${odds.toFixed(2)}×.`, 'bet');
+  renderYourBets();
+}
+
+els.liveBets[0].addEventListener('click', () => liveBet(0));
+els.liveBets[1].addEventListener('click', () => liveBet(1));
+els.liveContinue.addEventListener('click', () => continueLive?.());
+
+/** Pauses after a round for the live market, until you continue (or the timer runs out). */
+async function liveBreak(result: FightResult, roundDone: number) {
+  const [a, b] = bout.lobsters;
+  liveP = publicChance(a, b, stateAfterRound(a, b, result, roundDone), 200);
+  phase = 'live';
+  const odds = liveOddsPair();
+  els.liveTitle.textContent = `⏸ After round ${roundDone}: the live market`;
+  for (const side of [0, 1] as Side[]) els.liveBets[side].innerHTML = `Bet live on <b>${escapeHtml(bout.lobsters[side].name)}</b> <span>${odds[side].toFixed(2)}×</span>`;
+  renderYourBets();
+  els.live.hidden = false;
+  els.stakeRow.hidden = false;
+  els.live.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  if (stake() > save.bankroll) els.stake.value = String(save.bankroll);
+  els.skip.hidden = true;
+  log(`⏸ Live market after round ${roundDone}: ${odds[0].toFixed(2)}× / ${odds[1].toFixed(2)}×.`, 'bell');
+  await new Promise<void>((resolve) => {
+    const started = performance.now();
+    const tick = () => {
+      if (!continueLive) return;
+      const left = Math.max(0, LIVE_SECONDS - (performance.now() - started) / 1000);
+      els.liveTimer.style.width = `${(left / LIVE_SECONDS) * 100}%`;
+      if (left <= 0) continueLive();
+      else requestAnimationFrame(tick);
+    };
+    continueLive = () => {
+      continueLive = null;
+      resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  els.live.hidden = true;
+  els.stakeRow.hidden = true;
+  els.skip.hidden = false;
+  phase = 'fighting';
+}
 
 // ---------------------------------------------------------------------------
 // The fight, played back
@@ -412,7 +638,11 @@ async function fight() {
   els.skip.hidden = false;
   els.next.hidden = true;
   const result = simulate(bout.lobsters[0], bout.lobsters[1]);
-  for (const e of result.events) await showEvent(e);
+  for (const e of result.events) {
+    // Between rounds: the live market (unless you're skipping to the end).
+    if (e.type === 'round' && e.round > 1 && !skipping) await liveBreak(result, e.round - 1);
+    await showEvent(e);
+  }
   finish(result);
 }
 
@@ -436,20 +666,31 @@ function finish(result: FightResult) {
   for (const side of revealedSides(result)) bout.lobsters[side].traitKnown = true;
   save.bouts++;
   const how = result.ending === 'ko' ? 'by KO' : result.ending === 'flee' ? 'when the other one ran away' : 'on the judges’ cards';
-  let line = `${winner.name} wins ${how}.`;
-  if (bet) {
-    if (bet.side === result.winner) {
-      const payout = Math.floor(bet.stake * bout.odds[bet.side]);
-      save.bankroll += payout;
-      line += ` You collect ${money(payout)} (+${money(payout - bet.stake)}).`;
+  // Settle every bet you didn't cash out; the net counts cash-outs too.
+  let net = 0;
+  let collected = 0;
+  for (const b of yourBets) {
+    net -= b.stake;
+    if (b.cashedOut !== null) net += b.cashedOut;
+    else if (b.side === result.winner) {
+      save.bankroll += b.payout;
+      collected += b.payout;
+      net += b.payout;
+    }
+  }
+  const betted = yourBets.length > 0;
+  let line = '';
+  if (betted) {
+    line = net > 0 ? `You're up ${money(net)} on the bout.` : net < 0 ? `You're down ${money(-net)} on the bout.` : 'You broke even.';
+    if (collected) line = `You collect ${money(collected)}. ${line}`;
+    if (net > 0) {
       play('win');
       rain();
-      log(`💰 You won ${money(payout)}! The market rewards those who read the matchup chart.`, 'win');
-    } else {
-      line += ` You lose ${money(bet.stake)}.`;
+      log(`💰 ${line} The market rewards those who read the matchup chart.`, 'win');
+    } else if (net < 0) {
       play('lose');
-      log(`📉 You lost ${money(bet.stake)}. No bailouts here.`, 'lose');
-    }
+      log(`📉 ${line} No bailouts here.`, 'lose');
+    } else log(line, '');
   }
   save.best = Math.max(save.best, save.bankroll);
   // Broke: your uncle spots you a fresh bankroll (the loan shark comes later).
@@ -459,10 +700,10 @@ function finish(result: FightResult) {
   }
   persist();
   updateBankroll();
-  els.result.innerHTML = `<b>${escapeHtml(winner.name)}</b> wins ${how}<small>${escapeHtml(line.replace(`${winner.name} wins ${how}.`, '').trim()) || 'You watched from the sidelines.'}</small>`;
+  els.result.innerHTML = `<b>${escapeHtml(winner.name)}</b> wins ${how}<small>${escapeHtml(line) || 'You watched from the sidelines.'}</small>`;
   els.result.hidden = false;
-  els.result.classList.toggle('won', !!bet && bet.side === result.winner);
-  els.result.classList.toggle('lost', !!bet && bet.side !== result.winner);
+  els.result.classList.toggle('won', betted && net > 0);
+  els.result.classList.toggle('lost', betted && net < 0);
   els.skip.hidden = true;
   els.next.hidden = false;
   els.next.focus();
@@ -470,7 +711,7 @@ function finish(result: FightResult) {
   els.fighters[result.winner].classList.add('winner');
 }
 
-els.next.addEventListener('click', () => newBout());
+els.next.addEventListener('click', () => void newBout());
 
 function rain() {
   for (let i = 0; i < 18; i++) {
@@ -490,9 +731,14 @@ document.addEventListener('keydown', (e) => {
   else if (phase === 'fighting' && (e.key === ' ' || e.key === 'Enter')) {
     e.preventDefault();
     skipping = true;
+  } else if (phase === 'live' && (e.key === ' ' || e.key === 'Enter')) {
+    e.preventDefault();
+    continueLive?.();
+  } else if (phase === 'live' && (e.key === '1' || e.key === '2')) {
+    liveBet(e.key === '1' ? 0 : 1);
   } else if (phase === 'done' && (e.key === ' ' || e.key === 'Enter')) {
     e.preventDefault();
-    newBout();
+    void newBout();
   }
 });
 
@@ -510,5 +756,5 @@ byId('hide-chart').addEventListener('click', () => {
 });
 
 byId('title-best').textContent = save.bouts ? `Bankroll ${money(save.bankroll)} · best ${money(save.best)} · ${save.bouts} bouts watched` : '';
-log('Welcome to the free market of violence. Read the tale of the tape, then place your bet.');
-newBout();
+log('Welcome to the free market of violence. Read the tale of the tape and the pool, then place your bet.');
+void newBout();

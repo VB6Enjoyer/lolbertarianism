@@ -64,14 +64,21 @@ export function critChance(f: Fighter): number {
  * Simulates a whole fight between two lobsters. `naive` is how the house sees
  * it: matchups count half, and nobody has a trait.
  */
-export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random, naive = false): FightResult {
+/** Where a fight stands at the start of a round (to simulate the rest of it). */
+export interface FightState {
+  round: number;
+  hp: [number, number];
+  dealt: [number, number];
+}
+
+export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random, naive = false, from: FightState | null = null): FightResult {
   if (naive) {
     a = { ...a, trait: 'none' };
     b = { ...b, trait: 'none' };
   }
   const fighters: [Fighter, Fighter] = [weighIn(a), weighIn(b)];
-  const hp: [number, number] = [fighters[0].stamina, fighters[1].stamina];
-  const dealt: [number, number] = [0, 0];
+  const hp: [number, number] = from ? [...from.hp] : [fighters[0].stamina, fighters[1].stamina];
+  const dealt: [number, number] = from ? [...from.dealt] : [0, 0];
   const events: FightEvent[] = [];
   const revealed = new Set<string>();
   const reveal = (side: Side, trait: FightTrait) => {
@@ -81,12 +88,14 @@ export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random
     events.push({ type: 'trait', side, trait });
   };
 
-  fighters.forEach((f, i) => {
-    const t = f.lobster.trait;
-    if (t === 'hungry' || t === 'molting' || t === 'pre-cooked') events.push({ type: 'weigh-in', side: i as Side, trait: t });
-  });
+  if (!from) {
+    fighters.forEach((f, i) => {
+      const t = f.lobster.trait;
+      if (t === 'hungry' || t === 'molting' || t === 'pre-cooked') events.push({ type: 'weigh-in', side: i as Side, trait: t });
+    });
+  }
 
-  for (let round = 1; round <= ROUNDS; round++) {
+  for (let round = from?.round ?? 1; round <= ROUNDS; round++) {
     events.push({ type: 'round', round });
     for (let x = 0; x < EXCHANGES_PER_ROUND; x++) {
       // The sharper debater gets the floor more often.
@@ -151,28 +160,49 @@ export function revealedSides(result: FightResult): Side[] {
   return [...sides];
 }
 
-/**
- * The house's line. The bookmaker is a stats nerd who only skimmed the matchup
- * chart: it simulates the fight a few hundred times counting half of each
- * matchup and no traits (and it overrates the crowd's
- * favorites). Reading matchups better than it does, and spotting traits, is
- * your edge.
- */
-export function houseOdds(a: Lobster, b: Lobster, margin = 0.08, sims = 300): [number, number] {
-  // Its own fixed random numbers, so the same bout always gets the same line.
-  let seed = (a.id * 7919 + b.id * 104729 + a.wins * 31 + b.wins * 17 + 1) >>> 0;
-  const rng = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 4294967296;
+/** A small fixed-seed generator, so the same question always gets the same answer. */
+function fixedRng(seed: number): () => number {
+  let x = seed >>> 0;
+  return () => {
+    x = (x * 1664525 + 1013904223) >>> 0;
+    return x / 4294967296;
   };
+}
+
+/**
+ * The public's idea of lobster A's chances: a stats nerd who only skimmed the
+ * matchup chart. It simulates the rest of the fight a few hundred times
+ * counting half of each matchup and no traits (and it overrates the crowd's
+ * favorites). Reading matchups better, and spotting traits, is your edge.
+ * `from` asks the same question mid-fight (for the live market).
+ */
+export function publicChance(a: Lobster, b: Lobster, from: FightState | null = null, sims = 300): number {
+  const rng = fixedRng(a.id * 7919 + b.id * 104729 + a.wins * 31 + b.wins * 17 + (from ? from.round * 1009 + from.hp[0] * 13 + from.hp[1] * 7 : 0) + 1);
   let wins = 0;
-  for (let i = 0; i < sims; i++) if (simulate(a, b, rng, true).winner === 0) wins++;
-  let pa = (wins + 1) / (sims + 2);
-  if (a.trait === 'crowd-favorite') pa = Math.min(0.97, pa + 0.08);
-  if (b.trait === 'crowd-favorite') pa = Math.max(0.03, pa - 0.08);
-  // The margin goes on the implied chance (capped below certainty); odds round down, so they never favor you.
-  const odds = (p: number) => Math.min(15, Math.max(1.01, Math.floor((1 / Math.min(0.99, p * (1 + margin))) * 100) / 100));
-  return [odds(pa), odds(1 - pa)];
+  for (let i = 0; i < sims; i++) if (simulate(a, b, rng, true, from).winner === 0) wins++;
+  let p = (wins + 1) / (sims + 2);
+  if (a.trait === 'crowd-favorite') p += 0.08;
+  if (b.trait === 'crowd-favorite') p -= 0.08;
+  return Math.min(0.98, Math.max(0.02, p));
+}
+
+/** Where the fight stood at the end of a round, from its events. */
+export function stateAfterRound(a: Lobster, b: Lobster, result: FightResult, round: number): FightState {
+  const hp: [number, number] = [weighIn(a).stamina, weighIn(b).stamina];
+  const dealt: [number, number] = [0, 0];
+  let current = 0;
+  for (const e of result.events) {
+    if (e.type === 'round') {
+      if (e.round > round) break;
+      current = e.round;
+    }
+    if (current > 0 && e.type === 'argue') {
+      hp[0] = e.hp[0];
+      hp[1] = e.hp[1];
+      dealt[e.side] += e.damage;
+    }
+  }
+  return { round: round + 1, hp, dealt };
 }
 
 /** The argument types a lobster uses, for its card. */

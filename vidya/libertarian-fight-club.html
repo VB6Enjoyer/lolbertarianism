@@ -54,6 +54,12 @@
 
         <!-- Betting -->
         <section class="betbar">
+            <!-- The pool: everyone's money, and the odds it makes -->
+            <div id="pool" class="pool">
+                <div class="pool-head"><span id="pool-total">The crowd is placing its bets…</span><span class="pool-help" title="Pool betting: the pot, minus the house's cut, is split among whoever backed the winner. The odds are whatever the crowd makes them, and your own stake moves them.">ⓘ How the pool works</span></div>
+                <div class="pool-bar"><i id="pool-bar-0" class="left"></i><i id="pool-bar-1" class="right"></i></div>
+                <ul id="pool-bets" class="pool-bets"></ul>
+            </div>
             <div class="stake">
                 <label for="stake">Stake</label>
                 <input id="stake" type="number" min="10" step="10" value="50" inputmode="numeric">
@@ -65,10 +71,21 @@
                     <button type="button" data-add="clear">C</button>
                 </div>
             </div>
+            <p id="preview" class="preview"></p>
             <div class="bets">
                 <button id="bet-0" class="bet-button left" type="button"></button>
                 <button id="watch" class="watch-button" type="button">Just watch</button>
                 <button id="bet-1" class="bet-button right" type="button"></button>
+            </div>
+            <!-- Between rounds -->
+            <div id="live" class="live" hidden>
+                <div class="live-head"><b id="live-title">⏸ The live market</b><div class="live-clock"><i id="live-timer"></i></div></div>
+                <ul id="your-bets" class="your-bets"></ul>
+                <div class="bets">
+                    <button id="live-bet-0" class="bet-button left" type="button"></button>
+                    <button id="live-continue" class="watch-button" type="button">Continue ▶</button>
+                    <button id="live-bet-1" class="bet-button right" type="button"></button>
+                </div>
             </div>
             <div class="after" hidden>
                 <button id="skip" class="watch-button" type="button">⏩ Skip to the result</button>
@@ -97,7 +114,8 @@
                     <li>🦞 Every lobster is a <b>faction</b>: Ancap, Minarchist, Austrian, Chicago, Objectivist, Georgist, Agorist, Hoppean, Bleeding-Heart, Mises Caucus.</li>
                     <li>🗣️ Fights are <b>debates</b>: three rounds of arguments. Each faction is <b>weak</b> to one kind of argument and <b>shrugs off</b> another.</li>
                     <li>📊 Read the tale of the tape: claw, shell, stamina, wits, record and form. Some lobsters hide a <b>trait</b>; once you've seen it, it's on the card.</li>
-                    <li>💸 The house sets the odds from the stats but only half-reads the matchup chart. <b>That's your edge.</b></li>
+                    <li>💸 It's <b>pool betting</b>: the crowd sets the odds. 😱 Screaming Susan backs whoever's popular, 😏 Squatting Sheila the underdog, 🤪 LMAO Larry whatever's funniest, and the rest follow the stats while only half-reading the matchup chart. <b>That's your edge.</b></li>
+                    <li>⏸ Between rounds the <b>live market</b> opens: bet on the fight as it stands, or <b>cash out</b> a bet early.</li>
                 </ul>
                 <p id="title-best" class="best"></p>
                 <div class="panel-buttons">

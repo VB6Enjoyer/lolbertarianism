@@ -685,6 +685,24 @@ into a handicapping game. Steps 1 and 2 of the plan:
   result, and your uncle the Bitcoin maximalist spots you $500 when you're
   broke.
 
-Next: crowd odds (a betting pool with the meme's three bettors), live betting
-and cash-out, tipsters and scouting, more bet types, a career of fight nights,
-and your own lobster to train and fight.
+### Libertarian Fight Club: step 2, the pool and the live market ✅
+
+- Pool betting (`pool.ts`) instead of a house line: each bout opens with the
+  crowd putting its money in, one by one. 😱 Screaming Susan bets big on
+  whoever's popular (record, form, crowd favorites), 😏 Squatting Sheila backs
+  the underdog, 🤪 LMAO Larry bets on whatever's funniest, and the rest of the
+  crowd follows the stats while half-reading the matchup chart. The pot, minus
+  a 10% cut, is split among the winners, so the odds are whatever the crowd
+  makes them; your stake moves them too (the projected payout updates as you
+  type), and someone may throw in a late bet after you.
+- The live market between rounds: odds re-figured from both lobsters' health
+  (from the crowd's stats-only view). Bet live on either side, or cash out
+  any open bet for its value now minus the cut. An 8-second clock and a
+  Continue button; skipping jumps past it. Every bet settles at the end, and
+  the result shows your net on the bout.
+- Simulated over 6,000 bouts: backing the pool favorite blindly about breaks
+  even (−1%), a crude "always bet the matchup side" rule loses (−4%), and
+  someone who really reads the fight wins ~+20% before it and ~+23% live.
+
+Next: tipsters and scouting, more bet types, a career of fight nights, and your
+own lobster to train and fight.

@@ -590,6 +590,141 @@ body {
     display: none !important;
 }
 
+.pool {
+    display: grid;
+    gap: 6px;
+}
+
+.pool-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font: bold 13px var(--mono);
+    color: var(--gold);
+}
+
+.pool-help {
+    color: var(--muted);
+    font: 12px var(--font);
+    cursor: help;
+}
+
+.pool-bar {
+    display: flex;
+    height: 22px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #12110f;
+}
+
+.pool-bar i {
+    flex: 1 1 0;
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    font: bold 11px var(--mono);
+    font-style: normal;
+    color: #fff;
+    transition: flex-grow 0.35s ease-out;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.pool-bar i.left {
+    background: #8e2b1f;
+}
+
+.pool-bar i.right {
+    background: #1f4f8e;
+}
+
+.pool-bets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.pool-bets li.you {
+    color: var(--gold);
+    font-weight: bold;
+}
+
+.preview {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.bet-button:disabled,
+.watch-button:disabled {
+    opacity: 0.45;
+    cursor: default;
+    filter: none;
+}
+
+.live {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 2px dashed var(--gold);
+    border-radius: 10px;
+}
+
+.live-head {
+    display: grid;
+    gap: 4px;
+}
+
+.live-clock {
+    height: 4px;
+    border-radius: 2px;
+    background: #12110f;
+    overflow: hidden;
+}
+
+.live-clock i {
+    display: block;
+    height: 100%;
+    width: 100%;
+    background: var(--gold);
+}
+
+.your-bets {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 13px;
+}
+
+.your-bets li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.your-bets li.none {
+    color: var(--muted);
+}
+
+.cashout {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--green);
+    color: #082b0c;
+    font: bold 13px var(--font);
+    cursor: pointer;
+}
+
 .stake {
     display: flex;
     flex-wrap: wrap;
