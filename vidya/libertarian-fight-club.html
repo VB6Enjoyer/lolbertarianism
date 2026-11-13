@@ -83,6 +83,7 @@
             <div class="tabs" role="tablist">
                 <button type="button" data-tab="winner" class="on" title="Bet on who wins, against the crowd">🏆<span>Winner</span></button>
                 <button type="button" data-tab="props" title="The house's fixed odds on how it ends">🎲<span>Props</span><em class="badge-count" hidden></em></button>
+                <button type="button" data-tab="cup" title="The Invisible Claw Cup: the bracket, and futures on the winner" hidden>🏆<span>Cup</span><em class="badge-count" hidden></em></button>
                 <button type="button" data-tab="parlay" title="Three winners in a row, odds multiplied">🧾<span>Parlay</span><em class="badge-count" hidden></em></button>
                 <button type="button" data-tab="intel" title="Buy tips, scout lobsters">🕵️<span>Intel</span><em class="badge-count" hidden></em></button>
                 <button type="button" data-tab="stable" title="Buy, train and fight your own lobster">🦞<span>Your lobster</span><em class="badge-count" hidden></em></button>
@@ -92,6 +93,11 @@
                 <div class="pool-head"><span id="pool-total">The crowd is placing its bets…</span><span class="pool-help" tabindex="0" title="Pool betting: the pot, minus the house's cut, is split among whoever backed the winner. The odds are whatever the crowd makes them, and your own stake moves them.">ⓘ How the pool works</span></div>
                 <div class="pool-bar"><i id="pool-bar-0" class="left"></i><i id="pool-bar-1" class="right"></i></div>
                 <ul id="pool-bets" class="pool-bets"></ul>
+                <div id="rivals" class="rivals"></div>
+            </div>
+            <div class="tab-pane" data-tab="cup" hidden>
+                <div id="cup-bracket" class="bracket"></div>
+                <div id="cup-futures"></div>
             </div>
             <div class="tab-pane" data-tab="props" hidden>
                 <p class="pane-note">Fixed odds from the house on <b>how</b> the fight goes. It reads the matchup chart but can't see hidden traits. Uses your stake below. No cash-out.</p>
@@ -257,6 +263,9 @@
                         <li>🦞 Once you reach the Garage, <b>buy a lobster of your own</b> at the fish market, train it, and send it into the ring for purses.</li>
                         <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
                         <li>🌙 Some nights come with a twist: a tax holiday, a Bitcoin whale, a lockdown, a raid…</li>
+                        <li>🏆 Every fourth night is the <b>Invisible Claw Cup</b>: a knockout bracket of eight, with <b>futures</b> on the winner.</li>
+                        <li>🏁 Susan, Sheila and Larry keep score too. Top <b>tonight's table</b>, and the season's.</li>
+                        <li>📚 Teach your lobster an <b>argument</b> its faction doesn't use, to hit more weak spots.</li>
                         <li>🤫 Your own lobster can be paid to <b>take a dive</b>. The crowd won't know. The commission might.</li>
                         <li>⌨️ Keys: <kbd>1</kbd>/<kbd>2</kbd> bet on a lobster, <kbd>Space</kbd> skips, continues, or goes to the next bout.</li>
                     </ul>

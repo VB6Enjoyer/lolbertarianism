@@ -2,7 +2,7 @@
 // depending on its type and the other faction. It's simulated in one go and
 // main.ts plays the result back.
 
-import { effectiveness, factionById, type ArgType, type Lobster, type Move } from './lobsters.ts';
+import { effectiveness, factionById, movesOf, type ArgType, type Lobster, type Move } from './lobsters.ts';
 
 export const ROUNDS = 3;
 export const EXCHANGES_PER_ROUND = 6;
@@ -114,7 +114,7 @@ export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random
         reveal(side, 'lazy');
         continue;
       }
-      const moves = factionById(me.lobster.faction).moves;
+      const moves = movesOf(me.lobster);
       const move = moves[Math.floor(rng() * moves.length)];
       if (rng() < MISS) {
         events.push({ type: 'miss', side, move });
@@ -206,7 +206,7 @@ export function stateAfterRound(a: Lobster, b: Lobster, result: FightResult, rou
 }
 
 /** The argument types a lobster uses, for its card. */
-export const argTypesOf = (l: Lobster): ArgType[] => [...new Set(factionById(l.faction).moves.map((m) => m.type))];
+export const argTypesOf = (l: Lobster): ArgType[] => [...new Set(movesOf(l).map((m) => m.type))];
 
 /** Picks tonight's next bout: two different lobsters, not the same pair as last time. */
 export function pickBout(count: number, rng: () => number, last: [number, number] | null = null): [number, number] {

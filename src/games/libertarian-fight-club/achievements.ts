@@ -25,6 +25,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'props-3', icon: '🎲', name: 'Diversified Portfolio', description: 'Hit three props on one bout.' },
   { id: 'perfect-night', icon: '🌙', name: 'Perfect Night', description: 'Come out ahead on all five bouts of a night.' },
   { id: 'fade-public', icon: '🙅', name: 'Fade the Public', description: 'Win 5 bets on the crowd’s underdog.' },
+  { id: 'top-table', icon: '🏁', name: 'Top of the Table', description: 'End a night ahead of Susan, Sheila and Larry.' },
+  { id: 'season-leader', icon: '📊', name: 'Season Leader', description: 'Lead the season table after 30 bouts or more.' },
   { id: 'diamond-claws', icon: '💎', name: 'Diamond Claws', description: 'Win a bet you could only have cashed out at a loss.' },
   // Intel
   { id: 'tipsters', icon: '🗣️', name: 'Market for Lemons', description: 'Buy tips from all three tipsters.' },
@@ -40,6 +42,9 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'champion', icon: '🏆', name: 'The Invisible Claw', description: 'Win the Liberland Championship.' },
   { id: 'bailout', icon: '👴', name: 'Have Fun Staying Poor', description: 'Get bailed out by your uncle.' },
   { id: 'boom-bust', icon: '🎢', name: 'Boom and Bust', description: 'Make it to the Convention, then go broke.' },
+  // The cup
+  { id: 'cup-called', icon: '🔮', name: 'Called It', description: 'Win a futures bet placed before the cup’s first bout.' },
+  { id: 'cup-long', icon: '🔭', name: 'Long-Term Investor', description: 'Win a futures bet at 8× or longer.' },
   // Night events
   { id: 'cantillon', icon: '🖨️', name: 'Cantillon Effect', description: 'End a Money Printer night up on the night.' },
   { id: 'whale-watching', icon: '🐋', name: 'Whale Watching', description: 'Win a bet against the Bitcoin Whale.' },
@@ -52,6 +57,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'mine-hard', icon: '🗿', name: 'Giant Killer', description: 'Your lobster beats a Hard opponent.' },
   { id: 'mine-streak', icon: '🔥', name: 'Undefeated', description: 'Your lobster wins five fights in a row.' },
   { id: 'maxed', icon: '💪', name: 'Peak Lobster', description: 'Train one of your lobster’s stats to 10.' },
+  { id: 'teach', icon: '📚', name: 'Continuing Education', description: 'Teach your lobster a new argument.' },
+  { id: 'teach-win', icon: '🎓', name: 'The Student Becomes the Master', description: 'Your lobster wins a fight with its taught argument landing on a weak spot.' },
   { id: 'dive', icon: '🤫', name: 'Took a Dive', description: 'Throw your lobster’s fight and win your bet on the other one.' },
   { id: 'dive-caught', icon: '🚨', name: 'Caught Red-Clawed', description: 'Get caught throwing a fight.' },
   { id: 'dive-won', icon: '🙃', name: 'It Couldn’t Help Itself', description: 'Your lobster wins a fight you paid it to throw.' },
@@ -63,6 +70,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   // Secret
   { id: 'removed', icon: '🚁', name: 'Physically Removed', description: 'Back a Hoppean that wins by knockout.', secret: true },
   { id: 'roads', icon: '🛣️', name: 'Who Will Build the Roads?', description: 'Back an Ancap that beats a Minarchist.', secret: true },
+  { id: 'sheila-right', icon: '😏', name: 'Sheila Was Right', description: 'Finish a night last on the table, behind Squatting Sheila in first.', secret: true },
   { id: 'hype', icon: '🎤', name: 'Hype Man', description: 'Back a lobster the announcer called undefeated, and watch it lose.', secret: true },
 ];
 

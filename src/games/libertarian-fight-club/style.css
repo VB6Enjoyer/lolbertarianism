@@ -2737,3 +2737,202 @@ kbd {
         font-size: 12px;
     }
 }
+
+/* --- The cup --- */
+.bracket {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.round-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.round-matches {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    gap: 6px;
+}
+
+.round-col h4 {
+    margin: 0;
+    color: var(--muted);
+    font: bold 11px var(--font);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.match {
+    display: grid;
+    border: 1px solid #3d3731;
+    border-radius: 8px;
+    background: #211e1a;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.match span {
+    padding: 4px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.match span + span {
+    border-top: 1px solid #3d3731;
+}
+
+.match span.won {
+    color: var(--gold);
+    font-weight: bold;
+}
+
+.match span.out {
+    color: #7d7366;
+    text-decoration: line-through;
+}
+
+.match.now {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.3);
+}
+
+.match em,
+.champ em {
+    color: #7d7366;
+}
+
+.champ {
+    padding: 8px;
+    border: 1px dashed #5a5148;
+    border-radius: 8px;
+    color: var(--muted);
+    font: bold 13px var(--font);
+    text-align: center;
+}
+
+.champ.crowned {
+    border: 2px solid var(--gold);
+    background: #3a3015;
+    color: var(--gold);
+}
+
+.futures {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 6px;
+}
+
+.future {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid #5a5148;
+    border-radius: 9px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: 13px var(--font);
+    text-align: left;
+    cursor: pointer;
+}
+
+.future span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.future b {
+    color: var(--gold);
+    font: bold 15px var(--mono);
+}
+
+.future:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-color: var(--gold);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.35);
+}
+
+.your-futures {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    font-size: 13px;
+}
+
+/* --- The regulars' table --- */
+.rivals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    font-size: 12px;
+}
+
+.rivals-label {
+    color: var(--muted);
+    font: bold 11px var(--font);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: help;
+}
+
+.rival {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px 2px 3px;
+    border-radius: 999px;
+    background: #211e1a;
+    color: var(--muted);
+}
+
+.rival i {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #3d3731;
+    color: var(--text);
+    font: bold 10px var(--font);
+}
+
+.rival.you {
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.rival b.up {
+    color: var(--green);
+}
+
+.rival b.down {
+    color: #ff8a80;
+}
+
+.ledger.season td:last-child {
+    min-width: 7em;
+}
+
+@media (max-width: 680px) {
+    .bracket {
+        gap: 5px;
+    }
+
+    .match span {
+        padding: 3px 5px;
+        font-size: 10.5px;
+    }
+}

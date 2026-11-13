@@ -1,7 +1,7 @@
 // The career: fight nights at better and better venues, and a lobster of your
 // own to buy, train and send into the ring.
 
-import { FACTIONS, TRAITS, type Lobster, type TraitId } from './lobsters.ts';
+import { FACTIONS, TEACHABLE, TRAITS, type ArgType, type Lobster, type TraitId } from './lobsters.ts';
 
 export interface Venue {
   id: string;
@@ -51,7 +51,8 @@ export function normalizeCareer(raw: unknown, bankroll: number): Career {
   return {
     venue: n(r.venue, 0, VENUES.length - 1, 0),
     night: n(r.night, 1, 1e6, 1),
-    bout: n(r.bout, 0, NIGHT_BOUTS, 0),
+    // A cup night runs longer than a normal one.
+    bout: n(r.bout, 0, 7, 0),
     startBankroll: n(r.startBankroll, 0, 1e12, bankroll),
     champion: r.champion === true,
     bailouts: n(r.bailouts, 0, 1e6, 0),
@@ -222,6 +223,10 @@ export function normalizeStable(raw: unknown): Stable | null {
       traitKnown: true,
       rumor: null,
       scouted: false,
+      learned: l.learned && TEACHABLE[l.learned.type as ArgType] ? TEACHABLE[l.learned.type as ArgType] : null,
     },
   };
 }
+
+/** Teaching your lobster an argument costs more at the bigger venues (better coaches). */
+export const teachCost = (venue: number) => 600 + 300 * venue;

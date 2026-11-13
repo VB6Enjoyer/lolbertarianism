@@ -526,3 +526,79 @@ describe('fight club: the ring announcer', () => {
     expect(callWinner(roster[0], 'ko', 2)).toContain('round 2');
   });
 });
+
+describe('fight club: the cup', () => {
+  it('runs an eight-lobster bracket to a champion', async () => {
+    const { newCup, nextMatch, matchOf, alive, champion, CUP_BOUTS, isCupNight } = await import('./cup.ts');
+    const cup = newCup(16, rng(4));
+    expect(new Set(cup.seeds).size).toBe(8);
+    for (let k = 0; k < CUP_BOUTS; k++) {
+      const i = nextMatch(cup)!;
+      const [a] = matchOf(cup, i)!;
+      cup.winners[i] = a;
+      expect(alive(cup)).toHaveLength(8 - (k + 1));
+    }
+    expect(nextMatch(cup)).toBeNull();
+    expect(champion(cup)).toBe(alive(cup)[0]);
+    expect([1, 2, 3, 4, 5, 8].map(isCupNight)).toEqual([false, false, false, true, false, true]);
+  });
+
+  it('works out each lobster’s chance of winning it, which adds up to one', async () => {
+    const { newCup, cupChances, futuresOdds, MAX_FUTURE_ODDS } = await import('./cup.ts');
+    const cup = newCup(16, rng(4));
+    // Lower ids always win: the lowest id in the bracket is a lock.
+    const p = cupChances(cup, (a, b) => (a < b ? 1 : 0));
+    const best = Math.min(...cup.seeds);
+    expect(p.get(best)).toBeCloseTo(1);
+    const even = cupChances(cup, () => 0.5);
+    let sum = 0;
+    for (const v of even.values()) sum += v;
+    expect(sum).toBeCloseTo(1);
+    for (const v of even.values()) expect(v).toBeCloseTo(1 / 8);
+    expect(futuresOdds(1 / 8)).toBeLessThan(8);
+    expect(futuresOdds(0)).toBe(MAX_FUTURE_ODDS);
+  });
+
+  it('saves are cleaned up', async () => {
+    const { normalizeCup } = await import('./cup.ts');
+    const cup = normalizeCup({ seeds: [0, 1, 2, 3, 4, 5, 6, 7], winners: [1, 9, null, 7, 1], futures: [{ id: 3, stake: 50, odds: 999, early: true }, { id: 12, stake: 5, odds: 2 }] }, 16)!;
+    expect(cup.winners).toEqual([1, null, null, 7, null, null, null]);
+    expect(cup.futures).toEqual([{ id: 3, stake: 50, odds: 50, early: true }]);
+    expect(normalizeCup({ seeds: [0, 0, 1, 2, 3, 4, 5, 6], winners: [] }, 16)).toBeNull();
+  });
+});
+
+describe('fight club: the regulars', () => {
+  it('scores their pool bets at the final odds, and ranks the table', async () => {
+    const { rivalResults, addResults, emptyRivals, ranking, leading } = await import('./rivals.ts');
+    const pool = [
+      { who: 'susan' as const, side: 0 as const, amount: 100 },
+      { who: 'sheila' as const, side: 1 as const, amount: 50 },
+      { who: 'larry' as const, side: 1 as const, amount: 20 },
+      { who: 'public' as const, side: 0 as const, amount: 500 },
+    ];
+    expect(rivalResults(pool, [1.5, 3], 1)).toEqual({ susan: -100, sheila: 100, larry: 40 });
+    expect(rivalResults(pool, [1.5, 3], null, 0.8)).toEqual({ susan: -20, sheila: -10, larry: -4 });
+    const r = emptyRivals();
+    addResults(r, 70, rivalResults(pool, [1.5, 3], 1));
+    expect(ranking(r.tonight).map((x) => x.id)).toEqual(['sheila', 'you', 'larry', 'susan']);
+    expect(leading(r.tonight)).toBe(false);
+    expect(r.season.sheila).toBe(100);
+  });
+});
+
+describe('fight club: teaching an argument', () => {
+  it('a taught argument joins the lobster’s moves and gets used in fights', async () => {
+    const { TEACHABLE, movesOf } = await import('./lobsters.ts');
+    const me = lobster({ faction: 'ancap', learned: TEACHABLE.econ });
+    expect(movesOf(me)).toHaveLength(4);
+    expect(argTypesOf(me)).toContain('econ');
+    const r = rng(77);
+    let used = 0;
+    for (let i = 0; i < 50; i++) for (const e of simulate(me, lobster({ id: 1, faction: 'austrian' }), r).events) if ((e.type === 'argue' || e.type === 'miss') && e.side === 0 && e.move.name === TEACHABLE.econ.name) used++;
+    expect(used).toBeGreaterThan(50);
+    const { normalizeStable } = await import('./career.ts');
+    const st = normalizeStable({ rest: 0, purses: 0, lobster: { faction: 'ancap', name: 'X', learned: { type: 'meme', name: 'hacked', power: 9 } } })!;
+    expect(st.lobster.learned).toEqual(TEACHABLE.meme);
+  });
+});

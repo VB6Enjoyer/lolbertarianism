@@ -1,11 +1,12 @@
 /** Your betting record: what you staked and got back, by kind of bet, plus the highlights. */
 
-export type BetType = 'winner' | 'live' | 'props' | 'parlay';
+export type BetType = 'winner' | 'live' | 'props' | 'parlay' | 'futures';
 export const BET_TYPES: readonly { id: BetType; icon: string; name: string }[] = [
   { id: 'winner', icon: '💵', name: 'Winner bets' },
   { id: 'live', icon: '⚡', name: 'Live bets' },
   { id: 'props', icon: '🎲', name: 'Props' },
   { id: 'parlay', icon: '🧾', name: 'Parlays' },
+  { id: 'futures', icon: '🏆', name: 'Cup futures' },
 ];
 
 export interface LedgerLine {
@@ -32,7 +33,7 @@ export interface Ledger {
 const emptyLine = (): LedgerLine => ({ bets: 0, wins: 0, staked: 0, returned: 0 });
 
 export function emptyLedger(): Ledger {
-  return { lines: { winner: emptyLine(), live: emptyLine(), props: emptyLine(), parlay: emptyLine() }, best: null, worst: null, cashouts: 0 };
+  return { lines: { winner: emptyLine(), live: emptyLine(), props: emptyLine(), parlay: emptyLine(), futures: emptyLine() }, best: null, worst: null, cashouts: 0 };
 }
 
 /** Puts one settled bet on the record. `returned` is what came back (0 for a loss). */
