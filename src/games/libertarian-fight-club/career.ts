@@ -1,7 +1,7 @@
 // The career: fight nights at better and better venues, and a lobster of your
 // own to buy, train and send into the ring.
 
-import { FACTIONS, TEACHABLE, TRAITS, type ArgType, type Lobster, type TraitId } from './lobsters.ts';
+import { FACTIONS, TEACHABLE, TRAITS, type ArgType, type FactionId, type Lobster, type TraitId } from './lobsters.ts';
 
 export interface Venue {
   id: string;
@@ -106,6 +106,8 @@ export interface Stable {
   suspicion: number;
   /** Dives it's taken, all told. */
   dives: number;
+  /** What you paid for it (for bragging, or regret, when you sell). */
+  paid: number;
 }
 
 const NAMES = ['Pinchy McPinchface', 'Clawdius Hayek', 'Shellon Mises', 'Lobsta Rothbard Jr.', 'Krill Pinker', 'Clawrence Reed', 'The Invisible Claw', 'Shell Block', 'Anarcho-Crustacean', 'Bisque Liberty'];
@@ -208,7 +210,7 @@ export function afterLoss(s: Stable, ko: boolean, rng: () => number): TrainStat 
   return stat;
 }
 
-export function normalizeStable(raw: unknown): Stable | null {
+export function normalizeStable(raw: unknown, id = MINE_ID): Stable | null {
   const r = raw as Stable | null;
   if (!r || typeof r !== 'object' || !r.lobster || typeof r.lobster !== 'object') return null;
   const l = r.lobster;
@@ -218,9 +220,10 @@ export function normalizeStable(raw: unknown): Stable | null {
     rest: Math.floor(n(r.rest, 0, 5, 0)),
     purses: Math.floor(n(r.purses, 0, 1e12, 0)),
     suspicion: Math.floor(n(r.suspicion, 0, 10, 0)),
+    paid: Math.floor(n(r.paid, 0, 1e9, 0)),
     dives: Math.floor(n(r.dives, 0, 1e6, 0)),
     lobster: {
-      id: MINE_ID,
+      id,
       name: String(l.name ?? 'Your Lobster').slice(0, 30) || 'Your Lobster',
       faction: l.faction,
       claw: n(l.claw, 1, STAT_CAP, 4),
@@ -242,3 +245,60 @@ export function normalizeStable(raw: unknown): Stable | null {
 
 /** Teaching your lobster an argument costs more at the bigger venues (better coaches). */
 export const teachCost = (venue: number) => 600 + 300 * venue;
+
+// ---------------------------------------------------------------------------
+// The stable: up to three lobsters
+// ---------------------------------------------------------------------------
+
+export const MAX_STABLE = 3;
+
+/** Stable slots by venue: one at the Garage, two at PorcFest, three from the Convention on. */
+export const slotsAt = (venue: number) => Math.min(MAX_STABLE, Math.max(0, venue));
+
+/** Your lobsters have ids 100, 101 and 102 (the league's are 0 to 15). */
+export const isMine = (id: number) => id >= MINE_ID && id < MINE_ID + MAX_STABLE;
+
+/** The first id no lobster in the stable is using. */
+export function freeId(stables: readonly Stable[]): number {
+  for (let id = MINE_ID; id < MINE_ID + MAX_STABLE; id++) if (!stables.some((s) => s.lobster.id === id)) return id;
+  return MINE_ID;
+}
+
+/** What each lobster costs a night in tank, butter and coaching. */
+export const upkeepFor = (venue: number) => Math.round((40 * VENUES[Math.max(1, venue)].scale) / 10) * 10;
+
+/** What the fish market will pay for it: its stats, its wins and its schooling, less any bad habits. */
+export function saleValue(st: Stable): number {
+  const l = st.lobster;
+  const quality = l.claw + l.shell + l.wits + (l.stamina - 75) / 10;
+  const value = 0.6 * (500 + quality * 55) + l.wins * 25 + (l.learned ? 150 : 0) - (BAD_TRAITS.has(l.trait) ? 150 : 0);
+  return Math.max(50, Math.round(value / 10) * 10);
+}
+
+/** Loads a saved stable (an old save's single lobster becomes slot one). */
+export function normalizeStables(raw: unknown): Stable[] {
+  const out: Stable[] = [];
+  for (const r of Array.isArray(raw) ? raw.slice(0, MAX_STABLE) : []) {
+    const wanted = Number((r as Stable | null)?.lobster?.id);
+    const id = isMine(wanted) && !out.some((s) => s.lobster.id === wanted) ? wanted : freeId(out);
+    const st = normalizeStable(r, id);
+    if (st) out.push(st);
+  }
+  return out;
+}
+
+/** A retired lobster, on the wall. */
+export interface HallEntry {
+  name: string;
+  faction: FactionId;
+  wins: number;
+  losses: number;
+  purses: number;
+}
+
+export function normalizeHall(raw: unknown): HallEntry[] {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((h) => !!h && typeof h.name === 'string' && FACTIONS.some((f) => f.id === h.faction))
+    .map((h) => ({ name: String(h.name).slice(0, 30), faction: h.faction, wins: Math.max(0, Math.floor(Number(h.wins) || 0)), losses: Math.max(0, Math.floor(Number(h.losses) || 0)), purses: Math.max(0, Math.floor(Number(h.purses) || 0)) }))
+    .slice(-20);
+}

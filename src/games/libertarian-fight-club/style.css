@@ -2946,3 +2946,157 @@ kbd {
     white-space: normal;
     line-height: 1.2;
 }
+
+/* --- The stable --- */
+.slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 7px 12px;
+    border: 1px solid #5a5148;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: bold 13px var(--font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.slot em {
+    color: var(--muted);
+    font-style: normal;
+    font-weight: normal;
+}
+
+.slot.on {
+    border-color: var(--gold);
+    background: #3a3015;
+    box-shadow: 0 0 0 2px var(--gold) inset;
+}
+
+.slot.market {
+    border-style: dashed;
+}
+
+.slot.locked {
+    border-style: dashed;
+    color: #7d7366;
+    cursor: help;
+}
+
+.slot:not(.locked):hover {
+    transform: translateY(-2px);
+    border-color: var(--gold);
+}
+
+.farewell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #3d3731;
+}
+
+.farewell .sell,
+.farewell .retire {
+    color: var(--muted);
+}
+
+/* --- Pick your fighter --- */
+.pick-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.pick-grid .panel-sub {
+    margin-top: 0;
+    text-align: left;
+    font-size: 15px;
+}
+
+.pick-grid .mine {
+    display: grid;
+    gap: 8px;
+}
+
+.pick-choices {
+    display: grid;
+    gap: 8px;
+}
+
+.choice {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid #5a5148;
+    border-top: 4px solid var(--shell);
+    border-radius: 10px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: 13px var(--font);
+    text-align: left;
+    cursor: pointer;
+}
+
+.choice:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-color: var(--gold);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.matchup-pair {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 4px 8px;
+}
+
+.matchup-pair small {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+/* --- The hall of fame --- */
+.hall h3 {
+    margin: 0 0 6px;
+    color: var(--gold);
+    font-size: 15px;
+}
+
+.hall {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.hall h3 {
+    width: 100%;
+}
+
+.plaque {
+    padding: 4px 10px;
+    border: 1px solid #8a6a1c;
+    border-radius: 6px;
+    background: linear-gradient(#3a3015, #2a2410);
+    font-size: 12px;
+}
+
+@media (max-width: 680px) {
+    .pick-grid {
+        grid-template-columns: 1fr;
+    }
+}

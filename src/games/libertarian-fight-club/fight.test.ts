@@ -344,7 +344,7 @@ describe('fight club: the career', () => {
     let hurt = 0;
     const r = rng(77);
     for (let i = 0; i < 200; i++) {
-      const stable = { lobster: lobster({ claw: 5, shell: 5, wits: 5, stamina: 100 }), rest: 0, purses: 0, suspicion: 0, dives: 0 };
+      const stable = { lobster: lobster({ claw: 5, shell: 5, wits: 5, stamina: 100 }), rest: 0, purses: 0, suspicion: 0, dives: 0, paid: 0 };
       if (afterLoss(stable, i % 2 === 0, r)) hurt++;
       expect(stable.rest).toBe(i % 2 === 0 ? 2 : 1);
     }
@@ -602,5 +602,30 @@ describe('fight club: teaching an argument', () => {
     const { normalizeStable } = await import('./career.ts');
     const st = normalizeStable({ rest: 0, purses: 0, lobster: { faction: 'ancap', name: 'X', learned: { type: 'meme', name: 'hacked', power: 9 } } })!;
     expect(st.lobster.learned).toEqual(TEACHABLE.meme);
+  });
+});
+
+describe('fight club: the stable', () => {
+  it('more slots at bigger venues, ids that never clash, and old saves become slot one', async () => {
+    const { slotsAt, freeId, isMine, normalizeStables, MINE_ID } = await import('./career.ts');
+    expect([0, 1, 2, 3, 4].map(slotsAt)).toEqual([0, 1, 2, 3, 3]);
+    expect(isMine(MINE_ID + 2)).toBe(true);
+    expect(isMine(15)).toBe(false);
+    const lob = (id: number) => ({ rest: 0, purses: 0, lobster: { id, faction: 'ancap', name: `L${id}` } });
+    const st = normalizeStables([lob(101), lob(101), lob(7), lob(102)]);
+    expect(st.map((s) => s.lobster.id)).toEqual([101, 100, 102]);
+    expect(freeId(st.slice(0, 2))).toBe(102);
+    expect(normalizeStables(null)).toEqual([]);
+  });
+
+  it('upkeep grows with the venue; a trained, winning lobster sells for more', async () => {
+    const { upkeepFor, saleValue, normalizeStable, normalizeHall } = await import('./career.ts');
+    expect(upkeepFor(1)).toBe(100);
+    expect(upkeepFor(3)).toBeGreaterThan(upkeepFor(2));
+    const raw = { rest: 0, purses: 0, lobster: { faction: 'ancap', name: 'X', claw: 4, shell: 4, wits: 4, stamina: 80 } };
+    const rookie = normalizeStable(raw)!;
+    const vet = normalizeStable({ ...raw, lobster: { ...raw.lobster, claw: 8, shell: 7, wits: 7, stamina: 120, wins: 12 } })!;
+    expect(saleValue(vet)).toBeGreaterThan(saleValue(rookie) + 500);
+    expect(normalizeHall([{ name: 'Old Pinchy', faction: 'ancap', wins: '11', losses: 2, purses: 900 }, { name: 'x', faction: 'nope' }])).toEqual([{ name: 'Old Pinchy', faction: 'ancap', wins: 11, losses: 2, purses: 900 }]);
   });
 });
