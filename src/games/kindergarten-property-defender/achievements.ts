@@ -21,6 +21,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'fraud', icon: '💵', name: 'Fraud Is Aggression', description: 'Slap the Monopoly-money kid.' },
   { id: 'president', icon: '🗳️', name: 'Vote With Your Hands', description: 'Slap the Class President before the tax comes in.' },
   { id: 'principal', icon: '📢', name: 'No Eminent Domain', description: 'Send the Principal away.' },
+  { id: 'mitten', icon: '🧤', name: 'Oven Mitts Off', description: 'Pinch away a pair of Oven Mitts.' },
+  { id: 'sticky', icon: '🍯', name: 'Pry Bar', description: 'Pry Sticky Fingers off your pile.' },
   // Trading
   { id: 'first-trade', icon: '🤝', name: 'Voluntary Exchange', description: 'Complete your first trade.' },
   { id: 'flip', icon: '📈', name: 'Buy Low, Sell High', description: 'Sell something you traded for.' },

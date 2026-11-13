@@ -2,8 +2,8 @@
 // teacher on the left, Jack behind his ancap desk on the right, the block pile
 // in the middle, and long stretchy arms reaching in for it.
 
-import { handPosition, ITEMS, pileAt, type GameState, type Hand } from './logic.ts';
-import { periodAt, type Role } from './school.ts';
+import { HOLD_TIME, handPosition, ITEMS, pileAt, type GameState, type Hand } from './logic.ts';
+import { NEEDS, periodAt, roleInfo, type Role } from './school.ts';
 
 export interface Floater {
   x: number;
@@ -37,6 +37,8 @@ export interface Scene {
   pointer: { x: number; y: number } | null;
   /** A big announcement across the top (a new period, a new troublemaker). */
   banner: { text: string; sub?: string; until: number } | null;
+  /** Playing on a touch screen (double-tap instead of right-click). */
+  touch: boolean;
 }
 
 /** Each troublemaker's sleeve, and what it carries. */
@@ -47,6 +49,8 @@ const ROLE_LOOK: Record<Role, { color: string; badge?: string; scale?: number }>
   president: { color: '#8e44ad', badge: '🗳️' },
   fraud: { color: '#2f9e57' },
   principal: { color: '#34495e', badge: '👔', scale: 1.8 },
+  mitten: { color: '#1f618d' },
+  sticky: { color: '#b9770e', badge: '🍯' },
 };
 
 const FONT = "'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive";
@@ -373,7 +377,8 @@ function drawPile(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
   }
 }
 
-function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, t: number) {
+function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene: Scene) {
+  const t = scene.time;
   const u = unitOf(s);
   const at = handPosition(hand);
   // The fraud kid is drawn exactly like a trader: only the tag gives it away.
@@ -414,7 +419,60 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, t: nu
     ctx.textBaseline = 'middle';
     ctx.fillText('THE PRINCIPAL', at.x, at.y - r * 2.6);
   }
-  if (thief) {
+  // For their first couple of days, the special ones say how to beat them.
+  const needs = hand.role ? NEEDS[hand.role] : undefined;
+  if (needs && !hand.slapped && s.wave <= roleInfo(hand.role!).from + 1) {
+    ctx.font = `bold ${Math.round(Math.max(11, u * 0.26))}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#fff';
+    const label = needs === 'pinch' ? (scene.touch ? 'DOUBLE-TAP' : 'RIGHT-CLICK') : 'HOLD';
+    ctx.strokeText(label, at.x, at.y - r * 2.1);
+    ctx.fillStyle = color;
+    ctx.fillText(label, at.x, at.y - r * 2.1);
+  }
+  if (hand.role === 'mitten') {
+    // A big oven mitt: slaps bounce off it.
+    const dir = Math.atan2(at.y - hand.rootY, at.x - hand.rootX);
+    ctx.save();
+    ctx.translate(at.x, at.y);
+    ctx.rotate(dir + Math.PI / 2);
+    wobblyPath(ctx, [[-r * 0.9, r * 0.9], [-r * 1.0, -r * 0.6], [-r * 0.5, -r * 1.5], [r * 0.3, -r * 1.5], [r * 0.8, -r * 0.7], [r * 0.9, r * 0.9], [-r * 0.9, r * 0.9]], 1.2, t, hand.id * 17);
+    ctx.fillStyle = '#5dade2';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = w;
+    ctx.stroke();
+    // The thumb, and the cuff
+    wobblyCircle(ctx, -r * 1.15, -r * 0.1, r * 0.42, w, t, hand.id * 19, '#5dade2');
+    stroke(ctx, [[-r * 0.9, r * 0.55], [r * 0.9, r * 0.55]], w * 2.2, t, hand.id * 23, '#fdfefe', 0.8);
+    ctx.restore();
+    for (let k = 0; k < hand.carrying; k++) drawBlock(ctx, at.x + (k - (hand.carrying - 1) / 2) * r * 0.9, at.y, r * 0.85, hand.id + k, t);
+  } else if (hand.role === 'sticky') {
+    // Sticky fingers: spread wide, dripping honey.
+    const dir = Math.atan2(at.y - hand.rootY, at.x - hand.rootX);
+    for (let f = -2; f <= 2; f++) {
+      const a = dir + f * 0.42;
+      const tip: [number, number] = [at.x + Math.cos(a) * r * 1.6, at.y + Math.sin(a) * r * 1.6];
+      stroke(ctx, [[at.x + Math.cos(a) * r * 0.6, at.y + Math.sin(a) * r * 0.6], tip], w * 1.6, t, hand.id * 7 + f * 3);
+      ctx.fillStyle = '#e5a50a';
+      ctx.beginPath();
+      ctx.ellipse(tip[0], tip[1] + r * 0.25, r * 0.16, r * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    wobblyCircle(ctx, at.x, at.y, r, w, t, hand.id * 13, '#f8d26a');
+    for (let k = 0; k < hand.carrying; k++) drawBlock(ctx, at.x + (k - (hand.carrying - 1) / 2) * r * 0.9, at.y, r * 0.85, hand.id + k, t);
+    // How far you've pried it off
+    if (hand.held > 0 && !hand.slapped) {
+      ctx.beginPath();
+      ctx.arc(at.x, at.y, r * 1.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, hand.held / HOLD_TIME));
+      ctx.strokeStyle = '#1e8449';
+      ctx.lineWidth = Math.max(4, u * 0.12);
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  } else if (thief) {
     // A grabby claw: fingers opening and closing.
     const grab = (Math.sin(t * 11 + hand.id) + 1) / 2;
     const dir = Math.atan2(at.y - hand.rootY, at.x - hand.rootX);
@@ -561,8 +619,8 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   drawJack(ctx, s, scene);
   drawDeskItems(ctx, s, t);
   // Leaving hands under reaching ones, so the dangerous ones are on top.
-  for (const hand of s.hands) if (hand.state === 'leaving') drawHand(ctx, s, hand, t);
-  for (const hand of s.hands) if (hand.state === 'reaching') drawHand(ctx, s, hand, t);
+  for (const hand of s.hands) if (hand.state === 'leaving') drawHand(ctx, s, hand, scene);
+  for (const hand of s.hands) if (hand.state === 'reaching') drawHand(ctx, s, hand, scene);
   // Nap time: lights out, except around the pile (and wherever you're pointing).
   if (s.phase === 'playing' && periodAt(s.waveTime).id === 'nap') drawDark(ctx, s, scene);
   for (const b of scene.bubbles) if (b.until > t) drawBubble(ctx, s, b, t);
@@ -571,22 +629,41 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   ctx.restore();
 }
 
+let darkLayer: HTMLCanvasElement | null = null;
+
+/**
+ * Nap time: dark enough that you have to look for the hands (not just catch them out of the corner of
+ * your eye), with soft light around the pile and around the pointer.
+ */
 function drawDark(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
   const pile = pileAt(s);
   const size = blockSize(s);
   const u = unitOf(s);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(-20, -20, s.w + 40, s.h + 40);
-  ctx.moveTo(pile.x + size * 5, pile.y);
-  ctx.arc(pile.x, pile.y, size * 5, 0, Math.PI * 2, true);
-  if (scene.pointer) {
-    ctx.moveTo(scene.pointer.x + u * 1.6, scene.pointer.y);
-    ctx.arc(scene.pointer.x, scene.pointer.y, u * 1.6, 0, Math.PI * 2, true);
+  darkLayer ??= document.createElement('canvas');
+  const w = Math.ceil(s.w);
+  const h = Math.ceil(s.h);
+  if (darkLayer.width !== w || darkLayer.height !== h) {
+    darkLayer.width = w;
+    darkLayer.height = h;
   }
-  ctx.fillStyle = 'rgba(14, 16, 36, 0.86)';
-  ctx.fill('evenodd');
-  ctx.restore();
+  const d = darkLayer.getContext('2d')!;
+  d.globalCompositeOperation = 'source-over';
+  d.clearRect(0, 0, w, h);
+  d.fillStyle = 'rgba(10, 12, 30, 0.94)';
+  d.fillRect(0, 0, w, h);
+  d.globalCompositeOperation = 'destination-out';
+  const hole = (x: number, y: number, r: number) => {
+    const g = d.createRadialGradient(x, y, r * 0.45, x, y, r);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    d.fillStyle = g;
+    d.beginPath();
+    d.arc(x, y, r, 0, Math.PI * 2);
+    d.fill();
+  };
+  hole(pile.x, pile.y, size * 6);
+  if (scene.pointer) hole(scene.pointer.x, scene.pointer.y, u * 2.1);
+  ctx.drawImage(darkLayer, 0, 0, w, h);
   ctx.font = `${Math.round(u * 0.5)}px ${FONT}`;
   ctx.fillStyle = '#c9d4ff';
   ctx.textAlign = 'center';

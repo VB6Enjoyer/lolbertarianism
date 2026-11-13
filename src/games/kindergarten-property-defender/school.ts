@@ -36,7 +36,7 @@ export const weekOf = (day: number) => Math.floor((day - 1) / DAYS.length) + 1;
 export const isFriday = (day: number) => (day - 1) % DAYS.length === DAYS.length - 1;
 
 /** The kinds of grabby hand, and the classmates who pretend to trade. */
-export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal';
+export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal' | 'mitten' | 'sticky';
 
 export interface RoleInfo {
   id: Role;
@@ -50,26 +50,40 @@ export interface RoleInfo {
 
 export const ROLES: readonly RoleInfo[] = [
   { id: 'grabby', name: 'Grabby hand', from: 1, weight: 10, intro: '' },
-  { id: 'monitor', name: 'Hall Monitor', from: 2, weight: 2, intro: '🦺 New today: the Hall Monitor. Takes three slaps. Just following orders.' },
-  { id: 'group', name: 'Group Project', from: 3, weight: 2, intro: '👯 New today: the Group Project kids. They come in pairs. “We did it together!”' },
-  { id: 'president', name: 'Class President', from: 4, weight: 1.5, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
-  { id: 'fraud', name: 'Monopoly-money kid', from: 4, weight: 1.5, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
+  { id: 'monitor', name: 'Hall Monitor', from: 2, weight: 1.5, intro: '🦺 New today: the Hall Monitor. Takes three slaps. Just following orders.' },
+  { id: 'mitten', name: 'Oven Mitts', from: 3, weight: 1.2, intro: '🧤 New today: Oven Mitts. Slaps bounce right off. RIGHT-CLICK to pinch (on a phone, double-tap).' },
+  { id: 'sticky', name: 'Sticky Fingers', from: 4, weight: 1.2, intro: '🍯 New today: Sticky Fingers. Won’t let go of a slap. PRESS AND HOLD on it to pry it off.' },
+  { id: 'group', name: 'Group Project', from: 4, weight: 1.5, intro: '👯 Also new: the Group Project kids. They come in pairs. “We did it together!”' },
+  { id: 'president', name: 'Class President', from: 5, weight: 1.2, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
   { id: 'principal', name: 'The Principal', from: 5, weight: 0, intro: '📢 It’s Friday: the Principal visits during show and tell. Eminent domain. Eight slaps to stop.' },
+  { id: 'fraud', name: 'Monopoly-money kid', from: 6, weight: 1.2, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
 ];
+
+/** How the special input each troublemaker needs (most just need a slap). */
+export const NEEDS: Partial<Record<Role, 'pinch' | 'hold'>> = { mitten: 'pinch', sticky: 'hold' };
 
 export const roleInfo = (r: Role) => ROLES.find((x) => x.id === r)!;
 
 /** Which troublemakers are around on a day (the Principal comes on a schedule, not by chance). */
 export function rolesOn(day: number): RoleInfo[] {
-  const intoWeek = day > DAYS.length ? DAYS.length : day;
-  return ROLES.filter((r) => r.weight > 0 && r.from <= intoWeek);
+  return ROLES.filter((r) => r.weight > 0 && r.from <= day);
+}
+
+/**
+ * Troublemakers get more common every day after they first turn up (the ones that need a pinch or a hold
+ * fastest), and plain grabby hands get rarer.
+ */
+export function weightOn(r: RoleInfo, day: number): number {
+  if (r.id === 'grabby') return Math.max(5, r.weight - 0.4 * (day - 1));
+  const since = day - r.from;
+  return NEEDS[r.id] ? r.weight * Math.min(4, 1 + 0.5 * since) : r.weight * Math.min(3, 1 + 0.3 * since);
 }
 
 /** Who's new today (first week only). */
-export const newToday = (day: number): RoleInfo[] => (day <= DAYS.length ? ROLES.filter((r) => r.from === day && r.id !== 'grabby') : []);
+export const newToday = (day: number): RoleInfo[] => ROLES.filter((r) => r.from === day && r.id !== 'grabby');
 
 export function pickRole(day: number, period: PeriodId, rng: () => number): Role {
-  const pool = rolesOn(day).map((r) => ({ id: r.id, weight: r.weight * (period === 'show' && r.id !== 'grabby' ? 2.5 : 1) }));
+  const pool = rolesOn(day).map((r) => ({ id: r.id, weight: weightOn(r, day) * (period === 'show' && r.id !== 'grabby' ? 2 : 1) }));
   let roll = rng() * pool.reduce((sum, r) => sum + r.weight, 0);
   for (const r of pool) {
     roll -= r.weight;
@@ -124,4 +138,4 @@ export function reportCard(d: DayStats): ReportCard {
 }
 
 /** The weekend's allowance (after Friday): more each week. */
-export const allowance = (week: number) => 5 + week * 3;
+export const allowance = (week: number) => 3 + week * 2;

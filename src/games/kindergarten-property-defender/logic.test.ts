@@ -259,7 +259,7 @@ describe('kindergarten: capital', () => {
     s.blocks = 30;
     s.waveTime = CONFIG.waveLength;
     step(s, 0.02, rng(10));
-    expect(s.blocks).toBe(33);
+    expect(s.blocks).toBe(31); // 5%
     expect(attraction(45)).toBeGreaterThan(1.4);
     expect(attraction(10)).toBe(1);
   });
@@ -313,12 +313,17 @@ describe('kindergarten: the cast', () => {
     const { rolesOn, newToday, pickRole } = await import('./school.ts');
     expect(rolesOn(1).map((r) => r.id)).toEqual(['grabby']);
     expect(newToday(2).map((r) => r.id)).toEqual(['monitor']);
-    expect(newToday(4).map((r) => r.id)).toEqual(['president', 'fraud']);
-    expect(rolesOn(4).map((r) => r.id)).toContain('fraud');
-    expect(rolesOn(12).length).toBe(5);
+    expect(newToday(3).map((r) => r.id)).toEqual(['mitten']);
+    expect(newToday(4).map((r) => r.id)).toEqual(['sticky', 'group']);
+    expect(newToday(6).map((r) => r.id)).toEqual(['fraud']);
+    expect(rolesOn(2).map((r) => r.id)).not.toContain('mitten');
+    expect(rolesOn(12).length).toBe(7);
     const r = rng(16);
-    const seen = new Set(Array.from({ length: 300 }, () => pickRole(9, 'show', r)));
-    expect(seen.size).toBe(5);
+    const seen = new Set(Array.from({ length: 400 }, () => pickRole(9, 'show', r)));
+    expect(seen.size).toBe(7);
+    // More common every day after they turn up
+    const count = (day: number) => Array.from({ length: 4000 }, () => pickRole(day, 'snack', r)).filter((x) => x === 'mitten').length;
+    expect(count(9)).toBeGreaterThan(count(3) * 1.5);
   });
 });
 
@@ -378,5 +383,74 @@ describe('kindergarten: achievements', () => {
     reach(s, hand);
     const trade = s.events.find((e) => e.type === 'trade');
     expect(trade && trade.type === 'trade' && trade.profit).toBe(hand.offer!.price - 1);
+  });
+});
+
+describe('kindergarten: harder by the day', () => {
+  it('thieves start from the left, and come from every side by the second week', async () => {
+    const { thiefArc, edgeAt, pileAt } = await import('./logic.ts');
+    const s = quiet(newGame(1000, 600));
+    const r = rng(80);
+    const pile = pileAt(s);
+    for (let i = 0; i < 100; i++) expect(spawnHand(s, r, 'thief').rootX).toBeLessThan(pile.x - 200);
+    s.wave = 9;
+    s.hands = [];
+    const rights = Array.from({ length: 200 }, () => spawnHand(s, r, 'thief')).filter((h) => h.rootX > pile.x + 200);
+    expect(rights.length).toBeGreaterThan(20);
+    expect(thiefArc(1).half).toBeLessThan(thiefArc(4).half);
+    // The edge point really is off the screen
+    for (const deg of [0, 45, 90, 180, 270]) {
+      const e = edgeAt(s, deg);
+      expect(e.x < 0 || e.x > s.w || e.y < 0 || e.y > s.h).toBe(true);
+    }
+  });
+
+  it('the fastest thieves get faster, and speeds vary more', () => {
+    const fastest = (day: number) => {
+      const s = quiet(newGame(1000, 600));
+      s.wave = day;
+      s.waveTime = 15; // snack time: normal speed
+      const r = rng(81);
+      return Math.min(...Array.from({ length: 300 }, () => spawnHand(s, r, 'thief', 'grabby').travel));
+    };
+    expect(fastest(10)).toBeLessThan(fastest(1) * 0.6);
+  });
+
+  it('Oven Mitts need a pinch (right-click), Sticky Fingers need holding', async () => {
+    const { press, HOLD_TIME } = await import('./logic.ts');
+    const s = quiet(newGame(1000, 600));
+    const mitt = spawnHand(s, rng(82), 'thief', 'mitten');
+    mitt.progress = 0.5;
+    let at = handPosition(mitt);
+    slap(s, at.x, at.y);
+    expect(mitt.slapped).toBe(false);
+    expect(s.events.some((e) => e.type === 'bounce' && e.needs === 'pinch')).toBe(true);
+    slap(s, at.x, at.y, 'pinch');
+    expect(mitt.slapped).toBe(true);
+    // A pinch doesn't work on an ordinary thief
+    const plain = spawnHand(s, rng(83), 'thief', 'grabby');
+    plain.progress = 0.5;
+    at = handPosition(plain);
+    slap(s, at.x, at.y, 'pinch');
+    expect(plain.slapped).toBe(false);
+    // Hold on to Sticky Fingers
+    const sticky = spawnHand(s, rng(84), 'thief', 'sticky');
+    sticky.progress = 0.5;
+    at = handPosition(sticky);
+    slap(s, at.x, at.y);
+    expect(sticky.slapped).toBe(false);
+    for (let t = 0; t < HOLD_TIME + 0.1 && !sticky.slapped; t += 0.05) {
+      const p = handPosition(sticky);
+      press(s, p.x, p.y, 0.05);
+      step(s, 0.05, rng(85));
+    }
+    expect(sticky.slapped).toBe(true);
+  });
+
+  it('thieves grab handfuls from a big pile', async () => {
+    const { grabFrom } = await import('./logic.ts');
+    expect(grabFrom(10)).toBe(1);
+    expect(grabFrom(24)).toBe(3);
+    expect(grabFrom(60)).toBe(6);
   });
 });

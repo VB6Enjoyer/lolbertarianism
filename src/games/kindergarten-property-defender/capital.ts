@@ -14,9 +14,10 @@ export interface Building {
   effect: (level: number) => string;
 }
 
-export const LEMONADE_EVERY = [8, 6, 4.5];
-export const TOLL = [1, 2];
-export const INTEREST = [0.1, 0.2];
+export const LEMONADE_EVERY = [12, 9, 7];
+/** Toll per trade, in blocks (it adds up: a whole block every few trades). */
+export const TOLL = [0.25, 0.5];
+export const INTEREST = [0.05, 0.1];
 export const SIGN_SLOW = [0.2, 0.4];
 export const GLUE_SECONDS = [1.0, 2.0];
 export const FLAG_SCARE = [0.15, 0.3, 0.45];
@@ -25,7 +26,7 @@ export const GUARD_WAGES = [2, 4];
 
 export const BUILDINGS: readonly Building[] = [
   { id: 'lemonade', icon: '🍋', name: 'Lemonade stand', kind: 'income', costs: [6, 10, 16], effect: (l) => `+1🧱 every ${LEMONADE_EVERY[l - 1]}s` },
-  { id: 'toll', icon: '🌉', name: 'Toll bridge', kind: 'income', costs: [8, 14], effect: (l) => `every trade pays +${TOLL[l - 1]}🧱 toll` },
+  { id: 'toll', icon: '🌉', name: 'Toll bridge', kind: 'income', costs: [8, 14], effect: (l) => `every ${Math.round(1 / TOLL[l - 1])} trades pay +1🧱 toll` },
   { id: 'piggy', icon: '🐷', name: 'Piggy bank', kind: 'income', costs: [10, 18], effect: (l) => `+${INTEREST[l - 1] * 100}% interest on your blocks every recess (low time preference pays)` },
   { id: 'sign', icon: '🪧', name: 'No Trespassing sign', kind: 'defence', costs: [4, 9], effect: (l) => `thieves move ${SIGN_SLOW[l - 1] * 100}% slower` },
   { id: 'glue', icon: '🫙', name: 'Glue moat', kind: 'defence', costs: [6, 12], effect: (l) => `thieves get stuck near the pile for ${GLUE_SECONDS[l - 1]}s` },
@@ -42,4 +43,4 @@ export const noneBuilt = (): Built => ({ lemonade: 0, toll: 0, piggy: 0, sign: 0
 export const nextCost = (b: Building, level: number): number | null => (level < b.costs.length ? b.costs[level] : null);
 
 /** A big pile draws a crowd: more hands reach for it. */
-export const attraction = (blocks: number) => 1 + Math.max(0, blocks - 15) * 0.015;
+export const attraction = (blocks: number) => 1 + Math.max(0, blocks - 12) * 0.03;

@@ -2,7 +2,7 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
-import { build, CONFIG, handPosition, ITEMS, multiplier, newGame, nextWave, pileAt, resize, slap, spawnHand, step, type GameEvent, type GameState } from './logic.ts';
+import { build, CONFIG, handPosition, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, slap, slapRadius, spawnHand, step, type GameEvent, type GameState } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
 import { dayName, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
@@ -120,7 +120,7 @@ const LINES = {
 const ctx = els.canvas.getContext('2d')!;
 let state: GameState = newGame(els.canvas.clientWidth || 800, els.canvas.clientHeight || 600);
 state.phase = 'break'; // nothing happens behind the title screen
-const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null };
+const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, touch: matchMedia('(pointer: coarse)').matches };
 let paused = false;
 /** The interest and wages from the last recess, for its summary. */
 let recessEvents: GameEvent[] = [];
@@ -213,6 +213,13 @@ function handle(e: GameEvent) {
       };
       say('teacher', e.period.line);
       if (e.period.id === 'recess') play('wave');
+      break;
+    }
+    case 'bounce': {
+      const at = handPosition(e.hand);
+      play('miss');
+      const hint = e.needs === 'pinch' ? (scene.touch ? '🧤 DOUBLE-TAP it!' : '🧤 RIGHT-CLICK it!') : e.needs === 'hold' ? '🍯 HOLD on it!' : '👋 That one needs a slap';
+      float(at.x, at.y, hint, '#1f618d');
       break;
     }
     case 'report':
@@ -313,6 +320,8 @@ function checkAchievements(e: GameEvent) {
       if (e.hand.role === 'fraud') award('fraud');
       if (e.hand.role === 'president') award('president');
       if (e.hand.role === 'principal') award('principal');
+      if (e.hand.role === 'mitten') award('mitten');
+      if (e.hand.role === 'sticky') award('sticky');
       break;
     case 'guard':
       if (e.hand.role === 'monitor') award('monitor');
@@ -445,6 +454,8 @@ function frame(now: number) {
   last = now;
   if (!paused) {
     scene.time += dt;
+    // Holding on to Sticky Fingers
+    if (pressing && state.phase === 'playing') press(state, pressing.x, pressing.y, dt);
     step(state, dt, Math.random);
     if (state.events.some((e) => e.type === 'wave-end')) recessEvents = state.events.filter((e) => e.type === 'interest' || e.type === 'wages' || e.type === 'allowance');
     for (const e of state.events) handle(e);
@@ -467,22 +478,52 @@ els.canvas.addEventListener('pointermove', (e) => {
   scene.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 });
 
+/** The pointer being held down (for Sticky Fingers), and the last tap (a quick second one is a pinch). */
+let pressing: { id: number; x: number; y: number } | null = null;
+let lastTap: { x: number; y: number; t: number } | null = null;
+const DOUBLE_TAP = 0.32;
+
+// Right-click is a pinch, not a menu.
+els.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
 els.canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  {
-    const rect = els.canvas.getBoundingClientRect();
-    scene.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-  if (state.phase !== 'playing' || paused) return;
-  getAudioContext();
   const rect = els.canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
+  scene.pointer = { x, y };
+  scene.touch = e.pointerType !== 'mouse';
+  if (state.phase !== 'playing' || paused) return;
+  getAudioContext();
+  // Right button: a pinch. On a touch screen, a quick second tap on the same spot is one.
+  let how: 'slap' | 'pinch' = e.button === 2 ? 'pinch' : 'slap';
+  if (e.pointerType !== 'mouse') {
+    if (lastTap && scene.time - lastTap.t < DOUBLE_TAP && Math.hypot(lastTap.x - x, lastTap.y - y) < slapRadius(state) * 1.5) {
+      how = 'pinch';
+      lastTap = null;
+    } else lastTap = { x, y, t: scene.time };
+  }
+  if (e.button === 0) {
+    pressing = { id: e.pointerId, x, y };
+    els.canvas.setPointerCapture(e.pointerId);
+  }
   scene.slapAt = { x, y, t: scene.time };
-  slap(state, x, y);
+  slap(state, x, y, how);
   for (const ev of state.events) handle(ev);
   state.events = [];
 });
+
+els.canvas.addEventListener('pointermove', (e) => {
+  if (!pressing || e.pointerId !== pressing.id) return;
+  const rect = els.canvas.getBoundingClientRect();
+  pressing.x = e.clientX - rect.left;
+  pressing.y = e.clientY - rect.top;
+});
+const letGo = (e: PointerEvent) => {
+  if (pressing && e.pointerId === pressing.id) pressing = null;
+};
+els.canvas.addEventListener('pointerup', letGo);
+els.canvas.addEventListener('pointercancel', letGo);
 
 document.addEventListener('visibilitychange', () => {
   paused = document.hidden;

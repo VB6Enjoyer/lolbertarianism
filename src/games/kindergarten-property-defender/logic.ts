@@ -6,7 +6,7 @@
 // happens. Slapping a trader is aggression, and it costs you a gold star.
 
 import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
-import { allowance, DAY_LENGTH, emptyDay, isFriday, PERIOD_LENGTH, PERIODS, periodAt, pickRole, reportCard, weekOf, type DayStats, type Period, type ReportCard, type Role } from './school.ts';
+import { allowance, DAY_LENGTH, emptyDay, isFriday, NEEDS, PERIOD_LENGTH, PERIODS, periodAt, pickRole, reportCard, weekOf, type DayStats, type Period, type ReportCard, type Role } from './school.ts';
 
 export type HandKind = 'thief' | 'trader';
 export type ItemId = 'juice' | 'dino' | 'crayons' | 'cookie' | 'car' | 'yoyo' | 'slime' | 'card' | 'money';
@@ -80,6 +80,11 @@ export interface Hand {
   /** Slaps it takes to send away, and seconds dazed after a slap that didn't. */
   hp: number;
   stun: number;
+  /** How much its speed surges and slows on the way in (more, later in the game). */
+  surge: number;
+  /** Sticky Fingers: seconds you've held on to it, and whether you're holding it right now. */
+  held: number;
+  beingHeld: boolean;
 }
 
 export type GameEvent =
@@ -105,7 +110,8 @@ export type GameEvent =
   | { type: 'period'; period: Period }
   | { type: 'bonk'; hand: Hand; hp: number; points: number; by: 'jack' | 'guard' }
   | { type: 'report'; card: ReportCard }
-  | { type: 'allowance'; blocks: number };
+  | { type: 'allowance'; blocks: number }
+  | { type: 'bounce'; hand: Hand; needs: 'slap' | 'pinch' | 'hold' };
 
 export type Ending = 'seized' | 'expelled';
 
@@ -136,6 +142,8 @@ export interface GameState {
   combo: number;
   /** Trades since the last gold star came back. */
   goodwill: number;
+  /** Toll collected but not yet a whole block. */
+  tollCredit: number;
   stats: Stats;
   /** What you've traded for (and can sell on). */
   stash: Owned[];
@@ -160,7 +168,7 @@ export const CONFIG = {
   /** A school day: five periods. */
   waveLength: DAY_LENGTH,
   /** Jack homesteads a block from the toy bin this often (seconds). */
-  homesteadEvery: 5,
+  homesteadEvery: 9,
   /** Trades that earn a lost gold star back. */
   tradesPerStar: 3,
   slapPoints: 10,
@@ -171,12 +179,28 @@ export const CONFIG = {
 };
 
 /** Seconds between hands: quicker every wave. */
-export const spawnEvery = (wave: number) => Math.max(0.45, 1.6 * 0.88 ** (wave - 1));
+export const spawnEvery = (wave: number) => Math.max(0.42, 2.3 * 0.9 ** (wave - 1));
 /** How long a thief takes to reach the pile: quicker every wave. Traders take their time. */
-export const thiefTravel = (wave: number) => Math.max(1.4, 3.4 - 0.2 * (wave - 1));
+export const thiefTravel = (wave: number) => Math.max(1.25, 3.6 - 0.16 * (wave - 1));
+/** How widely thieves' speeds vary: a little on day one, a lot later (so the fastest get faster). */
+export const speedSpread = (wave: number) => Math.min(0.95, 0.35 + 0.08 * (wave - 1));
+/** How hard hands surge and slow on the way in. */
+export const surgeOn = (wave: number) => Math.min(0.45, 0.07 * (wave - 1));
+/** Seconds to hold on to Sticky Fingers. */
+export const HOLD_TIME = 0.7;
+/** Thieves grab a handful from a big pile. */
+export const grabFrom = (blocks: number) => 1 + Math.floor(blocks / 12);
+
+/**
+ * Where hands can come from, as angles around the pile (180° is the left, 90° the top, 0° the right).
+ * Thieves start in a narrow cone on the teacher's side and it widens every day, reaching the right in
+ * the second week. Traders start up and to the right, and spread out too.
+ */
+export const thiefArc = (wave: number) => ({ center: 180, half: Math.min(180, 25 + 24 * (wave - 1)) });
+export const traderArc = (wave: number) => ({ center: 60, half: Math.min(180, 35 + 18 * (wave - 1)) });
 export const TRADER_TRAVEL = 3.6;
 /** The share of hands that are traders: fewer if you've been slapping them (classmates talk). */
-export const traderShare = (stars: number) => 0.12 + 0.33 * (stars / CONFIG.maxStars);
+export const traderShare = (stars: number) => 0.08 + 0.25 * (stars / CONFIG.maxStars);
 /** The combo multiplier: ×2 at 5 in a row, ×3 at 10, ×4 from 15 on. */
 export const multiplier = (combo: number) => Math.min(4, 1 + Math.floor(combo / 5));
 /** How close a tap has to be to a hand. */
@@ -206,6 +230,7 @@ export function newGame(w: number, h: number): GameState {
     homesteadIn: CONFIG.homesteadEvery,
     combo: 0,
     goodwill: 0,
+    tollCredit: 0,
     stats: { slapped: 0, recovered: 0, trades: 0, stolen: 0, violations: 0, bestCombo: 0 },
     stash: [],
     built: noneBuilt(),
@@ -247,16 +272,20 @@ export function handPosition(hand: Hand): { x: number; y: number } {
 
 /** Where a hand comes from: thieves mostly from the teacher's side, traders from the classmates', with more mixing later. */
 function rootFor(s: GameState, kind: HandKind, rng: () => number): { x: number; y: number } {
-  const side = rng();
-  const mixed = s.wave >= 3 ? 0.3 : 0;
-  if (kind === 'thief') {
-    if (side < 0.7 - mixed) return { x: -30, y: s.h * (0.25 + rng() * 0.55) };
-    if (side < 1 - mixed) return { x: s.w * (0.05 + rng() * 0.4), y: -30 };
-    return { x: s.w * (0.45 + rng() * 0.45), y: -30 };
-  }
-  if (side < 0.6) return { x: s.w * (0.2 + rng() * 0.65), y: -30 };
-  if (side < 0.9 || s.wave < 4) return { x: s.w + 30, y: s.h * (0.12 + rng() * 0.4) };
-  return { x: -30, y: s.h * (0.2 + rng() * 0.4) };
+  const arc = kind === 'thief' ? thiefArc(s.wave) : traderArc(s.wave);
+  return edgeAt(s, arc.center + (rng() * 2 - 1) * arc.half);
+}
+
+/** The point just off the edge of the screen, looking out from the pile at an angle. */
+export function edgeAt(s: GameState, degrees: number): { x: number; y: number } {
+  const p = pileAt(s);
+  const a = (degrees * Math.PI) / 180;
+  const dx = Math.cos(a);
+  const dy = -Math.sin(a);
+  const tx = dx > 1e-6 ? (s.w - p.x) / dx : dx < -1e-6 ? -p.x / dx : Infinity;
+  const ty = dy > 1e-6 ? (s.h - p.y) / dy : dy < -1e-6 ? -p.y / dy : Infinity;
+  const t = Math.min(tx, ty) + 30;
+  return { x: p.x + dx * t, y: p.y + dy * t };
 }
 
 /** About half the classmates want something from your stash (if there's anything in it). */
@@ -265,7 +294,7 @@ export const BUYER_SHARE = 0.5;
 function makeOffer(s: GameState, rng: () => number): Offer {
   if (s.stash.length && rng() < BUYER_SHARE) {
     const owned = s.stash[Math.floor(rng() * s.stash.length)];
-    return { wants: 'item', item: owned.item, price: owned.cost + 1 + Math.floor(rng() * 2), value: 0 };
+    return { wants: 'item', item: owned.item, price: owned.cost + 1, value: 0 };
   }
   const price = 1 + Math.floor(rng() * 3);
   return { wants: 'blocks', item: ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)], price, value: Math.round(price * (1.4 + rng() * 0.9) * 10) / 10 };
@@ -291,13 +320,13 @@ export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forc
     travel:
       looksLike === 'trader'
         ? TRADER_TRAVEL * (0.9 + rng() * 0.2)
-        : ((thiefTravel(s.wave) * (0.85 + rng() * 0.3)) / period.speed) * (1 + (s.built.sign ? SIGN_SLOW[s.built.sign - 1] : 0)) * (role === 'principal' ? 2.4 : role === 'monitor' ? 1.3 : role === 'president' ? 1.15 : 1),
+        : ((thiefTravel(s.wave) * (1 - speedSpread(s.wave) * 0.45 + rng() * speedSpread(s.wave))) / period.speed) * (1 + (s.built.sign ? SIGN_SLOW[s.built.sign - 1] : 0)) * (role === 'principal' ? 2.4 : role === 'monitor' ? 1.3 : role === 'president' ? 1.15 : 1),
     wobble: looksLike === 'thief' ? Math.min(s.w, s.h) * (role === 'principal' ? 0.01 : 0.03 + rng() * 0.05) : 0,
     phase: rng() * Math.PI * 2,
     state: 'reaching',
     slapped: false,
     carrying: 0,
-    grab: kind === 'thief' && s.wave >= 5 && rng() < 0.25 ? 2 : 1,
+    grab: 1,
     offer: kind === 'trader' ? makeOffer(s, rng) : role === 'fraud' ? { wants: 'blocks', item: 'money', price: 2 + Math.floor(rng() * 2), value: 0 } : null,
     traded: false,
     glued: 0,
@@ -306,6 +335,9 @@ export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forc
     role,
     hp: role === 'principal' ? 8 : role === 'monitor' ? 3 : 1,
     stun: 0,
+    surge: looksLike === 'thief' ? surgeOn(s.wave) * (0.5 + rng() * 0.5) : 0,
+    held: 0,
+    beingHeld: false,
   };
   if (kind === 'thief') s.day.thieves++;
   s.hands.push(hand);
@@ -325,7 +357,7 @@ function arrive(s: GameState, hand: Hand) {
   hand.state = 'leaving';
   if (hand.kind === 'thief') {
     // The President taxes 10%, the Principal takes 30% (eminent domain), the fraud kid "buys" with funny money.
-    const want = hand.role === 'president' ? Math.max(1, Math.ceil(s.blocks * 0.1)) : hand.role === 'principal' ? Math.max(1, Math.ceil(s.blocks * 0.3)) : hand.role === 'fraud' ? hand.offer!.price : hand.grab;
+    const want = hand.role === 'president' ? Math.max(1, Math.ceil(s.blocks * 0.1)) : hand.role === 'principal' ? Math.max(1, Math.ceil(s.blocks * 0.3)) : hand.role === 'fraud' ? hand.offer!.price : grabFrom(s.blocks);
     const took = Math.min(want, s.blocks);
     s.blocks -= took;
     hand.carrying = took;
@@ -365,7 +397,10 @@ function arrive(s: GameState, hand: Hand) {
   s.stats.trades++;
   s.day.trades++;
   s.score += points;
-  const toll = s.built.toll ? TOLL[s.built.toll - 1] : 0;
+  // The toll builds up a fraction of a block per trade.
+  s.tollCredit += s.built.toll ? TOLL[s.built.toll - 1] : 0;
+  const toll = Math.floor(s.tollCredit);
+  s.tollCredit -= toll;
   s.blocks = Math.min(CONFIG.maxBlocks, s.blocks + toll);
   s.events.push({ type: 'trade', hand, offer, points, toll, profit });
   // Good trades win back the class's trust.
@@ -429,7 +464,7 @@ export function step(s: GameState, dt: number, rng: () => number) {
   if (s.built.guard) {
     s.guardIn -= dt;
     if (s.guardIn <= 0) {
-      const target = s.hands.filter((h) => h.kind === 'thief' && h.role !== 'principal' && h.state === 'reaching' && !h.slapped && h.progress > 0.35).sort((a, b) => b.progress - a.progress)[0];
+      const target = s.hands.filter((h) => h.kind === 'thief' && h.role !== 'principal' && !(h.role && NEEDS[h.role]) && h.state === 'reaching' && !h.slapped && h.progress > 0.35).sort((a, b) => b.progress - a.progress)[0];
       if (target) {
         s.guardIn = GUARD_EVERY[s.built.guard - 1];
         hitThief(s, target, 'guard');
@@ -466,7 +501,9 @@ export function step(s: GameState, dt: number, rng: () => number) {
       }
     }
     if (hand.state === 'reaching') {
-      hand.progress += dt / hand.travel;
+      const surge = 1 + hand.surge * Math.sin(hand.phase * 3 + hand.progress * 10);
+      const held = hand.beingHeld ? 0.25 : 1;
+      hand.progress += (dt / hand.travel) * surge * held;
       if (hand.progress >= 1) {
         hand.progress = 1;
         arrive(s, hand);
@@ -475,6 +512,10 @@ export function step(s: GameState, dt: number, rng: () => number) {
     } else {
       hand.progress -= (dt / hand.travel) * (hand.slapped ? 3.5 : 1.6);
     }
+  }
+  for (const hand of s.hands) {
+    if (!hand.beingHeld) hand.held = Math.max(0, hand.held - dt * 0.6);
+    hand.beingHeld = false;
   }
   s.hands = s.hands.filter((hand) => hand.state === 'reaching' || hand.progress > 0);
   // The wave's over once the last hand has gone.
@@ -551,7 +592,7 @@ function hitThief(s: GameState, hand: Hand, by: 'jack' | 'guard') {
 }
 
 /** Jack slaps at a spot. Returns what it hit, if anything. */
-export function slap(s: GameState, x: number, y: number): Hand | null {
+export function slap(s: GameState, x: number, y: number, how: 'slap' | 'pinch' = 'slap'): Hand | null {
   if (s.phase !== 'playing') return null;
   let best: Hand | null = null;
   let bestD = slapRadius(s);
@@ -584,10 +625,46 @@ export function slap(s: GameState, x: number, y: number): Hand | null {
     if (s.stars <= 0) end(s, 'expelled');
     return hand;
   }
+  // Oven Mitts need a pinch, Sticky Fingers need holding, the rest need a slap.
+  const needs = (hand.role && NEEDS[hand.role]) ?? 'slap';
+  if (needs !== how) {
+    s.events.push({ type: 'bounce', hand, needs });
+    return hand;
+  }
   s.combo++;
   s.stats.bestCombo = Math.max(s.stats.bestCombo, s.combo);
   hitThief(s, hand, 'jack');
   return hand;
+}
+
+/**
+ * Jack's holding the pointer down at a spot (call it every frame while he does). Sticky Fingers under
+ * it slow down, and come off once they've been held long enough.
+ */
+export function press(s: GameState, x: number, y: number, dt: number): Hand | null {
+  if (s.phase !== 'playing') return null;
+  let best: Hand | null = null;
+  let bestD = slapRadius(s) * 1.3;
+  for (const hand of s.hands) {
+    if (hand.slapped || hand.role !== 'sticky') continue;
+    const at = handPosition(hand);
+    const d = Math.hypot(at.x - x, at.y - y);
+    if (d < bestD) {
+      best = hand;
+      bestD = d;
+    }
+  }
+  if (!best) return null;
+  best.beingHeld = true;
+  best.held += dt;
+  if (best.held >= HOLD_TIME) {
+    best.held = 0;
+    best.beingHeld = false;
+    s.combo++;
+    s.stats.bestCombo = Math.max(s.stats.bestCombo, s.combo);
+    hitThief(s, best, 'jack');
+  }
+  return best;
 }
 
 /** Builds (or upgrades) something at recess. Jack keeps at least one block. */
