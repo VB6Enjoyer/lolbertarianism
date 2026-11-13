@@ -157,16 +157,16 @@ export const TEACHABLE: Record<ArgType, Move> = {
 };
 
 const NAMES: readonly [FactionId, string][] = [
-  ['ancap', 'Murray Rothclaw'], ['ancap', 'Walter Blocklobster'],
-  ['minarchist', 'Ron Pincher'], ['minarchist', 'Robert Nozclaw'],
+  ['ancap', 'Murray Lobbard'], ['ancap', 'Walter Blobster'],
+  ['minarchist', 'Ron Pincher'], ['minarchist', 'Robster Nozick'],
   ['austrian', 'Ludwig von Pinches'], ['austrian', 'Friedrich von Shellek'],
-  ['chicago', 'Milton Freedclaw'], ['chicago', 'Gary Beckclaw'],
-  ['objectivist', 'Ayn Randclaw'], ['objectivist', 'John Galtster'],
-  ['georgist', 'Henry Georgeclaw'],
-  ['agorist', 'SEK III-Claw'],
-  ['hoppean', 'Hans-Hermann Hopster'],
-  ['bleeding-heart', 'Jason Brennaclaw'],
-  ['mises-caucus', 'Big Claw Dave'], ['mises-caucus', 'Redpill Rick'],
+  ['chicago', 'Clawton Shellman'], ['chicago', 'Shelly Becker'],
+  ['objectivist', 'Ayn Claw'], ['objectivist', 'Leobster Peiclawff'],
+  ['georgist', 'Henry Gorge'],
+  ['agorist', 'Lobkin III'],
+  ['hoppean', 'Hans-Shellmann Hopster'],
+  ['bleeding-heart', 'Clawson Shellnnan'],
+  ['mises-caucus', 'Big Claw Dave'], ['mises-caucus', 'Anshella McClawrdle'],
 ];
 
 /** The league's lobsters, each with stats, a trait and a short history. */

@@ -308,7 +308,9 @@ function lobsterSvg(f: Faction): string {
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-const firstName = (l: Lobster) => l.name.split(' ')[0];
+/** What a lobster gets called for short (usually its first name). */
+const SHORT_NAMES: Record<string, string> = { 'Big Claw Dave': 'Dave' };
+const firstName = (l: Lobster) => SHORT_NAMES[l.name] ?? l.name.split(' ')[0];
 
 /** A stat as a bar with its number, so you can compare the two cards at a glance. */
 const STATS = [
