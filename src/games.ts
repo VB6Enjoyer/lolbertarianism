@@ -32,8 +32,8 @@ export const games: Game[] = [
   {
     slug: 'libertarian-fight-club',
     title: 'Libertarian Fight Club',
-    blurb: 'Lobsters from ten libertarian factions debate to the death. Read the matchups, beat the house’s odds.',
-    status: 'prototype',
+    blurb: 'Lobsters from ten libertarian factions debate to the death. Bet against the crowd and climb from the kitchen floor to Liberland.',
+    status: 'released', // v1.0
     legacyPaths: ['libertarian_fight_club.html'],
   },
   {

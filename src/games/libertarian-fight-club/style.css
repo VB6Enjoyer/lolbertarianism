@@ -68,6 +68,11 @@ body {
     font-size: 28px;
 }
 
+.brand > div {
+    max-width: 175px;
+    line-height: 1.2;
+}
+
 .brand small {
     display: block;
     font-weight: 400;
@@ -92,11 +97,17 @@ body {
 }
 
 .venue-line b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 14px;
     cursor: help;
 }
 
 .night-label {
+    flex: none;
+    white-space: nowrap;
     font-size: 12px;
     color: var(--muted);
 }
@@ -208,8 +219,8 @@ body {
     display: grid;
     place-items: center;
     gap: 1px;
-    min-width: 54px;
-    padding: 5px 8px;
+    min-width: 48px;
+    padding: 5px 7px;
     border: 1px solid #5a5148;
     border-radius: 10px;
     background: var(--panel-2);
@@ -2016,6 +2027,10 @@ kbd {
 
     .brand small {
         display: none;
+    }
+
+    .brand > div {
+        max-width: none;
     }
 
     .venue {
