@@ -20,7 +20,8 @@
             <div class="stat wave-stat"><small><span id="wave">Mon · week 1</span> · <span id="period"></span> <em id="combo"></em></small><div class="wave-track"><i id="wave-bar"></i></div></div>
             <div class="stat"><small>Score</small><b id="score">0</b></div>
             <div class="stat stash-stat"><small>Stash</small><b id="stash"></b></div>
-            <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
+            <button id="show-achievements" class="icon-button" type="button" aria-label="Achievements" title="Achievements">🏅</button>
+            <button id="mute" class="icon-button mute" type="button" aria-label="Toggle sound">🔊</button>
         </header>
 
         <canvas id="stage" aria-label="The classroom: tap the grabby hands"></canvas>
@@ -67,6 +68,18 @@
                 <button id="next" type="button" class="big-button">Back to class ▶</button>
             </div>
         </div>
+
+        <!-- Achievements -->
+        <div id="achievements" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>🏅 Achievements</h1>
+                <p class="tagline"><span id="achievements-count">0</span> unlocked. Saved in this browser.</p>
+                <div id="achievements-grid" class="achievements-grid"></div>
+                <button id="hide-achievements" type="button" class="big-button">Back to class</button>
+            </div>
+        </div>
+
+        <div id="toasts" class="toasts" aria-live="polite"></div>
 
         <!-- Game over -->
         <div id="over" class="overlay" hidden>

@@ -358,3 +358,25 @@ describe('kindergarten: the school day', () => {
     expect(s.blocks).toBeGreaterThan(before);
   });
 });
+
+describe('kindergarten: achievements', () => {
+  it('unique ids, all filled in, and saves keep only known ones', async () => {
+    const { ACHIEVEMENTS, normalizeUnlocked } = await import('./achievements.ts');
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+    for (const a of ACHIEVEMENTS) expect(a.icon && a.name && a.description, a.id).toBeTruthy();
+    expect([...normalizeUnlocked(['tgif', 'nope', 7])]).toEqual(['tgif']);
+  });
+
+  it('a sale says how much better off Jack is', () => {
+    const s = quiet(newGame(1000, 600));
+    s.stash = [{ item: 'card', cost: 1 }];
+    let hand = spawnHand(s, rng(70), 'trader');
+    for (let k = 0; hand.offer!.wants !== 'item' && k < 20; k++) {
+      s.hands = [];
+      hand = spawnHand(s, rng(71 + k), 'trader');
+    }
+    reach(s, hand);
+    const trade = s.events.find((e) => e.type === 'trade');
+    expect(trade && trade.type === 'trade' && trade.profit).toBe(hand.offer!.price - 1);
+  });
+});

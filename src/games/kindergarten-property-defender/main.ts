@@ -1,6 +1,7 @@
 import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
+import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { build, CONFIG, handPosition, ITEMS, multiplier, newGame, nextWave, pileAt, resize, slap, spawnHand, step, type GameEvent, type GameState } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
 import { dayName, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
@@ -31,6 +32,10 @@ const els = {
   overTitle: byId('over-title'),
   overBody: byId('over-body'),
   again: byId<HTMLButtonElement>('again'),
+  toasts: byId('toasts'),
+  achievements: byId('achievements'),
+  achievementsGrid: byId('achievements-grid'),
+  achievementsCount: byId('achievements-count'),
 };
 
 // ---------------------------------------------------------------------------
@@ -41,6 +46,7 @@ interface Save {
   best: number;
   bestWave: number;
   muted: boolean;
+  achievements: string[];
 }
 const slot = createSaveSlot<Save>({ game: 'kindergarten-property-defender', version: 1 });
 const saved = slot.load();
@@ -48,8 +54,10 @@ const save: Save = {
   best: Math.max(0, Math.floor(Number(saved?.best) || 0)),
   bestWave: Math.max(0, Math.floor(Number(saved?.bestWave) || 0)),
   muted: saved?.muted === true,
+  achievements: [...normalizeUnlocked(saved?.achievements)],
 };
 const persist = () => slot.save(save);
+const unlocked = new Set(save.achievements);
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -139,6 +147,7 @@ function float(x: number, y: number, text: string, color: string, big = false) {
 }
 
 function handle(e: GameEvent) {
+  checkAchievements(e);
   const pile = pileAt(state);
   switch (e.type) {
     case 'slap': {
@@ -270,6 +279,148 @@ function handle(e: GameEvent) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+/** Counters for this game: interest earned, days in a row without a violation, blocks stolen when nap time began. */
+let run: { interest: number; cleanDays: number; napStolen: number | null } = { interest: 0, cleanDays: 0, napStolen: null };
+
+function award(id: string) {
+  if (unlocked.has(id)) return;
+  const a = achievementById(id);
+  if (!a) return;
+  unlocked.add(id);
+  save.achievements = [...unlocked];
+  persist();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = '<span class="icon"></span><small>ACHIEVEMENT UNLOCKED</small><b></b>';
+  el.querySelector('.icon')!.textContent = a.icon;
+  el.querySelector('b')!.textContent = a.name;
+  els.toasts.append(el);
+  setTimeout(() => el.remove(), 4200);
+  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
+}
+
+function checkAchievements(e: GameEvent) {
+  switch (e.type) {
+    case 'slap':
+      award('first-slap');
+      if (e.combo >= 10) award('combo-10');
+      if (e.combo >= 25) award('combo-25');
+      if (e.hand.role === 'monitor') award('monitor');
+      if (e.hand.role === 'fraud') award('fraud');
+      if (e.hand.role === 'president') award('president');
+      if (e.hand.role === 'principal') award('principal');
+      break;
+    case 'guard':
+      if (e.hand.role === 'monitor') award('monitor');
+      break;
+    case 'recover':
+      award('repossess');
+      if (state.stats.recovered >= 10) award('repo-10');
+      break;
+    case 'steal':
+      if (e.hand.role === 'fraud' && e.blocks > 0) award('funny-money');
+      break;
+    case 'trade':
+      award('first-trade');
+      if (e.offer.wants === 'item') award('flip');
+      if (e.profit >= 2) award('middleman');
+      if (state.stash.length >= 5) award('collector');
+      if (state.stats.trades >= 50) award('tycoon');
+      break;
+    case 'violation':
+      award('my-bad');
+      break;
+    case 'star':
+      award('redemption');
+      break;
+    case 'built':
+      award('first-build');
+      if (e.id === 'lemonade' && e.level >= 3) award('lemonade');
+      if (e.id === 'guard') award('security');
+      if (Object.values(state.built).every((level) => level > 0)) award('diversified');
+      break;
+    case 'interest':
+      run.interest += e.blocks;
+      if (run.interest >= 20) award('compound');
+      break;
+    case 'wages':
+      if (e.quit) award('unpaid');
+      break;
+    case 'period':
+      // Nap time: note what's been stolen so far, and check at the next bell.
+      if (e.period.id === 'nap') run.napStolen = state.stats.stolen;
+      else if (run.napStolen !== null) {
+        if (state.stats.stolen === run.napStolen) award('night-watch');
+        run.napStolen = null;
+      }
+      break;
+    case 'report': {
+      const c = e.card;
+      if (c.defence === 'A' && c.economics === 'A' && c.citizenship === 'A') award('straight-a');
+      if (c.citizenship === 'F') award('nightmare');
+      run.cleanDays = state.day.violations ? 0 : run.cleanDays + 1;
+      if (run.cleanDays >= 5) award('model-citizen');
+      break;
+    }
+    case 'wave-end':
+      if (isFriday(state.wave)) {
+        award('tgif');
+        if (weekOf(state.wave) >= 2) award('week-2');
+        if (weekOf(state.wave) >= 3) award('week-3');
+      }
+      break;
+    case 'over':
+      if (e.reason === 'expelled') award('expelled');
+      break;
+    default:
+      break;
+  }
+  if (state.blocks >= CONFIG.maxBlocks) award('capitalist-pig');
+  if (state.score >= 10000) award('score-10k');
+  if (state.score >= 50000) award('score-50k');
+}
+
+function renderAchievements() {
+  els.achievementsCount.textContent = `${unlocked.size} / ${ACHIEVEMENTS.length}`;
+  els.achievementsGrid.replaceChildren(
+    ...ACHIEVEMENTS.map((a) => {
+      const got = unlocked.has(a.id);
+      const hidden = a.secret && !got;
+      const card = document.createElement('div');
+      card.className = `achievement${got ? '' : ' locked'}${a.secret ? ' secret' : ''}`;
+      card.innerHTML = '<span class="icon"></span><b></b><small></small>';
+      card.querySelector('.icon')!.textContent = got ? a.icon : hidden ? '❔' : '🔒';
+      card.querySelector('b')!.textContent = hidden ? 'Secret achievement' : a.name;
+      card.querySelector('small')!.textContent = hidden ? 'Keep playing. You’ll know it when it happens.' : a.description;
+      return card;
+    }),
+  );
+}
+
+let pausedForAchievements = false;
+byId('show-achievements').addEventListener('click', () => {
+  renderAchievements();
+  els.achievements.hidden = false;
+  // Pause the class while you're reading.
+  if (state.phase === 'playing' && !paused) {
+    paused = true;
+    pausedForAchievements = true;
+  }
+  byId('hide-achievements').focus();
+});
+byId('hide-achievements').addEventListener('click', () => {
+  els.achievements.hidden = true;
+  if (pausedForAchievements) {
+    paused = false;
+    pausedForAchievements = false;
+    last = performance.now();
+  }
+});
+
 function renderHud() {
   els.blocks.textContent = String(state.blocks);
   els.stars.textContent = '⭐'.repeat(state.stars) + '☆'.repeat(Math.max(0, CONFIG.maxStars - state.stars));
@@ -345,6 +496,7 @@ document.addEventListener('visibilitychange', () => {
 function startGame() {
   getAudioContext();
   state = newGame(els.canvas.clientWidth, els.canvas.clientHeight);
+  run = { interest: 0, cleanDays: 0, napStolen: null };
   scene.floaters = [];
   scene.bubbles = [];
   els.title.hidden = true;
@@ -415,6 +567,7 @@ function renderShop() {
   for (const b of els.shop.querySelectorAll<HTMLButtonElement>('.build')) {
     b.addEventListener('click', () => {
       if (!build(state, b.dataset.id as BuildId)) return;
+      for (const ev of state.events) handle(ev);
       state.events = [];
       play('trade');
       renderShop();
@@ -459,7 +612,7 @@ document.addEventListener('keydown', (e) => {
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { kpd: { state: () => state, showBreak, spawn: (role: string) => spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role)) } });
+  Object.assign(window, { kpd: { state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role)) } });
 }
 
-els.best.textContent = save.best ? `Best: ${save.best.toLocaleString('en-US')} points · wave ${save.bestWave}` : '';
+els.best.textContent = [save.best ? `Best: ${save.best.toLocaleString('en-US')} points` : '', unlocked.size ? `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} achievements` : ''].filter(Boolean).join(' · ');

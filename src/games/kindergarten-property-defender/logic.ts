@@ -87,7 +87,7 @@ export type GameEvent =
   | { type: 'recover'; hand: Hand; blocks: number; points: number }
   | { type: 'violation'; hand: Hand }
   | { type: 'steal'; hand: Hand; blocks: number }
-  | { type: 'trade'; hand: Hand; offer: Offer; points: number; toll: number }
+  | { type: 'trade'; hand: Hand; offer: Offer; points: number; toll: number; profit: number }
   | { type: 'broke'; hand: Hand }
   | { type: 'star'; stars: number }
   | { type: 'homestead' }
@@ -338,6 +338,7 @@ function arrive(s: GameState, hand: Hand) {
   }
   const offer = hand.offer!;
   let points: number;
+  let profit = 0;
   if (offer.wants === 'item') {
     // They're buying: you need the thing (you might have sold it to someone else already).
     const i = s.stash.findIndex((o) => o.item === offer.item);
@@ -346,6 +347,7 @@ function arrive(s: GameState, hand: Hand) {
       return;
     }
     const [sold] = s.stash.splice(i, 1);
+    profit = offer.price - sold.cost;
     s.blocks = Math.min(CONFIG.maxBlocks, s.blocks + offer.price);
     points = (offer.price - sold.cost) * CONFIG.tradePoints * 2;
     s.day.profit += offer.price - sold.cost;
@@ -365,7 +367,7 @@ function arrive(s: GameState, hand: Hand) {
   s.score += points;
   const toll = s.built.toll ? TOLL[s.built.toll - 1] : 0;
   s.blocks = Math.min(CONFIG.maxBlocks, s.blocks + toll);
-  s.events.push({ type: 'trade', hand, offer, points, toll });
+  s.events.push({ type: 'trade', hand, offer, points, toll, profit });
   // Good trades win back the class's trust.
   s.goodwill++;
   if (s.goodwill >= CONFIG.tradesPerStar && s.stars < CONFIG.maxStars) {
