@@ -3,6 +3,7 @@
 // in the middle, and long stretchy arms reaching in for it.
 
 import { handPosition, ITEMS, pileAt, type GameState, type Hand } from './logic.ts';
+import { periodAt, type Role } from './school.ts';
 
 export interface Floater {
   x: number;
@@ -32,7 +33,21 @@ export interface Scene {
   slapAt: { x: number; y: number; t: number } | null;
   /** The hired kid's arm, mid-slap. */
   guardAt: { x: number; y: number; t: number } | null;
+  /** Where the pointer is (a flashlight at nap time). */
+  pointer: { x: number; y: number } | null;
+  /** A big announcement across the top (a new period, a new troublemaker). */
+  banner: { text: string; sub?: string; until: number } | null;
 }
+
+/** Each troublemaker's sleeve, and what it carries. */
+const ROLE_LOOK: Record<Role, { color: string; badge?: string; scale?: number }> = {
+  grabby: { color: '#d64545' },
+  monitor: { color: '#e67e22', badge: '🦺' },
+  group: { color: '#c0392b', badge: '📎' },
+  president: { color: '#8e44ad', badge: '🗳️' },
+  fraud: { color: '#2f9e57' },
+  principal: { color: '#34495e', badge: '👔', scale: 1.8 },
+};
 
 const FONT = "'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive";
 const INK = '#1b1b1b';
@@ -361,8 +376,10 @@ function drawPile(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
 function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, t: number) {
   const u = unitOf(s);
   const at = handPosition(hand);
-  const thief = hand.kind === 'thief';
-  const color = thief ? THIEF : TRADER;
+  // The fraud kid is drawn exactly like a trader: only the tag gives it away.
+  const thief = hand.kind === 'thief' && hand.role !== 'fraud';
+  const look = hand.role ? ROLE_LOOK[hand.role] : null;
+  const color = look ? look.color : thief ? THIEF : TRADER;
   // The arm: a long wobbly sleeve from off the edge, outlined in ink like a crayon drawing.
   const pts: [number, number][] = [];
   for (let i = 0; i <= 6; i++) {
@@ -370,12 +387,33 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, t: nu
     const sag = Math.sin(f * Math.PI) * u * 0.25 * Math.sin(hand.phase);
     pts.push([hand.rootX + (at.x - hand.rootX) * f + sag, hand.rootY + (at.y - hand.rootY) * f + sag]);
   }
-  const armW = Math.max(5, u * 0.17);
+  const armW = Math.max(5, u * 0.17) * (look?.scale ?? 1);
   ctx.globalAlpha = hand.slapped ? 0.75 : 1;
   stroke(ctx, pts, armW + 4, t, hand.id * 31, INK, 1.4);
   stroke(ctx, pts, armW, t, hand.id * 31, color, 1.4);
-  const r = Math.max(13, u * 0.42);
+  const r = Math.max(13, u * 0.42) * (look?.scale ?? 1);
   const w = Math.max(1.8, u * 0.065);
+  // Tough ones show how many slaps they've got left.
+  if (hand.hp > 1 && !hand.slapped) {
+    const pip = Math.max(5, u * 0.12);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < hand.hp; i++) {
+      ctx.beginPath();
+      ctx.arc(at.x + (i - (hand.hp - 1) / 2) * pip * 2.4, at.y - r * 1.9, pip, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  if (look?.badge && thief) emoji(ctx, look.badge, at.x + r * 1.1, at.y - r * 1.1, r * 1.1);
+  if (hand.role === 'principal' && !hand.slapped) {
+    ctx.font = `bold ${Math.round(Math.max(12, u * 0.3))}px ${FONT}`;
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('THE PRINCIPAL', at.x, at.y - r * 2.6);
+  }
   if (thief) {
     // A grabby claw: fingers opening and closing.
     const grab = (Math.sin(t * 11 + hand.id) + 1) / 2;
@@ -405,7 +443,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, t: nu
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(icon, at.x, at.y);
-      const label = offer.wants === 'blocks' ? `${ITEMS[offer.item].icon} for ${offer.price}🧱` : `${offer.price}🧱 for your ${ITEMS[offer.item].icon}`;
+      const label = offer.item === 'money' ? `💵 for ${offer.price}🧱` : offer.wants === 'blocks' ? `${ITEMS[offer.item].icon} for ${offer.price}🧱` : `${offer.price}🧱 for your ${ITEMS[offer.item].icon}`;
       drawTag(ctx, at.x, at.y - r * 2.3, label, Math.max(11, u * 0.26), t, hand.id);
     } else if (hand.traded) {
       ctx.font = `${Math.round(r * 1.5)}px ${FONT}`;
@@ -525,7 +563,73 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   // Leaving hands under reaching ones, so the dangerous ones are on top.
   for (const hand of s.hands) if (hand.state === 'leaving') drawHand(ctx, s, hand, t);
   for (const hand of s.hands) if (hand.state === 'reaching') drawHand(ctx, s, hand, t);
+  // Nap time: lights out, except around the pile (and wherever you're pointing).
+  if (s.phase === 'playing' && periodAt(s.waveTime).id === 'nap') drawDark(ctx, s, scene);
   for (const b of scene.bubbles) if (b.until > t) drawBubble(ctx, s, b, t);
   drawFloaters(ctx, s, scene);
+  drawBanner(ctx, s, scene);
   ctx.restore();
+}
+
+function drawDark(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
+  const pile = pileAt(s);
+  const size = blockSize(s);
+  const u = unitOf(s);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-20, -20, s.w + 40, s.h + 40);
+  ctx.moveTo(pile.x + size * 5, pile.y);
+  ctx.arc(pile.x, pile.y, size * 5, 0, Math.PI * 2, true);
+  if (scene.pointer) {
+    ctx.moveTo(scene.pointer.x + u * 1.6, scene.pointer.y);
+    ctx.arc(scene.pointer.x, scene.pointer.y, u * 1.6, 0, Math.PI * 2, true);
+  }
+  ctx.fillStyle = 'rgba(14, 16, 36, 0.86)';
+  ctx.fill('evenodd');
+  ctx.restore();
+  ctx.font = `${Math.round(u * 0.5)}px ${FONT}`;
+  ctx.fillStyle = '#c9d4ff';
+  ctx.textAlign = 'center';
+  ctx.fillText('z z z', teacherHead(s).x + u, teacherHead(s).y - u);
+}
+
+function drawBanner(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
+  const b = scene.banner;
+  if (!b || b.until < scene.time) return;
+  const u = unitOf(s);
+  const left = b.until - scene.time;
+  ctx.globalAlpha = Math.min(1, left * 2);
+  const size = Math.max(22, u * 0.7);
+  ctx.font = `bold ${Math.round(size)}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#fff';
+  const y = s.h * 0.24;
+  ctx.strokeText(b.text, s.w / 2, y);
+  ctx.fillStyle = INK;
+  ctx.fillText(b.text, s.w / 2, y);
+  if (b.sub) {
+    const sub = Math.max(13, u * 0.3);
+    ctx.font = `bold ${Math.round(sub)}px ${FONT}`;
+    // Wrap the explanation
+    const words = b.sub.split(' ');
+    const lines: string[] = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width > s.w * 0.8 && line) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    lines.push(line);
+    ctx.lineWidth = 4;
+    lines.forEach((l, i) => {
+      ctx.strokeText(l, s.w / 2, y + size * 0.9 + i * sub * 1.3);
+      ctx.fillStyle = '#c0392b';
+      ctx.fillText(l, s.w / 2, y + size * 0.9 + i * sub * 1.3);
+    });
+  }
+  ctx.globalAlpha = 1;
 }

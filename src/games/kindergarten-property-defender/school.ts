@@ -1,0 +1,127 @@
+// The school day: five periods, each with its own mood, a new troublemaker
+// most days of the week, the Principal on Fridays, and a report card at 3pm.
+
+export type PeriodId = 'circle' | 'snack' | 'recess' | 'nap' | 'show';
+
+export interface Period {
+  id: PeriodId;
+  icon: string;
+  name: string;
+  /** What the teacher says when it starts. */
+  line: string;
+  /** More or fewer hands, more or fewer of them traders, and faster or slower thieves. */
+  spawn: number;
+  traders: number;
+  speed: number;
+}
+
+export const PERIODS: readonly Period[] = [
+  { id: 'circle', icon: '🧸', name: 'Circle time', line: 'Circle time, everyone! Hands to yourselves.', spawn: 0.75, traders: 0.15, speed: 1 },
+  { id: 'snack', icon: '🍪', name: 'Snack time', line: 'Snack time! Remember to share.', spawn: 1, traders: 0.3, speed: 1 },
+  { id: 'recess', icon: '⚽', name: 'Recess', line: 'Recess! Go wild. Within reason.', spawn: 1.55, traders: -0.1, speed: 1.15 },
+  { id: 'nap', icon: '😴', name: 'Nap time', line: 'Nap time. Lights off. Shhh.', spawn: 0.8, traders: -0.05, speed: 0.9 },
+  { id: 'show', icon: '🎤', name: 'Show and tell', line: 'Show and tell! Who brought something?', spawn: 1.05, traders: 0, speed: 1 },
+];
+
+/** Seconds per period, and so the length of a school day. */
+export const PERIOD_LENGTH = 11;
+export const DAY_LENGTH = PERIOD_LENGTH * PERIODS.length;
+
+export const periodAt = (seconds: number): Period => PERIODS[Math.min(PERIODS.length - 1, Math.floor(seconds / PERIOD_LENGTH))];
+
+export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
+/** Day 1 is the first Monday. */
+export const dayName = (day: number) => DAYS[(day - 1) % DAYS.length];
+export const weekOf = (day: number) => Math.floor((day - 1) / DAYS.length) + 1;
+export const isFriday = (day: number) => (day - 1) % DAYS.length === DAYS.length - 1;
+
+/** The kinds of grabby hand, and the classmates who pretend to trade. */
+export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal';
+
+export interface RoleInfo {
+  id: Role;
+  name: string;
+  /** Introduced on this day of the first week. */
+  from: number;
+  /** How often it turns up (out of the thieves), once it's around. */
+  weight: number;
+  intro: string;
+}
+
+export const ROLES: readonly RoleInfo[] = [
+  { id: 'grabby', name: 'Grabby hand', from: 1, weight: 10, intro: '' },
+  { id: 'monitor', name: 'Hall Monitor', from: 2, weight: 2, intro: '🦺 New today: the Hall Monitor. Takes three slaps. Just following orders.' },
+  { id: 'group', name: 'Group Project', from: 3, weight: 2, intro: '👯 New today: the Group Project kids. They come in pairs. “We did it together!”' },
+  { id: 'president', name: 'Class President', from: 4, weight: 1.5, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
+  { id: 'fraud', name: 'Monopoly-money kid', from: 4, weight: 1.5, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
+  { id: 'principal', name: 'The Principal', from: 5, weight: 0, intro: '📢 It’s Friday: the Principal visits during show and tell. Eminent domain. Eight slaps to stop.' },
+];
+
+export const roleInfo = (r: Role) => ROLES.find((x) => x.id === r)!;
+
+/** Which troublemakers are around on a day (the Principal comes on a schedule, not by chance). */
+export function rolesOn(day: number): RoleInfo[] {
+  const intoWeek = day > DAYS.length ? DAYS.length : day;
+  return ROLES.filter((r) => r.weight > 0 && r.from <= intoWeek);
+}
+
+/** Who's new today (first week only). */
+export const newToday = (day: number): RoleInfo[] => (day <= DAYS.length ? ROLES.filter((r) => r.from === day && r.id !== 'grabby') : []);
+
+export function pickRole(day: number, period: PeriodId, rng: () => number): Role {
+  const pool = rolesOn(day).map((r) => ({ id: r.id, weight: r.weight * (period === 'show' && r.id !== 'grabby' ? 2.5 : 1) }));
+  let roll = rng() * pool.reduce((sum, r) => sum + r.weight, 0);
+  for (const r of pool) {
+    roll -= r.weight;
+    if (roll <= 0) return r.id;
+  }
+  return 'grabby';
+}
+
+/** How the day went, for the report card. */
+export interface DayStats {
+  /** Grabby hands that came for the pile, and the ones stopped (slapped, scared, or caught on the way out). */
+  thieves: number;
+  stopped: number;
+  trades: number;
+  profit: number;
+  violations: number;
+  stolen: number;
+}
+
+export const emptyDay = (): DayStats => ({ thieves: 0, stopped: 0, trades: 0, profit: 0, violations: 0, stolen: 0 });
+
+export type Grade = 'A' | 'B' | 'C' | 'D' | 'F';
+const grade = (x: number, cuts: [number, number, number, number]): Grade => (x >= cuts[0] ? 'A' : x >= cuts[1] ? 'B' : x >= cuts[2] ? 'C' : x >= cuts[3] ? 'D' : 'F');
+
+export interface ReportCard {
+  defence: Grade;
+  economics: Grade;
+  citizenship: Grade;
+  comment: string;
+  /** Points for the grades. */
+  bonus: number;
+}
+
+export function reportCard(d: DayStats): ReportCard {
+  const defence = grade(d.thieves ? d.stopped / d.thieves : 1, [0.9, 0.75, 0.6, 0.45]);
+  const economics = grade(d.trades + Math.max(0, d.profit) / 3, [10, 7, 4, 2]);
+  const citizenship: Grade = (['A', 'B', 'C', 'D'] as Grade[])[d.violations] ?? 'F';
+  const points: Record<Grade, number> = { A: 100, B: 60, C: 30, D: 10, F: 0 };
+  const comment =
+    citizenship === 'F'
+      ? 'Jack has been hitting classmates who only wanted to trade. We talked about consent.'
+      : defence === 'A' && economics === 'A'
+        ? 'Jack runs a tight ship. Refuses to share. Somehow everyone wants to trade with him anyway.'
+        : defence === 'A'
+          ? 'Jack guards his blocks with real conviction. Keeps saying “property rights”.'
+          : economics === 'A'
+            ? 'Jack has started a small trading empire. I am not sure that is allowed. It is.'
+            : defence === 'F' || defence === 'D'
+              ? 'Jack lost a lot of blocks today. Sharing is caring, I told him. He did not agree.'
+              : 'Jack has strong opinions for a five-year-old. A pleasure to have in class, mostly.';
+  return { defence, economics, citizenship, comment, bonus: points[defence] + points[economics] + points[citizenship] };
+}
+
+/** The weekend's allowance (after Friday): more each week. */
+export const allowance = (week: number) => 5 + week * 3;

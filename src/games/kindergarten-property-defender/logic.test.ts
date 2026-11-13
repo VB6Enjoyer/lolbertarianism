@@ -12,7 +12,7 @@ function rng(seed: number) {
 
 /** Moves a hand all the way to the pile. */
 function reach(s: GameState, hand: Hand, r = rng(1)) {
-  for (let i = 0; i < 400 && hand.state === 'reaching' && s.phase === 'playing'; i++) step(s, 0.02, r);
+  for (let i = 0; i < 1000 && hand.state === 'reaching' && s.phase === 'playing'; i++) step(s, 0.02, r);
 }
 
 const quiet = (s: GameState) => {
@@ -262,5 +262,99 @@ describe('kindergarten: capital', () => {
     expect(s.blocks).toBe(33);
     expect(attraction(45)).toBeGreaterThan(1.4);
     expect(attraction(10)).toBe(1);
+  });
+});
+
+describe('kindergarten: the cast', () => {
+  it('the Hall Monitor takes three slaps, each knocking it back', () => {
+    const s = quiet(newGame(1000, 600));
+    const hand = spawnHand(s, rng(11), 'thief', 'monitor');
+    hand.progress = 0.7;
+    for (let i = 0; i < 2; i++) {
+      hand.stun = 0;
+      const at = handPosition(hand);
+      slap(s, at.x, at.y);
+      expect(hand.slapped).toBe(false);
+    }
+    expect(hand.hp).toBe(1);
+    expect(hand.progress).toBeLessThan(0.4);
+    const at = handPosition(hand);
+    slap(s, at.x, at.y);
+    expect(hand.slapped).toBe(true);
+  });
+
+  it('the Class President taxes 10%, the Principal takes 30%', () => {
+    const s = quiet(newGame(1000, 600));
+    s.blocks = 40;
+    reach(s, spawnHand(s, rng(12), 'thief', 'president'));
+    expect(s.blocks).toBe(36);
+    reach(s, spawnHand(s, rng(13), 'thief', 'principal'));
+    expect(s.blocks).toBe(36 - Math.ceil(36 * 0.3));
+  });
+
+  it('the Monopoly-money kid looks like a trade, but slapping it is fine (fraud is aggression)', () => {
+    const s = quiet(newGame(1000, 600));
+    const fraud = spawnHand(s, rng(14), 'thief', 'fraud');
+    expect(fraud.offer).toMatchObject({ item: 'money' });
+    fraud.progress = 0.5;
+    const at = handPosition(fraud);
+    slap(s, at.x, at.y);
+    expect(s.stars).toBe(CONFIG.maxStars);
+    expect(s.stats.violations).toBe(0);
+    // Let one through: it takes its "price" and leaves nothing.
+    const before = s.blocks;
+    const second = spawnHand(s, rng(15), 'thief', 'fraud');
+    reach(s, second);
+    expect(s.blocks).toBe(before - second.offer!.price);
+    expect(s.stash).toEqual([]);
+  });
+
+  it('a new troublemaker each day of the first week', async () => {
+    const { rolesOn, newToday, pickRole } = await import('./school.ts');
+    expect(rolesOn(1).map((r) => r.id)).toEqual(['grabby']);
+    expect(newToday(2).map((r) => r.id)).toEqual(['monitor']);
+    expect(newToday(4).map((r) => r.id)).toEqual(['president', 'fraud']);
+    expect(rolesOn(4).map((r) => r.id)).toContain('fraud');
+    expect(rolesOn(12).length).toBe(5);
+    const r = rng(16);
+    const seen = new Set(Array.from({ length: 300 }, () => pickRole(9, 'show', r)));
+    expect(seen.size).toBe(5);
+  });
+});
+
+describe('kindergarten: the school day', () => {
+  it('runs through five periods, and the Principal visits during Friday’s show and tell', () => {
+    const s = newGame(1000, 600);
+    s.wave = 5; // Friday
+    const r = rng(17);
+    const periods: string[] = [];
+    let principal = false;
+    for (let t = 0; t < CONFIG.waveLength + 0.5 && s.phase === 'playing'; t += 0.05) {
+      step(s, 0.05, r);
+      for (const e of s.events) {
+        if (e.type === 'period') periods.push(e.period.id);
+        if (e.type === 'spawn' && e.hand.role === 'principal') principal = true;
+      }
+      s.events = [];
+      // Keep it alive: slap every thief that gets close.
+      for (const hand of s.hands) if (hand.kind === 'thief' && !hand.slapped && hand.progress > 0.6 && hand.stun <= 0) { const at = handPosition(hand); slap(s, at.x, at.y); }
+    }
+    expect(periods).toEqual(['circle', 'snack', 'recess', 'nap', 'show']);
+    expect(principal).toBe(true);
+  });
+
+  it('a report card at the end of the day, and an allowance on Fridays', async () => {
+    const { reportCard } = await import('./school.ts');
+    expect(reportCard({ thieves: 20, stopped: 19, trades: 12, profit: 6, violations: 0, stolen: 1 })).toMatchObject({ defence: 'A', economics: 'A', citizenship: 'A' });
+    expect(reportCard({ thieves: 20, stopped: 5, trades: 0, profit: 0, violations: 5, stolen: 15 })).toMatchObject({ defence: 'F', economics: 'F', citizenship: 'F' });
+    const s = quiet(newGame(1000, 600));
+    s.wave = 5;
+    s.waveTime = CONFIG.waveLength;
+    const before = s.blocks;
+    step(s, 0.05, rng(18));
+    expect(s.phase).toBe('break');
+    expect(s.report).not.toBeNull();
+    expect(s.events.some((e) => e.type === 'allowance')).toBe(true);
+    expect(s.blocks).toBeGreaterThan(before);
   });
 });

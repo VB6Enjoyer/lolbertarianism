@@ -412,15 +412,70 @@ body {
     white-space: nowrap;
 }
 
-/* The recess summary stays short, so the shop is in view */
-#break .body {
+
+/* --- The report card --- */
+.report {
+    margin: 4px auto 8px;
+    border-collapse: collapse;
+    font-size: 16px;
+    text-align: left;
+}
+
+.report th,
+.report td {
+    padding: 4px 10px;
+    border-bottom: 2px dashed #e1d8c6;
+}
+
+.report th {
+    font-weight: normal;
+    color: var(--muted);
+}
+
+.report .grade {
+    width: 2.2em;
+    font-size: 26px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.grade.gA {
+    color: #1e8449;
+}
+
+.grade.gB {
+    color: #2471a3;
+}
+
+.grade.gC {
+    color: #b9770e;
+}
+
+.grade.gD,
+.grade.gF {
+    color: #c0392b;
+}
+
+.comment {
+    margin: 0 auto 8px;
+    max-width: 560px;
+    font-size: 16px;
+    font-style: italic;
+}
+
+.comment span {
+    color: var(--muted);
+    font-style: normal;
+}
+
+.facts {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 4px 14px;
 }
 
-#break .body p {
+.facts p {
     margin: 0;
     font-size: 15px;
 }

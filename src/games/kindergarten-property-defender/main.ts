@@ -1,8 +1,9 @@
 import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { build, CONFIG, handPosition, ITEMS, multiplier, newGame, nextWave, pileAt, resize, slap, step, type GameEvent, type GameState } from './logic.ts';
+import { build, CONFIG, handPosition, ITEMS, multiplier, newGame, nextWave, pileAt, resize, slap, spawnHand, step, type GameEvent, type GameState } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
+import { dayName, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -13,6 +14,7 @@ const els = {
   stars: byId('stars'),
   score: byId('score'),
   wave: byId('wave'),
+  period: byId('period'),
   waveBar: byId('wave-bar'),
   combo: byId('combo'),
   stash: byId('stash'),
@@ -96,6 +98,11 @@ const LINES = {
   kidTrade: ['Deal!', 'Pleasure doing business!', 'Nice!', 'Win-win!', 'Thanks, Jack!'],
   kidBroke: ['You’re broke, Jack.', 'Never mind, then.'],
   kidSoldOut: ['You sold it already?!', 'Aw, it’s gone.'],
+  fraudGotAway: ['It’s legal tender at MY house!', 'Pleasure doing business, sucker!', 'Backed by the full faith and credit of my mom!'],
+  fraudCaught: ['Fraud is aggression!', 'Nice try. That’s Monopoly money.', 'Counterfeit! Get out!'],
+  president: ['Democracy has spoken!', 'The majority voted for your blocks!', 'It’s only fair, Jack.'],
+  principal: ['This land is needed for a new nap mat.', 'Eminent domain, young man.', 'It’s for the common good.'],
+  monitor: ['Just following orders!', 'Rules are rules!', 'I’m writing you up!'],
 };
 
 // ---------------------------------------------------------------------------
@@ -105,7 +112,7 @@ const LINES = {
 const ctx = els.canvas.getContext('2d')!;
 let state: GameState = newGame(els.canvas.clientWidth || 800, els.canvas.clientHeight || 600);
 state.phase = 'break'; // nothing happens behind the title screen
-const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null };
+const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null };
 let paused = false;
 /** The interest and wages from the last recess, for its summary. */
 let recessEvents: GameEvent[] = [];
@@ -137,8 +144,25 @@ function handle(e: GameEvent) {
     case 'slap': {
       const at = handPosition(e.hand);
       play('slap');
-      float(at.x, at.y, `SLAP! +${e.points}`, '#c0392b', e.combo >= 5);
-      if (Math.random() < 0.3) say('jack', pick(LINES.jackSlap));
+      if (e.hand.role === 'fraud') {
+        float(at.x, at.y, `FRAUD! +${e.points}`, '#c0392b', true);
+        say('jack', pick(LINES.fraudCaught));
+      } else if (e.hand.role === 'principal') {
+        float(at.x, at.y, `THE PRINCIPAL RETREATS! +${e.points}`, '#c0392b', true);
+        say('jack', 'Not on my property!');
+        scene.shake = 0.4;
+      } else {
+        float(at.x, at.y, `SLAP! +${e.points}`, '#c0392b', e.combo >= 5);
+        if (Math.random() < 0.3) say('jack', pick(LINES.jackSlap));
+      }
+      break;
+    }
+    case 'bonk': {
+      const at = handPosition(e.hand);
+      play('slap');
+      if (e.by === 'guard') scene.guardAt = { x: at.x, y: at.y, t: scene.time };
+      float(at.x, at.y, `BONK! ${e.hp} to go`, '#e67e22');
+      if (e.hand.role === 'monitor' && Math.random() < 0.4) say('teacher', pick(LINES.monitor));
       break;
     }
     case 'recover': {
@@ -157,11 +181,33 @@ function handle(e: GameEvent) {
       scene.shake = 0.35;
       break;
     }
-    case 'steal':
+    case 'steal': {
       play('steal');
-      float(pile.x, pile.y, `−${e.blocks}🧱`, '#c0392b', true);
-      if (Math.random() < 0.45) say('teacher', pick(LINES.teacherSteal));
-      scene.shake = 0.2;
+      const role = e.hand.role;
+      const label = role === 'fraud' ? `💵 Monopoly money?! −${e.blocks}🧱` : role === 'president' ? `🗳️ 10% TAX −${e.blocks}🧱` : role === 'principal' ? `EMINENT DOMAIN! −${e.blocks}🧱` : `−${e.blocks}🧱`;
+      float(pile.x, pile.y, label, '#c0392b', true);
+      if (role === 'fraud') say('kid', pick(LINES.fraudGotAway), handPosition(e.hand));
+      else if (role === 'president') say('teacher', pick(LINES.president));
+      else if (role === 'principal') say('teacher', pick(LINES.principal));
+      else if (Math.random() < 0.45) say('teacher', pick(LINES.teacherSteal));
+      scene.shake = role === 'principal' ? 0.6 : 0.2;
+      break;
+    }
+    case 'period': {
+      // The bell: what period it is (and who's new today, at the start of the day)
+      const fresh = e.period.id === 'circle' ? newToday(state.wave).filter((r) => r.id !== 'principal') : [];
+      const principal = e.period.id === 'show' && isFriday(state.wave);
+      scene.banner = {
+        text: principal ? '📢 THE PRINCIPAL IS COMING' : e.period.id === 'circle' ? `${dayName(state.wave)}: ${e.period.icon} ${e.period.name}` : `${e.period.icon} ${e.period.name}!`,
+        sub: principal ? 'Eminent domain: it takes 30% of your pile. Eight slaps to send it away.' : fresh.map((r) => r.intro).join(' ') || undefined,
+        until: scene.time + (fresh.length || principal ? 4.5 : 2),
+      };
+      say('teacher', e.period.line);
+      if (e.period.id === 'recess') play('wave');
+      break;
+    }
+    case 'report':
+    case 'allowance':
       break;
     case 'trade': {
       const at = handPosition(e.hand);
@@ -230,7 +276,9 @@ function renderHud() {
   els.stars.classList.toggle('low', state.stars <= 2);
   els.blocks.parentElement!.classList.toggle('low', state.blocks <= 3);
   els.score.textContent = state.score.toLocaleString('en-US');
-  els.wave.textContent = String(state.wave);
+  els.wave.textContent = `${dayName(state.wave).slice(0, 3)} · week ${weekOf(state.wave)}`;
+  const period = periodAt(state.waveTime);
+  els.period.textContent = `${period.icon} ${period.name}`;
   els.waveBar.style.width = `${Math.min(100, (state.waveTime / CONFIG.waveLength) * 100)}%`;
   const m = multiplier(state.combo);
   els.combo.textContent = state.combo >= 2 ? `${state.combo} in a row${m > 1 ? ` · ×${m}` : ''}` : '';
@@ -247,7 +295,7 @@ function frame(now: number) {
   if (!paused) {
     scene.time += dt;
     step(state, dt, Math.random);
-    if (state.events.some((e) => e.type === 'wave-end')) recessEvents = state.events.filter((e) => e.type === 'interest' || e.type === 'wages');
+    if (state.events.some((e) => e.type === 'wave-end')) recessEvents = state.events.filter((e) => e.type === 'interest' || e.type === 'wages' || e.type === 'allowance');
     for (const e of state.events) handle(e);
     state.events = [];
     scene.shake = Math.max(0, scene.shake - dt);
@@ -263,8 +311,17 @@ requestAnimationFrame(frame);
 // Input
 // ---------------------------------------------------------------------------
 
+els.canvas.addEventListener('pointermove', (e) => {
+  const rect = els.canvas.getBoundingClientRect();
+  scene.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+});
+
 els.canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  {
+    const rect = els.canvas.getBoundingClientRect();
+    scene.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
   if (state.phase !== 'playing' || paused) return;
   getAudioContext();
   const rect = els.canvas.getBoundingClientRect();
@@ -298,22 +355,37 @@ function startGame() {
 }
 
 function showBreak() {
-  const st = state.stats;
-  els.breakTitle.textContent = `🔔 Recess! Wave ${state.wave} survived`;
+  const day = state.day;
+  const card = state.report;
+  const friday = isFriday(state.wave);
+  els.breakTitle.textContent = `📝 ${dayName(state.wave)}’s report card`;
+  const gradeRow = (subject: string, g: Grade, detail: string) => `<tr><th>${subject}</th><td class="grade g${g}">${g}</td><td>${detail}</td></tr>`;
+  const report = card
+    ? `<table class="report">
+        ${gradeRow('Property defence', card.defence, `stopped ${day.stopped} of ${day.thieves} grabby hands`)}
+        ${gradeRow('Economics', card.economics, `${day.trades} trade${day.trades === 1 ? '' : 's'}${day.profit > 0 ? `, ${Math.round(day.profit)}🧱 better off` : ''}`)}
+        ${gradeRow('Plays well with others', card.citizenship, day.violations ? `${day.violations} NAP violation${day.violations === 1 ? '' : 's'}` : 'no NAP violations')}
+      </table>
+      <p class="comment">“${card.comment}” <span>— Teacher</span></p>`
+    : '';
   const lines = [
-    'So far:',
-    `🖐️ Slapped ${st.slapped} grabby hand${st.slapped === 1 ? '' : 's'}${st.recovered ? `, and got ${st.recovered} block${st.recovered === 1 ? '' : 's'} back` : ''}.`,
-    `🤝 ${st.trades} voluntary trade${st.trades === 1 ? '' : 's'}. ${state.stash.length ? `Stash: ${state.stash.map((o) => ITEMS[o.item].icon).join(' ')}` : ''}`,
-    st.violations ? `⚠️ ${st.violations} NAP violation${st.violations === 1 ? '' : 's'} so far. Gold stars: ${'⭐'.repeat(state.stars)}` : '😇 No NAP violations. The class trusts you.',
+    card ? `⭐ Grades: +${card.bonus} points.` : '',
     `🧱 ${state.blocks} blocks left: +${state.blocks * CONFIG.waveBonusPerBlock} points.`,
-    `Next wave: faster hands, and more of them${state.wave >= 2 ? ', coming from everywhere' : ''}.`,
-  ];
+    state.stash.length ? `🎒 Stash: ${state.stash.map((o) => ITEMS[o.item].icon).join(' ')}` : '',
+  ].filter(Boolean);
   // What recess paid, and cost
   const interest = recessEvents.find((e) => e.type === 'interest');
   const wages = recessEvents.find((e) => e.type === 'wages');
   if (interest && interest.type === 'interest') lines.push(`🐷 The piggy bank paid ${interest.blocks}🧱 interest.`);
   if (wages && wages.type === 'wages') lines.push(wages.quit ? '🕶️ You couldn’t pay the security kid. They quit.' : `🕶️ Paid the security kid ${wages.blocks}🧱.`);
-  els.breakBody.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
+  const pay = recessEvents.find((e) => e.type === 'allowance');
+  if (pay && pay.type === 'allowance') lines.push(`🎉 It’s the weekend! Your parents give you ${pay.blocks}🧱 allowance.`);
+  els.breakBody.innerHTML = report;
+  const facts = document.createElement('div');
+  facts.className = 'facts';
+  facts.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
+  els.breakBody.append(facts);
+  els.next.textContent = friday ? 'See you Monday ▶' : `On to ${dayName(state.wave + 1)} ▶`;
   renderShop();
   els.pause.hidden = false;
   els.next.focus();
@@ -336,7 +408,7 @@ function renderShop() {
   };
   const pull = attraction(state.blocks);
   els.shop.innerHTML = `
-    <h2>🏗️ Spend your blocks <span>${state.blocks}🧱</span></h2>
+    <h2>${isFriday(state.wave) ? '🏖️ The weekend: spend your blocks' : '🏗️ After school: spend your blocks'} <span>${state.blocks}🧱</span></h2>
     <p class="shop-note">Blocks you spend can't be stolen, but they're not growing either. Keep at least one.${pull > 1.05 ? ` A pile this big draws ${Math.round((pull - 1) * 100)}% more hands.` : ''}</p>
     <h3>Makes blocks</h3><div class="builds">${BUILDINGS.filter((b) => b.kind === 'income').map((b) => card(b.id)).join('')}</div>
     <h3>Keeps them</h3><div class="builds">${BUILDINGS.filter((b) => b.kind === 'defence').map((b) => card(b.id)).join('')}</div>`;
@@ -361,7 +433,7 @@ function showOver() {
     state.over === 'expelled'
       ? 'You slapped one too many classmates who only wanted to trade. That’s aggression, Jack. The NAP cuts both ways.'
       : 'The teacher redistributed every last block. It’s for the greater good, apparently.',
-    `Wave ${state.wave} · ${state.score.toLocaleString('en-US')} points${newBest ? ' · 🏆 new best!' : ` · best ${save.best.toLocaleString('en-US')}`}`,
+    `Made it to ${dayName(state.wave)}, week ${weekOf(state.wave)} · ${state.score.toLocaleString('en-US')} points${newBest ? ' · 🏆 new best!' : ` · best ${save.best.toLocaleString('en-US')}`}`,
     `🖐️ ${st.slapped} slapped · 🧱 ${st.recovered} recovered · 🤝 ${st.trades} trades · 😢 ${st.stolen} stolen · ⚠️ ${st.violations} violations · 🔥 best streak ${st.bestCombo}`,
   ];
   els.overBody.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
@@ -386,6 +458,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ?debug: the state, for testing from the console
-if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { kpd: { state: () => state, showBreak } });
+if (new URLSearchParams(location.search).has('debug')) {
+  Object.assign(window, { kpd: { state: () => state, showBreak, spawn: (role: string) => spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role)) } });
+}
 
 els.best.textContent = save.best ? `Best: ${save.best.toLocaleString('en-US')} points · wave ${save.bestWave}` : '';

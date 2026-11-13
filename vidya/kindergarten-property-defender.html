@@ -17,7 +17,7 @@
         <header class="hud">
             <div class="stat" title="Your capital. Thieves take it; trades spend and earn it; Jack homesteads a new one every few seconds."><small>Blocks</small><b><span id="blocks">10</span>🧱</b></div>
             <div class="stat" title="Gold stars: the class's trust. Slap a classmate who came to trade and you lose one. Three good trades win one back."><small>Gold stars</small><b id="stars">⭐⭐⭐⭐⭐</b></div>
-            <div class="stat wave-stat"><small>Wave <span id="wave">1</span> <em id="combo"></em></small><div class="wave-track"><i id="wave-bar"></i></div></div>
+            <div class="stat wave-stat"><small><span id="wave">Mon · week 1</span> · <span id="period"></span> <em id="combo"></em></small><div class="wave-track"><i id="wave-bar"></i></div></div>
             <div class="stat"><small>Score</small><b id="score">0</b></div>
             <div class="stat stash-stat"><small>Stash</small><b id="stash"></b></div>
             <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
@@ -49,7 +49,9 @@
                     <li>🤝 Trades happen when the hand reaches your pile. Buy things, then sell them to the next kid for more.</li>
                     <li>⭐ Slapping a classmate who came to trade is aggression: you lose a gold star. Lose them all and you're sent to the principal.</li>
                     <li>🧱 Lose all your blocks and your property is seized.</li>
-                    <li>🏗️ At recess, spend blocks: a lemonade stand, a piggy bank, a No Trespassing sign, a Gadsden flag, hired security… A bigger pile draws more hands.</li>
+                    <li>🏫 Each school day has five periods: circle time, snack time, recess, nap time (lights out!) and show and tell. A new troublemaker turns up most days, and the Principal visits on Fridays.</li>
+                    <li>💵 Watch out for the Monopoly-money kid: looks like a trade, pays in funny money. Fraud is aggression, so slap it.</li>
+                    <li>🏗️ After school, spend blocks: a lemonade stand, a piggy bank, a No Trespassing sign, a Gadsden flag, hired security… A bigger pile draws more hands.</li>
                 </ul>
                 <p id="best" class="best"></p>
                 <button id="start" type="button" class="big-button">Defend your property</button>
@@ -59,7 +61,7 @@
         <!-- Between waves -->
         <div id="break" class="overlay" hidden>
             <div class="panel wide">
-                <h1 id="break-title">Recess!</h1>
+                <h1 id="break-title">Report card</h1>
                 <div id="break-body" class="body"></div>
                 <div id="shop" class="shop"></div>
                 <button id="next" type="button" class="big-button">Back to class ▶</button>
