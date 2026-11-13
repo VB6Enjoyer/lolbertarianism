@@ -342,7 +342,7 @@ describe('fight club: the career', () => {
     let hurt = 0;
     const r = rng(77);
     for (let i = 0; i < 200; i++) {
-      const stable = { lobster: lobster({ claw: 5, shell: 5, wits: 5, stamina: 100 }), rest: 0, purses: 0 };
+      const stable = { lobster: lobster({ claw: 5, shell: 5, wits: 5, stamina: 100 }), rest: 0, purses: 0, suspicion: 0, dives: 0 };
       if (afterLoss(stable, i % 2 === 0, r)) hurt++;
       expect(stable.rest).toBe(i % 2 === 0 ? 2 : 1);
     }
@@ -454,5 +454,75 @@ describe('fight club: your betting record', () => {
     expect(l.best).toBeNull();
     expect(l.worst).toEqual({ amount: 40, text: 'bad' });
     expect(normalizeLedger(undefined).cashouts).toBe(0);
+  });
+});
+
+describe('fight club: night events', () => {
+  it('about half the nights get one, never the first, and never the same twice in a row', async () => {
+    const { rollEvent, NIGHT_EVENTS, normalizeEvent, eventById } = await import('./events.ts');
+    const r = rng(17);
+    expect(rollEvent(r, 1)).toBeNull();
+    let some = 0;
+    for (let i = 0; i < 2000; i++) {
+      const e = rollEvent(r, 5, 'whale');
+      if (e) some++;
+      expect(e).not.toBe('whale');
+    }
+    expect(some / 2000).toBeGreaterThan(0.45);
+    expect(some / 2000).toBeLessThan(0.65);
+    expect(new Set(NIGHT_EVENTS.map((e) => e.id)).size).toBe(NIGHT_EVENTS.length);
+    expect(normalizeEvent('raid')).toBe('raid');
+    expect(normalizeEvent('nope')).toBeNull();
+    expect(eventById(null)).toBeNull();
+  });
+
+  it('the house cut changes the pool odds, and Election Night triples the meme money', async () => {
+    const { crowdBets } = await import('./pool.ts');
+    const t: [number, number] = [600, 400];
+    expect(poolOdds(t, 0)).toEqual([1.66, 2.5]);
+    expect(poolOdds(t, 0.2)[1]).toBeLessThan(poolOdds(t)[1]);
+    expect(projectedPayout(t, 1, 100, -0.05)).toBeGreaterThan(projectedPayout(t, 1, 100));
+    const [a, b] = makeRoster(rng(3));
+    const normal = crowdBets(a, b, 0.5, rng(9), 1, 1);
+    const hyped = crowdBets(a, b, 0.5, rng(9), 1, 3);
+    const susan = (bets: typeof normal) => bets.find((x) => x.who === 'susan')!.amount;
+    expect(susan(hyped)).toBeGreaterThan(susan(normal) * 2.5);
+  });
+});
+
+describe('fight club: throwing a fight', () => {
+  it('a lobster taking a dive loses nearly every time, and getting caught gets likelier', async () => {
+    const { diveFighter, catchChance, bribeFor } = await import('./dive.ts');
+    const r = rng(41);
+    const me = lobster({ claw: 8, shell: 7, wits: 7, stamina: 120 });
+    const them = lobster({ id: 1, faction: 'minarchist', claw: 4, shell: 4, wits: 4, stamina: 90 });
+    let honest = 0;
+    let thrown = 0;
+    for (let i = 0; i < 400; i++) {
+      if (simulate(me, them, r).winner === 0) honest++;
+      if (simulate(diveFighter(me), them, r).winner === 0) thrown++;
+    }
+    expect(honest / 400).toBeGreaterThan(0.7);
+    expect(thrown / 400).toBeLessThan(0.12);
+    expect(catchChance(0)).toBeCloseTo(0.2);
+    expect(catchChance(2)).toBeGreaterThan(catchChance(1));
+    expect(catchChance(99)).toBe(0.6);
+    expect(bribeFor(625)).toBe(250);
+  });
+});
+
+describe('fight club: the ring announcer', () => {
+  it('introduces both corners by name (and the venue on the first bout)', async () => {
+    const { introduce, callWinner } = await import('./announcer.ts');
+    const roster = makeRoster(rng(8));
+    for (let i = 0; i < roster.length - 1; i++) {
+      const intro = introduce([roster[i], roster[i + 1]], 'garage', i === 0, false, rng(i + 1));
+      expect(intro.lines).toHaveLength(i === 0 ? 3 : 2);
+      expect(intro.lines.at(-2)).toContain(roster[i].name.toUpperCase());
+      expect(intro.lines.at(-1)).toContain(roster[i + 1].name.toUpperCase());
+      for (const line of intro.lines) expect(line).not.toMatch(/undefined|NaN/);
+    }
+    expect(introduce([roster[0], roster[1]], 'kitchen', false, true, rng(1)).lines[0]).toContain('your very own');
+    expect(callWinner(roster[0], 'ko', 2)).toContain('round 2');
   });
 });

@@ -20,6 +20,7 @@
                     <div class="goal-bar"><i id="goal-fill"></i></div>
                     <small id="goal-text"></small>
                 </div>
+                <span id="event-chip" class="event-chip" hidden></span>
             </div>
             <div class="bankroll"><small>BANKROLL</small><b id="bankroll">$500</b></div>
             <nav class="tools" aria-label="Menu">
@@ -48,6 +49,7 @@
             <div class="floor-money" style="left: 22%; top: 70%; --r: 14deg">💵</div>
             <div class="floor-money" style="left: 64%; top: 78%; --r: -30deg">💵</div>
             <div class="floor-money" style="left: 47%; top: 86%; --r: 70deg">💵</div>
+            <div id="announcer" class="announcer" hidden><span aria-hidden="true">🎤</span><p id="announcer-text"></p></div>
             <div id="round" class="round"></div>
             <div class="ring">
                 <div id="fighter-0" class="fighter left">
@@ -200,6 +202,10 @@
                     <div class="segmented"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="3">3×</button></div>
                 </div>
                 <div class="setting">
+                    <div><b>Announcer voice</b><small>The ring announcer reads the intros out loud (when the sound is on).</small></div>
+                    <div class="segmented"><button type="button" data-voice="on">On</button><button type="button" data-voice="off">Off</button></div>
+                </div>
+                <div class="setting">
                     <div><b>Live market</b><small>Pause between rounds to bet live or cash out.</small></div>
                     <div class="segmented"><button type="button" data-live="on">On</button><button type="button" data-live="off">Off</button></div>
                 </div>
@@ -250,6 +256,8 @@
                         <li>🦈 Broke? <b>Vinny the Fin</b> lends at 20% a night, and collects after three unpaid nights. Or call your uncle and get thrown down a venue.</li>
                         <li>🦞 Once you reach the Garage, <b>buy a lobster of your own</b> at the fish market, train it, and send it into the ring for purses.</li>
                         <li>🎲 <b>Props</b> on how it ends, 🧾 <b>parlays</b> across tonight's card, and 🕵️ <b>intel</b>: buy tips (check their track records) or watch a lobster in the tank for tells.</li>
+                        <li>🌙 Some nights come with a twist: a tax holiday, a Bitcoin whale, a lockdown, a raid…</li>
+                        <li>🤫 Your own lobster can be paid to <b>take a dive</b>. The crowd won't know. The commission might.</li>
                         <li>⌨️ Keys: <kbd>1</kbd>/<kbd>2</kbd> bet on a lobster, <kbd>Space</kbd> skips, continues, or goes to the next bout.</li>
                     </ul>
                 </details>

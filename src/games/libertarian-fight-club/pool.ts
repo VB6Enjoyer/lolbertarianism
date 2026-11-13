@@ -8,7 +8,7 @@ import type { Side } from './fight.ts';
 /** The house's cut of every pot (and of cash-outs and live bets). */
 export const TAKEOUT = 0.1;
 
-export type BettorId = 'susan' | 'sheila' | 'larry' | 'public';
+export type BettorId = 'susan' | 'sheila' | 'larry' | 'public' | 'whale';
 
 export interface Bettor {
   id: BettorId;
@@ -25,6 +25,7 @@ export const BETTORS: readonly Bettor[] = [
   { id: 'sheila', name: 'Squatting Sheila', face: '😏', style: 'Backs the underdog on principle. The market is wrong, she says.', lines: ['The underdog. Obviously.', 'Contrarian position, sweetie.', 'Nobody believes in him. I do.'] },
   { id: 'larry', name: 'LMAO Larry', face: '🤪', style: 'Bets on whatever’s funniest. Loves a meme.', lines: ['other libertarians lmao', 'this one has a funny name lmao', 'YOLO lmao'] },
   { id: 'public', name: 'The rest of the crowd', face: '👥', style: 'Follows the stats, more or less.', lines: [''] },
+  { id: 'whale', name: 'The Bitcoin Whale', face: '🐋', style: 'Only here on whale nights. More sats than sense: piles onto one side.', lines: ['HFSP!', 'Number go up!', 'I bought this lobster at 3 sats!'] },
 ];
 
 export const bettorById = (id: BettorId) => BETTORS.find((b) => b.id === id)!;
@@ -50,7 +51,7 @@ const roundTo = (n: number, step = 10) => Math.max(step, Math.round(n / step) * 
  * The crowd's money for a bout, before you bet: the public split by its
  * estimate (`publicP`, A's chance), then Susan, Sheila and Larry.
  */
-export function crowdBets(a: Lobster, b: Lobster, publicP: number, rng: () => number, scale = 1): PoolBet[] {
+export function crowdBets(a: Lobster, b: Lobster, publicP: number, rng: () => number, scale = 1, memeScale = 1): PoolBet[] {
   const bets: PoolBet[] = [];
   const publicMoney = (600 + rng() * 600) * scale;
   // The public leans toward its estimate, a little noisily.
@@ -58,11 +59,11 @@ export function crowdBets(a: Lobster, b: Lobster, publicP: number, rng: () => nu
   bets.push({ who: 'public', side: 0, amount: roundTo(publicMoney * lean) });
   bets.push({ who: 'public', side: 1, amount: roundTo(publicMoney * (1 - lean)) });
   const popular: Side = popularity(a) >= popularity(b) ? 0 : 1;
-  bets.push({ who: 'susan', side: popular, amount: roundTo((150 + rng() * 250) * scale) });
-  bets.push({ who: 'sheila', side: popular === 0 ? 1 : 0, amount: roundTo((60 + rng() * 140) * scale) });
+  bets.push({ who: 'susan', side: popular, amount: roundTo((150 + rng() * 250) * scale * memeScale) });
+  bets.push({ who: 'sheila', side: popular === 0 ? 1 : 0, amount: roundTo((60 + rng() * 140) * scale * memeScale) });
   const memeLover = (l: Lobster) => (l.faction === 'mises-caucus' || l.faction === 'objectivist' || l.faction === 'chicago' ? 0.25 : 0);
   const larrySide: Side = rng() < 0.5 + memeLover(a) - memeLover(b) ? 0 : 1;
-  bets.push({ who: 'larry', side: larrySide, amount: roundTo((20 + rng() * 130) * scale) });
+  bets.push({ who: 'larry', side: larrySide, amount: roundTo((20 + rng() * 130) * scale * memeScale) });
   return bets;
 }
 
@@ -81,18 +82,18 @@ export function totals(bets: readonly PoolBet[]): [number, number] {
 }
 
 /** The pool's odds on each side: the pot after the cut, over that side's money. */
-export function poolOdds(t: readonly [number, number]): [number, number] {
-  const pot = (t[0] + t[1]) * (1 - TAKEOUT);
+export function poolOdds(t: readonly [number, number], cut = TAKEOUT): [number, number] {
+  const pot = (t[0] + t[1]) * (1 - cut);
   const odds = (side: number) => (t[side] > 0 ? Math.floor((pot / t[side]) * 100) / 100 : 99);
   return [odds(0), odds(1)];
 }
 
 /** What a stake on a side would pay if it wins, counting that the stake itself moves the odds. */
-export function projectedPayout(t: readonly [number, number], side: Side, stake: number): number {
+export function projectedPayout(t: readonly [number, number], side: Side, stake: number, cut = TAKEOUT): number {
   if (stake <= 0) return 0;
   const after: [number, number] = [t[0], t[1]];
   after[side] += stake;
-  return stake * poolOdds(after)[side];
+  return stake * poolOdds(after, cut)[side];
 }
 
 /** Fixed odds for a live bet, from the market's chance and the house's cut. */

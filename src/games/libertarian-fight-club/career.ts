@@ -101,6 +101,10 @@ export interface Stable {
   /** Bouts it has to sit out (after a loss), and fights it's had. */
   rest: number;
   purses: number;
+  /** How much the commission suspects it of taking dives (it fades a night at a time). */
+  suspicion: number;
+  /** Dives it's taken, all told. */
+  dives: number;
 }
 
 const NAMES = ['Pinchy McPinchface', 'Clawdius Hayek', 'Shellon Mises', 'Lobsta Rothbard Jr.', 'Krill Pinker', 'Clawrence Reed', 'The Invisible Claw', 'Shell Block', 'Anarcho-Crustacean', 'Bisque Liberty'];
@@ -200,6 +204,8 @@ export function normalizeStable(raw: unknown): Stable | null {
   return {
     rest: Math.floor(n(r.rest, 0, 5, 0)),
     purses: Math.floor(n(r.purses, 0, 1e12, 0)),
+    suspicion: Math.floor(n(r.suspicion, 0, 10, 0)),
+    dives: Math.floor(n(r.dives, 0, 1e6, 0)),
     lobster: {
       id: MINE_ID,
       name: String(l.name ?? 'Your Lobster').slice(0, 30) || 'Your Lobster',

@@ -511,17 +511,6 @@ kbd {
     align-items: baseline;
 }
 
-.pips {
-    font-size: 11px;
-    letter-spacing: 1px;
-    color: var(--gold);
-}
-
-.pips i {
-    font-style: normal;
-    color: #4a433c;
-}
-
 /* Hovering a bet lights up the lobster it's on. */
 #app:has(#bet-0:hover:not(:disabled)) #card-0,
 #app:has(#live-bet-0:hover) #card-0,
@@ -2615,5 +2604,136 @@ kbd {
 
     .bet-button .move small {
         display: none;
+    }
+}
+
+/* --- Tonight's twist --- */
+.event-chip {
+    justify-self: start;
+    max-width: 100%;
+    padding: 2px 9px;
+    border: 1px solid rgba(206, 147, 216, 0.5);
+    border-radius: 999px;
+    background: rgba(206, 147, 216, 0.12);
+    color: #e1bee7;
+    font: bold 11px/16px var(--font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+}
+
+.event-chip[hidden] {
+    display: none;
+}
+
+/* --- The ring announcer --- */
+.announcer {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    z-index: 4;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: min(620px, calc(100% - 24px));
+    padding: 8px 14px;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: rgba(18, 17, 15, 0.9);
+    transform: translateX(-50%);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+.announcer[hidden] {
+    display: none;
+}
+
+.announcer span {
+    font-size: 20px;
+}
+
+.announcer p {
+    margin: 0;
+    color: var(--text);
+    font: bold 14px/1.4 var(--font);
+}
+
+.announcer.show p {
+    animation: announce-in 0.35s ease-out;
+}
+
+@keyframes announce-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
+/* --- The cops --- */
+.arena.raid::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    animation: sirens 0.8s steps(1) infinite;
+}
+
+@keyframes sirens {
+    0% {
+        box-shadow: inset 0 0 90px 20px rgba(229, 57, 53, 0.55);
+    }
+
+    50% {
+        box-shadow: inset 0 0 90px 20px rgba(30, 136, 229, 0.55);
+    }
+}
+
+/* --- The fix --- */
+.fix {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px dashed #ce93d8;
+    border-radius: 10px;
+    background: rgba(206, 147, 216, 0.08);
+    font-size: 13px;
+}
+
+.fix p {
+    margin: 0;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+.fix p b {
+    color: var(--text);
+}
+
+.fix.done {
+    border-style: solid;
+    color: #e1bee7;
+}
+
+.fix .dive {
+    justify-self: start;
+    border-color: #ce93d8;
+}
+
+/* --- Secret achievements --- */
+.achievement.secret.locked {
+    border: 1px dashed #5a5148;
+}
+
+@media (max-width: 680px) {
+    .announcer {
+        top: 44px;
+        padding: 6px 10px;
+    }
+
+    .announcer p {
+        font-size: 12px;
     }
 }

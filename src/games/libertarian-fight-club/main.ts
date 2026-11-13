@@ -11,6 +11,9 @@ import { afterLoss, bailout, BAD_TRAITS, endNight, MARKET_VENUE, marketOffers, M
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { borrow, collect, creditLimit, dueForCollection, loanChunk, nightPasses, normalizeShark, repay, SHARK_PATIENCE, SHARK_RATE, type Shark } from './shark.ts';
 import { BET_TYPES, ledgerTotal, normalizeLedger, recordBet, roi, type BetType, type Ledger } from './ledger.ts';
+import { eventById, FORFEIT, normalizeEvent, rollEvent, whaleBet, type EventId } from './events.ts';
+import { bribeFor, catchChance, diveFighter, FINE_MULTIPLE, SUSPENSION } from './dive.ts';
+import { callWinner, introduce } from './announcer.ts';
 import { MAX_LEG_ODDS, normalizeParlay, parlayOdds, PROPS, propById, propChances, propOdds, propOutcomes, settleLeg, type Parlay, type PropId } from './props.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -32,6 +35,9 @@ const els = {
   settings: byId('settings'),
   stats: byId('stats'),
   propsRepeat: byId<HTMLButtonElement>('props-repeat'),
+  eventChip: byId('event-chip'),
+  announcer: byId('announcer'),
+  announcerText: byId('announcer-text'),
   cards: [byId('card-0'), byId('card-1')] as const,
   fighters: [byId('fighter-0'), byId('fighter-1')] as const,
   round: byId('round'),
@@ -117,8 +123,11 @@ interface Save {
   entry: Tier | null;
   /** Achievements, the counters a few of them need, and what you owe Vinny. */
   achievements: string[];
-  stats: { scouted: number; tipsters: string[] };
+  stats: { scouted: number; tipsters: string[]; fades: number; loans: number; peakVenue: number };
   shark: Shark;
+  /** Tonight's twist (if any), and how tonight's bouts have gone. */
+  event: EventId | null;
+  tonight: { won: number };
   /** The bout in progress when you left: settled when you come back, so a reload can't lose (or dodge) a bet. */
   pending: Pending | null;
   /** Your last stake, and the props you placed last time (for “same props again”). */
@@ -133,6 +142,14 @@ interface Settings {
   speed: 1 | 2 | 3;
   /** Pause between rounds for the live market. */
   live: boolean;
+  /** The ring announcer reads the intros out loud. */
+  voice: boolean;
+}
+
+/** A thrown fight: the chance the commission catches it, and the bribe (for the fine). */
+interface Dive {
+  chance: number;
+  bribe: number;
 }
 
 interface Pending {
@@ -143,6 +160,7 @@ interface Pending {
   bets: YourBet[];
   pool: PoolBet[];
   tips: Tip[];
+  dive: Dive | null;
 }
 
 function normalizePending(raw: unknown): Pending | null {
@@ -152,7 +170,8 @@ function normalizePending(raw: unknown): Pending | null {
   if (!r.ids.every(okId) || r.ids[0] === r.ids[1]) return null;
   const bets: YourBet[] = r.bets
     .filter((b) => !!b && (b.kind === 'pool' || b.kind === 'live' || b.kind === 'prop') && (b.side === 0 || b.side === 1) && Number(b.stake) > 0 && Number(b.payout) >= 0 && (b.kind !== 'prop' || PROPS.some((x) => x.id === b.prop)))
-    .map((b) => ({ kind: b.kind, prop: b.kind === 'prop' ? b.prop : undefined, side: b.side, stake: Math.floor(b.stake), payout: Math.floor(b.payout), cashedOut: b.cashedOut == null ? null : Math.max(0, Math.floor(Number(b.cashedOut) || 0)) }));
+    .map((b) => ({ kind: b.kind, prop: b.kind === 'prop' ? b.prop : undefined, side: b.side, stake: Math.floor(b.stake), payout: Math.floor(b.payout), cashedOut: b.cashedOut == null ? null : Math.max(0, Math.floor(Number(b.cashedOut) || 0)), underwater: b.underwater === true }));
+  const d = r.dive as Partial<Dive> | null | undefined;
   return {
     ids: [r.ids[0], r.ids[1]],
     entry: r.entry === 'easy' || r.entry === 'even' || r.entry === 'hard' ? r.entry : null,
@@ -160,6 +179,7 @@ function normalizePending(raw: unknown): Pending | null {
     bets,
     pool: (Array.isArray(r.pool) ? r.pool : []).filter((b) => !!b && (b.side === 0 || b.side === 1) && Number(b.amount) > 0 && typeof b.who === 'string'),
     tips: (Array.isArray(r.tips) ? r.tips : []).filter((t) => !!t && TIPSTERS.some((x) => x.id === t.by) && (t.side === 0 || t.side === 1) && typeof t.text === 'string'),
+    dive: d && Number(d.chance) >= 0 && Number(d.chance) <= 1 && Number(d.bribe) > 0 ? { chance: Number(d.chance), bribe: Math.floor(Number(d.bribe)) } : null,
   };
 }
 
@@ -183,7 +203,12 @@ const save: Save = {
   stats: {
     scouted: Math.max(0, Math.floor(Number(saved?.stats?.scouted) || 0)),
     tipsters: (Array.isArray(saved?.stats?.tipsters) ? saved!.stats.tipsters : []).filter((t): t is string => typeof t === 'string').slice(0, 3),
+    fades: Math.max(0, Math.floor(Number(saved?.stats?.fades) || 0)),
+    loans: Math.max(0, Math.floor(Number(saved?.stats?.loans) || 0)),
+    peakVenue: Math.max(0, Math.min(4, Math.floor(Number(saved?.stats?.peakVenue) || 0))),
   },
+  event: normalizeEvent(saved?.event),
+  tonight: { won: Math.max(0, Math.floor(Number(saved?.tonight?.won) || 0)) },
   shark: normalizeShark(saved?.shark),
   pending: normalizePending(saved?.pending),
   stake: Math.max(10, Math.floor(Number(saved?.stake) || 50)),
@@ -191,6 +216,7 @@ const save: Save = {
   settings: {
     speed: saved?.settings?.speed === 2 || saved?.settings?.speed === 3 ? saved.settings.speed : 1,
     live: saved?.settings?.live !== false,
+    voice: saved?.settings?.voice !== false,
   },
   ledger: normalizeLedger(saved?.ledger),
 };
@@ -198,6 +224,11 @@ const unlocked = new Set(save.achievements);
 // The market's lots are regenerated on load (they're cheap to make, and it keeps saves honest).
 save.market = marketOffers(Math.random, save.career.night);
 const venue = () => VENUES[save.career.venue];
+/** Tonight's twist, and what it does to the house cut, the maximum stake and prices. */
+const tonightEvent = () => eventById(save.event);
+const cut = () => tonightEvent()?.cut ?? TAKEOUT;
+const maxStake = () => Math.round((venue().maxStake * (tonightEvent()?.stakeScale ?? 1)) / 10) * 10;
+const price = (n: number) => Math.ceil((n * (tonightEvent()?.priceScale ?? 1)) / 5) * 5;
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -261,7 +292,6 @@ function lobsterSvg(f: Faction): string {
 </svg>`;
 }
 
-const pips = (n: number, max = 10) => `<span class="pips">${'▮'.repeat(Math.round(n))}<i>${'▮'.repeat(Math.max(0, max - Math.round(n)))}</i></span>`;
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const firstName = (l: Lobster) => l.name.split(' ')[0];
 
@@ -350,8 +380,10 @@ function renderGuide() {
       text = '💬 The crowd is placing its bets. Watch the odds move…';
       break;
     case 'betting':
-      text = bout.entry
-        ? `🦞 Your lobster fights for a <b>${money(purseFor(bout.entry, save.career.venue))}</b> purse. Back it too, or just watch.`
+      text = bout.dive
+        ? `🤫 The fix is in. Bet on <b>${escapeHtml(bout.lobsters[1].name)}</b>, and act natural.`
+        : bout.entry
+        ? `🦞 Your lobster fights for a <b>${money(purseFor(bout.entry, save.career.venue))}</b> purse. Back it, just watch, or fix it in the <b>🦞 Your lobster</b> tab.`
         : save.bouts < 3
           ? '👇 <b>Set your stake</b>, then back a lobster. <b>🎯</b> on a card means its arguments hit the other’s weak spot.'
           : '👇 <b>Set your stake</b> and back a lobster, or try <b>Props</b>, <b>Parlay</b> or <b>Intel</b> first.';
@@ -430,6 +462,12 @@ interface Bout {
   /** The pool's odds once the public's money was in (the stats line), and when betting closed. */
   opening: [number, number] | null;
   closing: [number, number] | null;
+  /** Your lobster's paid to lose this one (null for an honest fight). */
+  dive: Dive | null;
+  /** The cops show up after round 1 (decided when betting closes). */
+  raid: boolean;
+  /** Lobsters the announcer called undefeated. */
+  hyped: Side[];
 }
 
 /** Your bets on this bout: the pool bet, and any live bets. `payout` is what it pays if it wins. */
@@ -442,6 +480,8 @@ interface YourBet {
   payout: number;
   /** Cashed out for this much (and settled), or null. */
   cashedOut: number | null;
+  /** At some live market it was only worth less than its stake. */
+  underwater?: boolean;
 }
 
 let phase: Phase = 'opening';
@@ -474,14 +514,22 @@ async function newBout() {
   }
   while (save.card.length < 2) save.card.push(pickBout(save.roster.length, Math.random, save.card[save.card.length - 1] ?? lastPair ?? [0, 1]));
   stageBout(lobsters, ids, entry);
+  els.arena.classList.remove('raid');
   voidStaleParlay();
   // Saved straight away: leave now and you get this same bout back.
   savePending();
   log(entry ? `🦞 Your lobster ${lobsters[0].name} steps into the ring against ${lobsters[1].name} (${factionById(lobsters[1].faction).name}), ${TIERS.find((t) => t.id === entry)!.name.toLowerCase()} fight, purse ${money(purseFor(entry, save.career.venue))}.` : `🔔 Bout ${save.bouts + 1}: ${lobsters[0].name} (${factionById(lobsters[0].faction).name}) vs ${lobsters[1].name} (${factionById(lobsters[1].faction).name}). The pool is open.`, 'bell');
   await startGate;
   if (token !== boutToken) return;
-  // The crowd puts its money down first, one by one.
-  for (const b of crowdBets(lobsters[0], lobsters[1], bout.publicP, Math.random, venue().scale)) {
+  announce(introduce(lobsters, venue().id, save.career.bout === 0, !!entry, Math.random).lines);
+  // The crowd puts its money down first, one by one (and on a whale night, the whale).
+  const ev = tonightEvent();
+  const crowd = crowdBets(lobsters[0], lobsters[1], bout.publicP, Math.random, venue().scale * (ev?.crowdScale ?? 1), ev?.memeScale ?? 1);
+  if (ev?.whale) {
+    const publicMoney = crowd.filter((x) => x.who === 'public').reduce((sum, x) => sum + x.amount, 0);
+    crowd.push({ who: 'whale', side: Math.random() < 0.5 ? 0 : 1, amount: whaleBet(publicMoney, Math.random) });
+  }
+  for (const b of crowd) {
     if (token !== boutToken) return;
     bout.pool.push(b);
     if (b.who !== 'public') {
@@ -498,11 +546,12 @@ async function newBout() {
   renderProps();
   renderParlay();
   renderIntel();
+  renderStable();
 }
 
 /** Puts a bout in the ring: its lobsters, the pool, the cards and every panel. */
 function stageBout(lobsters: [Lobster, Lobster], ids: [number, number], entry: Tier | null, pool: PoolBet[] = [], tips: Tip[] = [], bets: YourBet[] = []) {
-  bout = { lobsters, ids, publicP: publicChance(lobsters[0], lobsters[1]), pool, propOdds: propOdds(propChances(lobsters[0], lobsters[1])), tips, entry, opening: null, closing: null };
+  bout = { lobsters, ids, publicP: publicChance(lobsters[0], lobsters[1]), pool, propOdds: propOdds(propChances(lobsters[0], lobsters[1])), tips, entry, opening: null, closing: null, dive: null, raid: false, hyped: lobsters.flatMap((l, i) => (l.losses === 0 && l.wins >= 3 ? [i as Side] : [])) };
   parlayPicks = [null, null, null];
   yourBets = bets;
   fightSeed = null;
@@ -541,7 +590,7 @@ function stageBout(lobsters: [Lobster, Lobster], ids: [number, number], entry: T
 
 /** Saves the bout in progress, with your bets on it. */
 function savePending() {
-  save.pending = { ids: bout.ids, entry: bout.entry, seed: fightSeed, bets: yourBets, pool: bout.pool, tips: bout.tips };
+  save.pending = { ids: bout.ids, entry: bout.entry, seed: fightSeed, bets: yourBets, pool: bout.pool, tips: bout.tips, dive: bout.dive };
   persist();
 }
 
@@ -567,12 +616,19 @@ function resumePending(): boolean {
   }
   stageBout([a, b], p.ids, p.entry, p.pool, p.tips, p.bets);
   fightSeed = p.seed;
+  bout.dive = p.dive;
+  bout.raid = raidFor(p.seed);
   els.betRow.hidden = true;
   els.stakeRow.hidden = true;
   els.tabbar.hidden = true;
   showTab('winner');
   els.after.hidden = false;
-  const result = simulate(a, b, seededRng(p.seed));
+  if (bout.raid) {
+    log('📼 You left in the middle of a fight. Here’s how it ended.', 'bell');
+    raid();
+    return true;
+  }
+  const result = simulate(bout.dive ? diveFighter(a) : a, b, seededRng(p.seed));
   // Show where the fight ended up.
   const hp: [number, number] = [weighIn(a).stamina, weighIn(b).stamina];
   for (const e of result.events) if (e.type === 'argue') [hp[0], hp[1]] = e.hp;
@@ -590,7 +646,7 @@ function crowdShout(b: PoolBet) {
   if (b.who === 'you' || b.who === 'public') return;
   const bettor = bettorById(b.who);
   const i = BETTORS.indexOf(bettor);
-  const spot = els.spectators[i];
+  const spot = els.spectators[i] ?? els.spectators[1];
   const line = bettor.lines[Math.floor(Math.random() * bettor.lines.length)];
   const el = spot.querySelector<HTMLElement>('.shout')!;
   el.textContent = `${money(b.amount)} on ${bout.lobsters[b.side].name.split(' ')[0]}! ${line}`;
@@ -617,7 +673,7 @@ for (const t of els.tabs) t.addEventListener('click', () => showTab(t.dataset.ta
 /** Why this stake can't be placed (or null if it can). */
 function stakeProblem(amount: number): string | null {
   if (amount < 10) return 'The minimum stake is $10. Even the free market has standards.';
-  if (amount > venue().maxStake) return `${venue().name} takes bets up to ${money(venue().maxStake)}.`;
+  if (amount > maxStake()) return `${venue().name} takes bets up to ${money(maxStake())}${tonightEvent()?.stakeScale ? ' tonight' : ''}.`;
   if (amount > save.bankroll) return `You don’t have the capital for that (you’ve got ${money(save.bankroll)}).`;
   return null;
 }
@@ -812,8 +868,8 @@ function renderIntel() {
       row.querySelector('.record')!.textContent = total ? `Track record with you: ${rec.right}–${rec.wrong} (${Math.round((rec.right / total) * 100)}%)` : 'No track record with you yet.';
       const b = row.querySelector('button')!;
       const bought = bout.tips.some((x) => x.by === t.id);
-      b.textContent = bought ? 'Bought' : t.price ? `Buy a tip · ${money(t.price)}` : 'Read his post · free';
-      b.disabled = bought || phase !== 'betting' || save.bankroll < t.price;
+      b.textContent = bought ? 'Bought' : t.price ? `Buy a tip · ${money(price(t.price))}` : 'Read his post · free';
+      b.disabled = bought || phase !== 'betting' || save.bankroll < price(t.price);
       b.addEventListener('click', () => buyFrom(t.id));
       return row;
     }),
@@ -824,8 +880,8 @@ function renderIntel() {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'scout';
-      b.textContent = l.traitKnown ? `${l.name}: trait known` : l.scouted ? `${l.name}: already scouted` : `👀 Watch ${l.name} in the tank · ${money(SCOUT_PRICE)}`;
-      b.disabled = l.traitKnown || l.scouted || phase !== 'betting' || save.bankroll < SCOUT_PRICE;
+      b.textContent = l.traitKnown ? `${l.name}: trait known` : l.scouted ? `${l.name}: already scouted` : `👀 Watch ${l.name} in the tank · ${money(price(SCOUT_PRICE))}`;
+      b.disabled = l.traitKnown || l.scouted || phase !== 'betting' || save.bankroll < price(SCOUT_PRICE);
       b.addEventListener('click', () => scout(side));
       return b;
     }),
@@ -842,13 +898,13 @@ function renderIntel() {
 function buyFrom(id: TipsterId) {
   if (phase !== 'betting' || bout.tips.some((t) => t.by === id)) return;
   const t = tipsterById(id);
-  if (save.bankroll < t.price) return;
+  if (save.bankroll < price(t.price)) return;
   const tip = buyTip(id, bout.lobsters, Math.random);
   if (!tip) {
     log(`${t.face} ${t.name} shrugs: “You know as much as I do about these two.”`, '');
     return;
   }
-  save.bankroll -= t.price;
+  save.bankroll -= price(t.price);
   updateBankroll();
   bout.tips.push(tip);
   if (!save.stats.tipsters.includes(id)) save.stats.tipsters.push(id);
@@ -863,14 +919,14 @@ function buyFrom(id: TipsterId) {
 
 function scout(side: Side) {
   const l = bout.lobsters[side];
-  if (phase !== 'betting' || l.scouted || l.traitKnown || save.bankroll < SCOUT_PRICE) return;
-  save.bankroll -= SCOUT_PRICE;
+  if (phase !== 'betting' || l.scouted || l.traitKnown || save.bankroll < price(SCOUT_PRICE)) return;
+  save.bankroll -= price(SCOUT_PRICE);
   l.scouted = true;
   save.stats.scouted++;
   if (save.stats.scouted >= 10) award('scout-10');
   updateBankroll();
   play('reveal');
-  log(`👀 You slip the kitchen staff ${money(SCOUT_PRICE)}. In the tank, ${l.name} ${TELLS[l.trait][l.id % 2]}`, 'trait');
+  log(`👀 You slip the kitchen staff ${money(price(SCOUT_PRICE))}. In the tank, ${l.name} ${TELLS[l.trait][l.id % 2]}`, 'trait');
   persist();
   renderIntel();
   renderCard(side);
@@ -890,7 +946,7 @@ function settleRumor(l: Lobster) {
 /** The pool panel: each side's money, the odds, who bet what, and your projected payout. */
 function renderPool() {
   const t = totals(bout.pool);
-  const odds = poolOdds(t);
+  const odds = poolOdds(t, cut());
   const total = t[0] + t[1];
   // The public bets first, on the stats: that's the opening line. The meme money moves it from there.
   if (!bout.opening && t[0] && t[1]) bout.opening = odds;
@@ -899,7 +955,8 @@ function renderPool() {
     els.poolBar[side].textContent = total ? `${money(t[side])}` : '';
     els.bets[side].dataset.odds = total ? `${odds[side].toFixed(2)}×` : '…';
   }
-  els.poolTotal.textContent = total ? `POOL ${money(total)} · house cut ${Math.round(TAKEOUT * 100)}%` : 'The crowd is placing its bets…';
+  const c = cut();
+  els.poolTotal.textContent = total ? `POOL ${money(total)} · ${c < 0 ? `+${Math.round(-c * 100)}% printed money` : c === 0 ? 'no house cut tonight' : `house cut ${Math.round(c * 100)}%`}` : 'The crowd is placing its bets…';
   const rows = bout.pool.filter((b) => b.who !== 'public');
   els.poolBets.replaceChildren(
     ...rows.map((b) => {
@@ -921,11 +978,11 @@ function updatePreview() {
   const problem = stakeProblem(amount);
   els.preview.textContent = problem ? `⚠️ ${problem}` : '';
   els.preview.classList.toggle('problem', !!problem);
-  els.stakeCap.textContent = `max ${money(Math.min(venue().maxStake, Math.max(0, save.bankroll)))}`;
+  els.stakeCap.textContent = `max ${money(Math.min(maxStake(), Math.max(0, save.bankroll)))}`;
   const t = totals(bout.pool);
   const ready = t[0] > 0 && t[1] > 0 && !problem;
   for (const side of [0, 1] as Side[]) {
-    const pays = ready ? projectedPayout(t, side, amount) : 0;
+    const pays = ready ? projectedPayout(t, side, amount, cut()) : 0;
     const now = Number.parseFloat(els.bets[side].dataset.odds ?? '');
     els.bets[side].innerHTML = betLabel(side, 'Bet on', els.bets[side].dataset.odds ?? '…', pays ? `${money(amount)} pays ${money(pays)}` : '', bout.opening ? oddsMove(bout.opening[side], now) : '');
   }
@@ -1028,9 +1085,9 @@ function rememberStake() {
 for (const b of document.querySelectorAll<HTMLButtonElement>('.chips button')) {
   b.addEventListener('click', () => {
     const add = b.dataset.add!;
-    if (add === 'max') els.stake.value = String(Math.min(save.bankroll, venue().maxStake));
+    if (add === 'max') els.stake.value = String(Math.min(save.bankroll, maxStake()));
     else if (add === 'clear') els.stake.value = '0';
-    else els.stake.value = String(Math.min(save.bankroll, venue().maxStake, stake() + Number(add)));
+    else els.stake.value = String(Math.min(save.bankroll, maxStake(), stake() + Number(add)));
     rememberStake();
     updatePreview();
     if (!save.parlay && phase === 'betting') renderParlay();
@@ -1065,7 +1122,7 @@ function placeBet(side: Side | null) {
     bout.pool.push(late);
     crowdShout(late);
   }
-  const odds = poolOdds(totals(bout.pool));
+  const odds = poolOdds(totals(bout.pool), cut());
   bout.closing = odds;
   if (side !== null) {
     const amount = bout.pool.find((b) => b.who === 'you')!.amount;
@@ -1165,6 +1222,7 @@ els.liveContinue.addEventListener('click', () => continueLive?.());
 async function liveBreak(result: FightResult, roundDone: number) {
   const [a, b] = bout.lobsters;
   liveP = publicChance(a, b, stateAfterRound(a, b, result, roundDone), 200);
+  for (const x of yourBets) if (x.kind !== 'prop' && x.cashedOut === null && cashOutValue(x.payout, x.side === 0 ? liveP : 1 - liveP) < x.stake) x.underwater = true;
   setPhase('live');
   const odds = liveOddsPair();
   els.liveTitle.textContent = `⏸ After round ${roundDone}: the live market`;
@@ -1336,8 +1394,14 @@ async function fight() {
   els.skip.hidden = false;
   els.speed.hidden = false;
   els.next.hidden = true;
-  const result = simulate(bout.lobsters[0], bout.lobsters[1], seededRng(fightSeed ?? 1));
+  const result = simulate(bout.dive ? diveFighter(bout.lobsters[0]) : bout.lobsters[0], bout.lobsters[1], seededRng(fightSeed ?? 1));
+  bout.raid = raidFor(fightSeed ?? 1);
+  hideAnnouncer();
   for (const e of result.events) {
+    if (bout.raid && e.type === 'round' && e.round === 2) {
+      raid();
+      return;
+    }
     // Between rounds: the live market (unless you're skipping to the end).
     if (e.type === 'round' && e.round > 1 && !skipping && save.settings.live) await liveBreak(result, e.round - 1);
     await showEvent(e);
@@ -1348,6 +1412,63 @@ async function fight() {
 els.skip.addEventListener('click', () => {
   skipping = true;
 });
+
+/** Whether the cops raid this bout: only on a raid night, never your own lobster's bout or one in your parlay. */
+function raidFor(seed: number): boolean {
+  const chance = tonightEvent()?.raidChance ?? 0;
+  if (!chance || bout.entry || save.parlay?.legs.some((l) => l.won === null && l.ids[0] === bout.ids[0] && l.ids[1] === bout.ids[1])) return false;
+  return seededRng(seed ^ 0x5bd1e995)() < chance;
+}
+
+/** The cops call the bout off. They keep a cut of every bet on it; the rest comes back. */
+function raid() {
+  phase = 'done';
+  skipping = false;
+  els.arena.classList.add('raid');
+  for (const f of els.fighters) f.querySelector<HTMLElement>('.say')!.hidden = true;
+  play('ko');
+  shout('COPS!');
+  let back = 0;
+  let staked = 0;
+  for (const b of yourBets) {
+    if (b.cashedOut !== null) {
+      recordBet(save.ledger, b.kind === 'pool' ? 'winner' : b.kind === 'live' ? 'live' : 'props', b.stake, b.cashedOut, describeBet(b));
+      continue;
+    }
+    const refund = Math.floor(b.stake * (1 - FORFEIT));
+    back += refund;
+    staked += b.stake;
+    recordBet(save.ledger, b.kind === 'pool' ? 'winner' : b.kind === 'live' ? 'live' : 'props', b.stake, refund, describeBet(b));
+  }
+  save.bankroll += back;
+  save.bouts++;
+  save.career.bout++;
+  if (save.stable && save.stable.rest > 0) save.stable.rest--;
+  save.pending = null;
+  if (staked) award('forfeiture');
+  const line = staked ? `They keep ${Math.round(FORFEIT * 100)}% of your bets: ${money(back)} of ${money(staked)} comes back.` : 'You had nothing on it. Lucky.';
+  log(`🚔 RAID! The cops storm in after round 1 and call the bout off. ${line}`, 'warn');
+  announce(['Ladies and gentlemen, this bout is over. Please put your hands where the officers can see them.']);
+  resultNote = staked ? `🚔 ${line}` : '🚔 The bout was raided.';
+  els.result.innerHTML = `<b>🚔 RAIDED</b> The bout is off<small>${escapeHtml(line)}</small>`;
+  els.result.hidden = false;
+  els.result.classList.remove('won');
+  els.result.classList.toggle('lost', staked > 0);
+  if (save.bankroll < 10) setTimeout(showBroke, 900);
+  persist();
+  updateBankroll();
+  renderGuide();
+  renderSlip();
+  markPicks();
+  els.skip.hidden = true;
+  els.speed.hidden = true;
+  els.live.hidden = true;
+  els.next.hidden = false;
+  els.next.textContent = save.career.bout >= NIGHT_BOUTS ? 'End of the night ▶' : 'Next bout ▶';
+  els.next.focus();
+  renderVenue();
+  renderStable();
+}
 
 function finish(result: FightResult) {
   phase = 'done';
@@ -1374,9 +1495,22 @@ function finish(result: FightResult) {
   }
   save.bouts++;
   save.career.bout++;
+  // A thrown fight: did the commission notice?
+  const dive = bout.dive;
+  const caught = !!dive && seededRng((fightSeed ?? 1) ^ 0x2545f491)() < dive.chance;
   // Your lobster: a purse for a win; rest (and maybe an injury) after a loss. Otherwise it rests up.
   const stable = save.stable;
-  if (stable && bout.entry) {
+  if (stable && bout.entry && caught) {
+    const fine = Math.min(save.bankroll, dive.bribe * FINE_MULTIPLE);
+    save.bankroll -= fine;
+    stable.rest = Math.max(stable.rest, SUSPENSION);
+    stable.suspicion = 0;
+    play('lose');
+    log(`🚨 The commission caught ${stable.lobster.name} taking a dive. Every bet on the bout is void (no refunds), you’re fined ${money(fine)}, and it’s suspended for ${SUSPENSION} bouts.`, 'lose');
+    toast('🚨', 'CAUGHT', `${stable.lobster.name} is suspended`);
+    award('dive-caught');
+  } else if (stable && bout.entry) {
+    if (result.winner === 0 && dive) award('dive-won');
     if (result.winner === 0) {
       const purse = purseFor(bout.entry, save.career.venue);
       save.bankroll += purse;
@@ -1398,7 +1532,7 @@ function finish(result: FightResult) {
   const props = propOutcomes(result);
   for (const b of yourBets) {
     net -= b.stake;
-    const won = b.kind === 'prop' ? props[b.prop!] : b.side === result.winner;
+    const won = !caught && (b.kind === 'prop' ? props[b.prop!] : b.side === result.winner);
     if (b.cashedOut !== null) net += b.cashedOut;
     else if (won) {
       save.bankroll += b.payout;
@@ -1456,7 +1590,27 @@ function finish(result: FightResult) {
     }
   }
   if (propHits >= 3) award('props-3');
+  // Achievements from who you backed
+  const loserSide: Side = result.winner === 0 ? 1 : 0;
+  for (const b of yourBets) {
+    if (b.kind === 'prop') continue;
+    if (b.cashedOut === null && bout.hyped.includes(b.side) && b.side === loserSide) award('hype');
+    if (b.cashedOut !== null || caught || b.side !== result.winner) continue;
+    const l = bout.lobsters[b.side];
+    const other = bout.lobsters[b.side === 0 ? 1 : 0];
+    if (b.underwater) award('diamond-claws');
+    if (bout.tips.some((t) => t.by === 'insider' && t.kind === 'pick' && t.side === b.side)) award('insider-trading');
+    if (bout.pool.some((x) => x.who === 'whale' && x.side !== b.side)) award('whale-watching');
+    if (l.faction === 'hoppean' && result.ending === 'ko') award('removed');
+    if (l.faction === 'ancap' && other.faction === 'minarchist') award('roads');
+    if (b.kind === 'pool' && bout.closing && bout.closing[b.side] > bout.closing[b.side === 0 ? 1 : 0]) {
+      save.stats.fades++;
+      if (save.stats.fades >= 5) award('fade-public');
+    }
+  }
+  if (dive && !caught && result.winner === 1 && net > 0) award('dive');
   if (betted && net > 0) award('first-win');
+  if (betted && net > 0) save.tonight.won++;
   if (net >= 1000) award('big-win');
   if (bout.tips.some((t) => t.by === 'insider' && t.kind === 'pick' && t.side !== result.winner)) award('insider-wrong');
   if (save.roster.every((l) => l.traitKnown)) award('traits-all');
@@ -1479,7 +1633,11 @@ function finish(result: FightResult) {
   if (save.bankroll < 10) setTimeout(showBroke, 900);
   persist();
   updateBankroll();
+  if (caught) line = `🚨 Caught taking a dive. ${line}`;
   resultNote = betted ? (net > 0 ? `💰 ${line}` : net < 0 ? `📉 ${line}` : `🤝 ${line}`) : `👀 ${winner.name} wins ${how}.`;
+  let lastRound = 1;
+  for (const e of result.events) if (e.type === 'round') lastRound = e.round;
+  announce([callWinner(winner, result.ending, lastRound)]);
   renderGuide();
   renderSlip();
   markPicks();
@@ -1517,16 +1675,23 @@ function rain() {
 // ---------------------------------------------------------------------------
 
 function clampStake() {
-  const cap = Math.min(save.bankroll, venue().maxStake);
+  const cap = Math.min(save.bankroll, maxStake());
   if (stake() > cap) els.stake.value = String(cap);
-  els.stake.max = String(venue().maxStake);
+  els.stake.max = String(maxStake());
 }
 
 function renderVenue() {
   const v = venue();
   const c = save.career;
   els.venueName.textContent = `${v.icon} ${v.name}`;
-  els.venueName.title = `${v.name}: bets up to ${money(v.maxStake)}`;
+  els.venueName.title = `${v.name}: bets up to ${money(maxStake())}`;
+  save.stats.peakVenue = Math.max(save.stats.peakVenue, c.venue);
+  const ev = tonightEvent();
+  els.eventChip.hidden = !ev;
+  if (ev) {
+    els.eventChip.textContent = `${ev.icon} ${ev.name}`;
+    els.eventChip.title = ev.blurb;
+  }
   els.nightLabel.textContent = `Night ${c.night} · bout ${Math.min(NIGHT_BOUTS, c.bout + (phase === 'done' ? 0 : 1))}/${NIGHT_BOUTS}`;
   els.boutDots.replaceChildren(
     ...Array.from({ length: NIGHT_BOUTS }, (_, i) => {
@@ -1546,6 +1711,7 @@ function renderVenue() {
 }
 
 let nightOutcome: NightOutcome | null = null;
+let nextEvent: EventId | null = null;
 
 function showNightEnd() {
   const c = save.career;
@@ -1565,6 +1731,14 @@ function showNightEnd() {
           : `${money(v.target)} at the end of a night wins the championship.`,
   ];
   if (save.stable) lines.push(`🦞 ${save.stable.lobster.name}: ${save.stable.lobster.wins}–${save.stable.lobster.losses}, ${money(save.stable.purses)} in purses.`);
+  if (save.tonight.won >= NIGHT_BOUTS) {
+    lines.push('🌙 Five bouts, five wins. A perfect night.');
+    award('perfect-night');
+  }
+  if (save.event === 'printer' && profit > 0) award('cantillon');
+  nextEvent = rollEvent(Math.random, c.night + 1, save.event);
+  const coming = eventById(nextEvent);
+  lines.push(coming ? `Word for tomorrow night: ${coming.icon} ${coming.name}. ${coming.blurb}` : 'Tomorrow looks like a normal night. As normal as lobster debates get.');
   els.nightBody.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
   els.nightNext.textContent = `Start night ${c.night + 1} ▶`;
   els.night.hidden = false;
@@ -1576,6 +1750,14 @@ els.nightNext.addEventListener('click', () => {
   const r = startNight(save.career, save.bankroll, nightOutcome);
   save.career = r.career;
   save.bankroll = r.bankroll;
+  save.event = nextEvent;
+  save.tonight = { won: 0 };
+  if (save.stable) save.stable.suspicion = Math.max(0, save.stable.suspicion - 1);
+  const ev = tonightEvent();
+  if (ev) {
+    log(`${ev.icon} Tonight: ${ev.name}. ${ev.blurb}`, 'trait');
+    toast(ev.icon, 'TONIGHT', ev.name);
+  }
   save.market = marketOffers(Math.random, save.career.night);
   if (nightOutcome === 'champion') toast('🏆', 'CHAMPION', 'The Invisible Claw');
   if (r.demoted) log(`🚪 You can't afford ${VENUES[save.career.venue + 1].name}'s door fee. Back to ${venue().name}.`, 'warn');
@@ -1599,10 +1781,6 @@ els.nightNext.addEventListener('click', () => {
 
 let nameDraft = suggestName(Math.random);
 
-function statPips(l: Lobster) {
-  return `<dl class="stats"><dt>Claw</dt><dd>${pips(l.claw)}</dd><dt>Shell</dt><dd>${pips(l.shell)}</dd><dt>Wits</dt><dd>${pips(l.wits)}</dd><dt>Stamina</dt><dd><b>${l.stamina}</b></dd></dl>`;
-}
-
 function renderStable() {
   renderBadges();
   const st = save.stable;
@@ -1621,7 +1799,7 @@ function renderStable() {
         const card = document.createElement('div');
         card.className = 'offer';
         card.style.setProperty('--shell', f.color);
-        card.innerHTML = `<div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(o.lobster.name)}</b><small>${f.name} · ${o.lobster.weight} lb</small></div></div>${statPips(o.lobster)}<div class="args"><span class="label">Trait</span> <b class="unknown">???</b></div><button type="button" class="next-button">Buy · ${money(o.price)}</button>`;
+        card.innerHTML = `<div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(o.lobster.name)}</b><small>${f.name} · ${o.lobster.weight} lb</small></div></div>${statBars(o.lobster)}<div class="args"><span class="label">Trait</span> <b class="unknown">???</b></div><button type="button" class="next-button">Buy · ${money(o.price)}</button>`;
         const b = card.querySelector('button')!;
         b.disabled = save.bankroll < o.price || phase === 'fighting' || phase === 'live';
         b.addEventListener('click', () => buyLobster(i));
@@ -1637,15 +1815,26 @@ function renderStable() {
   const busy = !!bout?.entry && phase !== 'done';
   const training = (['claw', 'shell', 'wits', 'stamina'] as TrainStat[])
     .map((stat) => {
-      const cost = trainingCost(l, stat);
+      const raw = trainingCost(l, stat);
+      const cost = raw === null ? null : price(raw);
       return `<button type="button" class="train" data-stat="${stat}" ${busy || cost === null || save.bankroll < cost ? 'disabled' : ''}>${stat === 'stamina' ? 'Stamina +10' : `${stat[0].toUpperCase()}${stat.slice(1)} +1`} · ${cost === null ? 'MAX' : money(cost)}</button>`;
     })
     .join('');
-  const therapy = BAD_TRAITS.has(l.trait) ? `<button type="button" class="train therapy" ${busy || save.bankroll < THERAPY_PRICE ? 'disabled' : ''}>🛋️ Therapy for its ${t.name.toLowerCase()} streak · ${money(THERAPY_PRICE)}</button>` : '';
+  const therapy = BAD_TRAITS.has(l.trait) ? `<button type="button" class="train therapy" ${busy || save.bankroll < price(THERAPY_PRICE) ? 'disabled' : ''}>🛋️ Therapy for its ${t.name.toLowerCase()} streak · ${money(price(THERAPY_PRICE))}</button>` : '';
   const entries = TIERS.map((tier) => `<button type="button" class="enter${save.entry === tier.id ? ' on' : ''}" data-tier="${tier.id}" ${st.rest > 0 ? 'disabled' : ''}>${tier.name} opponent · purse ${money(purseFor(tier.id, save.career.venue))}</button>`).join('');
-  els.stable.innerHTML = `<div class="mine" style="--shell:${f.color}">
+  // Tonight's fight is your lobster's: you could make sure it loses.
+  let fix = '';
+  if (bout?.entry && phase === 'betting') {
+    const purse = purseFor(bout.entry, save.career.venue);
+    const bribe = bribeFor(purse);
+    const opponent = bout.lobsters[1].name;
+    fix = bout.dive
+      ? `<div class="fix done">🤫 ${escapeHtml(l.name)} has agreed to take a dive. Now bet on <b>${escapeHtml(opponent)}</b>. The crowd doesn’t know.</div>`
+      : `<div class="fix"><p>🤫 <b>The fix.</b> Pay ${escapeHtml(l.name)} to lose, then bet on ${escapeHtml(opponent)}: the crowd’s odds don’t know. It gives up the ${money(purse)} purse, and the commission catches about <b>${Math.round(catchChance(st.suspicion) * 100)}%</b> of thrown fights (more if you keep doing it). Get caught and every bet on the bout is void, you pay a fine, and it’s suspended.</p><button type="button" class="train dive" ${save.bankroll < bribe ? 'disabled' : ''}>🤫 Pay it to take a dive · ${money(bribe)}</button></div>`;
+  }
+  els.stable.innerHTML = `${fix}<div class="mine" style="--shell:${f.color}">
       <div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(l.name)}</b><small>${f.name} · ${l.weight} lb · ${l.wins}–${l.losses} · ${money(st.purses)} in purses</small></div></div>
-      ${statPips(l)}
+      ${statBars(l)}
       <div class="args"><span class="label">Trait</span> <b title="${escapeHtml(t.description)}">${t.name}</b></div>
       <div class="args"><span class="label">Weak to</span> <b class="weak">${ARG_TYPES[f.weak].icon} ${ARG_TYPES[f.weak].name}</b> · <span class="label">Shrugs off</span> <b class="resist">${ARG_TYPES[f.resists].icon} ${ARG_TYPES[f.resists].name}</b></div>
       ${st.rest > 0 ? `<p class="rest">🩹 Resting: ${st.rest} more bout${st.rest > 1 ? 's' : ''}.</p>` : ''}
@@ -1654,6 +1843,7 @@ function renderStable() {
     <p class="pane-note">🥊 ${save.entry ? 'Signed up for the next bout (click again to cancel).' : 'Sign it up for the next bout. Losing means rest, and maybe an injury.'}</p><div class="entries">${entries}</div>`;
   for (const b of els.stable.querySelectorAll<HTMLButtonElement>('.train[data-stat]')) b.addEventListener('click', () => trainMine(b.dataset.stat as TrainStat));
   els.stable.querySelector<HTMLButtonElement>('.therapy')?.addEventListener('click', therapy_);
+  els.stable.querySelector<HTMLButtonElement>('.dive')?.addEventListener('click', throwFight);
   for (const b of els.stable.querySelectorAll<HTMLButtonElement>('.enter')) {
     b.addEventListener('click', () => {
       const tier = b.dataset.tier as Tier;
@@ -1666,12 +1856,30 @@ function renderStable() {
   }
 }
 
+/** Pays your lobster to lose tonight's fight. */
+function throwFight() {
+  const st = save.stable;
+  if (!st || !bout.entry || bout.dive || phase !== 'betting') return;
+  const bribe = bribeFor(purseFor(bout.entry, save.career.venue));
+  if (save.bankroll < bribe) return;
+  save.bankroll -= bribe;
+  bout.dive = { chance: catchChance(st.suspicion), bribe };
+  st.suspicion++;
+  st.dives++;
+  updateBankroll();
+  play('reveal');
+  log(`🤫 You slip ${st.lobster.name} ${money(bribe)} in clarified butter. It’ll lose tonight. Probably.`, 'trait');
+  savePending();
+  renderStable();
+  renderGuide();
+}
+
 function buyLobster(i: number) {
   const o = save.market[i];
   if (!o || save.stable || save.bankroll < o.price) return;
   save.bankroll -= o.price;
   const name = nameDraft.trim().slice(0, 30) || suggestName(Math.random);
-  save.stable = { lobster: { ...o.lobster, name, traitKnown: true }, rest: 0, purses: 0 };
+  save.stable = { lobster: { ...o.lobster, name, traitKnown: true }, rest: 0, purses: 0, suspicion: 0, dives: 0 };
   save.market = [];
   updateBankroll();
   play('cashout');
@@ -1687,7 +1895,8 @@ function buyLobster(i: number) {
 function trainMine(stat: TrainStat) {
   const st = save.stable;
   if (!st) return;
-  const cost = trainingCost(st.lobster, stat);
+  const raw = trainingCost(st.lobster, stat);
+  const cost = raw === null ? null : price(raw);
   if (cost === null || save.bankroll < cost) return;
   save.bankroll -= cost;
   train(st.lobster, stat);
@@ -1700,9 +1909,9 @@ function trainMine(stat: TrainStat) {
 
 function therapy_() {
   const st = save.stable;
-  if (!st || !BAD_TRAITS.has(st.lobster.trait) || save.bankroll < THERAPY_PRICE) return;
+  if (!st || !BAD_TRAITS.has(st.lobster.trait) || save.bankroll < price(THERAPY_PRICE)) return;
   const was = traitById(st.lobster.trait).name;
-  save.bankroll -= THERAPY_PRICE;
+  save.bankroll -= price(THERAPY_PRICE);
   st.lobster.trait = 'none';
   updateBankroll();
   play('reveal');
@@ -1757,6 +1966,8 @@ function sharkBorrow(): number {
   play('shark');
   log(`🦈 Vinny counts out ${money(amount)}. You owe him ${money(save.shark.debt)}.`, 'warn');
   award('shark');
+  save.stats.loans++;
+  if (save.stats.loans >= 3) award('moral-hazard');
   persist();
   renderSharkButton();
   return amount;
@@ -1814,6 +2025,7 @@ function sharkNight() {
 
 function showBroke() {
   if (save.bankroll >= 10) return;
+  if (save.stats.peakVenue >= 3) award('boom-bust');
   const chunk = Math.min(loanChunk(save.career.venue), creditLimit(save.career.venue) - save.shark.debt);
   els.brokeShark.disabled = chunk < 10;
   els.brokeShark.textContent = chunk >= 10 ? `🦈 Take ${money(chunk)} from Vinny (${Math.round(SHARK_RATE * 100)}% a night)` : '🦈 Vinny won’t lend you more';
@@ -1866,11 +2078,13 @@ function renderAchievements() {
   els.achievementsGrid.replaceChildren(
     ...ACHIEVEMENTS.map((a) => {
       const card = document.createElement('div');
-      card.className = `achievement${unlocked.has(a.id) ? '' : ' locked'}`;
+      const got = unlocked.has(a.id);
+      const hidden = a.secret && !got;
+      card.className = `achievement${got ? '' : ' locked'}${a.secret ? ' secret' : ''}`;
       card.innerHTML = '<span class="icon"></span><b></b><small></small>';
-      card.querySelector('.icon')!.textContent = unlocked.has(a.id) ? a.icon : '🔒';
-      card.querySelector('b')!.textContent = a.name;
-      card.querySelector('small')!.textContent = a.description;
+      card.querySelector('.icon')!.textContent = got ? a.icon : hidden ? '❔' : '🔒';
+      card.querySelector('b')!.textContent = hidden ? 'Secret achievement' : a.name;
+      card.querySelector('small')!.textContent = hidden ? 'Keep betting. You’ll know it when it happens.' : a.description;
       return card;
     }),
   );
@@ -1886,11 +2100,55 @@ byId('hide-achievements').addEventListener('click', () => {
   els.achievements.hidden = true;
 });
 
+// --- The ring announcer ---
+
+let announceToken = 0;
+
+/** Shows the announcer's lines one at a time (and reads them out, if the voice is on). */
+function announce(lines: string[]) {
+  const token = ++announceToken;
+  for (const line of lines) log(`🎤 ${line}`, 'bell');
+  const synth = window.speechSynthesis;
+  const voice = save.settings.voice && !save.muted && !!synth && typeof SpeechSynthesisUtterance !== 'undefined';
+  synth?.cancel();
+  els.announcer.hidden = false;
+  const show = (i: number) => {
+    if (token !== announceToken) return;
+    els.announcerText.textContent = lines[i];
+    pulse(els.announcer, 'show');
+  };
+  if (voice) {
+    lines.forEach((line, i) => {
+      const u = new SpeechSynthesisUtterance(line);
+      u.rate = 1.08;
+      u.pitch = 0.75;
+      u.onstart = () => show(i);
+      synth.speak(u);
+    });
+  }
+  // The text moves on by itself too (the voice may be off, or slow to start).
+  let at = 0;
+  show(0);
+  const step = () => {
+    if (token !== announceToken || ++at >= lines.length) return;
+    show(at);
+    setTimeout(step, Math.max(2200, lines[at].length * 45));
+  };
+  setTimeout(step, Math.max(2200, lines[0].length * 45));
+}
+
+function hideAnnouncer() {
+  announceToken++;
+  window.speechSynthesis?.cancel();
+  els.announcer.hidden = true;
+}
+
 // --- Settings ---
 
 function renderSettings() {
   for (const b of els.settings.querySelectorAll<HTMLButtonElement>('[data-speed]')) b.classList.toggle('on', Number(b.dataset.speed) === save.settings.speed);
   for (const b of els.settings.querySelectorAll<HTMLButtonElement>('[data-live]')) b.classList.toggle('on', (b.dataset.live === 'on') === save.settings.live);
+  for (const b of els.settings.querySelectorAll<HTMLButtonElement>('[data-voice]')) b.classList.toggle('on', (b.dataset.voice === 'on') === save.settings.voice);
   els.speed.textContent = `🐇 Speed ${save.settings.speed}×`;
 }
 
@@ -1908,6 +2166,14 @@ function setLive(on: boolean) {
 
 for (const b of els.settings.querySelectorAll<HTMLButtonElement>('[data-speed]')) b.addEventListener('click', () => setSpeed(Number(b.dataset.speed) as Settings['speed']));
 for (const b of els.settings.querySelectorAll<HTMLButtonElement>('[data-live]')) b.addEventListener('click', () => setLive(b.dataset.live === 'on'));
+for (const b of els.settings.querySelectorAll<HTMLButtonElement>('[data-voice]')) {
+  b.addEventListener('click', () => {
+    save.settings.voice = b.dataset.voice === 'on';
+    if (!save.settings.voice) window.speechSynthesis?.cancel();
+    persist();
+    renderSettings();
+  });
+}
 els.speed.addEventListener('click', () => setSpeed(((save.settings.speed % 3) + 1) as Settings['speed']));
 els.liveOff.addEventListener('click', () => {
   setLive(false);
