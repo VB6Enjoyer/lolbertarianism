@@ -454,3 +454,106 @@ describe('kindergarten: harder by the day', () => {
     expect(grabFrom(60)).toBe(6);
   });
 });
+
+describe('kindergarten: items, the shout, and the bosses', () => {
+  it('using an item spends it, and each one does its thing', async () => {
+    const { useItem, RUSH_SECONDS, slapRadius } = await import('./logic.ts');
+    const s = quiet(newGame(1000, 600));
+    s.stash = ['cookie', 'juice', 'slime', 'dino', 'car', 'yoyo', 'crayons', 'card'].map((item) => ({ item: item as never, cost: 1 }));
+    const near = spawnHand(s, rng(90), 'thief', 'grabby');
+    near.progress = 0.8;
+    const far = spawnHand(s, rng(91), 'thief', 'grabby');
+    far.progress = 0.2;
+    expect(useItem(s, 'cookie')).toBe(true);
+    expect(near.stun).toBe(2);
+    const r0 = slapRadius(s);
+    useItem(s, 'juice');
+    expect(s.rush).toBe(RUSH_SECONDS);
+    expect(slapRadius(s)).toBeGreaterThan(r0 * 1.5);
+    useItem(s, 'slime');
+    expect(near.glued).toBe(3);
+    expect(far.glued).toBe(0);
+    useItem(s, 'dino');
+    expect(far.slapped).toBe(true);
+    expect(near.slapped).toBe(false);
+    useItem(s, 'car');
+    expect(near.progress).toBeCloseTo(0.5);
+    useItem(s, 'yoyo');
+    expect(near.slapped).toBe(true);
+    useItem(s, 'crayons');
+    expect(s.fence).toBe(3);
+    const thief = spawnHand(s, rng(92), 'thief', 'grabby');
+    const before = s.blocks;
+    reach(s, thief);
+    expect(s.blocks).toBe(before);
+    expect(s.fence).toBe(2);
+    // The card buys back a star (and won't be wasted with all five)
+    expect(useItem(s, 'card')).toBe(false);
+    s.stars = 3;
+    expect(useItem(s, 'card')).toBe(true);
+    expect(s.stars).toBe(4);
+    expect(s.stash).toEqual([]);
+  });
+
+  it('PROPERTY RIGHTS! needs a full meter, blows thieves away, and hurts bosses', async () => {
+    const { shout } = await import('./logic.ts');
+    const s = quiet(newGame(1000, 600));
+    expect(shout(s)).toBe(false);
+    s.meter = CONFIG.meterMax;
+    const carrying = spawnHand(s, rng(94), 'thief', 'grabby');
+    reach(s, carrying);
+    const blocks = s.blocks;
+    const a = spawnHand(s, rng(93), 'thief', 'grabby');
+    a.progress = 0.5;
+    const boss = spawnHand(s, rng(95), 'thief', 'principal');
+    boss.progress = 0.3;
+    const hp = boss.hp;
+    const trader = spawnHand(s, rng(96), 'trader');
+    expect(shout(s)).toBe(true);
+    expect(a.slapped).toBe(true);
+    expect(s.blocks).toBe(blocks + 1); // the one being carried off came back
+    expect(boss.hp).toBe(hp - 3);
+    expect(trader.slapped).toBe(false);
+    expect(s.meter).toBe(0);
+    // Slaps fill it back up
+    const b = spawnHand(s, rng(97), 'thief', 'grabby');
+    b.progress = 0.5;
+    const at = handPosition(b);
+    slap(s, at.x, at.y);
+    expect(s.meter).toBe(1);
+  });
+
+  it('a bigger boss every Friday', async () => {
+    const { bossFor } = await import('./school.ts');
+    expect([1, 2, 3, 4].map((w) => bossFor(w).role)).toEqual(['principal', 'superintendent', 'board', 'doe']);
+    expect(bossFor(6).hp).toBe(bossFor(4).hp + 6);
+    // Week 2's Friday: the Superintendent and its escort
+    const s = newGame(1000, 600);
+    s.wave = 10;
+    const r = rng(98);
+    const roles: string[] = [];
+    for (let t = 0; t < CONFIG.waveLength && s.phase === 'playing'; t += 0.05) {
+      step(s, 0.05, r);
+      for (const e of s.events) if (e.type === 'spawn' && e.hand.role !== 'grabby') roles.push(e.hand.role ?? 'trader');
+      s.events = [];
+      s.blocks = 30;
+      for (const hand of s.hands) if (hand.role === 'superintendent') hand.progress = Math.min(hand.progress, 0.3);
+    }
+    expect(roles).toContain('superintendent');
+    expect(roles.filter((x) => x === 'monitor').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('the School Board comes three at a time; the Department of Education switches what it needs', async () => {
+    const { needsFor } = await import('./logic.ts');
+    const s = quiet(newGame(1000, 600));
+    s.wave = 15;
+    s.waveTime = 4 * 11 + 0.5;
+    s.period = 3;
+    step(s, 0.05, rng(99));
+    expect(s.hands.filter((h) => h.role === 'board').length).toBe(3);
+    const doe = spawnHand(s, rng(100), 'thief', 'doe');
+    expect(needsFor(doe)).toBe('slap');
+    doe.age = 2.5;
+    expect(needsFor(doe)).toBe('pinch');
+  });
+});

@@ -36,7 +36,7 @@ export const weekOf = (day: number) => Math.floor((day - 1) / DAYS.length) + 1;
 export const isFriday = (day: number) => (day - 1) % DAYS.length === DAYS.length - 1;
 
 /** The kinds of grabby hand, and the classmates who pretend to trade. */
-export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal' | 'mitten' | 'sticky';
+export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal' | 'mitten' | 'sticky' | 'superintendent' | 'board' | 'doe';
 
 export interface RoleInfo {
   id: Role;
@@ -57,7 +57,37 @@ export const ROLES: readonly RoleInfo[] = [
   { id: 'president', name: 'Class President', from: 5, weight: 1.2, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
   { id: 'principal', name: 'The Principal', from: 5, weight: 0, intro: '📢 It’s Friday: the Principal visits during show and tell. Eminent domain. Eight slaps to stop.' },
   { id: 'fraud', name: 'Monopoly-money kid', from: 6, weight: 1.2, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
+  // The later Friday bosses (they come on a schedule; see BOSSES)
+  { id: 'superintendent', name: 'The Superintendent', from: 999, weight: 0, intro: '' },
+  { id: 'board', name: 'The School Board', from: 999, weight: 0, intro: '' },
+  { id: 'doe', name: 'The Department of Education', from: 999, weight: 0, intro: '' },
 ];
+
+/** Friday's boss, a bigger one each week. */
+export interface Boss {
+  role: Role;
+  title: string;
+  warning: string;
+  /** Hits to send it away, and the share of the pile it takes if it gets there. */
+  hp: number;
+  take: number;
+}
+
+export const BOSSES: readonly Boss[] = [
+  { role: 'principal', title: 'THE PRINCIPAL', warning: 'Eminent domain: it takes 30% of your pile. Eight slaps to send it away.', hp: 8, take: 0.3 },
+  { role: 'superintendent', title: 'THE SUPERINTENDENT', warning: 'Comes with a Hall Monitor escort, and calls in more as you slap it. Ten slaps. Takes 35%.', hp: 10, take: 0.35 },
+  { role: 'board', title: 'THE SCHOOL BOARD', warning: 'Three members, from three directions. Four slaps each. Each one takes 15%.', hp: 4, take: 0.15 },
+  { role: 'doe', title: 'THE DEPARTMENT OF EDUCATION', warning: 'Switches between needing slaps and needing pinches (right-click). Fourteen hits. Takes 40%.', hp: 14, take: 0.4 },
+];
+
+/** This week's boss (the Department of Education keeps coming back, tougher every week). */
+export const bossFor = (week: number): Boss => {
+  const b = BOSSES[Math.min(week, BOSSES.length) - 1];
+  return week > BOSSES.length ? { ...b, hp: b.hp + 3 * (week - BOSSES.length) } : b;
+};
+
+export const isBoss = (r: Role | null | undefined) => !!r && BOSSES.some((b) => b.role === r);
+export const bossInfo = (r: Role) => BOSSES.find((b) => b.role === r);
 
 /** How the special input each troublemaker needs (most just need a slap). */
 export const NEEDS: Partial<Record<Role, 'pinch' | 'hold'>> = { mitten: 'pinch', sticky: 'hold' };

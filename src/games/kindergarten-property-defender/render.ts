@@ -2,8 +2,8 @@
 // teacher on the left, Jack behind his ancap desk on the right, the block pile
 // in the middle, and long stretchy arms reaching in for it.
 
-import { HOLD_TIME, handPosition, ITEMS, pileAt, type GameState, type Hand } from './logic.ts';
-import { NEEDS, periodAt, roleInfo, type Role } from './school.ts';
+import { HOLD_TIME, handPosition, ITEMS, needsFor, pileAt, slapRadius, type GameState, type Hand } from './logic.ts';
+import { isBoss, NEEDS, periodAt, roleInfo, type Role } from './school.ts';
 
 export interface Floater {
   x: number;
@@ -42,6 +42,8 @@ export interface Scene {
 }
 
 /** Each troublemaker's sleeve, and what it carries. */
+const BOSS_LABELS: Partial<Record<Role, string>> = { principal: 'THE PRINCIPAL', superintendent: 'THE SUPERINTENDENT', board: 'SCHOOL BOARD', doe: 'DEPT. OF EDUCATION' };
+
 const ROLE_LOOK: Record<Role, { color: string; badge?: string; scale?: number }> = {
   grabby: { color: '#d64545' },
   monitor: { color: '#e67e22', badge: '🦺' },
@@ -50,6 +52,9 @@ const ROLE_LOOK: Record<Role, { color: string; badge?: string; scale?: number }>
   fraud: { color: '#2f9e57' },
   principal: { color: '#34495e', badge: '👔', scale: 1.8 },
   mitten: { color: '#1f618d' },
+  superintendent: { color: '#2c3e50', badge: '🏛️', scale: 1.9 },
+  board: { color: '#5d6d7e', badge: '📋', scale: 1.4 },
+  doe: { color: '#1b2631', badge: '🦅', scale: 2 },
   sticky: { color: '#b9770e', badge: '🍯' },
 };
 
@@ -359,6 +364,24 @@ function drawDeskItems(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
   }
 }
 
+/** A crayon fence in front of the pile: one stroke for each grab it'll still stop. */
+function drawFence(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
+  const pile = pileAt(s);
+  const size = blockSize(s);
+  const colors = ['#e74c3c', '#3498db', '#27ae60'];
+  for (let k = 0; k < Math.min(3, s.fence); k++) {
+    const pts: [number, number][] = [];
+    const rx = size * (4.4 + k * 0.5);
+    const ry = size * (2.6 + k * 0.35);
+    for (let i = 0; i <= 18; i++) {
+      const a = Math.PI + (i / 18) * Math.PI;
+      const zig = i % 2 ? size * 0.25 : -size * 0.25;
+      pts.push([pile.x + Math.cos(a) * rx, pile.y + size * 1.4 + Math.sin(a) * ry + zig]);
+    }
+    stroke(ctx, pts, Math.max(3, size * 0.14), t, 600 + k * 40, colors[k], 1.5);
+  }
+}
+
 function drawPile(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
   const pile = pileAt(s);
   const size = blockSize(s);
@@ -412,16 +435,17 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
     }
   }
   if (look?.badge && thief) emoji(ctx, look.badge, at.x + r * 1.1, at.y - r * 1.1, r * 1.1);
-  if (hand.role === 'principal' && !hand.slapped) {
+  if (isBoss(hand.role) && !hand.slapped) {
     ctx.font = `bold ${Math.round(Math.max(12, u * 0.3))}px ${FONT}`;
     ctx.fillStyle = INK;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('THE PRINCIPAL', at.x, at.y - r * 2.6);
+    ctx.fillText(BOSS_LABELS[hand.role!] ?? '', at.x, at.y - r * 2.6);
   }
   // For their first couple of days, the special ones say how to beat them.
-  const needs = hand.role ? NEEDS[hand.role] : undefined;
-  if (needs && !hand.slapped && s.wave <= roleInfo(hand.role!).from + 1) {
+  // The Department of Education always shows what it needs right now (it keeps changing).
+  const needs = hand.role === 'doe' ? (needsFor(hand) === 'pinch' ? 'pinch' : undefined) : hand.role ? NEEDS[hand.role] : undefined;
+  if (needs && !hand.slapped && (hand.role === 'doe' || s.wave <= roleInfo(hand.role!).from + 1)) {
     ctx.font = `bold ${Math.round(Math.max(11, u * 0.26))}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -432,7 +456,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
     ctx.fillStyle = color;
     ctx.fillText(label, at.x, at.y - r * 2.1);
   }
-  if (hand.role === 'mitten') {
+  if (hand.role === 'mitten' || (hand.role === 'doe' && needsFor(hand) === 'pinch')) {
     // A big oven mitt: slaps bounce off it.
     const dir = Math.atan2(at.y - hand.rootY, at.x - hand.rootX);
     ctx.save();
@@ -616,6 +640,7 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   drawTeacher(ctx, s, t, scolding);
   drawBuildings(ctx, s, scene);
   drawPile(ctx, s, t);
+  if (s.fence > 0) drawFence(ctx, s, t);
   drawJack(ctx, s, scene);
   drawDeskItems(ctx, s, t);
   // Leaving hands under reaching ones, so the dangerous ones are on top.
@@ -623,6 +648,18 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   for (const hand of s.hands) if (hand.state === 'reaching') drawHand(ctx, s, hand, scene);
   // Nap time: lights out, except around the pile (and wherever you're pointing).
   if (s.phase === 'playing' && periodAt(s.waveTime).id === 'nap') drawDark(ctx, s, scene);
+  // Sugar rush: show how far a slap reaches
+  if (s.rush > 0 && scene.pointer && s.phase === 'playing') {
+    ctx.beginPath();
+    ctx.arc(scene.pointer.x, scene.pointer.y, slapRadius(s), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(46, 204, 113, 0.12)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30, 132, 73, 0.6)';
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   for (const b of scene.bubbles) if (b.until > t) drawBubble(ctx, s, b, t);
   drawFloaters(ctx, s, scene);
   drawBanner(ctx, s, scene);

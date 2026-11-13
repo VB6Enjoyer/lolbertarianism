@@ -21,6 +21,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'fraud', icon: '💵', name: 'Fraud Is Aggression', description: 'Slap the Monopoly-money kid.' },
   { id: 'president', icon: '🗳️', name: 'Vote With Your Hands', description: 'Slap the Class President before the tax comes in.' },
   { id: 'principal', icon: '📢', name: 'No Eminent Domain', description: 'Send the Principal away.' },
+  { id: 'superintendent', icon: '🏛️', name: 'District Overruled', description: 'Send the Superintendent away.' },
+  { id: 'board', icon: '📋', name: 'Motion Denied', description: 'Send all three School Board members away.' },
+  { id: 'doe', icon: '🦅', name: 'Abolish It', description: 'Send the Department of Education away.' },
+  { id: 'shout', icon: '📢', name: 'Property Rights!', description: 'Shout PROPERTY RIGHTS! with a full meter.' },
+  { id: 'shout-5', icon: '🌪️', name: 'Hurricane Jack', description: 'Blow away 5 or more hands with one shout.' },
+  { id: 'item', icon: '🎒', name: 'Utility Maximizer', description: 'Use something from your stash instead of selling it.' },
   { id: 'mitten', icon: '🧤', name: 'Oven Mitts Off', description: 'Pinch away a pair of Oven Mitts.' },
   { id: 'sticky', icon: '🍯', name: 'Pry Bar', description: 'Pry Sticky Fingers off your pile.' },
   // Trading

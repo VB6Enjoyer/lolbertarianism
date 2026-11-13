@@ -117,9 +117,79 @@ body {
     text-transform: none;
 }
 
-.stash-stat b {
+.stash-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
     min-width: 2em;
     font-size: 16px;
+}
+
+.stash-items .item {
+    padding: 1px 6px;
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    background: #fff8c4;
+    font: 16px var(--font);
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.stash-items .item:not(:disabled):hover {
+    transform: translateY(-2px) rotate(-3deg);
+}
+
+.stash-items .item:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.shout-button {
+    position: relative;
+    display: grid;
+    align-content: center;
+    gap: 3px;
+    min-width: 150px;
+    padding: 4px 10px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    background: #fff;
+    color: var(--muted);
+    font: bold 13px var(--font);
+    cursor: pointer;
+}
+
+.shout-button i {
+    display: block;
+    height: 8px;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.shout-button i b {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #8e44ad;
+    transition: width 0.2s;
+}
+
+.shout-button:disabled {
+    cursor: default;
+}
+
+.shout-button.ready {
+    background: #f5e6ff;
+    color: #6c3483;
+    animation: shout-ready 0.6s infinite alternate;
+}
+
+@keyframes shout-ready {
+    to {
+        transform: rotate(-2deg) scale(1.04);
+        box-shadow: 0 0 0 4px rgba(142, 68, 173, 0.35);
+    }
 }
 
 .icon-button {
@@ -290,7 +360,13 @@ body {
     }
 
     .stash-stat {
-        display: none;
+        order: 6;
+        flex: 1;
+    }
+
+    .shout-button {
+        order: 7;
+        min-width: 120px;
     }
 
     .wave-stat {

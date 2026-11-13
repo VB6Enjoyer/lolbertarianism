@@ -2,9 +2,9 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
-import { build, CONFIG, handPosition, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, slap, slapRadius, spawnHand, step, type GameEvent, type GameState } from './logic.ts';
+import { build, CONFIG, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type ItemId } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
-import { dayName, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
+import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -19,6 +19,8 @@ const els = {
   waveBar: byId('wave-bar'),
   combo: byId('combo'),
   stash: byId('stash'),
+  shout: byId<HTMLButtonElement>('shout'),
+  meter: byId('meter'),
   mute: byId<HTMLButtonElement>('mute'),
   title: byId('title'),
   start: byId<HTMLButtonElement>('start'),
@@ -111,7 +113,21 @@ const LINES = {
   president: ['Democracy has spoken!', 'The majority voted for your blocks!', 'It’s only fair, Jack.'],
   principal: ['This land is needed for a new nap mat.', 'Eminent domain, young man.', 'It’s for the common good.'],
   monitor: ['Just following orders!', 'Rules are rules!', 'I’m writing you up!'],
+  superintendent: ['District policy, young man.', 'This comes from the top.', 'For the children. All of them. Except you.'],
+  board: ['The board has voted.', 'Motion carried!', 'All in favor? Your blocks are ours.'],
+  doe: ['Federal mandate!', 'Your blocks are now a national priority.', 'We’re from the government. We’re here to help.'],
+  items: {
+    cookie: 'Cookies for everyone! Now freeze.',
+    juice: 'SUGAR RUSH!',
+    slime: 'Enjoy the slime, statists.',
+    dino: 'RAWR! Get off my property!',
+    car: 'Look, a toy car! Go get it!',
+    yoyo: 'Walk the dog… into your face.',
+    crayons: 'A fence. Like the Founders intended.',
+    card: 'Shiny card for a gold star? Deal.',
+  } as Record<string, string>,
 };
+const BOSS_STEAL: Partial<Record<Role, string>> = { principal: 'EMINENT DOMAIN!', superintendent: 'DISTRICT POLICY!', board: 'THE BOARD VOTED!', doe: 'FEDERAL MANDATE!' };
 
 // ---------------------------------------------------------------------------
 // The game
@@ -156,8 +172,8 @@ function handle(e: GameEvent) {
       if (e.hand.role === 'fraud') {
         float(at.x, at.y, `FRAUD! +${e.points}`, '#c0392b', true);
         say('jack', pick(LINES.fraudCaught));
-      } else if (e.hand.role === 'principal') {
-        float(at.x, at.y, `THE PRINCIPAL RETREATS! +${e.points}`, '#c0392b', true);
+      } else if (isBoss(e.hand.role)) {
+        float(at.x, at.y, `${e.hand.role === 'board' ? 'MOTION DENIED!' : 'BOSS RETREATS!'} +${e.points}`, '#c0392b', true);
         say('jack', 'Not on my property!');
         scene.shake = 0.4;
       } else {
@@ -193,23 +209,24 @@ function handle(e: GameEvent) {
     case 'steal': {
       play('steal');
       const role = e.hand.role;
-      const label = role === 'fraud' ? `💵 Monopoly money?! −${e.blocks}🧱` : role === 'president' ? `🗳️ 10% TAX −${e.blocks}🧱` : role === 'principal' ? `EMINENT DOMAIN! −${e.blocks}🧱` : `−${e.blocks}🧱`;
+      const label = role === 'fraud' ? `💵 Monopoly money?! −${e.blocks}🧱` : role === 'president' ? `🗳️ 10% TAX −${e.blocks}🧱` : isBoss(role) ? `${BOSS_STEAL[role!]} −${e.blocks}🧱` : `−${e.blocks}🧱`;
       float(pile.x, pile.y, label, '#c0392b', true);
       if (role === 'fraud') say('kid', pick(LINES.fraudGotAway), handPosition(e.hand));
       else if (role === 'president') say('teacher', pick(LINES.president));
       else if (role === 'principal') say('teacher', pick(LINES.principal));
+      else if (role === 'superintendent' || role === 'board' || role === 'doe') say('teacher', pick(LINES[role]));
       else if (Math.random() < 0.45) say('teacher', pick(LINES.teacherSteal));
-      scene.shake = role === 'principal' ? 0.6 : 0.2;
+      scene.shake = isBoss(role) ? 0.6 : 0.2;
       break;
     }
     case 'period': {
       // The bell: what period it is (and who's new today, at the start of the day)
       const fresh = e.period.id === 'circle' ? newToday(state.wave).filter((r) => r.id !== 'principal') : [];
-      const principal = e.period.id === 'show' && isFriday(state.wave);
+      const boss = e.period.id === 'show' && isFriday(state.wave) ? bossFor(weekOf(state.wave)) : null;
       scene.banner = {
-        text: principal ? '📢 THE PRINCIPAL IS COMING' : e.period.id === 'circle' ? `${dayName(state.wave)}: ${e.period.icon} ${e.period.name}` : `${e.period.icon} ${e.period.name}!`,
-        sub: principal ? 'Eminent domain: it takes 30% of your pile. Eight slaps to send it away.' : fresh.map((r) => r.intro).join(' ') || undefined,
-        until: scene.time + (fresh.length || principal ? 4.5 : 2),
+        text: boss ? `📢 ${boss.title} IS COMING` : e.period.id === 'circle' ? `${dayName(state.wave)}: ${e.period.icon} ${e.period.name}` : `${e.period.icon} ${e.period.name}!`,
+        sub: boss ? boss.warning : fresh.map((r) => r.intro).join(' ') || undefined,
+        until: scene.time + (fresh.length || boss ? 4.5 : 2),
       };
       say('teacher', e.period.line);
       if (e.period.id === 'recess') play('wave');
@@ -222,6 +239,33 @@ function handle(e: GameEvent) {
       float(at.x, at.y, hint, '#1f618d');
       break;
     }
+    case 'use': {
+      play('recover');
+      float(pile.x, pile.y - state.h * 0.12, `${ITEMS[e.item].icon} ${e.hit ? `×${e.hit}` : ''}`.trim(), '#1e8449', true);
+      say('jack', LINES.items[e.item] ?? 'Mine!');
+      break;
+    }
+    case 'shout':
+      play('wave');
+      scene.shake = 0.5;
+      scene.banner = { text: '📢 PROPERTY RIGHTS!', sub: e.hit ? `${e.hit} hand${e.hit === 1 ? '' : 's'} blown away` : 'Nobody to blow away. Still felt good.', until: scene.time + 1.6 };
+      say('jack', 'PROPERTY RIGHTS!!!');
+      break;
+    case 'blown': {
+      const at = handPosition(e.hand);
+      float(at.x, at.y, `WHOOSH! +${e.points}`, '#8e44ad');
+      break;
+    }
+    case 'fenced': {
+      const at = handPosition(e.hand);
+      play('miss');
+      float(at.x, at.y, '🖍️ Fenced off!', '#c0392b');
+      break;
+    }
+    case 'meter':
+      play('recover');
+      float(state.w / 2, state.h * 0.35, scene.touch ? '📢 PROPERTY RIGHTS! is ready: tap the button' : '📢 PROPERTY RIGHTS! is ready: press Space', '#8e44ad', true);
+      break;
     case 'report':
     case 'allowance':
       break;
@@ -291,7 +335,7 @@ function handle(e: GameEvent) {
 // ---------------------------------------------------------------------------
 
 /** Counters for this game: interest earned, days in a row without a violation, blocks stolen when nap time began. */
-let run: { interest: number; cleanDays: number; napStolen: number | null } = { interest: 0, cleanDays: 0, napStolen: null };
+let run: { interest: number; cleanDays: number; napStolen: number | null; board: number } = { interest: 0, cleanDays: 0, napStolen: null, board: 0 };
 
 function award(id: string) {
   if (unlocked.has(id)) return;
@@ -321,6 +365,12 @@ function checkAchievements(e: GameEvent) {
       if (e.hand.role === 'president') award('president');
       if (e.hand.role === 'principal') award('principal');
       if (e.hand.role === 'mitten') award('mitten');
+      if (e.hand.role === 'superintendent') award('superintendent');
+      if (e.hand.role === 'doe') award('doe');
+      if (e.hand.role === 'board') {
+        run.board++;
+        if (run.board >= 3) award('board');
+      }
       if (e.hand.role === 'sticky') award('sticky');
       break;
     case 'guard':
@@ -342,6 +392,21 @@ function checkAchievements(e: GameEvent) {
       break;
     case 'violation':
       award('my-bad');
+      break;
+    case 'blown':
+      if (e.hand.role === 'board') {
+        run.board++;
+        if (run.board >= 3) award('board');
+      }
+      if (e.hand.role === 'superintendent') award('superintendent');
+      if (e.hand.role === 'doe') award('doe');
+      break;
+    case 'shout':
+      award('shout');
+      if (e.hit >= 5) award('shout-5');
+      break;
+    case 'use':
+      award('item');
       break;
     case 'star':
       award('redemption');
@@ -430,6 +495,47 @@ byId('hide-achievements').addEventListener('click', () => {
   }
 });
 
+/** The stash's groups (one button per kind of item), in the order they were first got. */
+const stashGroups = () => {
+  const counts = new Map<ItemId, number>();
+  for (const o of state.stash) counts.set(o.item, (counts.get(o.item) ?? 0) + 1);
+  return [...counts];
+};
+let stashKey = '';
+
+function renderStash() {
+  const groups = stashGroups();
+  const key = groups.map(([id, n]) => `${id}${n}`).join() + state.phase + state.stars;
+  if (key === stashKey) return;
+  stashKey = key;
+  els.stash.replaceChildren(
+    ...groups.map(([id, n], i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'item';
+      b.textContent = `${ITEMS[id].icon}${n > 1 ? `×${n}` : ''}`;
+      b.title = `${ITEMS[id].name}: ${id === 'money' ? 'worthless' : ITEM_USES[id]} Tap (or press ${i + 1}) to use it, or sell it to a classmate who wants it.`;
+      b.disabled = state.phase !== 'playing' || (id === 'card' && state.stars >= CONFIG.maxStars);
+      b.addEventListener('click', () => use(id));
+      return b;
+    }),
+  );
+  if (!groups.length) els.stash.textContent = '—';
+}
+
+function use(item: ItemId) {
+  if (paused || !useItem(state, item)) return;
+  for (const ev of state.events) handle(ev);
+  state.events = [];
+}
+
+function shoutNow() {
+  if (paused || !shout(state)) return;
+  for (const ev of state.events) handle(ev);
+  state.events = [];
+}
+els.shout.addEventListener('click', shoutNow);
+
 function renderHud() {
   els.blocks.textContent = String(state.blocks);
   els.stars.textContent = '⭐'.repeat(state.stars) + '☆'.repeat(Math.max(0, CONFIG.maxStars - state.stars));
@@ -442,10 +548,11 @@ function renderHud() {
   els.waveBar.style.width = `${Math.min(100, (state.waveTime / CONFIG.waveLength) * 100)}%`;
   const m = multiplier(state.combo);
   els.combo.textContent = state.combo >= 2 ? `${state.combo} in a row${m > 1 ? ` · ×${m}` : ''}` : '';
-  const counts = new Map<string, number>();
-  for (const o of state.stash) counts.set(o.item, (counts.get(o.item) ?? 0) + 1);
-  els.stash.textContent = [...counts].map(([id, n]) => `${ITEMS[id as keyof typeof ITEMS].icon}${n > 1 ? `×${n}` : ''}`).join(' ');
-  els.stash.title = state.stash.length ? `Your stash: classmates may want to buy these (for more than you paid)` : '';
+  renderStash();
+  els.meter.style.width = `${(state.meter / CONFIG.meterMax) * 100}%`;
+  const ready = state.meter >= CONFIG.meterMax && state.phase === 'playing';
+  els.shout.disabled = !ready;
+  els.shout.classList.toggle('ready', ready);
 }
 
 let last = performance.now();
@@ -537,7 +644,7 @@ document.addEventListener('visibilitychange', () => {
 function startGame() {
   getAudioContext();
   state = newGame(els.canvas.clientWidth, els.canvas.clientHeight);
-  run = { interest: 0, cleanDays: 0, napStolen: null };
+  run = { interest: 0, cleanDays: 0, napStolen: null, board: 0 };
   scene.floaters = [];
   scene.bubbles = [];
   els.title.hidden = true;
@@ -643,6 +750,20 @@ els.next.addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
+  const overlay = !els.title.hidden || !els.pause.hidden || !els.over.hidden || !els.achievements.hidden;
+  if (!overlay && state.phase === 'playing') {
+    if (e.key === ' ') {
+      e.preventDefault();
+      shoutNow();
+      return;
+    }
+    const n = Number(e.key);
+    if (n >= 1 && n <= 9) {
+      const group = stashGroups()[n - 1];
+      if (group) use(group[0]);
+      return;
+    }
+  }
   if (e.key !== 'Enter' && e.key !== ' ') return;
   if (!els.title.hidden) els.start.click();
   else if (!els.pause.hidden) els.next.click();
