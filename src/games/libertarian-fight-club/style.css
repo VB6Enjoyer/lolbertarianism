@@ -68,6 +68,11 @@ body {
     font-size: 28px;
 }
 
+.brand > div {
+    max-width: 175px;
+    line-height: 1.2;
+}
+
 .brand small {
     display: block;
     font-weight: 400;
@@ -92,11 +97,17 @@ body {
 }
 
 .venue-line b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 14px;
     cursor: help;
 }
 
 .night-label {
+    flex: none;
+    white-space: nowrap;
     font-size: 12px;
     color: var(--muted);
 }
@@ -208,8 +219,8 @@ body {
     display: grid;
     place-items: center;
     gap: 1px;
-    min-width: 54px;
-    padding: 5px 8px;
+    min-width: 48px;
+    padding: 5px 7px;
     border: 1px solid #5a5148;
     border-radius: 10px;
     background: var(--panel-2);
@@ -498,17 +509,6 @@ kbd {
     flex-wrap: wrap;
     gap: 6px;
     align-items: baseline;
-}
-
-.pips {
-    font-size: 11px;
-    letter-spacing: 1px;
-    color: var(--gold);
-}
-
-.pips i {
-    font-style: normal;
-    color: #4a433c;
 }
 
 /* Hovering a bet lights up the lobster it's on. */
@@ -2018,6 +2018,10 @@ kbd {
         display: none;
     }
 
+    .brand > div {
+        max-width: none;
+    }
+
     .venue {
         width: 100%;
     }
@@ -2359,4 +2363,740 @@ kbd {
 .broke-choices {
     display: grid;
     gap: 10px;
+}
+
+/* --- Tooltips on touch screens --- */
+.tap-tip {
+    position: fixed;
+    z-index: 70;
+    max-width: min(280px, calc(100vw - 16px));
+    padding: 8px 11px;
+    border: 1px solid var(--gold);
+    border-radius: 9px;
+    background: #12110f;
+    color: var(--text);
+    font: 13px/1.4 var(--font);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    animation: say 0.15s ease-out;
+}
+
+.tap-tip[hidden] {
+    display: none;
+}
+
+/* --- Odds that moved --- */
+.bet-button .move {
+    margin-left: 6px;
+    font: bold 13px var(--font);
+    font-style: normal;
+    vertical-align: middle;
+}
+
+.bet-button .move small {
+    font-size: 10px;
+    font-weight: normal;
+    opacity: 0.85;
+}
+
+.bet-button .move.up {
+    color: #9ff0aa;
+}
+
+.bet-button .move.down {
+    color: #ffb3a8;
+}
+
+/* --- Little extras: repeat props, the speed button, a link-style button --- */
+.repeat-button {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 9px 12px;
+    border: 1px dashed var(--gold);
+    border-radius: 9px;
+    background: #2f2612;
+    color: var(--gold);
+    font: bold 13px var(--font);
+    cursor: pointer;
+}
+
+.repeat-button:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-style: solid;
+}
+
+.after .speed-button {
+    flex: 0 1 auto;
+}
+
+.link-button {
+    justify-self: center;
+    padding: 2px 6px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font: 12px var(--font);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.link-button:hover {
+    color: var(--text);
+}
+
+/* --- Settings --- */
+.setting {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid #3d3731;
+}
+
+.setting b {
+    display: block;
+}
+
+.setting small {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.segmented {
+    display: flex;
+    flex: none;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 10px;
+    background: #1f1c19;
+}
+
+.segmented button {
+    min-width: 48px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font: bold 14px var(--font);
+    cursor: pointer;
+}
+
+.segmented button:hover {
+    background: #2f2a25;
+    color: var(--text);
+}
+
+.segmented button.on {
+    background: var(--gold);
+    color: #2a1d00;
+}
+
+.panel .setting + .panel-buttons {
+    margin-top: 16px;
+}
+
+/* --- Your record --- */
+.panel-sub {
+    margin: 18px 0 4px;
+    text-align: center;
+    color: var(--gold);
+    font-size: 20px;
+}
+
+.stats-board {
+    display: grid;
+    gap: 10px;
+}
+
+.ledger {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.ledger th,
+.ledger td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #3d3731;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.ledger thead th {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: help;
+}
+
+.ledger tbody th {
+    text-align: left;
+    font-weight: normal;
+}
+
+.ledger td {
+    font-family: var(--mono);
+}
+
+.ledger td.up {
+    color: var(--green);
+}
+
+.ledger td.down {
+    color: #ff8a80;
+}
+
+.ledger tr.total th,
+.ledger tr.total td {
+    border-bottom: none;
+    font-weight: bold;
+}
+
+.highlights {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.highlights div {
+    display: grid;
+    gap: 2px;
+    padding: 10px;
+    border-radius: 10px;
+    background: var(--panel-2);
+}
+
+.highlights small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.highlights b {
+    font: bold 18px var(--mono);
+    color: var(--gold);
+}
+
+.highlights span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+@media (max-width: 680px) {
+    .highlights {
+        grid-template-columns: 1fr;
+    }
+
+    .ledger th,
+    .ledger td {
+        padding: 5px 4px;
+        font-size: 11.5px;
+    }
+
+    .setting {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .bet-button .move small {
+        display: none;
+    }
+}
+
+/* --- Tonight's twist --- */
+.event-chip {
+    justify-self: start;
+    max-width: 100%;
+    padding: 2px 9px;
+    border: 1px solid rgba(206, 147, 216, 0.5);
+    border-radius: 999px;
+    background: rgba(206, 147, 216, 0.12);
+    color: #e1bee7;
+    font: bold 11px/16px var(--font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+}
+
+.event-chip[hidden] {
+    display: none;
+}
+
+/* --- The ring announcer --- */
+.announcer {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    z-index: 4;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: min(620px, calc(100% - 24px));
+    padding: 8px 14px;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: rgba(18, 17, 15, 0.9);
+    transform: translateX(-50%);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+.announcer[hidden] {
+    display: none;
+}
+
+.announcer span {
+    font-size: 20px;
+}
+
+.announcer p {
+    margin: 0;
+    color: var(--text);
+    font: bold 14px/1.4 var(--font);
+}
+
+.announcer.show p {
+    animation: announce-in 0.35s ease-out;
+}
+
+@keyframes announce-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
+/* --- The cops --- */
+.arena.raid::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    animation: sirens 0.8s steps(1) infinite;
+}
+
+@keyframes sirens {
+    0% {
+        box-shadow: inset 0 0 90px 20px rgba(229, 57, 53, 0.55);
+    }
+
+    50% {
+        box-shadow: inset 0 0 90px 20px rgba(30, 136, 229, 0.55);
+    }
+}
+
+/* --- The fix --- */
+.fix {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px dashed #ce93d8;
+    border-radius: 10px;
+    background: rgba(206, 147, 216, 0.08);
+    font-size: 13px;
+}
+
+.fix p {
+    margin: 0;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+.fix p b {
+    color: var(--text);
+}
+
+.fix.done {
+    border-style: solid;
+    color: #e1bee7;
+}
+
+.fix .dive {
+    justify-self: start;
+    border-color: #ce93d8;
+}
+
+/* --- Secret achievements --- */
+.achievement.secret.locked {
+    border: 1px dashed #5a5148;
+}
+
+@media (max-width: 680px) {
+    .announcer {
+        top: 44px;
+        padding: 6px 10px;
+    }
+
+    .announcer p {
+        font-size: 12px;
+    }
+}
+
+/* --- The cup --- */
+.bracket {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.round-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.round-matches {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    gap: 6px;
+}
+
+.round-col h4 {
+    margin: 0;
+    color: var(--muted);
+    font: bold 11px var(--font);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.match {
+    display: grid;
+    border: 1px solid #3d3731;
+    border-radius: 8px;
+    background: #211e1a;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.match span {
+    padding: 4px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.match span + span {
+    border-top: 1px solid #3d3731;
+}
+
+.match span.won {
+    color: var(--gold);
+    font-weight: bold;
+}
+
+.match span.out {
+    color: #7d7366;
+    text-decoration: line-through;
+}
+
+.match.now {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.3);
+}
+
+.match em,
+.champ em {
+    color: #7d7366;
+}
+
+.champ {
+    padding: 8px;
+    border: 1px dashed #5a5148;
+    border-radius: 8px;
+    color: var(--muted);
+    font: bold 13px var(--font);
+    text-align: center;
+}
+
+.champ.crowned {
+    border: 2px solid var(--gold);
+    background: #3a3015;
+    color: var(--gold);
+}
+
+.futures {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 6px;
+}
+
+.future {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid #5a5148;
+    border-radius: 9px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: 13px var(--font);
+    text-align: left;
+    cursor: pointer;
+}
+
+.future span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.future b {
+    color: var(--gold);
+    font: bold 15px var(--mono);
+}
+
+.future:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-color: var(--gold);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.35);
+}
+
+.your-futures {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    font-size: 13px;
+}
+
+/* --- The regulars' table --- */
+.rivals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    font-size: 12px;
+}
+
+.rivals-label {
+    color: var(--muted);
+    font: bold 11px var(--font);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: help;
+}
+
+.rival {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px 2px 3px;
+    border-radius: 999px;
+    background: #211e1a;
+    color: var(--muted);
+}
+
+.rival i {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #3d3731;
+    color: var(--text);
+    font: bold 10px var(--font);
+}
+
+.rival.you {
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.rival b.up {
+    color: var(--green);
+}
+
+.rival b.down {
+    color: #ff8a80;
+}
+
+.ledger.season td:last-child {
+    min-width: 7em;
+}
+
+@media (max-width: 680px) {
+    .bracket {
+        gap: 5px;
+    }
+
+    .match span {
+        padding: 3px 5px;
+        font-size: 10.5px;
+    }
+}
+
+/* The fish market's lot names can run long: let them wrap. */
+.offer .card-head > div {
+    min-width: 0;
+}
+
+.offer .card-head b {
+    white-space: normal;
+    line-height: 1.2;
+}
+
+/* --- The stable --- */
+.slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 7px 12px;
+    border: 1px solid #5a5148;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: bold 13px var(--font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.slot em {
+    color: var(--muted);
+    font-style: normal;
+    font-weight: normal;
+}
+
+.slot.on {
+    border-color: var(--gold);
+    background: #3a3015;
+    box-shadow: 0 0 0 2px var(--gold) inset;
+}
+
+.slot.market {
+    border-style: dashed;
+}
+
+.slot.locked {
+    border-style: dashed;
+    color: #7d7366;
+    cursor: help;
+}
+
+.slot:not(.locked):hover {
+    transform: translateY(-2px);
+    border-color: var(--gold);
+}
+
+.farewell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #3d3731;
+}
+
+.farewell .sell,
+.farewell .retire {
+    color: var(--muted);
+}
+
+/* --- Pick your fighter --- */
+.pick-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.pick-grid .panel-sub {
+    margin-top: 0;
+    text-align: left;
+    font-size: 15px;
+}
+
+.pick-grid .mine {
+    display: grid;
+    gap: 8px;
+}
+
+.pick-choices {
+    display: grid;
+    gap: 8px;
+}
+
+.choice {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid #5a5148;
+    border-top: 4px solid var(--shell);
+    border-radius: 10px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: 13px var(--font);
+    text-align: left;
+    cursor: pointer;
+}
+
+.choice:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-color: var(--gold);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.matchup-pair {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 4px 8px;
+}
+
+.matchup-pair small {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+/* --- The hall of fame --- */
+.hall h3 {
+    margin: 0 0 6px;
+    color: var(--gold);
+    font-size: 15px;
+}
+
+.hall {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.hall h3 {
+    width: 100%;
+}
+
+.plaque {
+    padding: 4px 10px;
+    border: 1px solid #8a6a1c;
+    border-radius: 6px;
+    background: linear-gradient(#3a3015, #2a2410);
+    font-size: 12px;
+}
+
+@media (max-width: 680px) {
+    .pick-grid {
+        grid-template-columns: 1fr;
+    }
 }

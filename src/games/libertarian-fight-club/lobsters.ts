@@ -120,6 +120,9 @@ export const TRAITS: readonly Trait[] = [
 
 export const traitById = (id: TraitId) => TRAITS.find((t) => t.id === id)!;
 
+/** Every argument a lobster can make: its faction's, plus anything it was taught. */
+export const movesOf = (l: Lobster): readonly Move[] => (l.learned ? [...factionById(l.faction).moves, l.learned] : factionById(l.faction).moves);
+
 export interface Lobster {
   id: number;
   name: string;
@@ -140,19 +143,30 @@ export interface Lobster {
   /** A tipster's word on its trait (maybe wrong), and whether you've watched it in the tank. */
   rumor: { trait: TraitId; by: string } | null;
   scouted: boolean;
+  /** An argument it was taught on top of its faction's (your own lobster only). */
+  learned?: Move | null;
 }
 
+/** The arguments anyone can be taught, one per kind. */
+export const TEACHABLE: Record<ArgType, Move> = {
+  moral: { name: 'The Non-Aggression Principle', type: 'moral', power: 1.0 },
+  econ: { name: 'Economic calculation problem', type: 'econ', power: 1.0 },
+  practical: { name: 'It works in Liechtenstein', type: 'practical', power: 1.0 },
+  purity: { name: 'That’s not real libertarianism', type: 'purity', power: 1.0 },
+  meme: { name: 'It’s happening!', type: 'meme', power: 1.0 },
+};
+
 const NAMES: readonly [FactionId, string][] = [
-  ['ancap', 'Murray Rothclaw'], ['ancap', 'Walter Blocklobster'],
-  ['minarchist', 'Ron Pincher'], ['minarchist', 'Robert Nozclaw'],
+  ['ancap', 'Murray Lobbard'], ['ancap', 'Walter Blobster'],
+  ['minarchist', 'Ron Pincher'], ['minarchist', 'Robster Nozick'],
   ['austrian', 'Ludwig von Pinches'], ['austrian', 'Friedrich von Shellek'],
-  ['chicago', 'Milton Freedclaw'], ['chicago', 'Gary Beckclaw'],
-  ['objectivist', 'Ayn Randclaw'], ['objectivist', 'John Galtster'],
-  ['georgist', 'Henry Georgeclaw'],
-  ['agorist', 'SEK III-Claw'],
-  ['hoppean', 'Hans-Hermann Hopster'],
-  ['bleeding-heart', 'Jason Brennaclaw'],
-  ['mises-caucus', 'Big Claw Dave'], ['mises-caucus', 'Redpill Rick'],
+  ['chicago', 'Clawton Shellman'], ['chicago', 'Shelly Becker'],
+  ['objectivist', 'Ayn Claw'], ['objectivist', 'Leobster Peiclawff'],
+  ['georgist', 'Henry Gorge'],
+  ['agorist', 'Lobkin III'],
+  ['hoppean', 'Hans-Shellmann Hopster'],
+  ['bleeding-heart', 'Clawson Shellnnan'],
+  ['mises-caucus', 'Big Claw Dave'], ['mises-caucus', 'Anshella McClawrdle'],
 ];
 
 /** The league's lobsters, each with stats, a trait and a short history. */

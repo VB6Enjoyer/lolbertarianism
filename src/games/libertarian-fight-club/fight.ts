@@ -2,7 +2,7 @@
 // depending on its type and the other faction. It's simulated in one go and
 // main.ts plays the result back.
 
-import { effectiveness, factionById, type ArgType, type Lobster, type Move } from './lobsters.ts';
+import { effectiveness, factionById, movesOf, type ArgType, type Lobster, type Move } from './lobsters.ts';
 
 export const ROUNDS = 3;
 export const EXCHANGES_PER_ROUND = 6;
@@ -114,7 +114,7 @@ export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random
         reveal(side, 'lazy');
         continue;
       }
-      const moves = factionById(me.lobster.faction).moves;
+      const moves = movesOf(me.lobster);
       const move = moves[Math.floor(rng() * moves.length)];
       if (rng() < MISS) {
         events.push({ type: 'miss', side, move });
@@ -160,8 +160,8 @@ export function revealedSides(result: FightResult): Side[] {
   return [...sides];
 }
 
-/** A small fixed-seed generator, so the same question always gets the same answer. */
-function fixedRng(seed: number): () => number {
+/** A small fixed-seed generator, so the same question always gets the same answer (and a fight can be replayed). */
+export function seededRng(seed: number): () => number {
   let x = seed >>> 0;
   return () => {
     x = (x * 1664525 + 1013904223) >>> 0;
@@ -177,7 +177,7 @@ function fixedRng(seed: number): () => number {
  * `from` asks the same question mid-fight (for the live market).
  */
 export function publicChance(a: Lobster, b: Lobster, from: FightState | null = null, sims = 300): number {
-  const rng = fixedRng(a.id * 7919 + b.id * 104729 + a.wins * 31 + b.wins * 17 + (from ? from.round * 1009 + from.hp[0] * 13 + from.hp[1] * 7 : 0) + 1);
+  const rng = seededRng(a.id * 7919 + b.id * 104729 + a.wins * 31 + b.wins * 17 + (from ? from.round * 1009 + from.hp[0] * 13 + from.hp[1] * 7 : 0) + 1);
   let wins = 0;
   for (let i = 0; i < sims; i++) if (simulate(a, b, rng, true, from).winner === 0) wins++;
   let p = (wins + 1) / (sims + 2);
@@ -206,7 +206,7 @@ export function stateAfterRound(a: Lobster, b: Lobster, result: FightResult, rou
 }
 
 /** The argument types a lobster uses, for its card. */
-export const argTypesOf = (l: Lobster): ArgType[] => [...new Set(factionById(l.faction).moves.map((m) => m.type))];
+export const argTypesOf = (l: Lobster): ArgType[] => [...new Set(movesOf(l).map((m) => m.type))];
 
 /** Picks tonight's next bout: two different lobsters, not the same pair as last time. */
 export function pickBout(count: number, rng: () => number, last: [number, number] | null = null): [number, number] {
