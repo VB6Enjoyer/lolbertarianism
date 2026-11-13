@@ -160,8 +160,8 @@ export function revealedSides(result: FightResult): Side[] {
   return [...sides];
 }
 
-/** A small fixed-seed generator, so the same question always gets the same answer. */
-function fixedRng(seed: number): () => number {
+/** A small fixed-seed generator, so the same question always gets the same answer (and a fight can be replayed). */
+export function seededRng(seed: number): () => number {
   let x = seed >>> 0;
   return () => {
     x = (x * 1664525 + 1013904223) >>> 0;
@@ -177,7 +177,7 @@ function fixedRng(seed: number): () => number {
  * `from` asks the same question mid-fight (for the live market).
  */
 export function publicChance(a: Lobster, b: Lobster, from: FightState | null = null, sims = 300): number {
-  const rng = fixedRng(a.id * 7919 + b.id * 104729 + a.wins * 31 + b.wins * 17 + (from ? from.round * 1009 + from.hp[0] * 13 + from.hp[1] * 7 : 0) + 1);
+  const rng = seededRng(a.id * 7919 + b.id * 104729 + a.wins * 31 + b.wins * 17 + (from ? from.round * 1009 + from.hp[0] * 13 + from.hp[1] * 7 : 0) + 1);
   let wins = 0;
   for (let i = 0; i < sims; i++) if (simulate(a, b, rng, true, from).winner === 0) wins++;
   let p = (wins + 1) / (sims + 2);

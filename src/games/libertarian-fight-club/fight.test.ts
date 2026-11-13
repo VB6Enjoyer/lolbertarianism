@@ -418,3 +418,41 @@ describe('fight club: achievements', () => {
     expect([...normalizeUnlocked(['parlay', 'nope', 4])]).toEqual(['parlay']);
   });
 });
+
+describe('fight club: replaying a fight', () => {
+  it('the same seed gives the same fight, so a reload settles the bout you left', async () => {
+    const { seededRng } = await import('./fight.ts');
+    const roster = makeRoster(rng(5));
+    const first = simulate(roster[0], roster[1], seededRng(123456));
+    const again = simulate(roster[0], roster[1], seededRng(123456));
+    expect(again).toEqual(first);
+  });
+});
+
+describe('fight club: your betting record', () => {
+  it('adds up stakes and returns, and keeps the best and worst single bets', async () => {
+    const { emptyLedger, recordBet, ledgerTotal, roi } = await import('./ledger.ts');
+    const l = emptyLedger();
+    recordBet(l, 'winner', 100, 250, 'big one');
+    recordBet(l, 'winner', 100, 0, 'ouch');
+    recordBet(l, 'props', 50, 0, 'small loss');
+    recordBet(l, 'live', 40, 30, 'cashed out at a loss');
+    expect(l.lines.winner).toEqual({ bets: 2, wins: 1, staked: 200, returned: 250 });
+    expect(l.best).toEqual({ amount: 150, text: 'big one' });
+    expect(l.worst).toEqual({ amount: 100, text: 'ouch' });
+    const total = ledgerTotal(l);
+    expect(total).toEqual({ bets: 4, wins: 1, staked: 290, returned: 280 });
+    expect(roi(total)).toBeCloseTo(-10 / 290);
+    expect(roi(l.lines.parlay)).toBeNull();
+  });
+
+  it('saves are cleaned up', async () => {
+    const { normalizeLedger } = await import('./ledger.ts');
+    const l = normalizeLedger({ lines: { winner: { bets: '3', wins: 9, staked: -5, returned: 12.7 } }, best: { amount: 0, text: 'x' }, worst: { amount: 40, text: 'bad' } });
+    expect(l.lines.winner).toEqual({ bets: 3, wins: 3, staked: 0, returned: 12 });
+    expect(l.lines.parlay).toEqual({ bets: 0, wins: 0, staked: 0, returned: 0 });
+    expect(l.best).toBeNull();
+    expect(l.worst).toEqual({ amount: 40, text: 'bad' });
+    expect(normalizeLedger(undefined).cashouts).toBe(0);
+  });
+});

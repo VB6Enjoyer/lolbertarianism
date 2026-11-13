@@ -24,8 +24,9 @@
             <div class="bankroll"><small>BANKROLL</small><b id="bankroll">$500</b></div>
             <nav class="tools" aria-label="Menu">
                 <button id="show-chart" class="tool-button" type="button" title="Which arguments hurt which faction">📖<span>Chart</span></button>
-                <button id="show-achievements" class="tool-button" type="button" title="Achievements">🏅<span>Awards</span></button>
+                <button id="show-achievements" class="tool-button" type="button" title="Your betting record and achievements">🏅<span>Record</span></button>
                 <button id="show-shark" class="tool-button shark-button" type="button" title="Vinny the Fin, loan shark">🦈<span id="shark-label">Vinny</span></button>
+                <button id="show-settings" class="tool-button" type="button" aria-label="Settings" title="Settings">⚙️</button>
                 <button id="mute" class="tool-button" type="button" aria-label="Toggle sound" title="Sound">🔊</button>
             </nav>
         </header>
@@ -92,6 +93,7 @@
             </div>
             <div class="tab-pane" data-tab="props" hidden>
                 <p class="pane-note">Fixed odds from the house on <b>how</b> the fight goes. It reads the matchup chart but can't see hidden traits. Uses your stake below. No cash-out.</p>
+                <button id="props-repeat" type="button" class="repeat-button" hidden></button>
                 <div id="props" class="props"></div>
             </div>
             <div class="tab-pane" data-tab="parlay" hidden>
@@ -139,9 +141,11 @@
                     <button id="live-continue" class="watch-button" type="button">Continue ▶</button>
                     <button id="live-bet-1" class="bet-button right" type="button"></button>
                 </div>
+                <button id="live-off" type="button" class="link-button">Don't pause between rounds from now on</button>
             </div>
             <div class="after" hidden>
                 <button id="skip" class="watch-button" type="button">⏩ Skip to the result <kbd>Space</kbd></button>
+                <button id="speed" class="watch-button speed-button" type="button" title="Fight speed">🐇 Speed 1×</button>
                 <button id="next" class="next-button" type="button" hidden>Next bout ▶</button>
             </div>
         </section>
@@ -164,7 +168,9 @@
         <!-- Achievements -->
         <div id="achievements" class="overlay" hidden>
             <div class="panel wide">
-                <h1>🏅 Achievements</h1>
+                <h1>🏅 Your Record</h1>
+                <div id="stats" class="stats-board"></div>
+                <h2 class="panel-sub">Achievements</h2>
                 <p class="tagline"><span id="achievements-count">0</span> unlocked. Saved in this browser.</p>
                 <div id="achievements-grid" class="achievements-grid"></div>
                 <div class="panel-buttons"><button id="hide-achievements" type="button" class="big-button">Back</button></div>
@@ -182,6 +188,22 @@
                     <button id="shark-repay" type="button" class="big-button">Repay</button>
                     <button id="hide-shark" type="button" class="big-button secondary">Back</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Settings -->
+        <div id="settings" class="overlay" hidden>
+            <div class="panel">
+                <h1>⚙️ Settings</h1>
+                <div class="setting">
+                    <div><b>Fight speed</b><small>How fast fights play out. You can also change it during a fight.</small></div>
+                    <div class="segmented"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="3">3×</button></div>
+                </div>
+                <div class="setting">
+                    <div><b>Live market</b><small>Pause between rounds to bet live or cash out.</small></div>
+                    <div class="segmented"><button type="button" data-live="on">On</button><button type="button" data-live="off">Off</button></div>
+                </div>
+                <div class="panel-buttons"><button id="hide-settings" type="button" class="big-button">Done</button></div>
             </div>
         </div>
 

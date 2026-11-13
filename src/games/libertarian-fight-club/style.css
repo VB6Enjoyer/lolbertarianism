@@ -2360,3 +2360,245 @@ kbd {
     display: grid;
     gap: 10px;
 }
+
+/* --- Tooltips on touch screens --- */
+.tap-tip {
+    position: fixed;
+    z-index: 70;
+    max-width: min(280px, calc(100vw - 16px));
+    padding: 8px 11px;
+    border: 1px solid var(--gold);
+    border-radius: 9px;
+    background: #12110f;
+    color: var(--text);
+    font: 13px/1.4 var(--font);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    animation: say 0.15s ease-out;
+}
+
+.tap-tip[hidden] {
+    display: none;
+}
+
+/* --- Odds that moved --- */
+.bet-button .move {
+    margin-left: 6px;
+    font: bold 13px var(--font);
+    font-style: normal;
+    vertical-align: middle;
+}
+
+.bet-button .move small {
+    font-size: 10px;
+    font-weight: normal;
+    opacity: 0.85;
+}
+
+.bet-button .move.up {
+    color: #9ff0aa;
+}
+
+.bet-button .move.down {
+    color: #ffb3a8;
+}
+
+/* --- Little extras: repeat props, the speed button, a link-style button --- */
+.repeat-button {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 9px 12px;
+    border: 1px dashed var(--gold);
+    border-radius: 9px;
+    background: #2f2612;
+    color: var(--gold);
+    font: bold 13px var(--font);
+    cursor: pointer;
+}
+
+.repeat-button:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-style: solid;
+}
+
+.after .speed-button {
+    flex: 0 1 auto;
+}
+
+.link-button {
+    justify-self: center;
+    padding: 2px 6px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font: 12px var(--font);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.link-button:hover {
+    color: var(--text);
+}
+
+/* --- Settings --- */
+.setting {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid #3d3731;
+}
+
+.setting b {
+    display: block;
+}
+
+.setting small {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.segmented {
+    display: flex;
+    flex: none;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 10px;
+    background: #1f1c19;
+}
+
+.segmented button {
+    min-width: 48px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font: bold 14px var(--font);
+    cursor: pointer;
+}
+
+.segmented button:hover {
+    background: #2f2a25;
+    color: var(--text);
+}
+
+.segmented button.on {
+    background: var(--gold);
+    color: #2a1d00;
+}
+
+.panel .setting + .panel-buttons {
+    margin-top: 16px;
+}
+
+/* --- Your record --- */
+.panel-sub {
+    margin: 18px 0 4px;
+    text-align: center;
+    color: var(--gold);
+    font-size: 20px;
+}
+
+.stats-board {
+    display: grid;
+    gap: 10px;
+}
+
+.ledger {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.ledger th,
+.ledger td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #3d3731;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.ledger thead th {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: help;
+}
+
+.ledger tbody th {
+    text-align: left;
+    font-weight: normal;
+}
+
+.ledger td {
+    font-family: var(--mono);
+}
+
+.ledger td.up {
+    color: var(--green);
+}
+
+.ledger td.down {
+    color: #ff8a80;
+}
+
+.ledger tr.total th,
+.ledger tr.total td {
+    border-bottom: none;
+    font-weight: bold;
+}
+
+.highlights {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.highlights div {
+    display: grid;
+    gap: 2px;
+    padding: 10px;
+    border-radius: 10px;
+    background: var(--panel-2);
+}
+
+.highlights small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.highlights b {
+    font: bold 18px var(--mono);
+    color: var(--gold);
+}
+
+.highlights span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+@media (max-width: 680px) {
+    .highlights {
+        grid-template-columns: 1fr;
+    }
+
+    .ledger th,
+    .ledger td {
+        padding: 5px 4px;
+        font-size: 11.5px;
+    }
+
+    .setting {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .bet-button .move small {
+        display: none;
+    }
+}
