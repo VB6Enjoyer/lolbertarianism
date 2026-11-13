@@ -1,4 +1,6 @@
 // Kindergarten Property Defender: the rules, with no DOM.
+
+import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
 //
 // Jack has a pile of blocks. Hands reach for it from every side. Some are
 // grabby fists (the teacher redistributing): slap those. Some are open hands
@@ -65,6 +67,11 @@ export interface Hand {
   offer: Offer | null;
   /** The trade went through. */
   traded: boolean;
+  /** Seconds left stuck in the glue moat, and whether it's been through it. */
+  glued: number;
+  glueDone: boolean;
+  /** Whether the Gadsden flag has had its chance to scare it off. */
+  flagChecked: boolean;
 }
 
 export type GameEvent =
@@ -72,14 +79,21 @@ export type GameEvent =
   | { type: 'recover'; hand: Hand; blocks: number; points: number }
   | { type: 'violation'; hand: Hand }
   | { type: 'steal'; hand: Hand; blocks: number }
-  | { type: 'trade'; hand: Hand; offer: Offer; points: number }
+  | { type: 'trade'; hand: Hand; offer: Offer; points: number; toll: number }
   | { type: 'broke'; hand: Hand }
   | { type: 'star'; stars: number }
   | { type: 'homestead' }
   | { type: 'miss'; x: number; y: number }
   | { type: 'spawn'; hand: Hand }
   | { type: 'wave-end'; bonus: number }
-  | { type: 'over'; reason: Ending };
+  | { type: 'over'; reason: Ending }
+  | { type: 'produce' }
+  | { type: 'scared'; hand: Hand }
+  | { type: 'glued'; hand: Hand }
+  | { type: 'guard'; hand: Hand; points: number }
+  | { type: 'interest'; blocks: number }
+  | { type: 'wages'; blocks: number; quit: boolean }
+  | { type: 'built'; id: BuildId; level: number };
 
 export type Ending = 'seized' | 'expelled';
 
@@ -113,13 +127,17 @@ export interface GameState {
   stats: Stats;
   /** What you've traded for (and can sell on). */
   stash: Owned[];
+  /** What Jack has built, and when it next does something. */
+  built: Built;
+  produceIn: number;
+  guardIn: number;
   /** What happened since the UI last looked. */
   events: GameEvent[];
 }
 
 export const CONFIG = {
   startBlocks: 10,
-  maxBlocks: 40,
+  maxBlocks: 60,
   maxStars: 5,
   waveLength: 35,
   /** Jack homesteads a block from the toy bin this often (seconds). */
@@ -147,7 +165,9 @@ export const slapRadius = (s: GameState) => Math.max(34, Math.min(s.w, s.h) * 0.
 
 /** Where the pile sits (bottom middle), and how big it is. */
 export function pileAt(s: GameState) {
-  return { x: s.w * 0.5, y: s.h - Math.max(70, s.h * 0.14) };
+  // On a tall (phone) screen the pile sits higher up, out of the crowd at the bottom.
+  const tall = s.h > s.w * 1.25;
+  return { x: s.w * 0.5, y: tall ? s.h * 0.56 : s.h - Math.max(70, s.h * 0.14) };
 }
 
 export function newGame(w: number, h: number): GameState {
@@ -169,6 +189,9 @@ export function newGame(w: number, h: number): GameState {
     goodwill: 0,
     stats: { slapped: 0, recovered: 0, trades: 0, stolen: 0, violations: 0, bestCombo: 0 },
     stash: [],
+    built: noneBuilt(),
+    produceIn: 0,
+    guardIn: 0,
     events: [],
   };
 }
@@ -237,7 +260,7 @@ export function spawnHand(s: GameState, rng: () => number, kind: HandKind = rng(
     targetX: pile.x + (rng() - 0.5) * spread * 2,
     targetY: pile.y + (rng() - 0.5) * spread,
     progress: 0,
-    travel: kind === 'thief' ? thiefTravel(s.wave) * (0.85 + rng() * 0.3) : TRADER_TRAVEL * (0.9 + rng() * 0.2),
+    travel: kind === 'thief' ? thiefTravel(s.wave) * (0.85 + rng() * 0.3) * (1 + (s.built.sign ? SIGN_SLOW[s.built.sign - 1] : 0)) : TRADER_TRAVEL * (0.9 + rng() * 0.2),
     wobble: kind === 'thief' ? Math.min(s.w, s.h) * (0.03 + rng() * 0.05) : 0,
     phase: rng() * Math.PI * 2,
     state: 'reaching',
@@ -246,6 +269,9 @@ export function spawnHand(s: GameState, rng: () => number, kind: HandKind = rng(
     grab: kind === 'thief' && s.wave >= 5 && rng() < 0.25 ? 2 : 1,
     offer: kind === 'trader' ? makeOffer(s, rng) : null,
     traded: false,
+    glued: 0,
+    glueDone: false,
+    flagChecked: false,
   };
   s.hands.push(hand);
   s.events.push({ type: 'spawn', hand });
@@ -296,7 +322,9 @@ function arrive(s: GameState, hand: Hand) {
   hand.traded = true;
   s.stats.trades++;
   s.score += points;
-  s.events.push({ type: 'trade', hand, offer, points });
+  const toll = s.built.toll ? TOLL[s.built.toll - 1] : 0;
+  s.blocks = Math.min(CONFIG.maxBlocks, s.blocks + toll);
+  s.events.push({ type: 'trade', hand, offer, points, toll });
   // Good trades win back the class's trust.
   s.goodwill++;
   if (s.goodwill >= CONFIG.tradesPerStar && s.stars < CONFIG.maxStars) {
@@ -314,7 +342,8 @@ export function step(s: GameState, dt: number, rng: () => number) {
     s.spawnIn -= dt;
     while (s.spawnIn <= 0) {
       spawnHand(s, rng);
-      s.spawnIn += spawnEvery(s.wave) * (0.7 + rng() * 0.6);
+      // A big pile draws a crowd.
+      s.spawnIn += (spawnEvery(s.wave) / attraction(s.blocks)) * (0.7 + rng() * 0.6);
     }
   }
   // Jack homesteads a block from the toy bin now and then.
@@ -326,7 +355,56 @@ export function step(s: GameState, dt: number, rng: () => number) {
       s.events.push({ type: 'homestead' });
     }
   }
+  // The lemonade stand
+  if (s.built.lemonade) {
+    s.produceIn -= dt;
+    if (s.produceIn <= 0) {
+      s.produceIn += LEMONADE_EVERY[s.built.lemonade - 1];
+      if (s.blocks < CONFIG.maxBlocks) {
+        s.blocks++;
+        s.events.push({ type: 'produce' });
+      }
+    }
+  }
+  // Hired security slaps the closest thief now and then.
+  if (s.built.guard) {
+    s.guardIn -= dt;
+    if (s.guardIn <= 0) {
+      const target = s.hands.filter((h) => h.kind === 'thief' && h.state === 'reaching' && !h.slapped && h.progress > 0.35).sort((a, b) => b.progress - a.progress)[0];
+      if (target) {
+        s.guardIn = GUARD_EVERY[s.built.guard - 1];
+        target.slapped = true;
+        target.state = 'leaving';
+        const points = Math.round(CONFIG.slapPoints / 2);
+        s.score += points;
+        s.stats.slapped++;
+        s.events.push({ type: 'guard', hand: target, points });
+      } else s.guardIn = 0.25;
+    }
+  }
   for (const hand of s.hands) {
+    if (hand.state === 'reaching' && hand.kind === 'thief') {
+      // Halfway there, a Gadsden flag might scare it off.
+      if (!hand.flagChecked && hand.progress >= 0.5) {
+        hand.flagChecked = true;
+        if (s.built.flag && rng() < FLAG_SCARE[s.built.flag - 1]) {
+          hand.state = 'leaving';
+          hand.slapped = true;
+          s.events.push({ type: 'scared', hand });
+          continue;
+        }
+      }
+      // Close to the pile, the glue moat holds it for a moment.
+      if (s.built.glue && !hand.glueDone && hand.progress >= 0.82) {
+        hand.glueDone = true;
+        hand.glued = GLUE_SECONDS[s.built.glue - 1];
+        s.events.push({ type: 'glued', hand });
+      }
+      if (hand.glued > 0) {
+        hand.glued -= dt;
+        continue;
+      }
+    }
     if (hand.state === 'reaching') {
       hand.progress += dt / hand.travel;
       if (hand.progress >= 1) {
@@ -344,6 +422,24 @@ export function step(s: GameState, dt: number, rng: () => number) {
     const bonus = s.blocks * CONFIG.waveBonusPerBlock;
     s.score += bonus;
     s.phase = 'break';
+    // The piggy bank pays interest; the security kid wants paying.
+    if (s.built.piggy) {
+      const interest = Math.min(CONFIG.maxBlocks - s.blocks, Math.floor(s.blocks * INTEREST[s.built.piggy - 1]));
+      if (interest > 0) {
+        s.blocks += interest;
+        s.events.push({ type: 'interest', blocks: interest });
+      }
+    }
+    if (s.built.guard) {
+      const wages = GUARD_WAGES[s.built.guard - 1];
+      if (s.blocks > wages) {
+        s.blocks -= wages;
+        s.events.push({ type: 'wages', blocks: wages, quit: false });
+      } else {
+        s.built.guard = 0;
+        s.events.push({ type: 'wages', blocks: 0, quit: true });
+      }
+    }
     s.events.push({ type: 'wave-end', bonus });
   }
 }
@@ -401,11 +497,25 @@ export function slap(s: GameState, x: number, y: number): Hand | null {
   return hand;
 }
 
+/** Builds (or upgrades) something at recess. Jack keeps at least one block. */
+export function build(s: GameState, id: BuildId): boolean {
+  if (s.phase !== 'break') return false;
+  const level = s.built[id];
+  const cost = nextCost(buildingById(id), level);
+  if (cost === null || s.blocks - cost < 1) return false;
+  s.blocks -= cost;
+  s.built[id] = level + 1;
+  s.events.push({ type: 'built', id, level: level + 1 });
+  return true;
+}
+
 /** On to the next wave. */
 export function nextWave(s: GameState) {
   if (s.phase !== 'break') return;
   s.wave++;
   s.waveTime = 0;
   s.spawnIn = 1;
+  s.produceIn = s.built.lemonade ? LEMONADE_EVERY[s.built.lemonade - 1] : 0;
+  s.guardIn = s.built.guard ? GUARD_EVERY[s.built.guard - 1] : 0;
   s.phase = 'playing';
 }

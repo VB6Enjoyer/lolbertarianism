@@ -30,6 +30,8 @@ export interface Scene {
   shake: number;
   /** Jack's arm, mid-slap. */
   slapAt: { x: number; y: number; t: number } | null;
+  /** The hired kid's arm, mid-slap. */
+  guardAt: { x: number; y: number; t: number } | null;
 }
 
 const FONT = "'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive";
@@ -221,6 +223,123 @@ function drawBlock(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
 /** Block size for the pile. */
 export const blockSize = (s: GameState) => Math.max(18, unitOf(s) * 0.55);
 
+/** A wooden sign on a post, with a line or two of text. */
+function drawSign(ctx: CanvasRenderingContext2D, x: number, ground: number, size: number, lines: string[], color: string, t: number, seed: number) {
+  const w = size * 3.6;
+  const h = size * (0.7 + lines.length * 0.62);
+  const top = ground - size * 3.4;
+  stroke(ctx, [[x, ground], [x, top + h]], Math.max(3, size * 0.16), t, seed, '#8a6a3c');
+  wobblyPath(ctx, [[x - w / 2, top], [x + w / 2, top], [x + w / 2, top + h], [x - w / 2, top + h], [x - w / 2, top]], 1, t, seed + 5);
+  ctx.fillStyle = '#f3e2bd';
+  ctx.fill();
+  ctx.strokeStyle = '#8a6a3c';
+  ctx.lineWidth = Math.max(2, size * 0.1);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = `bold ${Math.round(size * 0.5)}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => ctx.fillText(line, x, top + size * (0.62 + i * 0.62)));
+}
+
+function emoji(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number) {
+  ctx.font = `${Math.round(size)}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+
+/** What Jack has built: around the pile, and on his desk. */
+function drawBuildings(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
+  const t = scene.time;
+  const b = s.built;
+  const pile = pileAt(s);
+  const size = blockSize(s);
+  const ground = pile.y + size * 1.9;
+  const u = unitOf(s);
+  if (b.glue) {
+    // A glue moat around the pile
+    ctx.beginPath();
+    ctx.ellipse(pile.x, ground - size * 0.2, size * (3.6 + b.glue * 0.6), size * (0.55 + b.glue * 0.12), 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(236, 226, 150, 0.6)';
+    ctx.fill();
+    ctx.strokeStyle = '#c9b458';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  // Signs beside the pile; on a tall screen, just below it (beside it they'd cover the teacher and Jack).
+  const tall = s.h > s.w * 1.25;
+  const signGround = tall ? ground + size * 3.8 : ground;
+  const signOff = tall ? size * 2.3 : size * 5.5;
+  if (b.sign) drawSign(ctx, pile.x - signOff, signGround, size, b.sign > 1 ? ['KEEP OUT!!', 'NO REALLY'] : ['NO', 'TRESPASSING'], b.sign > 1 ? '#c0392b' : INK, t, 700);
+  if (b.toll) drawSign(ctx, pile.x + signOff, signGround, size, ['🌉 TOLL', `+${b.toll}🧱 a trade`], '#1e8449', t, 720);
+  if (b.guard) {
+    // The hired kid, in shades
+    const gx = pile.x - size * 3.3;
+    const head = { x: gx, y: ground - size * 3.1, r: size * 0.7 };
+    const w = Math.max(2, size * 0.1);
+    stroke(ctx, [[gx, head.y + head.r], [gx, ground - size * 1.1]], w, t, 740);
+    stroke(ctx, [[gx, ground - size * 1.1], [gx - size * 0.5, ground]], w, t, 742);
+    stroke(ctx, [[gx, ground - size * 1.1], [gx + size * 0.5, ground]], w, t, 744);
+    const g = scene.guardAt;
+    if (g && t - g.t < 0.2) {
+      stroke(ctx, [[gx, head.y + head.r * 1.6], [g.x, g.y]], w, t, 746);
+      wobblyCircle(ctx, g.x, g.y, size * 0.4, w, t, 747, SKIN);
+    } else {
+      stroke(ctx, [[gx, head.y + head.r * 1.6], [gx + size * 0.7, head.y + head.r * 2.4]], w, t, 748);
+      stroke(ctx, [[gx, head.y + head.r * 1.6], [gx - size * 0.7, head.y + head.r * 2.4]], w, t, 749);
+    }
+    wobblyCircle(ctx, head.x, head.y, head.r, w, t, 750, '#fff');
+    emoji(ctx, '🕶️', head.x, head.y - head.r * 0.05, head.r * 1.2);
+    if (b.guard > 1) emoji(ctx, '🦺', gx, head.y + head.r * 2.1, size * 0.9);
+  }
+  if (b.lemonade) {
+    // A lemonade stand between the teacher and the pile
+    const lx = Math.max(teacherHead(s).x + u * 2.2, Math.min(s.w * 0.3, pile.x - size * 9.4));
+    const w = size * 3.2;
+    const h = size * 1.8;
+    const top = s.h - h;
+    wobblyPath(ctx, [[lx - w / 2, top], [lx + w / 2, top], [lx + w / 2, s.h], [lx - w / 2, s.h], [lx - w / 2, top]], 1, t, 760);
+    ctx.fillStyle = '#fff8c4';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.font = `bold ${Math.round(size * 0.45)}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LEMONADE', lx, top + size * 0.45);
+    emoji(ctx, '🍋'.repeat(b.lemonade), lx, top + size * 1.15, size * 0.6);
+  }
+}
+
+/** Things on Jack's desk: the piggy bank and the flag. */
+function drawDeskItems(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
+  const b = s.built;
+  const u = unitOf(s);
+  const size = blockSize(s);
+  const deskTop = s.h - u * 1.9;
+  if (b.piggy) emoji(ctx, '🐷', s.w * 0.77, deskTop + size * 0.9, size * (1 + b.piggy * 0.25));
+  if (b.flag) {
+    // A Gadsden flag on a pole at the left end of the desk, flying away from Jack (bigger with each level).
+    // On a tall screen there's no room for a pole: it's a sticker on the desk instead.
+    const tall = s.h > s.w * 1.25;
+    const fw = u * (0.9 + b.flag * 0.25);
+    const fh = fw * 0.65;
+    const px = tall ? s.w - u * 0.25 : s.w * 0.7 + 3;
+    const top = tall ? s.h - fh - u * 0.25 : deskTop - u * (1.6 + b.flag * 0.5);
+    if (!tall) stroke(ctx, [[px, deskTop], [px, top]], Math.max(2.5, u * 0.07), t, 780);
+    wobblyPath(ctx, [[px, top], [px - fw, top + fh * 0.1], [px - fw, top + fh], [px, top + fh * 0.9], [px, top]], 1, t, 785);
+    ctx.fillStyle = '#f7e43a';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    emoji(ctx, '🐍', px - fw / 2, top + fh / 2, fh * 0.6);
+  }
+}
+
 function drawPile(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
   const pile = pileAt(s);
   const size = blockSize(s);
@@ -399,8 +518,10 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   drawClassmates(ctx, s, t);
   const scolding = scene.bubbles.some((b) => b.who === 'teacher' && b.until > t);
   drawTeacher(ctx, s, t, scolding);
+  drawBuildings(ctx, s, scene);
   drawPile(ctx, s, t);
   drawJack(ctx, s, scene);
+  drawDeskItems(ctx, s, t);
   // Leaving hands under reaching ones, so the dangerous ones are on top.
   for (const hand of s.hands) if (hand.state === 'leaving') drawHand(ctx, s, hand, t);
   for (const hand of s.hands) if (hand.state === 'reaching') drawHand(ctx, s, hand, t);

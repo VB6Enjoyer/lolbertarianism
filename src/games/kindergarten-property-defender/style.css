@@ -303,3 +303,124 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* --- The recess shop --- */
+.panel.wide {
+    width: min(820px, 100%);
+}
+
+.shop {
+    margin: 4px 0 14px;
+    text-align: left;
+}
+
+.shop h2 {
+    display: flex;
+    justify-content: space-between;
+    margin: 6px 0 2px;
+    font-size: 22px;
+}
+
+.shop h2 span {
+    color: #8a6a3c;
+}
+
+.shop h3 {
+    margin: 10px 0 6px;
+    color: var(--muted);
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.shop-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.builds {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+}
+
+.build {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    background: #fff;
+    color: var(--ink);
+    font: 15px var(--font);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.build.income {
+    border-color: #b9770e;
+}
+
+.build.defence {
+    border-color: #2471a3;
+}
+
+.build:not(:disabled):hover {
+    transform: translate(-1px, -2px) rotate(-0.5deg);
+    box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.15);
+}
+
+.build:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.build .icon {
+    font-size: 28px;
+}
+
+.build .what b {
+    font-size: 16px;
+}
+
+.build .what i {
+    color: #b9770e;
+    font-style: normal;
+    letter-spacing: 2px;
+}
+
+.build small {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.3;
+}
+
+.build small.next {
+    color: var(--ink);
+}
+
+.build .cost {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f3e2bd;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* The recess summary stays short, so the shop is in view */
+#break .body {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 14px;
+}
+
+#break .body p {
+    margin: 0;
+    font-size: 15px;
+}
