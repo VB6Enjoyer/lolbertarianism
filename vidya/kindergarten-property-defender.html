@@ -1,318 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Kindergarten Property Defender</title>
-    <style>
-        :root {
-            --bg-color: #fcfcfc;
-            --ink-color: #111;
-            --block-color: #e6cfa1;
-            --block-border: #bfa376;
-            --accent: #ff4444;
-        }
-
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
-            background-color: var(--bg-color);
-            overflow: hidden;
-            user-select: none;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* UI Overlay */
-        #ui-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            justify-content: space-between;
-            pointer-events: none;
-            z-index: 100;
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-
-        .stat-box {
-            background: white;
-            border: 2px solid black;
-            padding: 10px 20px;
-            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px; /* Sketchy border */
-            box-shadow: 2px 2px 0px rgba(0,0,0,0.1);
-        }
-
-        /* Game Area */
-        #game-stage {
-            position: relative;
-            flex-grow: 1;
-            width: 100%;
-            height: 100%;
-            cursor: crosshair;
-        }
-
-        /* Characters */
-        .character {
-            position: absolute;
-            bottom: 0;
-            width: 250px;
-            height: 350px;
-            pointer-events: none; /* Let clicks pass through to game elements mostly */
-            z-index: 10;
-        }
-
-        #teacher {
-            left: 5%;
-            transform-origin: bottom center;
-        }
-
-        #jack {
-            right: 5%;
-            bottom: -20px;
-        }
-
-        /* Speech Bubbles */
-        .bubble {
-            position: absolute;
-            background: white;
-            border: 2px solid black;
-            border-radius: 50%;
-            padding: 15px;
-            max-width: 200px;
-            text-align: center;
-            font-size: 1rem;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-            z-index: 20;
-            box-shadow: 3px 3px 0 rgba(0,0,0,0.1);
-        }
-        
-        .bubble::after {
-            content: '';
-            position: absolute;
-            border-style: solid;
-            border-width: 10px 10px 0;
-            border-color: black transparent;
-            display: block;
-            width: 0;
-            z-index: 1;
-            bottom: -10px;
-            left: 50%;
-            margin-left: -10px;
-        }
-
-        #teacher-bubble {
-            left: 10%;
-            top: 20%;
-        }
-
-        #jack-bubble {
-            right: 10%;
-            top: 30%;
-        }
-
-        /* Blocks (The Capital) */
-        #block-pile {
-            position: absolute;
-            bottom: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 200px;
-            height: 150px;
-            display: flex;
-            flex-wrap: wrap-reverse;
-            justify-content: center;
-            align-content: flex-start;
-            z-index: 5;
-        }
-
-        .block {
-            width: 40px;
-            height: 40px;
-            background-color: var(--block-color);
-            border: 3px solid var(--block-border);
-            margin: 2px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 1.2rem;
-            color: #5d4037;
-            position: relative;
-            box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-        }
-
-        /* Enemies (Grabby Hands) */
-        .enemy {
-            position: absolute;
-            font-size: 3rem;
-            cursor: pointer;
-            user-select: none;
-            transition: transform 0.1s;
-            z-index: 50;
-            filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.2));
-        }
-
-        .enemy:active {
-            transform: scale(0.9);
-        }
-
-        /* Start/Game Over Screen */
-        #overlay-screen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.9);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 200;
-            text-align: center;
-        }
-
-        h1 {
-            font-size: 3rem;
-            margin-bottom: 10px;
-            text-decoration: underline;
-            text-decoration-style: wavy; 
-        }
-
-        button {
-            background: #ffeb3b;
-            border: 3px solid black;
-            padding: 15px 30px;
-            font-size: 1.5rem;
-            font-family: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
-            transition: transform 0.1s;
-        }
-
-        button:hover {
-            transform: scale(1.05) rotate(-2deg);
-            background: #fff176;
-        }
-
-        button:active {
-            transform: scale(0.95);
-        }
-
-        .shake {
-            animation: shake 0.5s;
-        }
-
-        @keyframes shake {
-            0% { transform: translate(1px, 1px) rotate(0deg); }
-            10% { transform: translate(-1px, -2px) rotate(-1deg); }
-            20% { transform: translate(-3px, 0px) rotate(1deg); }
-            30% { transform: translate(3px, 2px) rotate(0deg); }
-            40% { transform: translate(1px, -1px) rotate(1deg); }
-            50% { transform: translate(-1px, 2px) rotate(-1deg); }
-            60% { transform: translate(-3px, 1px) rotate(0deg); }
-            70% { transform: translate(3px, 1px) rotate(-1deg); }
-            80% { transform: translate(-1px, -1px) rotate(1deg); }
-            90% { transform: translate(1px, 2px) rotate(0deg); }
-            100% { transform: translate(1px, -2px) rotate(-1deg); }
-        }
-
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            animation: fly 1s forwards;
-            font-size: 1.5rem;
-            z-index: 60;
-        }
-
-        @keyframes fly {
-            0% { transform: translate(0,0) rotate(0deg); opacity: 1; }
-            100% { transform: translate(var(--tx), var(--ty)) rotate(720deg); opacity: 0; }
-        }
-
-    </style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap">
     <script type="module" src="/src/shared/arcade-button.ts"></script>
 </head>
+
 <body>
+    <div id="app">
+        <header class="hud">
+            <div class="stat" title="Your capital. Thieves take it; trades spend and earn it; Jack homesteads a new one every few seconds."><small>Blocks</small><b><span id="blocks">10</span>🧱</b></div>
+            <div class="stat" title="Gold stars: the class's trust. Slap a classmate who came to trade and you lose one. Three good trades win one back."><small>Gold stars</small><b id="stars">⭐⭐⭐⭐⭐</b></div>
+            <div class="stat wave-stat"><small>Wave <span id="wave">1</span> <em id="combo"></em></small><div class="wave-track"><i id="wave-bar"></i></div></div>
+            <div class="stat"><small>Score</small><b id="score">0</b></div>
+            <div class="stat stash-stat"><small>Stash</small><b id="stash"></b></div>
+            <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
+        </header>
 
-    <div id="ui-layer">
-        <div class="stat-box">Capital (Blocks): <span id="score">10</span></div>
-        <div class="stat-box">Wave: <span id="wave">1</span></div>
-    </div>
+        <canvas id="stage" aria-label="The classroom: tap the grabby hands"></canvas>
 
-    <div id="game-stage">
-        <!-- Teacher SVG -->
-        <div id="teacher" class="character">
-            <svg viewBox="0 0 200 300" width="100%" height="100%">
-                <!-- Head -->
-                <circle cx="100" cy="50" r="40" fill="none" stroke="black" stroke-width="3" />
-                <!-- Hair -->
-                <path d="M60,50 Q40,100 50,150 M140,50 Q160,100 150,150 M60,30 Q100,10 140,30" fill="none" stroke="black" stroke-width="3"/>
-                <!-- Eyes -->
-                <circle cx="85" cy="45" r="2" fill="black" />
-                <circle cx="115" cy="45" r="2" fill="black" />
-                <!-- Mouth (Sad) -->
-                <path d="M80,70 Q100,60 120,70" fill="none" stroke="black" stroke-width="3" />
-                <!-- Body -->
-                <line x1="100" y1="90" x2="100" y2="200" stroke="black" stroke-width="3" />
-                <!-- Arms -->
-                <line x1="100" y1="120" x2="50" y2="180" stroke="black" stroke-width="3" />
-                <line x1="100" y1="120" x2="150" y2="180" stroke="black" stroke-width="3" />
-            </svg>
+        <!-- Title -->
+        <div id="title" class="overlay">
+            <div class="panel">
+                <h1>Kindergarten Property Defender</h1>
+                <p class="tagline">“Jack, you should share your toys.” Jack has other ideas.</p>
+                <div class="legend">
+                    <div class="legend-card thief">
+                        <span class="sleeve">✊</span>
+                        <b>Red sleeve, grabby fist</b>
+                        <small>The teacher, redistributing your blocks.</small>
+                        <strong>SLAP IT</strong>
+                    </div>
+                    <div class="legend-card trader">
+                        <span class="sleeve">🖐️</span>
+                        <b>Green sleeve, open hand</b>
+                        <small>A classmate with something to trade: “🧃 for 2🧱”, or “3🧱 for your 🧃”.</small>
+                        <strong>LET IT THROUGH</strong>
+                    </div>
+                </div>
+                <ul class="rules">
+                    <li>👆 Tap or click a hand to slap it. Catch a thief on its way out and you get your blocks back.</li>
+                    <li>🤝 Trades happen when the hand reaches your pile. Buy things, then sell them to the next kid for more.</li>
+                    <li>⭐ Slapping a classmate who came to trade is aggression: you lose a gold star. Lose them all and you're sent to the principal.</li>
+                    <li>🧱 Lose all your blocks and your property is seized.</li>
+                </ul>
+                <p id="best" class="best"></p>
+                <button id="start" type="button" class="big-button">Defend your property</button>
+            </div>
         </div>
-        <div id="teacher-bubble" class="bubble">Jack, you should share your toys.</div>
 
-        <!-- Block Pile -->
-        <div id="block-pile"></div>
-
-        <!-- Jack SVG -->
-        <div id="jack" class="character">
-            <svg viewBox="0 0 200 300" width="100%" height="100%">
-                <!-- Head -->
-                <circle cx="100" cy="80" r="50" fill="none" stroke="black" stroke-width="4" />
-                <!-- Eyes -->
-                <circle cx="80" cy="70" r="4" fill="black" />
-                <circle cx="120" cy="70" r="4" fill="black" />
-                <!-- Eyebrows (Angry) -->
-                <line x1="60" y1="50" x2="90" y2="70" stroke="black" stroke-width="4" />
-                <line x1="140" y1="50" x2="110" y2="70" stroke="black" stroke-width="4" />
-                <!-- Mouth (Frown) -->
-                <path d="M80,110 Q100,100 120,110" fill="none" stroke="black" stroke-width="4" />
-                <!-- Body -->
-                <line x1="100" y1="130" x2="100" y2="250" stroke="black" stroke-width="4" />
-                <!-- Arms (Defensive) -->
-                <line x1="100" y1="160" x2="60" y2="220" stroke="black" stroke-width="4" />
-                <line x1="100" y1="160" x2="140" y2="200" stroke="black" stroke-width="4" />
-                <!-- Desk -->
-                <path d="M0,250 L200,150 L200,300 L0,300 Z" fill="black" />
-            </svg>
+        <!-- Between waves -->
+        <div id="break" class="overlay" hidden>
+            <div class="panel">
+                <h1 id="break-title">Recess!</h1>
+                <div id="break-body" class="body"></div>
+                <button id="next" type="button" class="big-button">Back to class ▶</button>
+            </div>
         </div>
-        <div id="jack-bubble" class="bubble">Have you not heard about property rights?!</div>
 
+        <!-- Game over -->
+        <div id="over" class="overlay" hidden>
+            <div class="panel">
+                <h1 id="over-title">Property Seized</h1>
+                <div id="over-body" class="body"></div>
+                <button id="again" type="button" class="big-button">Try again</button>
+            </div>
+        </div>
     </div>
 
-    <div id="overlay-screen">
-        <h1>Kindergarten Capitalist</h1>
-        <p style="font-size: 1.2rem; max-width: 600px; margin-bottom: 30px;">
-            The teacher is trying to redistribute your hard-earned blocks!<br>
-            Click the <strong>Socialist Hands (👋)</strong> to slap them away before they steal your property.<br>
-            Don't let your Capital reach zero!
-        </p>
-        <button id="start-btn" onclick="startGame()">DEFEND PROPERTY</button>
-    </div>
-
-    <script type="module" src="/src/games/kindergarten-property-defender/main.js"></script>
+    <script type="module" src="/src/games/kindergarten-property-defender/main.ts"></script>
 </body>
+
 </html>
