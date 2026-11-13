@@ -2936,3 +2936,13 @@ kbd {
         font-size: 10.5px;
     }
 }
+
+/* The fish market's lot names can run long: let them wrap. */
+.offer .card-head > div {
+    min-width: 0;
+}
+
+.offer .card-head b {
+    white-space: normal;
+    line-height: 1.2;
+}

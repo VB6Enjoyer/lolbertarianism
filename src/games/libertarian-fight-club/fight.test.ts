@@ -304,6 +304,8 @@ describe('fight club: the career', () => {
     const { marketOffers, MINE_ID } = await import('./career.ts');
     const offers = marketOffers(rng(3), 2);
     expect(offers).toHaveLength(3);
+    expect(new Set(offers.map((o) => o.lobster.name)).size).toBe(3);
+    expect(offers.map((o) => o.lot)).toEqual([21, 22, 23]);
     for (const o of offers) {
       expect(o.lobster.id).toBe(MINE_ID);
       expect(o.lobster.claw).toBeLessThanOrEqual(6);

@@ -1986,7 +1986,7 @@ function renderStable() {
         const card = document.createElement('div');
         card.className = 'offer';
         card.style.setProperty('--shell', f.color);
-        card.innerHTML = `<div class="card-head"><span class="badge">${f.icon}</span><div><b>${escapeHtml(o.lobster.name)}</b><small>${f.name} · ${o.lobster.weight} lb</small></div></div>${statBars(o.lobster)}<div class="args"><span class="label">Trait</span> <b class="unknown">???</b></div><button type="button" class="next-button">Buy · ${money(o.price)}</button>`;
+        card.innerHTML = `<div class="card-head"><span class="badge">${f.icon}</span><div><b>“${escapeHtml(o.lobster.name)}”</b><small>Lot #${o.lot} · ${f.name} · ${o.lobster.weight} lb</small></div></div>${statBars(o.lobster)}<div class="args"><span class="label">Trait</span> <b class="unknown">???</b></div><button type="button" class="next-button">Buy · ${money(o.price)}</button>`;
         const b = card.querySelector('button')!;
         b.disabled = save.bankroll < o.price || phase === 'fighting' || phase === 'live';
         b.addEventListener('click', () => buyLobster(i));

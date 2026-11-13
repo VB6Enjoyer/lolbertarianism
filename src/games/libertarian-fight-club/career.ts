@@ -115,17 +115,29 @@ export const suggestName = (rng: () => number) => NAMES[Math.floor(rng() * NAMES
 export interface Offer {
   lobster: Lobster;
   price: number;
+  /** The lot number on its tank. */
+  lot: number;
 }
+
+/** What the fishmonger has scrawled on the tanks. */
+export const LOT_NAMES = [
+  'Probably Fine', 'Slightly Used', 'Ex-Display Model', 'Fell Off a Boat', 'No Questions Asked', 'Sold As Seen',
+  'One Previous Owner', 'Unregistered Crustacean', 'Tax-Free Special', 'Cash Only', 'Gray Market Import', 'Seized at Customs',
+  'Fiat Clearance Sale', 'Surplus from the Fed', 'Mostly Legs', 'Read Half of Human Action', 'Voted Once (Regrets It)',
+  'Still Has the Rubber Bands', 'Survived a Bisque', 'Ate a Copy of Atlas Shrugged', 'Free-Range, Free-Market', 'Smells Like Freedom',
+  'Returned Under Warranty', 'Bitcoin Accepted', 'Thermidor Survivor', 'Moderately Sentient', 'Lightly Pre-Steamed', 'Owes Vinny Money',
+] as const;
 
 /** Three lobsters at the fish market: weaker than the league's, and you won't know their trait until they're yours. */
 export function marketOffers(rng: () => number, night: number): Offer[] {
   const between = (lo: number, hi: number) => lo + Math.floor(rng() * (hi - lo + 1));
   const traits = TRAITS.map((t) => t.id);
+  const names = [...LOT_NAMES];
   return Array.from({ length: 3 }, (_, i) => {
     const faction = FACTIONS[Math.floor(rng() * FACTIONS.length)].id;
     const lobster: Lobster = {
       id: MINE_ID,
-      name: `Lot #${night * 10 + i + 1}`,
+      name: names.splice(Math.floor(rng() * names.length), 1)[0],
       faction,
       claw: between(3, 6),
       shell: between(3, 6),
@@ -141,7 +153,7 @@ export function marketOffers(rng: () => number, night: number): Offer[] {
       scouted: false,
     };
     const quality = lobster.claw + lobster.shell + lobster.wits + (lobster.stamina - 75) / 10;
-    return { lobster, price: Math.round((500 + quality * 55) / 10) * 10 };
+    return { lobster, price: Math.round((500 + quality * 55) / 10) * 10, lot: night * 10 + i + 1 };
   });
 }
 
