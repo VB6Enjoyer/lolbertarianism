@@ -557,3 +557,77 @@ describe('kindergarten: items, the shout, and the bosses', () => {
     expect(needsFor(doe)).toBe('pinch');
   });
 });
+
+describe('kindergarten: weekend perks and graduation', () => {
+  it('Friday offers three different perks; taking one changes the game', async () => {
+    const { takePerk, meterMax, holdTime, comboCap, slapRadius } = await import('./logic.ts');
+    const s = quiet(newGame(1000, 600));
+    s.wave = 5;
+    s.waveTime = CONFIG.waveLength;
+    step(s, 0.05, rng(110));
+    expect(s.perkOffer).toHaveLength(3);
+    expect(new Set(s.perkOffer).size).toBe(3);
+    const before = { meter: meterMax(s), hold: holdTime(s), cap: comboCap(s), radius: slapRadius(s) };
+    s.perkOffer = ['loud', 'pry', 'combo'];
+    expect(takePerk(s, 'hands')).toBe(false); // not on offer
+    expect(takePerk(s, 'loud')).toBe(true);
+    expect(meterMax(s)).toBe(before.meter - 3);
+    expect(takePerk(s, 'pry')).toBe(false); // one per weekend
+    s.perks.pry = 1;
+    s.perks.combo = 1;
+    s.perks.hands = 2;
+    expect(holdTime(s)).toBeCloseTo(before.hold * 0.6);
+    expect(comboCap(s)).toBe(6);
+    expect(slapRadius(s)).toBeCloseTo(before.radius * 1.5);
+    // Maxed-out perks aren't offered again
+    const { perkChoices, PERKS } = await import('./perks.ts');
+    for (const p of PERKS) s.perks[p.id] = p.max;
+    expect(perkChoices(s.perks, rng(111))).toEqual([]);
+  });
+
+  it('Double Slap knocks a second thief away on a streak; Morning Fence starts the day fenced', () => {
+    const s = quiet(newGame(1000, 600));
+    s.perks.double = 1;
+    s.combo = 6;
+    const a = spawnHand(s, rng(112), 'thief', 'grabby');
+    const b = spawnHand(s, rng(113), 'thief', 'grabby');
+    a.progress = 0.9;
+    b.progress = 0.9;
+    b.targetX = a.targetX + 10;
+    b.targetY = a.targetY;
+    b.rootX = a.rootX;
+    b.rootY = a.rootY;
+    const at = handPosition(a);
+    slap(s, at.x, at.y);
+    expect(a.slapped && b.slapped).toBe(true);
+    s.perks.fence = 1;
+    s.phase = 'break';
+    nextWave(s);
+    expect(s.fence).toBe(2);
+  });
+
+  it('graduates at the end of the fifth Friday, with a GPA from every report card', async () => {
+    const { gpa } = await import('./logic.ts');
+    const { honours } = await import('./perks.ts');
+    const s = quiet(newGame(1000, 600));
+    s.wave = 25;
+    s.gradePoints = 40;
+    s.gradeCount = 12; // straight-ish A's and B's so far
+    s.waveTime = CONFIG.waveLength;
+    s.day = { thieves: 10, stopped: 10, trades: 12, profit: 5, violations: 0, stolen: 0 };
+    step(s, 0.05, rng(114));
+    const grad = s.events.find((e) => e.type === 'graduation');
+    expect(grad).toBeTruthy();
+    expect(s.graduated).toBe(true);
+    expect(gpa(s)).toBeCloseTo(52 / 15);
+    expect(honours(3.6)).toBe('summa cum laude');
+    expect(honours(2)).toBe('');
+    // Summer school: no second graduation
+    s.phase = 'break';
+    nextWave(s);
+    s.wave = 30;
+    s.waveTime = CONFIG.waveLength;
+    step(s, 0.05, rng(115));
+    expect(s.events.filter((e) => e.type === 'graduation').length).toBe(1);
+  });
+});

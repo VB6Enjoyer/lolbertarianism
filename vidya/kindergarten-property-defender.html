@@ -58,6 +58,7 @@
                     <li>📢 Every thief you stop fills your meter. When it's full, press <b>Space</b> (or tap it) for <b>PROPERTY RIGHTS!</b>: every grabby hand gets blown away.</li>
                     <li>📅 A bigger boss every Friday: the Principal, the Superintendent, the School Board, the Department of Education…</li>
                     <li>💵 Watch out for the Monopoly-money kid: looks like a trade, pays in funny money. Fraud is aggression, so slap it.</li>
+                    <li>🏖️ Every weekend, pick a <b>perk</b> for Jack. Survive five weeks and you <b>graduate</b>.</li>
                     <li>🏗️ After school, spend blocks: a lemonade stand, a piggy bank, a No Trespassing sign, a Gadsden flag, hired security… A bigger pile draws more hands.</li>
                 </ul>
                 <p id="best" class="best"></p>
@@ -71,6 +72,7 @@
             <div class="panel wide">
                 <h1 id="break-title">Report card</h1>
                 <div id="break-body" class="body"></div>
+                <div id="perks" class="perks"></div>
                 <div id="shop" class="shop"></div>
                 <button id="next" type="button" class="big-button">Back to class ▶</button>
             </div>
@@ -101,6 +103,17 @@
         </div>
 
         <div id="toasts" class="toasts" aria-live="polite"></div>
+
+        <!-- Graduation -->
+        <div id="graduation" class="overlay" hidden>
+            <div class="panel diploma-panel">
+                <div id="diploma" class="diploma"></div>
+                <div class="pause-buttons">
+                    <button id="summer" type="button" class="big-button">On to summer school ▶</button>
+                    <button id="retire" type="button" class="small-toggle">Retire undefeated (start over)</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Game over -->
         <div id="over" class="overlay" hidden>

@@ -2,7 +2,8 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
-import { build, CONFIG, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type ItemId } from './logic.ts';
+import { GRADUATION_WEEK, honours, perkById, PERKS, type PerkId } from './perks.ts';
+import { build, comboCap, CONFIG, gpa, meterMax, takePerk, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type ItemId } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
 import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
@@ -19,6 +20,11 @@ const els = {
   waveBar: byId('wave-bar'),
   combo: byId('combo'),
   stash: byId('stash'),
+  perks: byId('perks'),
+  graduation: byId('graduation'),
+  diploma: byId('diploma'),
+  summer: byId<HTMLButtonElement>('summer'),
+  retire: byId<HTMLButtonElement>('retire'),
   pauseButton: byId<HTMLButtonElement>('pause'),
   pauseMenu: byId('paused'),
   resume: byId<HTMLButtonElement>('resume'),
@@ -51,6 +57,9 @@ const els = {
 interface Save {
   best: number;
   bestWave: number;
+  /** Times Jack has graduated, and the best GPA. */
+  graduations: number;
+  bestGpa: number;
   muted: boolean;
   achievements: string[];
   /** Orange and blue instead of red and green, with a ✊/✋ on every sleeve. */
@@ -61,6 +70,8 @@ const saved = slot.load();
 const save: Save = {
   best: Math.max(0, Math.floor(Number(saved?.best) || 0)),
   bestWave: Math.max(0, Math.floor(Number(saved?.bestWave) || 0)),
+  graduations: Math.max(0, Math.floor(Number(saved?.graduations) || 0)),
+  bestGpa: Math.max(0, Math.min(4, Number(saved?.bestGpa) || 0)),
   muted: saved?.muted === true,
   achievements: [...normalizeUnlocked(saved?.achievements)],
   colorblind: saved?.colorblind === true,
@@ -309,7 +320,12 @@ function handle(e: GameEvent) {
       break;
     case 'wave-end':
       play('wave');
-      setTimeout(showBreak, 500);
+      setTimeout(() => (pendingGraduation !== null ? showGraduation() : showBreak()), 500);
+      break;
+    case 'graduation':
+      pendingGraduation = e.gpa;
+      break;
+    case 'perk':
       break;
     case 'over':
       play('over');
@@ -456,11 +472,16 @@ function checkAchievements(e: GameEvent) {
       break;
     }
     case 'wave-end':
+      if (weekOf(state.wave) > GRADUATION_WEEK) award('summer');
       if (isFriday(state.wave)) {
         award('tgif');
         if (weekOf(state.wave) >= 2) award('week-2');
         if (weekOf(state.wave) >= 3) award('week-3');
       }
+      break;
+    case 'perk':
+      award('perk');
+      if (PERKS.filter((p) => state.perks[p.id] > 0).length >= 5) award('perks-5');
       break;
     case 'over':
       if (e.reason === 'expelled') award('expelled');
@@ -593,15 +614,15 @@ function renderHud() {
   els.stars.classList.toggle('low', state.stars <= 2);
   els.blocks.parentElement!.classList.toggle('low', state.blocks <= 3);
   els.score.textContent = state.score.toLocaleString('en-US');
-  els.wave.textContent = `${dayName(state.wave).slice(0, 3)} · week ${weekOf(state.wave)}`;
+  els.wave.textContent = `${dayName(state.wave).slice(0, 3)} · ${weekOf(state.wave) > GRADUATION_WEEK ? `summer school, week ${weekOf(state.wave) - GRADUATION_WEEK}` : `week ${weekOf(state.wave)}`}`;
   const period = periodAt(state.waveTime);
   els.period.textContent = `${period.icon} ${period.name}`;
   els.waveBar.style.width = `${Math.min(100, (state.waveTime / CONFIG.waveLength) * 100)}%`;
-  const m = multiplier(state.combo);
+  const m = multiplier(state.combo, comboCap(state));
   els.combo.textContent = state.combo >= 2 ? `${state.combo} in a row${m > 1 ? ` · ×${m}` : ''}` : '';
   renderStash();
-  els.meter.style.width = `${(state.meter / CONFIG.meterMax) * 100}%`;
-  const ready = state.meter >= CONFIG.meterMax && state.phase === 'playing';
+  els.meter.style.width = `${(state.meter / meterMax(state)) * 100}%`;
+  const ready = state.meter >= meterMax(state) && state.phase === 'playing';
   els.shout.disabled = !ready;
   els.shout.classList.toggle('ready', ready);
 }
@@ -696,6 +717,7 @@ function startGame() {
   getAudioContext();
   state = newGame(els.canvas.clientWidth, els.canvas.clientHeight);
   run = { interest: 0, cleanDays: 0, napStolen: null, board: 0 };
+  pendingGraduation = null;
   scene.floaters = [];
   scene.bubbles = [];
   els.title.hidden = true;
@@ -737,10 +759,76 @@ function showBreak() {
   facts.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
   els.breakBody.append(facts);
   els.next.textContent = friday ? 'See you Monday ▶' : `On to ${dayName(state.wave + 1)} ▶`;
+  renderPerks();
   renderShop();
   els.pause.hidden = false;
   els.next.focus();
 }
+
+/** The weekend's perk choice (and the perks Jack already has). */
+function renderPerks() {
+  const offer = state.perkOffer;
+  const owned = PERKS.filter((p) => state.perks[p.id] > 0)
+    .map((p) => `<span class="owned-perk" title="${p.description}">${p.icon} ${p.name}${state.perks[p.id] > 1 ? ` ×${state.perks[p.id]}` : ''}</span>`)
+    .join('');
+  els.perks.innerHTML = `${offer.length ? `<h2>🏖️ Weekend: pick a perk</h2><div class="perk-choices">${offer
+    .map((id) => {
+      const p = perkById(id);
+      return `<button type="button" class="perk" data-id="${id}"><span class="icon">${p.icon}</span><b>${p.name}${state.perks[id] ? ` (${state.perks[id] + 1}/${p.max})` : ''}</b><small>${p.description}</small></button>`;
+    })
+    .join('')}</div>` : ''}${owned ? `<p class="owned-perks">Your perks: ${owned}</p>` : ''}`;
+  for (const b of els.perks.querySelectorAll<HTMLButtonElement>('.perk')) {
+    b.addEventListener('click', () => {
+      if (!takePerk(state, b.dataset.id as PerkId)) return;
+      for (const ev of state.events) handle(ev);
+      state.events = [];
+      play('recover');
+      renderPerks();
+      renderShop();
+      els.next.disabled = false;
+      els.next.focus();
+    });
+  }
+  // Pick one before Monday.
+  els.next.disabled = offer.length > 0;
+}
+
+// --- Graduation ---
+
+/** The GPA when Jack graduated, until the diploma's been shown. */
+let pendingGraduation: number | null = null;
+
+function showGraduation() {
+  const score = pendingGraduation ?? gpa(state);
+  pendingGraduation = null;
+  save.graduations++;
+  save.bestGpa = Math.max(save.bestGpa, score);
+  persist();
+  const honour = honours(score);
+  award('graduate');
+  if (honour === 'summa cum laude') award('summa');
+  els.diploma.innerHTML = `
+    <p class="seal">🎓</p>
+    <p class="certify">This certifies that</p>
+    <p class="name">Jack</p>
+    <p class="certify">has completed <b>Kindergarten</b>${honour ? `, <i>${honour}</i>,` : ''} with a major in <b>Property Rights</b> and a minor in <b>Austrian Economics</b>.</p>
+    <p class="gpa">GPA ${score.toFixed(2)} · ${state.score.toLocaleString('en-US')} points · ${state.stats.slapped} hands slapped · ${state.stats.trades} trades</p>
+    <p class="signed">Signed, the Teacher <span>(reluctantly)</span></p>`;
+  if (!save.muted) [523, 659, 784, 1047, 1319].forEach((hz, i) => playTone(note(hz, 0.18, 0.06, 'triangle'), i * 0.12));
+  els.graduation.hidden = false;
+  els.summer.focus();
+}
+
+els.summer.addEventListener('click', () => {
+  els.graduation.hidden = true;
+  showBreak();
+});
+els.retire.addEventListener('click', () => {
+  els.graduation.hidden = true;
+  save.best = Math.max(save.best, state.score);
+  persist();
+  startGame();
+});
 
 /** The recess shop: spend blocks on things that make blocks, or protect them. */
 function renderShop() {
@@ -814,6 +902,13 @@ document.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (!els.graduation.hidden) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      els.summer.click();
+    }
+    return;
+  }
   const overlay = !els.title.hidden || !els.pause.hidden || !els.over.hidden || !els.achievements.hidden;
   if (!overlay && state.phase === 'playing') {
     if (e.key === ' ') {
@@ -841,4 +936,4 @@ if (new URLSearchParams(location.search).has('debug')) {
   Object.assign(window, { kpd: { state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role)) } });
 }
 
-els.best.textContent = [save.best ? `Best: ${save.best.toLocaleString('en-US')} points` : '', unlocked.size ? `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} achievements` : ''].filter(Boolean).join(' · ');
+els.best.textContent = [save.best ? `Best: ${save.best.toLocaleString('en-US')} points` : '', save.graduations ? `🎓 Graduated ×${save.graduations} (best GPA ${save.bestGpa.toFixed(2)})` : '', unlocked.size ? `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} achievements` : ''].filter(Boolean).join(' · ');

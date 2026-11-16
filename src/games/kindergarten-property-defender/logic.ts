@@ -6,6 +6,7 @@
 // happens. Slapping a trader is aggression, and it costs you a gold star.
 
 import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
+import { GRADE_POINTS, GRADUATION_WEEK, noPerks, perkChoices, type PerkId, type Perks } from './perks.ts';
 import { allowance, bossFor, bossInfo, DAY_LENGTH, emptyDay, isBoss, isFriday, NEEDS, PERIOD_LENGTH, PERIODS, periodAt, pickRole, reportCard, weekOf, type DayStats, type Period, type ReportCard, type Role } from './school.ts';
 
 export type HandKind = 'thief' | 'trader';
@@ -129,6 +130,8 @@ export type GameEvent =
   | { type: 'use'; item: ItemId; hit: number }
   | { type: 'fenced'; hand: Hand }
   | { type: 'meter' }
+  | { type: 'perk'; id: PerkId }
+  | { type: 'graduation'; gpa: number }
   | { type: 'report'; card: ReportCard }
   | { type: 'allowance'; blocks: number }
   | { type: 'bounce'; hand: Hand; needs: 'slap' | 'pinch' | 'hold' };
@@ -183,6 +186,13 @@ export interface GameState {
   rush: number;
   fence: number;
   summons: number;
+  /** Weekend perks Jack has, and the three on offer this weekend (empty when there's no choice to make). */
+  perks: Perks;
+  perkOffer: PerkId[];
+  /** Grade points from every report card (for the GPA), and whether Jack has graduated. */
+  gradePoints: number;
+  gradeCount: number;
+  graduated: boolean;
   /** What happened since the UI last looked. */
   events: GameEvent[];
 }
@@ -230,9 +240,16 @@ export const TRADER_TRAVEL = 3.6;
 /** The share of hands that are traders: fewer if you've been slapping them (classmates talk). */
 export const traderShare = (stars: number) => 0.08 + 0.25 * (stars / CONFIG.maxStars);
 /** The combo multiplier: ×2 at 5 in a row, ×3 at 10, ×4 from 15 on. */
-export const multiplier = (combo: number) => Math.min(4, 1 + Math.floor(combo / 5));
+export const multiplier = (combo: number, cap = 4) => Math.min(cap, 1 + Math.floor(combo / 5));
+/** What the perks change: the combo cap, the meter's size, how long Sticky Fingers take, how often a block turns up. */
+export const comboCap = (s: GameState) => (s.perks.combo ? 6 : 4);
+export const meterMax = (s: GameState) => CONFIG.meterMax - 3 * s.perks.loud;
+export const holdTime = (s: GameState) => HOLD_TIME * (1 - 0.4 * s.perks.pry);
+const homesteadEvery = (s: GameState) => (s.perks.homestead ? 6 : CONFIG.homesteadEvery);
+/** The grade point average so far. */
+export const gpa = (s: GameState) => (s.gradeCount ? s.gradePoints / s.gradeCount : 0);
 /** How close a tap has to be to a hand. */
-export const slapRadius = (s: GameState) => Math.max(34, Math.min(s.w, s.h) * 0.075) * (s.rush > 0 ? 1.7 : 1);
+export const slapRadius = (s: GameState) => Math.max(34, Math.min(s.w, s.h) * 0.075) * (s.rush > 0 ? 1.7 : 1) * (1 + 0.25 * s.perks.hands);
 
 /** What it takes to beat a hand right now (the Department of Education switches every couple of seconds). */
 export function needsFor(hand: Hand): 'slap' | 'pinch' | 'hold' {
@@ -278,6 +295,11 @@ export function newGame(w: number, h: number): GameState {
     rush: 0,
     fence: 0,
     summons: 0,
+    perks: noPerks(),
+    perkOffer: [],
+    gradePoints: 0,
+    gradeCount: 0,
+    graduated: false,
     events: [],
   };
 }
@@ -332,7 +354,7 @@ export const BUYER_SHARE = 0.5;
 function makeOffer(s: GameState, rng: () => number): Offer {
   if (s.stash.length && rng() < BUYER_SHARE) {
     const owned = s.stash[Math.floor(rng() * s.stash.length)];
-    return { wants: 'item', item: owned.item, price: owned.cost + 1, value: 0 };
+    return { wants: 'item', item: owned.item, price: owned.cost + 1 + s.perks.sales, value: 0 };
   }
   const price = 1 + Math.floor(rng() * 3);
   return { wants: 'blocks', item: ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)], price, value: Math.round(price * (1.4 + rng() * 0.9) * 10) / 10 };
@@ -449,7 +471,7 @@ function arrive(s: GameState, hand: Hand) {
   s.events.push({ type: 'trade', hand, offer, points, toll, profit });
   // Good trades win back the class's trust.
   s.goodwill++;
-  if (s.goodwill >= CONFIG.tradesPerStar && s.stars < CONFIG.maxStars) {
+  if (s.goodwill >= (s.perks.reputation ? 2 : CONFIG.tradesPerStar) && s.stars < CONFIG.maxStars) {
     s.goodwill = 0;
     s.stars++;
     s.events.push({ type: 'star', stars: s.stars });
@@ -497,7 +519,7 @@ export function step(s: GameState, dt: number, rng: () => number) {
   // Jack homesteads a block from the toy bin now and then.
   s.homesteadIn -= dt;
   if (s.homesteadIn <= 0) {
-    s.homesteadIn += CONFIG.homesteadEvery;
+    s.homesteadIn += homesteadEvery(s);
     if (s.blocks < CONFIG.maxBlocks) {
       s.blocks++;
       s.events.push({ type: 'homestead' });
@@ -599,11 +621,18 @@ export function step(s: GameState, dt: number, rng: () => number) {
     const card = reportCard(s.day);
     s.report = card;
     s.score += card.bonus;
+    s.gradePoints += GRADE_POINTS[card.defence] + GRADE_POINTS[card.economics] + GRADE_POINTS[card.citizenship];
+    s.gradeCount += 3;
     s.events.push({ type: 'report', card });
     if (isFriday(s.wave)) {
       const pay = Math.min(CONFIG.maxBlocks - s.blocks, allowance(weekOf(s.wave)));
       s.blocks += pay;
       s.events.push({ type: 'allowance', blocks: pay });
+      s.perkOffer = perkChoices(s.perks, rng);
+      if (weekOf(s.wave) === GRADUATION_WEEK && !s.graduated) {
+        s.graduated = true;
+        s.events.push({ type: 'graduation', gpa: gpa(s) });
+      }
     }
     s.events.push({ type: 'wave-end', bonus });
   }
@@ -614,11 +643,11 @@ export function step(s: GameState, dt: number, rng: () => number) {
  * several: each knocks them back and dazes them. Caught on the way out, a thief drops what it took.
  */
 function hitThief(s: GameState, hand: Hand, by: 'jack' | 'guard' | 'shout') {
-  const mult = by === 'jack' ? multiplier(s.combo) : 1;
+  const mult = by === 'jack' ? multiplier(s.combo, comboCap(s)) : 1;
   const base = by === 'jack' ? CONFIG.slapPoints : by === 'shout' ? 15 : Math.round(CONFIG.slapPoints / 2);
-  if (by === 'jack' && s.meter < CONFIG.meterMax) {
+  if (by === 'jack' && s.meter < meterMax(s)) {
     s.meter++;
-    if (s.meter === CONFIG.meterMax) s.events.push({ type: 'meter' });
+    if (s.meter === meterMax(s)) s.events.push({ type: 'meter' });
   }
   if (hand.hp > 1 && hand.state === 'reaching') {
     hand.hp--;
@@ -681,7 +710,7 @@ function spawnBoss(s: GameState, rng: () => number) {
  * what it was carrying). Bosses take three hits instead.
  */
 export function shout(s: GameState): boolean {
-  if (s.phase !== 'playing' || s.meter < CONFIG.meterMax) return false;
+  if (s.phase !== 'playing' || s.meter < meterMax(s)) return false;
   s.meter = 0;
   let hit = 0;
   for (const hand of [...s.hands]) {
@@ -795,6 +824,15 @@ export function slap(s: GameState, x: number, y: number, how: 'slap' | 'pinch' =
   s.combo++;
   s.stats.bestCombo = Math.max(s.stats.bestCombo, s.combo);
   hitThief(s, hand, 'jack');
+  if (s.perks.double && s.combo >= 5) {
+    const reach = slapRadius(s) * 2.5;
+    const other = s.hands
+      .filter((h) => h !== hand && h.kind === 'thief' && h.state === 'reaching' && !h.slapped && !isBoss(h.role) && needsFor(h) === 'slap')
+      .map((h) => ({ h, d: Math.hypot(handPosition(h).x - x, handPosition(h).y - y) }))
+      .filter((o) => o.d < reach)
+      .sort((a, b) => a.d - b.d)[0];
+    if (other) hitThief(s, other.h, 'jack');
+  }
   return hand;
 }
 
@@ -818,7 +856,7 @@ export function press(s: GameState, x: number, y: number, dt: number): Hand | nu
   if (!best) return null;
   best.beingHeld = true;
   best.held += dt;
-  if (best.held >= HOLD_TIME) {
+  if (best.held >= holdTime(s)) {
     best.held = 0;
     best.beingHeld = false;
     s.combo++;
@@ -840,6 +878,16 @@ export function build(s: GameState, id: BuildId): boolean {
   return true;
 }
 
+/** Takes one of this weekend's perks. */
+export function takePerk(s: GameState, id: PerkId): boolean {
+  if (s.phase !== 'break' || !s.perkOffer.includes(id)) return false;
+  s.perks[id]++;
+  s.perkOffer = [];
+  if (id === 'reputation') s.stars = CONFIG.maxStars;
+  s.events.push({ type: 'perk', id });
+  return true;
+}
+
 /** On to the next wave. */
 export function nextWave(s: GameState) {
   if (s.phase !== 'break') return;
@@ -853,7 +901,8 @@ export function nextWave(s: GameState) {
   s.report = null;
   s.bossDone = false;
   s.rush = 0;
-  s.fence = 0;
+  s.fence = s.perks.fence ? 2 : 0;
   s.summons = 0;
+  s.perkOffer = [];
   s.phase = 'playing';
 }

@@ -701,3 +701,122 @@ body.colorblind {
     --thief: #e8710a;
     --trader: #1f77b4;
 }
+
+/* --- Weekend perks --- */
+.perks {
+    text-align: left;
+}
+
+.perks h2 {
+    margin: 10px 0 6px;
+    font-size: 22px;
+}
+
+.perk-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.perk {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    padding: 12px 10px;
+    border: 3px solid #8e44ad;
+    border-radius: var(--sketch);
+    background: #fbf3ff;
+    color: var(--ink);
+    font: 15px var(--font);
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.perk:hover {
+    transform: translateY(-3px) rotate(-1deg);
+    box-shadow: 4px 5px 0 rgba(142, 68, 173, 0.25);
+}
+
+.perk .icon {
+    font-size: 32px;
+}
+
+.perk b {
+    font-size: 18px;
+}
+
+.perk small {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.3;
+}
+
+.owned-perks {
+    margin: 8px 0 0;
+    font-size: 14px;
+}
+
+.owned-perk {
+    display: inline-block;
+    margin: 2px 4px 2px 0;
+    padding: 1px 8px;
+    border: 1px solid #8e44ad;
+    border-radius: 999px;
+    background: #fbf3ff;
+    cursor: help;
+}
+
+.big-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* --- The diploma --- */
+.diploma-panel {
+    width: min(680px, 100%);
+}
+
+.diploma {
+    margin-bottom: 14px;
+    padding: 18px 22px;
+    border: 6px double #b9770e;
+    border-radius: 6px;
+    background: repeating-linear-gradient(0deg, #fffdf2, #fffdf2 26px, #f7f0d8 27px);
+}
+
+.diploma p {
+    margin: 0 0 8px;
+}
+
+.diploma .seal {
+    font-size: 52px;
+    margin: 0;
+}
+
+.diploma .certify {
+    font-size: 18px;
+}
+
+.diploma .name {
+    font-size: 48px;
+    font-weight: bold;
+    line-height: 1.1;
+    text-decoration: underline wavy #b9770e;
+}
+
+.diploma .gpa {
+    color: var(--muted);
+    font-size: 15px;
+}
+
+.diploma .signed {
+    margin-top: 14px;
+    font-style: italic;
+}
+
+.diploma .signed span {
+    color: var(--muted);
+    font-size: 14px;
+}

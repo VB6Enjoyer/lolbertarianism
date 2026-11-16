@@ -2,7 +2,7 @@
 // teacher on the left, Jack behind his ancap desk on the right, the block pile
 // in the middle, and long stretchy arms reaching in for it.
 
-import { HOLD_TIME, handPosition, ITEMS, needsFor, pileAt, slapRadius, type GameState, type Hand } from './logic.ts';
+import { holdTime, handPosition, ITEMS, needsFor, pileAt, slapRadius, type GameState, type Hand } from './logic.ts';
 import { isBoss, NEEDS, periodAt, roleInfo, type Role } from './school.ts';
 
 export interface Floater {
@@ -511,7 +511,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
     // How far you've pried it off
     if (hand.held > 0 && !hand.slapped) {
       ctx.beginPath();
-      ctx.arc(at.x, at.y, r * 1.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, hand.held / HOLD_TIME));
+      ctx.arc(at.x, at.y, r * 1.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, hand.held / holdTime(s)));
       ctx.strokeStyle = '#1e8449';
       ctx.lineWidth = Math.max(4, u * 0.12);
       ctx.lineCap = 'round';
@@ -719,8 +719,9 @@ function drawDark(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
     d.arc(x, y, r, 0, Math.PI * 2);
     d.fill();
   };
-  hole(pile.x, pile.y, size * 6);
-  if (scene.pointer) hole(scene.pointer.x, scene.pointer.y, u * 2.1);
+  const vision = s.perks.night ? 1.4 : 1;
+  hole(pile.x, pile.y, size * 6 * vision);
+  if (scene.pointer) hole(scene.pointer.x, scene.pointer.y, u * 2.1 * vision);
   ctx.drawImage(darkLayer, 0, 0, w, h);
   ctx.font = `${Math.round(u * 0.5)}px ${FONT}`;
   ctx.fillStyle = '#c9d4ff';

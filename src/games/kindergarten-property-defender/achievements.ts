@@ -44,10 +44,16 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   // Getting through the weeks
   { id: 'tgif', icon: '🎉', name: 'TGIF', description: 'Make it through your first Friday.' },
   { id: 'week-2', icon: '📅', name: 'Two Weeks’ Notice', description: 'Make it through two weeks.' },
-  { id: 'week-3', icon: '🎓', name: 'Tenure', description: 'Make it through three weeks.' },
+  { id: 'week-3', icon: '🍎', name: 'Tenure', description: 'Make it through three weeks.' },
   { id: 'night-watch', icon: '🔦', name: 'Night Watch', description: 'Get through nap time without losing a block.' },
   { id: 'score-10k', icon: '🏅', name: 'Gold Star Student', description: 'Score 10,000 points in one game.' },
   { id: 'score-50k', icon: '🏆', name: 'Valedictorian', description: 'Score 50,000 points in one game.' },
+  // Weekends and graduation
+  { id: 'perk', icon: '🏖️', name: 'Weekend Warrior', description: 'Pick your first weekend perk.' },
+  { id: 'perks-5', icon: '🧰', name: 'Well-Rounded', description: 'Have five different perks in one game.' },
+  { id: 'graduate', icon: '🎓', name: 'Graduate', description: 'Survive five weeks and graduate from kindergarten.' },
+  { id: 'summa', icon: '📜', name: 'Summa Cum Laude', description: 'Graduate with a GPA of 3.5 or better.' },
+  { id: 'summer', icon: '🌞', name: 'Summer School', description: 'Get through a day of summer school after graduating.' },
   // Capital
   { id: 'first-build', icon: '🏗️', name: 'Capital Formation', description: 'Build something with your blocks.' },
   { id: 'lemonade', icon: '🍋', name: 'Lemonade Mogul', description: 'Build the lemonade stand all the way up.' },
