@@ -126,6 +126,23 @@ describe('basic economics trainer: the question bank', () => {
   });
 });
 
+describe('basic economics trainer: hints and achievements', () => {
+  it('every question has a hint, and no hint gives the answer away word for word', () => {
+    for (const q of BOOK.questions) {
+      expect(q.hint.length, q.q).toBeGreaterThan(10);
+      expect(q.hint.toLowerCase().includes(q.answer.toLowerCase()), q.q).toBe(false);
+      expect(q.hint, q.q).not.toBe(q.why);
+    }
+  });
+
+  it('achievements have unique ids, and there is one for passing each part', async () => {
+    const { ACHIEVEMENTS, normalizeUnlocked } = await import('./achievements.ts');
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+    for (const part of BOOK.parts) expect(ACHIEVEMENTS.some((a) => a.id === `part-${part.n}`)).toBe(true);
+    expect([...normalizeUnlocked(['perfect', 'nope', 3])]).toEqual(['perfect']);
+  });
+});
+
 describe('basic economics trainer: Anya', () => {
   it('has a face layer, the book, and every expression', () => {
     const svg = anyaSvg();

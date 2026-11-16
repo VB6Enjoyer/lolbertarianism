@@ -15,6 +15,8 @@ export interface BankQuestion {
   wrong: readonly [string, string, string];
   /** Why, in a sentence or two. */
   why: string;
+  /** The “Ask Sowell” lifeline: a nudge from the book, without giving the answer away. */
+  hint: string;
 }
 
 export interface Book {
@@ -37,7 +39,7 @@ export function questionId(book: string, text: string): string {
 
 /** A helper for writing question banks compactly. */
 export function questionMaker(book: string) {
-  return (part: number, chapter: number, level: Level, q: string, answer: string, wrong: readonly [string, string, string], why: string): BankQuestion => ({
+  return (part: number, chapter: number, level: Level, q: string, answer: string, wrong: readonly [string, string, string], why: string, hint: string): BankQuestion => ({
     id: questionId(book, q),
     book,
     part,
@@ -47,5 +49,6 @@ export function questionMaker(book: string) {
     answer,
     wrong,
     why,
+    hint,
   });
 }

@@ -13,4 +13,6 @@ export interface Question {
   correct: number;
   /** Anya's explanation, after you answer. */
   comment: string;
+  /** What “Ask Sowell” says: a nudge, not the answer. */
+  hint: string;
 }

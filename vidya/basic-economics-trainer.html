@@ -23,6 +23,7 @@
             <div class="top-right">
                 <span id="score" class="score" aria-live="polite"></span>
                 <span id="peanuts" class="peanuts" title="Peanuts: earn one for every right answer, spend them on lifelines">🥜 0</span>
+                <button id="show-achievements" class="icon-button" type="button" aria-label="Achievements" title="Achievements">🏅</button>
                 <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
             </div>
         </header>
@@ -60,9 +61,11 @@
                 <p class="chapter-line"><span id="chapter" class="chapter"></span><span id="counter" class="counter"></span></p>
                 <div id="timer" class="timer" hidden><i id="timer-bar"></i><b id="timer-text"></b></div>
                 <h2 id="question" class="question"></h2>
+                <p id="sowell-note" class="sowell-note" hidden></p>
                 <div id="options" class="options"></div>
                 <div class="quiz-footer">
                     <div class="lifelines">
+                        <button id="ask-sowell" type="button" class="lifeline" title="A hint from the book (not the answer)">👓 Ask Sowell <span>1🥜</span></button>
                         <button id="mind-read" type="button" class="lifeline" title="Anya reads the examiner’s mind: two wrong answers disappear">🔮 Mind-read <span>3🥜</span></button>
                         <button id="swap" type="button" class="lifeline" title="Swap this question for another of the same difficulty">🔄 Swap <span>2🥜</span></button>
                     </div>
@@ -84,6 +87,18 @@
                 </div>
             </section>
         </main>
+
+        <!-- Achievements -->
+        <div id="achievements" class="overlay" hidden>
+            <div class="overlay-panel">
+                <h2 class="menu-title">🏅 Achievements</h2>
+                <p class="end-kicker"><span id="achievements-count">0</span> unlocked · saved in this browser</p>
+                <div id="achievements-grid" class="achievements-grid"></div>
+                <button id="hide-achievements" type="button" class="next-button">Back ▶</button>
+            </div>
+        </div>
+
+        <div id="toasts" class="toasts" aria-live="polite"></div>
     </div>
 
     <script type="module" src="/src/games/basic-economics-trainer/main.ts"></script>
