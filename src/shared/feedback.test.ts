@@ -1,15 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { games } from '../games.ts';
+import { games, listedGames } from '../games.ts';
 import { describeBrowser, gameForPath, HOMEPAGE_OPTION, issueUrl, REPO_URL } from './feedback.ts';
 
 const template = (name: string) => readFileSync(new URL(`../../.github/ISSUE_TEMPLATE/${name}`, import.meta.url), 'utf8');
 
 describe('feedback links', () => {
-  it('the issue forms list every game, plus the homepage', () => {
+  it('the issue forms list every listed game (and no shelved ones), plus the homepage', () => {
     for (const name of ['bug_report.yml', 'feature_request.yml']) {
       const yml = template(name);
-      for (const g of games) expect(yml, `${name}: ${g.title}`).toContain(g.title);
+      for (const g of listedGames) expect(yml, `${name}: ${g.title}`).toContain(g.title);
+      for (const g of games.filter((x) => x.hidden)) expect(yml, `${name}: ${g.title}`).not.toContain(g.title);
       expect(yml).toContain(HOMEPAGE_OPTION);
     }
   });

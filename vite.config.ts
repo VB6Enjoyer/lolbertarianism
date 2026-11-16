@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
-import { games } from './src/games.ts';
+import { listedGames as games } from './src/games.ts';
 import { gamePreview, homePreview, previewTags } from './src/social.ts';
 
 const root = import.meta.dirname;
