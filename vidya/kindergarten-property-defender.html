@@ -21,6 +21,7 @@
             <div class="stat"><small>Score</small><b id="score">0</b></div>
             <div class="stat stash-stat" title="Things you traded for. Tap one (or press its number) to use it, or sell it to a classmate."><small>Stash · tap to use</small><div id="stash" class="stash-items">—</div></div>
             <button id="shout" class="shout-button" type="button" disabled title="Fills as you stop thieves. When it's full, press Space (or tap here) to blow every grabby hand away."><span>📢 PROPERTY RIGHTS!</span><i><b id="meter"></b></i></button>
+            <button id="pause" class="icon-button" type="button" aria-label="Pause" title="Pause (P or Esc)">⏸</button>
             <button id="show-achievements" class="icon-button" type="button" aria-label="Achievements" title="Achievements">🏅</button>
             <button id="mute" class="icon-button mute" type="button" aria-label="Toggle sound">🔊</button>
         </header>
@@ -35,13 +36,13 @@
                 <div class="legend">
                     <div class="legend-card thief">
                         <span class="sleeve">✊</span>
-                        <b>Red sleeve, grabby fist</b>
+                        <b><span class="cb-thief">Red</span> sleeve, grabby fist</b>
                         <small>The teacher, redistributing your blocks.</small>
                         <strong>SLAP IT</strong>
                     </div>
                     <div class="legend-card trader">
                         <span class="sleeve">🖐️</span>
-                        <b>Green sleeve, open hand</b>
+                        <b><span class="cb-trader">Green</span> sleeve, open hand</b>
                         <small>A classmate with something to trade: “🧃 for 2🧱”, or “3🧱 for your 🧃”.</small>
                         <strong>LET IT THROUGH</strong>
                     </div>
@@ -60,6 +61,7 @@
                     <li>🏗️ After school, spend blocks: a lemonade stand, a piggy bank, a No Trespassing sign, a Gadsden flag, hired security… A bigger pile draws more hands.</li>
                 </ul>
                 <p id="best" class="best"></p>
+                <p class="options"><button type="button" class="colorblind-toggle small-toggle" aria-pressed="false">🎨 Colour-blind mode: off</button></p>
                 <button id="start" type="button" class="big-button">Defend your property</button>
             </div>
         </div>
@@ -71,6 +73,20 @@
                 <div id="break-body" class="body"></div>
                 <div id="shop" class="shop"></div>
                 <button id="next" type="button" class="big-button">Back to class ▶</button>
+            </div>
+        </div>
+
+        <!-- Paused -->
+        <div id="paused" class="overlay" hidden>
+            <div class="panel">
+                <h1>⏸ Paused</h1>
+                <p class="tagline">The grabby hands are waiting. So is the teacher.</p>
+                <p class="options"><button type="button" class="colorblind-toggle small-toggle" aria-pressed="false">🎨 Colour-blind mode: off</button></p>
+                <p class="pause-keys">P or Esc to pause and resume · Space to shout · 1–9 to use your stash</p>
+                <div class="pause-buttons">
+                    <button id="resume" type="button" class="big-button">Resume ▶</button>
+                    <button id="restart" type="button" class="small-toggle">Start over</button>
+                </div>
             </div>
         </div>
 

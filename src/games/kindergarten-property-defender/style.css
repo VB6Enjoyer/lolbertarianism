@@ -555,7 +555,7 @@ body {
     font-size: 15px;
 }
 
-#show-achievements {
+#pause {
     margin-left: auto;
 }
 
@@ -658,4 +658,46 @@ body {
         top: 110px;
         left: 12px;
     }
+}
+
+/* --- Pause, and options --- */
+.options {
+    margin: 4px 0 10px;
+}
+
+.small-toggle {
+    padding: 6px 14px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    background: #fff;
+    color: var(--ink);
+    font: 16px var(--font);
+    cursor: pointer;
+}
+
+.small-toggle[aria-pressed='true'] {
+    background: #fff8c4;
+}
+
+.small-toggle:hover {
+    transform: rotate(-1deg);
+}
+
+.pause-keys {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.pause-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Colour-blind mode: the title screen's legend matches the classroom */
+body.colorblind {
+    --thief: #e8710a;
+    --trader: #1f77b4;
 }

@@ -19,6 +19,10 @@ const els = {
   waveBar: byId('wave-bar'),
   combo: byId('combo'),
   stash: byId('stash'),
+  pauseButton: byId<HTMLButtonElement>('pause'),
+  pauseMenu: byId('paused'),
+  resume: byId<HTMLButtonElement>('resume'),
+  restart: byId<HTMLButtonElement>('restart'),
   shout: byId<HTMLButtonElement>('shout'),
   meter: byId('meter'),
   mute: byId<HTMLButtonElement>('mute'),
@@ -49,6 +53,8 @@ interface Save {
   bestWave: number;
   muted: boolean;
   achievements: string[];
+  /** Orange and blue instead of red and green, with a ✊/✋ on every sleeve. */
+  colorblind: boolean;
 }
 const slot = createSaveSlot<Save>({ game: 'kindergarten-property-defender', version: 1 });
 const saved = slot.load();
@@ -57,6 +63,7 @@ const save: Save = {
   bestWave: Math.max(0, Math.floor(Number(saved?.bestWave) || 0)),
   muted: saved?.muted === true,
   achievements: [...normalizeUnlocked(saved?.achievements)],
+  colorblind: saved?.colorblind === true,
 };
 const persist = () => slot.save(save);
 const unlocked = new Set(save.achievements);
@@ -136,8 +143,16 @@ const BOSS_STEAL: Partial<Record<Role, string>> = { principal: 'EMINENT DOMAIN!'
 const ctx = els.canvas.getContext('2d')!;
 let state: GameState = newGame(els.canvas.clientWidth || 800, els.canvas.clientHeight || 600);
 state.phase = 'break'; // nothing happens behind the title screen
-const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, touch: matchMedia('(pointer: coarse)').matches };
+const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, touch: matchMedia('(pointer: coarse)').matches, colorblind: false };
+renderColorblind();
+const pauseReasons = new Set<'menu' | 'user'>();
 let paused = false;
+function setPaused(reason: 'menu' | 'user', on: boolean) {
+  if (on) pauseReasons.add(reason);
+  else pauseReasons.delete(reason);
+  paused = pauseReasons.size > 0;
+  last = performance.now();
+}
 /** The interest and wages from the last recess, for its summary. */
 let recessEvents: GameEvent[] = [];
 
@@ -475,25 +490,61 @@ function renderAchievements() {
   );
 }
 
-let pausedForAchievements = false;
 byId('show-achievements').addEventListener('click', () => {
   renderAchievements();
   els.achievements.hidden = false;
-  // Pause the class while you're reading.
-  if (state.phase === 'playing' && !paused) {
-    paused = true;
-    pausedForAchievements = true;
-  }
+  // The class waits while you're reading.
+  setPaused('menu', true);
   byId('hide-achievements').focus();
 });
 byId('hide-achievements').addEventListener('click', () => {
   els.achievements.hidden = true;
-  if (pausedForAchievements) {
-    paused = false;
-    pausedForAchievements = false;
-    last = performance.now();
-  }
+  setPaused('menu', false);
 });
+
+// --- Pause ---
+
+function openPause() {
+  if (state.phase !== 'playing' || !els.pauseMenu.hidden) return;
+  pressing = null;
+  setPaused('user', true);
+  renderColorblind();
+  els.pauseMenu.hidden = false;
+  els.resume.focus();
+}
+
+function closePause() {
+  if (els.pauseMenu.hidden) return;
+  els.pauseMenu.hidden = true;
+  setPaused('user', false);
+}
+
+els.pauseButton.addEventListener('click', () => (els.pauseMenu.hidden ? openPause() : closePause()));
+els.resume.addEventListener('click', closePause);
+els.restart.addEventListener('click', () => {
+  closePause();
+  startGame();
+});
+
+// --- Colour-blind mode ---
+
+function renderColorblind() {
+  scene.colorblind = save.colorblind;
+  document.body.classList.toggle('colorblind', save.colorblind);
+  for (const el of document.querySelectorAll('.cb-thief')) el.textContent = save.colorblind ? 'Orange' : 'Red';
+  for (const el of document.querySelectorAll('.cb-trader')) el.textContent = save.colorblind ? 'Blue' : 'Green';
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.colorblind-toggle')) {
+    b.textContent = `🎨 Colour-blind mode: ${save.colorblind ? 'on' : 'off'}`;
+    b.setAttribute('aria-pressed', String(save.colorblind));
+  }
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('.colorblind-toggle')) {
+  b.addEventListener('click', () => {
+    save.colorblind = !save.colorblind;
+    persist();
+    renderColorblind();
+  });
+}
 
 /** The stash's groups (one button per kind of item), in the order they were first got. */
 const stashGroups = () => {
@@ -633,7 +684,7 @@ els.canvas.addEventListener('pointerup', letGo);
 els.canvas.addEventListener('pointercancel', letGo);
 
 document.addEventListener('visibilitychange', () => {
-  paused = document.hidden;
+  if (document.hidden) openPause();
   last = performance.now();
 });
 
@@ -750,6 +801,19 @@ els.next.addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+    if (!els.pauseMenu.hidden) closePause();
+    else if (els.achievements.hidden && els.title.hidden) openPause();
+    else if (e.key === 'Escape' && !els.achievements.hidden) byId('hide-achievements').click();
+    return;
+  }
+  if (!els.pauseMenu.hidden) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      closePause();
+    }
+    return;
+  }
   const overlay = !els.title.hidden || !els.pause.hidden || !els.over.hidden || !els.achievements.hidden;
   if (!overlay && state.phase === 'playing') {
     if (e.key === ' ') {

@@ -39,7 +39,14 @@ export interface Scene {
   banner: { text: string; sub?: string; until: number } | null;
   /** Playing on a touch screen (double-tap instead of right-click). */
   touch: boolean;
+  /** Orange and blue instead of red and green, with a ✊/✋ on every sleeve. */
+  colorblind: boolean;
 }
+
+/** In colour-blind mode: thieves warm (orange and brown), traders blue. */
+const CB_LOOK: Partial<Record<Role, string>> = { grabby: '#e8710a', group: '#e8710a', monitor: '#b35806', mitten: '#7f3b08', sticky: '#c79a3b', fraud: '#1f77b4' };
+const CB_THIEF = '#e8710a';
+const CB_TRADER = '#1f77b4';
 
 /** Each troublemaker's sleeve, and what it carries. */
 const BOSS_LABELS: Partial<Record<Role, string>> = { principal: 'THE PRINCIPAL', superintendent: 'THE SUPERINTENDENT', board: 'SCHOOL BOARD', doe: 'DEPT. OF EDUCATION' };
@@ -407,7 +414,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
   // The fraud kid is drawn exactly like a trader: only the tag gives it away.
   const thief = hand.kind === 'thief' && hand.role !== 'fraud';
   const look = hand.role ? ROLE_LOOK[hand.role] : null;
-  const color = look ? look.color : thief ? THIEF : TRADER;
+  const color = scene.colorblind ? (hand.role ? (CB_LOOK[hand.role] ?? look!.color) : thief ? CB_THIEF : CB_TRADER) : look ? look.color : thief ? THIEF : TRADER;
   // The arm: a long wobbly sleeve from off the edge, outlined in ink like a crayon drawing.
   const pts: [number, number][] = [];
   for (let i = 0; i <= 6; i++) {
@@ -419,6 +426,19 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
   ctx.globalAlpha = hand.slapped ? 0.75 : 1;
   stroke(ctx, pts, armW + 4, t, hand.id * 31, INK, 1.4);
   stroke(ctx, pts, armW, t, hand.id * 31, color, 1.4);
+  // Colour-blind mode: a fist or an open hand on the sleeve, so the colour isn't the only clue.
+  if (scene.colorblind && !hand.slapped) {
+    const mid = pts[2];
+    const badge = Math.max(9, u * 0.22);
+    ctx.beginPath();
+    ctx.arc(mid[0], mid[1], badge, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    emoji(ctx, hand.kind === 'trader' || hand.role === 'fraud' ? '✋' : '✊', mid[0], mid[1] + 1, badge * 1.25);
+  }
   const r = Math.max(13, u * 0.42) * (look?.scale ?? 1);
   const w = Math.max(1.8, u * 0.065);
   // Tough ones show how many slaps they've got left.
@@ -463,13 +483,14 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
     ctx.translate(at.x, at.y);
     ctx.rotate(dir + Math.PI / 2);
     wobblyPath(ctx, [[-r * 0.9, r * 0.9], [-r * 1.0, -r * 0.6], [-r * 0.5, -r * 1.5], [r * 0.3, -r * 1.5], [r * 0.8, -r * 0.7], [r * 0.9, r * 0.9], [-r * 0.9, r * 0.9]], 1.2, t, hand.id * 17);
-    ctx.fillStyle = '#5dade2';
+    const mitt = scene.colorblind ? '#f5b041' : '#5dade2';
+    ctx.fillStyle = mitt;
     ctx.fill();
     ctx.strokeStyle = INK;
     ctx.lineWidth = w;
     ctx.stroke();
     // The thumb, and the cuff
-    wobblyCircle(ctx, -r * 1.15, -r * 0.1, r * 0.42, w, t, hand.id * 19, '#5dade2');
+    wobblyCircle(ctx, -r * 1.15, -r * 0.1, r * 0.42, w, t, hand.id * 19, mitt);
     stroke(ctx, [[-r * 0.9, r * 0.55], [r * 0.9, r * 0.55]], w * 2.2, t, hand.id * 23, '#fdfefe', 0.8);
     ctx.restore();
     for (let k = 0; k < hand.carrying; k++) drawBlock(ctx, at.x + (k - (hand.carrying - 1) / 2) * r * 0.9, at.y, r * 0.85, hand.id + k, t);
@@ -526,7 +547,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
       ctx.textBaseline = 'middle';
       ctx.fillText(icon, at.x, at.y);
       const label = offer.item === 'money' ? `💵 for ${offer.price}🧱` : offer.wants === 'blocks' ? `${ITEMS[offer.item].icon} for ${offer.price}🧱` : `${offer.price}🧱 for your ${ITEMS[offer.item].icon}`;
-      drawTag(ctx, at.x, at.y - r * 2.3, label, Math.max(11, u * 0.26), t, hand.id);
+      drawTag(ctx, at.x, at.y - r * 2.3, label, Math.max(11, u * 0.26), t, hand.id, color);
     } else if (hand.traded) {
       ctx.font = `${Math.round(r * 1.5)}px ${FONT}`;
       ctx.textAlign = 'center';
@@ -537,7 +558,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
   ctx.globalAlpha = 1;
 }
 
-function drawTag(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, size: number, t: number, seed: number) {
+function drawTag(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, size: number, t: number, seed: number, color = TRADER) {
   ctx.font = `bold ${Math.round(size)}px ${FONT}`;
   const w = ctx.measureText(text).width + size * 1.1;
   const h = size * 1.7;
@@ -545,7 +566,7 @@ function drawTag(ctx: CanvasRenderingContext2D, x: number, y: number, text: stri
   wobblyPath(ctx, [[left, y - h / 2], [left + w, y - h / 2], [left + w, y + h / 2], [left, y + h / 2], [left, y - h / 2]], 1, t, seed * 5);
   ctx.fillStyle = '#fff';
   ctx.fill();
-  ctx.strokeStyle = TRADER;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
   ctx.stroke();
   ctx.fillStyle = INK;
