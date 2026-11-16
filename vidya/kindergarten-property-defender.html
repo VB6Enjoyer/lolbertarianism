@@ -60,11 +60,41 @@
                     <li>💵 Watch out for kids in disguise: the Monopoly-money kid pays in funny money, and the Free Lunch kid’s “free” stuff costs a big handful. Slap them. But never slap the 🍎 Teacher’s Pet (it tells on you): pinch it.</li>
                     <li>🧢 Get to know the regulars: Timmy is fair, Becky haggles, Dave buys what you’ve got. Trade with one four times and you’re best friends. Slap one and they sulk for days.</li>
                     <li>🏖️ Every weekend, pick a <b>perk</b> for Jack. Survive five weeks and you <b>graduate</b>.</li>
+                    <li>🚌 Now and then, a special day: a substitute who mixes up the sleeves, picture day, a field trip, a snow day…</li>
                     <li>🏗️ After school, spend blocks: a lemonade stand, a piggy bank, a No Trespassing sign, a Gadsden flag, hired security… A bigger pile draws more hands.</li>
                 </ul>
                 <p id="best" class="best"></p>
+                <div id="difficulty" class="difficulty" role="radiogroup" aria-label="Difficulty"></div>
+                <p id="difficulty-note" class="difficulty-note"></p>
                 <p class="options"><button type="button" class="colorblind-toggle small-toggle" aria-pressed="false">🎨 Colour-blind mode: off</button></p>
-                <button id="start" type="button" class="big-button">Defend your property</button>
+                <div class="pause-buttons">
+                    <button id="start" type="button" class="big-button">Defend your property</button>
+                    <button id="show-daily" type="button" class="small-toggle">📅 Daily challenge</button>
+                    <button id="show-history" type="button" class="small-toggle">📜 Run history</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- The daily challenge -->
+        <div id="daily" class="overlay" hidden>
+            <div class="panel">
+                <h1>📅 Daily challenge</h1>
+                <p class="tagline">One school day, the same for everyone today. Your best score today is kept.</p>
+                <div id="daily-body" class="daily-body"></div>
+                <div class="pause-buttons">
+                    <button id="start-daily" type="button" class="big-button">Start today’s day ▶</button>
+                    <button id="hide-daily" type="button" class="small-toggle">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Run history -->
+        <div id="history" class="overlay" hidden>
+            <div class="panel wide">
+                <h1>📜 Run history</h1>
+                <p class="tagline">Your ten best runs. Saved in this browser.</p>
+                <div id="history-body" class="history-body"></div>
+                <button id="hide-history" type="button" class="big-button">Back</button>
             </div>
         </div>
 
@@ -121,7 +151,10 @@
             <div class="panel">
                 <h1 id="over-title">Property Seized</h1>
                 <div id="over-body" class="body"></div>
-                <button id="again" type="button" class="big-button">Try again</button>
+                <div class="pause-buttons">
+                    <button id="again" type="button" class="big-button">Try again</button>
+                    <button id="to-title" type="button" class="small-toggle">Title screen</button>
+                </div>
             </div>
         </div>
     </div>

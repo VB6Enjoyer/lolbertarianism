@@ -6,6 +6,8 @@
 // happens. Slapping a trader is aggression, and it costs you a gold star.
 
 import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
+import { busOffset, dayLength, PHOTO_RUSH_SPEED, photoAt, rollSpecial, type Photo, type SpecialDayId } from './days.ts';
+import { difficultyById, type Daily, type DifficultyId } from './modes.ts';
 import { FRIEND_AT, GRUDGE_DAYS, isFriend, noRegulars, REGULAR_SHARE, regularsMet, type ClassmateId, type Regulars } from './classmates.ts';
 import { GRADE_POINTS, GRADUATION_WEEK, noPerks, perkChoices, type PerkId, type Perks } from './perks.ts';
 import { allowance, bossFor, bossInfo, DAY_LENGTH, disguised, emptyDay, isBoss, isFriday, NEEDS, PERIOD_LENGTH, PERIODS, periodAt, pickRole, reportCard, weekOf, type DayStats, type Period, type ReportCard, type Role } from './school.ts';
@@ -138,6 +140,8 @@ export type GameEvent =
   | { type: 'friend'; id: ClassmateId }
   | { type: 'grudge'; id: ClassmateId; wasFriend: boolean }
   | { type: 'tattle'; hand: Hand; blocks: number }
+  | { type: 'cheese' }
+  | { type: 'flash' }
   | { type: 'report'; card: ReportCard }
   | { type: 'allowance'; blocks: number }
   | { type: 'bounce'; hand: Hand; needs: 'slap' | 'pinch' | 'hold' };
@@ -202,6 +206,12 @@ export interface GameState {
   /** How Jack gets on with the regulars, and the grabby hands the teacher's sending after Jack hit her pet. */
   regulars: Regulars;
   reprisals: number;
+  /** Today's special day (if it is one), and where picture day's photo is at. */
+  special: SpecialDayId | null;
+  photo: Photo;
+  difficulty: DifficultyId;
+  /** A daily challenge: one school day, then it's over. */
+  daily: boolean;
   /** What happened since the UI last looked. */
   events: GameEvent[];
 }
@@ -254,7 +264,9 @@ export const multiplier = (combo: number, cap = 4) => Math.min(cap, 1 + Math.flo
 export const comboCap = (s: GameState) => (s.perks.combo ? 6 : 4);
 export const meterMax = (s: GameState) => CONFIG.meterMax - 3 * s.perks.loud;
 export const holdTime = (s: GameState) => HOLD_TIME * (1 - 0.4 * s.perks.pry);
-const homesteadEvery = (s: GameState) => (s.perks.homestead ? 6 : CONFIG.homesteadEvery);
+const homesteadEvery = (s: GameState) => difficultyById(s.difficulty).homestead * (s.perks.homestead ? 2 / 3 : 1);
+/** How long today is (a snow day is short). */
+export const todayLength = (s: GameState) => dayLength(s.special);
 /** The grade point average so far. */
 export const gpa = (s: GameState) => (s.gradeCount ? s.gradePoints / s.gradeCount : 0);
 /** How close a tap has to be to a hand. */
@@ -270,14 +282,18 @@ export function needsFor(hand: Hand): 'slap' | 'pinch' | 'hold' {
 export function pileAt(s: GameState) {
   // On a tall (phone) screen the pile sits higher up, out of the crowd at the bottom.
   const tall = s.h > s.w * 1.25;
-  return { x: s.w * 0.5, y: tall ? s.h * 0.56 : s.h - Math.max(70, s.h * 0.14) };
+  const trip = s.special === 'field-trip' && s.phase === 'playing';
+  const bus = trip ? busOffset(s.waveTime) : 0;
+  // On a field trip the pile rides on the bus's roof, so it sits higher.
+  return { x: s.w * (0.5 + bus), y: (tall ? s.h * 0.56 : s.h - Math.max(70, s.h * 0.14)) - (trip ? Math.max(40, s.h * 0.08) : 0) };
 }
 
-export function newGame(w: number, h: number): GameState {
+export function newGame(w: number, h: number, difficulty: DifficultyId = 'normal'): GameState {
+  const d = difficultyById(difficulty);
   return {
     w,
     h,
-    blocks: CONFIG.startBlocks,
+    blocks: d.startBlocks,
     stars: CONFIG.maxStars,
     score: 0,
     wave: 1,
@@ -287,7 +303,7 @@ export function newGame(w: number, h: number): GameState {
     hands: [],
     nextId: 1,
     spawnIn: 1,
-    homesteadIn: CONFIG.homesteadEvery,
+    homesteadIn: d.homestead,
     combo: 0,
     goodwill: 0,
     tollCredit: 0,
@@ -311,6 +327,10 @@ export function newGame(w: number, h: number): GameState {
     graduated: false,
     regulars: noRegulars(),
     reprisals: 0,
+    special: null,
+    photo: 'normal',
+    difficulty,
+    daily: false,
     events: [],
   };
 }
@@ -425,7 +445,7 @@ export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forc
     travel:
       looksLike === 'trader'
         ? TRADER_TRAVEL * (0.9 + rng() * 0.2)
-        : ((thiefTravel(s.wave) * (1 - speedSpread(s.wave) * 0.45 + rng() * speedSpread(s.wave))) / period.speed) * (1 + (s.built.sign ? SIGN_SLOW[s.built.sign - 1] : 0)) * (role === 'principal' ? 2.4 : role === 'superintendent' ? 2.6 : role === 'board' ? 2.0 : role === 'doe' ? 2.8 : role === 'monitor' ? 1.3 : role === 'president' ? 1.15 : 1),
+        : ((thiefTravel(s.wave) * difficultyById(s.difficulty).travel * (1 - speedSpread(s.wave) * 0.45 + rng() * speedSpread(s.wave))) / period.speed) * (1 + (s.built.sign ? SIGN_SLOW[s.built.sign - 1] : 0)) * (role === 'principal' ? 2.4 : role === 'superintendent' ? 2.6 : role === 'board' ? 2.0 : role === 'doe' ? 2.8 : role === 'monitor' ? 1.3 : role === 'president' ? 1.15 : 1),
     wobble: looksLike === 'thief' ? Math.min(s.w, s.h) * (isBoss(role) ? 0.01 : 0.03 + rng() * 0.05) : 0,
     phase: rng() * Math.PI * 2,
     state: 'reaching',
@@ -549,8 +569,21 @@ function arrive(s: GameState, hand: Hand) {
 
 export function step(s: GameState, dt: number, rng: () => number) {
   if (s.phase !== 'playing') return;
+  const busFrom = s.special === 'field-trip' ? pileAt(s).x : 0;
   s.waveTime += dt;
-  const spawning = s.waveTime < CONFIG.waveLength;
+  const spawning = s.waveTime < todayLength(s);
+  if (s.special === 'field-trip') {
+    // The hands follow the bus.
+    const dx = pileAt(s).x - busFrom;
+    for (const hand of s.hands) hand.targetX += dx;
+  }
+  // Picture day: freeze for the photo, then rush.
+  const photo: Photo = s.special === 'picture' && spawning ? photoAt(s.waveTime) : 'normal';
+  if (photo !== s.photo) {
+    if (photo === 'freeze') s.events.push({ type: 'cheese' });
+    if (photo === 'rush') s.events.push({ type: 'flash' });
+    s.photo = photo;
+  }
   const idx = Math.min(PERIODS.length - 1, Math.floor(s.waveTime / PERIOD_LENGTH));
   if (spawning && idx !== s.period) {
     s.period = idx;
@@ -589,7 +622,7 @@ export function step(s: GameState, dt: number, rng: () => number) {
         twin.phase = hand.phase + Math.PI;
       }
       // A big pile draws a crowd; some periods are busier than others.
-      s.spawnIn += (spawnEvery(s.wave) / attraction(s.blocks) / PERIODS[s.period].spawn) * (0.7 + rng() * 0.6);
+      s.spawnIn += ((spawnEvery(s.wave) * difficultyById(s.difficulty).spawn) / attraction(s.blocks) / PERIODS[s.period].spawn) * (0.7 + rng() * 0.6) * (photo === 'freeze' ? 0.45 : 1);
     }
   }
   // Jack homesteads a block from the toy bin now and then.
@@ -654,9 +687,10 @@ export function step(s: GameState, dt: number, rng: () => number) {
       }
     }
     if (hand.state === 'reaching') {
+      if (photo === 'freeze') continue; // Say cheese!
       const surge = 1 + hand.surge * Math.sin(hand.phase * 3 + hand.progress * 10);
       const held = hand.beingHeld ? 0.25 : 1;
-      hand.progress += (dt / hand.travel) * surge * held;
+      hand.progress += (dt / hand.travel) * surge * held * (photo === 'rush' && hand.kind === 'thief' ? PHOTO_RUSH_SPEED : 1);
       if (hand.progress >= 1) {
         hand.progress = 1;
         arrive(s, hand);
@@ -694,7 +728,7 @@ export function step(s: GameState, dt: number, rng: () => number) {
         s.events.push({ type: 'wages', blocks: 0, quit: true });
       }
     }
-    const card = reportCard(s.day);
+    const card = reportCard(s.day, todayLength(s) / DAY_LENGTH);
     s.report = card;
     s.score += card.bonus;
     s.gradePoints += GRADE_POINTS[card.defence] + GRADE_POINTS[card.economics] + GRADE_POINTS[card.citizenship];
@@ -974,6 +1008,20 @@ export function build(s: GameState, id: BuildId): boolean {
   return true;
 }
 
+/** Sets up a daily challenge: one school day, partway through the term, with a starter kit and a special day. */
+export function startDaily(s: GameState, d: Daily) {
+  s.daily = true;
+  s.wave = d.day;
+  s.blocks = d.blocks;
+  s.stash = d.stash.map((item) => ({ item, cost: 1 }));
+  s.built[d.built] = 1;
+  s.perks[d.perk] = 1;
+  s.special = d.special;
+  s.produceIn = s.built.lemonade ? LEMONADE_EVERY[0] : 0;
+  s.guardIn = s.built.guard ? GUARD_EVERY[0] : 0;
+  s.fence = s.perks.fence ? 2 : 0;
+}
+
 /** Takes one of this weekend's perks. */
 export function takePerk(s: GameState, id: PerkId): boolean {
   if (s.phase !== 'break' || !s.perkOffer.includes(id)) return false;
@@ -985,9 +1033,11 @@ export function takePerk(s: GameState, id: PerkId): boolean {
 }
 
 /** On to the next wave. */
-export function nextWave(s: GameState) {
+export function nextWave(s: GameState, rng: () => number = Math.random) {
   if (s.phase !== 'break') return;
   s.wave++;
+  s.special = rollSpecial(s.wave, s.special, rng);
+  s.photo = 'normal';
   s.waveTime = 0;
   s.spawnIn = 1;
   s.produceIn = s.built.lemonade ? LEMONADE_EVERY[s.built.lemonade - 1] : 0;

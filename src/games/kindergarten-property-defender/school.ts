@@ -152,9 +152,10 @@ export interface ReportCard {
   bonus: number;
 }
 
-export function reportCard(d: DayStats): ReportCard {
+/** `length` is the share of a full day that school was open (a snow day is shorter, so it needs fewer trades). */
+export function reportCard(d: DayStats, length = 1): ReportCard {
   const defence = grade(d.thieves ? d.stopped / d.thieves : 1, [0.9, 0.75, 0.6, 0.45]);
-  const economics = grade(d.trades + Math.max(0, d.profit) / 3, [10, 7, 4, 2]);
+  const economics = grade((d.trades + Math.max(0, d.profit) / 3) / length, [10, 7, 4, 2]);
   const citizenship: Grade = (['A', 'B', 'C', 'D'] as Grade[])[d.violations] ?? 'F';
   const points: Record<Grade, number> = { A: 100, B: 60, C: 30, D: 10, F: 0 };
   const comment =

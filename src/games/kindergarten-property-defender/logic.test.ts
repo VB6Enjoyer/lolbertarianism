@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { build, CONFIG, handPosition, multiplier, newGame, nextWave, slap, spawnHand, step, traderShare, type GameState, type Hand } from './logic.ts';
+import { build, CONFIG, handPosition, pileAt, multiplier, newGame, nextWave, slap, spawnHand, step, traderShare, type GameState, type Hand } from './logic.ts';
 import { attraction, GLUE_SECONDS, GUARD_WAGES, LEMONADE_EVERY } from './capital.ts';
 
 function rng(seed: number) {
@@ -14,6 +14,8 @@ function rng(seed: number) {
 function reach(s: GameState, hand: Hand, r = rng(1)) {
   for (let i = 0; i < 1000 && hand.state === 'reaching' && s.phase === 'playing'; i++) step(s, 0.02, r);
 }
+
+const pileAtX = (s: GameState) => pileAt(s).x;
 
 const quiet = (s: GameState) => {
   // No more spawning or homesteading during a test.
@@ -733,5 +735,122 @@ describe('kindergarten: the Free Lunch kid and the Teacher’s Pet', () => {
     slap(s, at.x, at.y, 'pinch');
     expect(pet.slapped).toBe(true);
     expect(s.blocks).toBe(27);
+  });
+});
+
+describe('kindergarten: special days', () => {
+  it('only from the second week, never on a Friday, never two in a row', async () => {
+    const { rollSpecial } = await import('./days.ts');
+    const r = rng(900);
+    expect(Array.from({ length: 50 }, () => rollSpecial(3, null, r)).every((x) => x === null)).toBe(true);
+    expect(Array.from({ length: 50 }, () => rollSpecial(10, null, r)).every((x) => x === null)).toBe(true);
+    expect(rollSpecial(7, 'snow', () => 0)).toBeNull();
+    const seen = new Set(Array.from({ length: 400 }, () => rollSpecial(7, null, r)));
+    expect(seen.size).toBe(5); // four special days, and plain ones
+  });
+
+  it('a snow day is three periods long, and its report card asks for fewer trades', async () => {
+    const { reportCard } = await import('./school.ts');
+    const s = quiet(newGame(1000, 600));
+    s.special = 'snow';
+    for (let i = 0; i < 40 * 34 && s.phase === 'playing'; i++) step(s, 0.025, rng(901));
+    expect(s.phase).toBe('break');
+    expect(s.waveTime).toBeLessThan(40);
+    const day = { thieves: 0, stopped: 0, trades: 5, profit: 0, violations: 0, stolen: 0 };
+    expect(reportCard(day).economics).toBe('C');
+    expect(reportCard(day, 0.6).economics).toBe('B');
+  });
+
+  it('picture day: everyone freezes for the photo, then rushes', () => {
+    const s = quiet(newGame(1000, 600));
+    s.special = 'picture';
+    const hand = spawnHand(s, rng(902), 'thief');
+    hand.travel = 100;
+    s.waveTime = 6;
+    step(s, 0.01, rng(903));
+    expect(s.photo).toBe('freeze');
+    expect(s.events.some((e) => e.type === 'cheese')).toBe(true);
+    const frozen = hand.progress;
+    step(s, 0.5, rng(904));
+    expect(hand.progress).toBe(frozen);
+    s.waveTime = 7.5;
+    step(s, 0.1, rng(905));
+    expect(s.photo).toBe('rush');
+    expect(hand.progress).toBeCloseTo(frozen + (0.1 / 100) * 2 * (1 + hand.surge * Math.sin(hand.phase * 3 + frozen * 10)), 4);
+  });
+
+  it('field trip: the pile drives around, and the hands follow it', () => {
+    const s = quiet(newGame(1000, 600));
+    s.special = 'field-trip';
+    const hand = spawnHand(s, rng(906), 'thief');
+    const offset = hand.targetX - pileAtX(s);
+    for (let i = 0; i < 40; i++) step(s, 0.05, rng(907 + i));
+    expect(Math.abs(pileAtX(s) - 500)).toBeGreaterThan(20);
+    expect(hand.targetX - pileAtX(s)).toBeCloseTo(offset, 5);
+  });
+
+  it('tomorrow is rolled at the end of the day', () => {
+    const s = quiet(newGame(1000, 600));
+    s.wave = 6;
+    s.phase = 'break';
+    nextWave(s, () => 0);
+    expect(s.wave).toBe(7);
+    expect(s.special).toBe('substitute');
+    s.phase = 'break';
+    nextWave(s, () => 0);
+    expect(s.special).toBeNull(); // not two in a row
+  });
+});
+
+describe('kindergarten: difficulty, the daily challenge, run history', () => {
+  it('easy starts with more blocks and calmer hands; hard with fewer and faster', () => {
+    const easy = newGame(1000, 600, 'easy');
+    const hard = newGame(1000, 600, 'hard');
+    expect(easy.blocks).toBeGreaterThan(CONFIG.startBlocks);
+    expect(hard.blocks).toBeLessThan(CONFIG.startBlocks);
+    const travel = (s: GameState) => {
+      quiet(s);
+      let sum = 0;
+      const r = rng(950);
+      for (let i = 0; i < 200; i++) sum += spawnHand(s, r, 'thief', 'grabby').travel;
+      return sum / 200;
+    };
+    expect(travel(easy)).toBeGreaterThan(travel(newGame(1000, 600)));
+    expect(travel(hard)).toBeLessThan(travel(newGame(1000, 600)));
+  });
+
+  it('the daily challenge is the same all day, different the next, and never a Friday', async () => {
+    const { dailyFor } = await import('./modes.ts');
+    const { isFriday } = await import('./school.ts');
+    const morning = dailyFor(new Date(2026, 10, 16, 8));
+    const night = dailyFor(new Date(2026, 10, 16, 23));
+    expect(night).toEqual(morning);
+    expect(dailyFor(new Date(2026, 10, 17)).special).not.toBe(morning.special);
+    for (let d = 1; d <= 60; d++) {
+      const daily = dailyFor(new Date(2026, 0, d));
+      expect(isFriday(daily.day)).toBe(false);
+      expect(daily.day).toBeGreaterThanOrEqual(6);
+    }
+    const s = quiet(newGame(1000, 600));
+    const { startDaily } = await import('./logic.ts');
+    startDaily(s, morning);
+    expect(s).toMatchObject({ daily: true, wave: morning.day, blocks: morning.blocks, special: morning.special });
+    expect(s.built[morning.built]).toBe(1);
+    expect(s.perks[morning.perk]).toBe(1);
+    expect(s.stash.map((o) => o.item)).toEqual(morning.stash);
+  });
+
+  it('the history keeps the ten best runs, best first', async () => {
+    const { recordRun, normalizeHistory } = await import('./modes.ts');
+    const history: Parameters<typeof recordRun>[0] = [];
+    const run = (score: number) => ({ score, day: 3, ending: 'seized' as const, difficulty: 'normal' as const, graduated: false, date: '2026-11-16' });
+    for (let i = 1; i <= 10; i++) recordRun(history, run(i * 100));
+    expect(recordRun(history, run(550))).toBe(5);
+    expect(history.length).toBe(10);
+    expect(history[0].score).toBe(1000);
+    expect(recordRun(history, run(50))).toBe(-1);
+    expect(normalizeHistory([{ score: '12', ending: 'nope', difficulty: 'impossible' }, null, 'x'])).toEqual([
+      { score: 12, day: 1, ending: 'seized', difficulty: 'normal', graduated: false, date: '' },
+    ]);
   });
 });

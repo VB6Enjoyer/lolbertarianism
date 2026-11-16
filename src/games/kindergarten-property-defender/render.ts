@@ -36,6 +36,8 @@ export interface Scene {
   guardAt: { x: number; y: number; t: number } | null;
   /** Where the pointer is (a flashlight at nap time). */
   pointer: { x: number; y: number } | null;
+  /** When the picture-day camera last flashed. */
+  flash: number;
   /** A big announcement across the top (a new period, a new troublemaker). */
   banner: { text: string; sub?: string; until: number } | null;
   /** Playing on a touch screen (double-tap instead of right-click). */
@@ -46,6 +48,8 @@ export interface Scene {
 
 /** In colour-blind mode: thieves warm (orange and brown), traders blue. */
 const CB_LOOK: Partial<Record<Role, string>> = { grabby: '#e8710a', group: '#e8710a', monitor: '#b35806', mitten: '#7f3b08', sticky: '#c79a3b', fraud: '#1f77b4', lunch: '#1f77b4', pet: '#d95f02' };
+/** Substitute day: the sub mixed up the sleeves (red for green, orange for blue). */
+const SUB_SWAP: Record<string, string> = { '#d64545': '#2f9e57', '#c0392b': '#27ae60', '#2f9e57': '#d64545', '#e8710a': '#1f77b4', '#1f77b4': '#e8710a' };
 const CB_THIEF = '#e8710a';
 const CB_TRADER = '#1f77b4';
 
@@ -175,7 +179,12 @@ function drawTeacher(ctx: CanvasRenderingContext2D, s: GameState, t: number, ang
   const neck = h.y + h.r;
   stroke(ctx, [[h.x, neck], [h.x, s.h + 10]], w, t, 70);
   stroke(ctx, [[h.x, neck + u * 0.9], [h.x - u * 0.8, neck + u * 2.2]], w, t, 80);
-  stroke(ctx, [[h.x, neck + u * 0.9], [h.x + u * 0.9, neck + u * 1.9], [h.x + u * 1.4, neck + u * 1.7]], w, t, 90, THIEF, 1.5);
+  stroke(ctx, [[h.x, neck + u * 0.9], [h.x + u * 0.9, neck + u * 1.9], [h.x + u * 1.4, neck + u * 1.7]], w, t, 90, s.special === 'substitute' ? TRADER : THIEF, 1.5);
+  if (s.special === 'substitute') {
+    for (const dx of [-0.35, 0.35]) wobblyCircle(ctx, h.x + h.r * dx, h.y - h.r * 0.05, h.r * 0.24, w * 0.8, t, 95 + dx);
+    stroke(ctx, [[h.x - h.r * 0.11, h.y - h.r * 0.05], [h.x + h.r * 0.11, h.y - h.r * 0.05]], w * 0.8, t, 97);
+    drawTag(ctx, h.x + h.r * 0.4, h.y + h.r * 2.1, 'HELLO, I’M THE SUB', Math.max(10, u * 0.22), t, 98, '#7d3c98');
+  }
 }
 
 function drawJack(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
@@ -400,6 +409,25 @@ function drawPile(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
   let placed = 0;
   let perRow = Math.max(4, Math.min(8, Math.ceil(Math.sqrt(s.blocks * 2))));
   const baseY = pile.y + size * 1.4;
+  if (s.special === 'field-trip') {
+    // The school bus: the pile rides on the roof.
+    const half = (perRow + 1.5) * size * 0.55;
+    const top = baseY + size * 0.5;
+    const bottom = top + size * 1.6;
+    wobblyPath(ctx, [[pile.x - half, top], [pile.x + half, top], [pile.x + half + size * 0.4, top + size * 0.6], [pile.x + half + size * 0.4, bottom], [pile.x - half, bottom], [pile.x - half, top]], 1, t, 501);
+    ctx.fillStyle = '#f4c430';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = Math.max(2, size * 0.08);
+    ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      const wx = pile.x - half + size * 0.35 + i * ((half * 2 - size * 0.7) / 3.5);
+      ctx.fillStyle = '#d6eaf8';
+      ctx.fillRect(wx, top + size * 0.2, size * 0.6, size * 0.45);
+      ctx.strokeRect(wx, top + size * 0.2, size * 0.6, size * 0.45);
+    }
+    for (const fx of [-0.6, 0.6]) wobblyCircle(ctx, pile.x + half * fx, bottom, size * 0.38, ctx.lineWidth, t, 510 + fx * 4, '#2c2c2c');
+  }
   while (placed < s.blocks) {
     const count = Math.min(perRow, s.blocks - placed);
     const y = baseY - row * size * 0.98;
@@ -417,7 +445,8 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
   // The fraud kid and the Free Lunch kid are drawn exactly like traders: only the tag gives them away.
   const thief = hand.kind === 'thief' && !disguised(hand.role);
   const look = hand.role ? ROLE_LOOK[hand.role] : null;
-  const color = scene.colorblind ? (hand.role ? (CB_LOOK[hand.role] ?? look!.color) : thief ? CB_THIEF : CB_TRADER) : look ? look.color : thief ? THIEF : TRADER;
+  const base = scene.colorblind ? (hand.role ? (CB_LOOK[hand.role] ?? look!.color) : thief ? CB_THIEF : CB_TRADER) : look ? look.color : thief ? THIEF : TRADER;
+  const color = s.special === 'substitute' ? (SUB_SWAP[base] ?? base) : base;
   // The arm: a long wobbly sleeve from off the edge, outlined in ink like a crayon drawing.
   const pts: [number, number][] = [];
   for (let i = 0; i <= 6; i++) {
@@ -708,6 +737,12 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
     ctx.stroke();
     ctx.setLineDash([]);
   }
+  if (s.special === 'snow' && s.phase === 'playing') drawSnow(ctx, s, t);
+  if (s.photo === 'freeze' && s.phase === 'playing') drawViewfinder(ctx, s, t);
+  if (t - scene.flash < 0.45) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.9 * (1 - (t - scene.flash) / 0.45)})`;
+    ctx.fillRect(0, 0, s.w, s.h);
+  }
   for (const b of scene.bubbles) if (b.until > t) drawBubble(ctx, s, b, t);
   drawFloaters(ctx, s, scene);
   drawBanner(ctx, s, scene);
@@ -720,6 +755,52 @@ let darkLayer: HTMLCanvasElement | null = null;
  * Nap time: dark enough that you have to look for the hands (not just catch them out of the corner of
  * your eye), with soft light around the pile and around the pointer.
  */
+/** Snow day: flakes drifting down past the window that isn't there. */
+function drawSnow(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
+  const size = Math.max(10, unitOf(s) * 0.28);
+  ctx.font = `${Math.round(size)}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#85c1e9';
+  ctx.globalAlpha = 0.7;
+  for (let i = 0; i < 36; i++) {
+    const speed = 30 + ((i * 37) % 40);
+    const x = ((i * 97.3) % s.w) + Math.sin(t * 0.8 + i) * 18;
+    const y = ((t * speed + i * 131) % (s.h + 40)) - 20;
+    ctx.fillText('❄', x, y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Picture day: the camera's corners while everyone holds still. */
+function drawViewfinder(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
+  const m = Math.min(s.w, s.h) * 0.06;
+  const len = Math.min(s.w, s.h) * 0.12;
+  ctx.strokeStyle = '#c0392b';
+  ctx.lineWidth = 4;
+  for (const [x, y, dx, dy] of [[m, m, 1, 1], [s.w - m, m, -1, 1], [m, s.h - m, 1, -1], [s.w - m, s.h - m, -1, -1]]) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + dy * len);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + dx * len, y);
+    ctx.stroke();
+  }
+  if (Math.floor(t * 3) % 2 === 0) {
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.arc(m + len * 0.4, m + len * 0.4, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.font = `bold ${Math.round(Math.max(18, unitOf(s) * 0.5))}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#fff';
+  ctx.strokeText('📸 SAY CHEESE! (nobody move)', s.w / 2, s.h * 0.18);
+  ctx.fillStyle = '#c0392b';
+  ctx.fillText('📸 SAY CHEESE! (nobody move)', s.w / 2, s.h * 0.18);
+}
+
 function drawDark(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
   const pile = pileAt(s);
   const size = blockSize(s);

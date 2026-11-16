@@ -820,3 +820,118 @@ body.colorblind {
     color: var(--muted);
     font-size: 14px;
 }
+
+/* --- Difficulty, the daily challenge, run history --- */
+.difficulty {
+    display: inline-flex;
+    gap: 0;
+    margin: 4px 0 2px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    overflow: hidden;
+}
+
+.difficulty button {
+    padding: 6px 16px;
+    border: 0;
+    border-left: 2px solid var(--ink);
+    background: #fff;
+    color: var(--ink);
+    font: 17px var(--font);
+    cursor: pointer;
+}
+
+.difficulty button:first-child {
+    border-left: 0;
+}
+
+.difficulty button:hover {
+    background: #fffbe0;
+}
+
+.difficulty button[aria-checked='true'] {
+    background: var(--gold);
+    font-weight: bold;
+}
+
+.difficulty-note {
+    margin: 2px 0 6px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.daily-special {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    margin: 0 0 10px;
+    padding: 12px;
+    border: 3px dashed var(--gold);
+    border-radius: var(--sketch);
+    background: #fffbe0;
+}
+
+.daily-special .icon {
+    font-size: 40px;
+}
+
+.daily-special b {
+    font-size: 22px;
+}
+
+.daily-special small {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.daily-kit {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    padding: 0;
+    list-style: none;
+}
+
+.daily-kit li {
+    padding: 3px 10px;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 15px;
+}
+
+.daily-best {
+    margin: 0 0 12px;
+}
+
+.history-body {
+    overflow-x: auto;
+    margin-bottom: 14px;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+}
+
+.history-table th,
+.history-table td {
+    padding: 6px 8px;
+    border-bottom: 2px dashed #ddd;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.history-table th {
+    color: var(--muted);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.history-table tbody tr:first-child td {
+    background: #fffbe0;
+}

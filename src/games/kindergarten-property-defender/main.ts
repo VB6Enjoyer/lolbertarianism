@@ -3,10 +3,12 @@ import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { GRADUATION_WEEK, honours, perkById, PERKS, type PerkId } from './perks.ts';
-import { build, comboCap, CONFIG, gpa, meterMax, takePerk, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type ItemId } from './logic.ts';
+import { build, comboCap, CONFIG, gpa, meterMax, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type ItemId } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
 import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
+import { specialById, SPECIAL_DAYS } from './days.ts';
+import { dailyFor, dateKey, difficultyById, DIFFICULTIES, isDifficulty, normalizeDailyBests, normalizeHistory, recordRun, seededRng, type Daily, type DifficultyId, type RunEnding } from './modes.ts';
 import { CLASSMATES, classmateById, FRIEND_AT, isFriend, regularsMet, regularsNewToday, type ClassmateId } from './classmates.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -49,6 +51,13 @@ const els = {
   achievements: byId('achievements'),
   achievementsGrid: byId('achievements-grid'),
   achievementsCount: byId('achievements-count'),
+  toTitle: byId<HTMLButtonElement>('to-title'),
+  difficulty: byId('difficulty'),
+  difficultyNote: byId('difficulty-note'),
+  daily: byId('daily'),
+  dailyBody: byId('daily-body'),
+  history: byId('history'),
+  historyBody: byId('history-body'),
 };
 
 // ---------------------------------------------------------------------------
@@ -56,7 +65,8 @@ const els = {
 // ---------------------------------------------------------------------------
 
 interface Save {
-  best: number;
+  /** The best score on each difficulty. */
+  bests: Record<DifficultyId, number>;
   bestWave: number;
   /** Times Jack has graduated, and the best GPA. */
   graduations: number;
@@ -65,17 +75,27 @@ interface Save {
   achievements: string[];
   /** Orange and blue instead of red and green, with a ✊/✋ on every sleeve. */
   colorblind: boolean;
+  difficulty: DifficultyId;
+  /** The ten best runs, and the best daily-challenge score per date. */
+  history: ReturnType<typeof normalizeHistory>;
+  dailyBests: Record<string, number>;
 }
 const slot = createSaveSlot<Save>({ game: 'kindergarten-property-defender', version: 1 });
 const saved = slot.load();
 const save: Save = {
-  best: Math.max(0, Math.floor(Number(saved?.best) || 0)),
+  // Saves from before there were difficulties kept one best: it was on Normal.
+  bests: Object.fromEntries(
+    DIFFICULTIES.map((d) => [d.id, Math.max(0, Math.floor(Number(saved?.bests?.[d.id]) || 0), d.id === 'normal' ? Math.floor(Number((saved as { best?: unknown } | null)?.best) || 0) : 0)]),
+  ) as Record<DifficultyId, number>,
   bestWave: Math.max(0, Math.floor(Number(saved?.bestWave) || 0)),
   graduations: Math.max(0, Math.floor(Number(saved?.graduations) || 0)),
   bestGpa: Math.max(0, Math.min(4, Number(saved?.bestGpa) || 0)),
   muted: saved?.muted === true,
   achievements: [...normalizeUnlocked(saved?.achievements)],
   colorblind: saved?.colorblind === true,
+  difficulty: isDifficulty(saved?.difficulty) ? saved.difficulty : 'normal',
+  history: normalizeHistory(saved?.history),
+  dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
 const persist = () => slot.save(save);
 const unlocked = new Set(save.achievements);
@@ -98,6 +118,10 @@ const sfx = {
   homestead: () => playTone(note(660, 0.05, 0.03, 'triangle')),
   miss: () => playTone({ wave: 'sine', duration: 0.12, frequency: [[0, 300], [0.12, 180, 'exp']], gain: [[0, 0.03], [0.12, 0.001, 'exp']] }),
   wave: () => [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.12, 0.06), i * 0.1)),
+  shutter: () => {
+    playTone({ wave: 'square', duration: 0.05, frequency: [[0, 2200], [0.05, 500, 'exp']], gain: [[0, 0.07], [0.05, 0.001, 'exp']] });
+    playTone({ wave: 'square', duration: 0.05, frequency: [[0, 1600], [0.05, 400, 'exp']], gain: [[0, 0.06], [0.05, 0.001, 'exp']] }, 0.07);
+  },
   over: () => [392, 330, 262, 196].forEach((hz, i) => playTone(note(hz, 0.2, 0.06, 'triangle'), i * 0.16)),
 };
 
@@ -157,6 +181,13 @@ const REGULAR_LINES: Record<ClassmateId, { trade: string[]; friend: string; grud
   becky: { trade: ['Pleasure doing business. Mostly mine.', 'I’d have taken one less. Kidding!', 'You drive a soft bargain, Jack.'], friend: 'Fine. You’re my favourite customer.', grudge: ['Hmph! Don’t talk to me.', 'You’ll regret that, Jack.'] },
   dave: { trade: ['I know a guy who’ll pay double.', 'Buy low, sell high, Jack.', 'Got any more of those?'], friend: 'Partners, Jack. Fifty-fifty.', grudge: ['You just lost your best customer.', 'I’m taking my business elsewhere.'] },
 };
+/** What the teacher says on a special morning. */
+const SPECIAL_LINES: Record<string, string> = {
+  substitute: 'Hi, I’m the sub. Your teacher left notes. I can’t read them.',
+  picture: 'Picture day! Everyone look nice, and freeze when I say cheese.',
+  'field-trip': 'Field trip! Everyone on the bus. Yes, Jack, your blocks too.',
+  snow: 'Snow day! We’re closing early. Hands to yourselves till then.',
+};
 const BOSS_STEAL: Partial<Record<Role, string>> = { principal: 'EMINENT DOMAIN!', superintendent: 'DISTRICT POLICY!', board: 'THE BOARD VOTED!', doe: 'FEDERAL MANDATE!' };
 
 // ---------------------------------------------------------------------------
@@ -166,7 +197,7 @@ const BOSS_STEAL: Partial<Record<Role, string>> = { principal: 'EMINENT DOMAIN!'
 const ctx = els.canvas.getContext('2d')!;
 let state: GameState = newGame(els.canvas.clientWidth || 800, els.canvas.clientHeight || 600);
 state.phase = 'break'; // nothing happens behind the title screen
-const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, touch: matchMedia('(pointer: coarse)').matches, colorblind: false };
+const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, flash: -99, touch: matchMedia('(pointer: coarse)').matches, colorblind: false };
 renderColorblind();
 const pauseReasons = new Set<'menu' | 'user'>();
 let paused = false;
@@ -268,15 +299,29 @@ function handle(e: GameEvent) {
       // The bell: what period it is (and who's new today, at the start of the day)
       const fresh = e.period.id === 'circle' ? [...newToday(state.wave).filter((r) => r.id !== 'principal'), ...regularsNewToday(state.wave)] : [];
       const boss = e.period.id === 'show' && isFriday(state.wave) ? bossFor(weekOf(state.wave)) : null;
+      const special = e.period.id === 'circle' && state.special ? specialById(state.special) : null;
       scene.banner = {
-        text: boss ? `📢 ${boss.title} IS COMING` : e.period.id === 'circle' ? `${dayName(state.wave)}: ${e.period.icon} ${e.period.name}` : `${e.period.icon} ${e.period.name}!`,
-        sub: boss ? boss.warning : fresh.map((r) => r.intro).join(' ') || undefined,
-        until: scene.time + (fresh.length || boss ? 4.5 : 2),
+        text: boss
+          ? `📢 ${boss.title} IS COMING`
+          : e.period.id === 'circle'
+            ? `${state.daily ? '📅 ' : ''}${dayName(state.wave)}: ${special ? `${special.icon} ${special.name}!` : `${e.period.icon} ${e.period.name}`}`
+            : `${e.period.icon} ${e.period.name}!`,
+        sub: boss ? boss.warning : [special?.description, ...fresh.map((r) => r.intro)].filter(Boolean).join(' ') || undefined,
+        until: scene.time + (fresh.length || boss || special ? 5 : 2),
       };
-      say('teacher', e.period.line);
+      say('teacher', special ? SPECIAL_LINES[special.id] : state.special === 'snow' && e.period.id === 'recess' ? 'Last period! Snow’s coming down. Everyone home after this.' : e.period.line);
       if (e.period.id === 'recess') play('wave');
       break;
     }
+    case 'cheese':
+      say('teacher', 'Everybody freeze! Say cheese!');
+      play('homestead');
+      break;
+    case 'flash':
+      scene.flash = scene.time;
+      play('shutter');
+      float(state.w / 2, state.h * 0.25, '📸 FLASH! Here they come!', '#c0392b', true);
+      break;
     case 'bounce': {
       const at = handPosition(e.hand);
       play('miss');
@@ -364,7 +409,7 @@ function handle(e: GameEvent) {
       break;
     case 'wave-end':
       play('wave');
-      setTimeout(() => (pendingGraduation !== null ? showGraduation() : showBreak()), 500);
+      setTimeout(() => (state.daily ? showDailyDone() : pendingGraduation !== null ? showGraduation() : showBreak()), 500);
       break;
     case 'graduation':
       pendingGraduation = e.gpa;
@@ -529,6 +574,15 @@ function checkAchievements(e: GameEvent) {
       break;
     }
     case 'wave-end':
+      if (state.special === 'substitute' && !state.day.violations) award('substitute');
+      if (state.special === 'picture') award('picture');
+      if (state.special === 'field-trip') award('field-trip');
+      if (state.special === 'snow' && !state.day.stolen) award('snow');
+      if (state.daily && runDaily) {
+        award('daily');
+        if (new Set([...Object.keys(save.dailyBests), runDaily.key]).size >= 5) award('daily-5');
+      }
+      if (state.difficulty === 'hard' && isFriday(state.wave)) award('hard');
       if (weekOf(state.wave) > GRADUATION_WEEK) award('summer');
       if (isFriday(state.wave)) {
         award('tgif');
@@ -601,7 +655,7 @@ els.pauseButton.addEventListener('click', () => (els.pauseMenu.hidden ? openPaus
 els.resume.addEventListener('click', closePause);
 els.restart.addEventListener('click', () => {
   closePause();
-  startGame();
+  startGame(state.daily);
 });
 
 // --- Colour-blind mode ---
@@ -671,10 +725,10 @@ function renderHud() {
   els.stars.classList.toggle('low', state.stars <= 2);
   els.blocks.parentElement!.classList.toggle('low', state.blocks <= 3);
   els.score.textContent = state.score.toLocaleString('en-US');
-  els.wave.textContent = `${dayName(state.wave).slice(0, 3)} · ${weekOf(state.wave) > GRADUATION_WEEK ? `summer school, week ${weekOf(state.wave) - GRADUATION_WEEK}` : `week ${weekOf(state.wave)}`}`;
+  els.wave.textContent = `${state.daily ? '📅 ' : ''}${state.special ? `${specialById(state.special).icon} ` : ''}${dayName(state.wave).slice(0, 3)} · ${weekOf(state.wave) > GRADUATION_WEEK ? `summer school, week ${weekOf(state.wave) - GRADUATION_WEEK}` : `week ${weekOf(state.wave)}`}`;
   const period = periodAt(state.waveTime);
   els.period.textContent = `${period.icon} ${period.name}`;
-  els.waveBar.style.width = `${Math.min(100, (state.waveTime / CONFIG.waveLength) * 100)}%`;
+  els.waveBar.style.width = `${Math.min(100, (state.waveTime / todayLength(state)) * 100)}%`;
   const m = multiplier(state.combo, comboCap(state));
   els.combo.textContent = state.combo >= 2 ? `${state.combo} in a row${m > 1 ? ` · ×${m}` : ''}` : '';
   renderStash();
@@ -692,7 +746,7 @@ function frame(now: number) {
     scene.time += dt;
     // Holding on to Sticky Fingers
     if (pressing && state.phase === 'playing') press(state, pressing.x, pressing.y, dt);
-    step(state, dt, Math.random);
+    step(state, dt, runRng);
     if (state.events.some((e) => e.type === 'wave-end')) recessEvents = state.events.filter((e) => e.type === 'interest' || e.type === 'wages' || e.type === 'allowance');
     for (const e of state.events) handle(e);
     state.events = [];
@@ -770,9 +824,16 @@ document.addEventListener('visibilitychange', () => {
 // Screens
 // ---------------------------------------------------------------------------
 
-function startGame() {
+/** Today's daily challenge, while one's being played, and the random numbers driving the run (seeded for the daily). */
+let runDaily: Daily | null = null;
+let runRng: () => number = Math.random;
+
+function startGame(daily = false) {
   getAudioContext();
-  state = newGame(els.canvas.clientWidth, els.canvas.clientHeight);
+  runDaily = daily ? dailyFor(new Date()) : null;
+  runRng = runDaily ? seededRng(runDaily.seed) : Math.random;
+  state = newGame(els.canvas.clientWidth, els.canvas.clientHeight, daily ? 'normal' : save.difficulty);
+  if (runDaily) startDaily(state, runDaily);
   run = { interest: 0, cleanDays: 0, napStolen: null, board: 0 };
   pendingGraduation = null;
   scene.floaters = [];
@@ -780,6 +841,8 @@ function startGame() {
   els.title.hidden = true;
   els.over.hidden = true;
   els.pause.hidden = true;
+  els.daily.hidden = true;
+  els.history.hidden = true;
   say('teacher', 'Jack, you should share your toys.');
   setTimeout(() => say('jack', 'Have you not heard about property rights?'), 1200);
 }
@@ -871,6 +934,7 @@ function showGraduation() {
   const honour = honours(score);
   award('graduate');
   if (honour === 'summa cum laude') award('summa');
+  if (state.difficulty === 'hard') award('hard-grad');
   els.diploma.innerHTML = `
     <p class="seal">🎓</p>
     <p class="certify">This certifies that</p>
@@ -889,7 +953,7 @@ els.summer.addEventListener('click', () => {
 });
 els.retire.addEventListener('click', () => {
   els.graduation.hidden = true;
-  save.best = Math.max(save.best, state.score);
+  endRun('retired');
   persist();
   startGame();
 });
@@ -926,30 +990,175 @@ function renderShop() {
   }
 }
 
-function showOver() {
-  const newBest = state.score > save.best;
-  save.best = Math.max(save.best, state.score);
+/** A run's over (not a daily): the best on its difficulty, and the history table. Returns its place in the table (-1 if none). */
+function endRun(ending: RunEnding): number {
+  save.bests[state.difficulty] = Math.max(save.bests[state.difficulty], state.score);
   save.bestWave = Math.max(save.bestWave, state.wave);
+  return recordRun(save.history, { score: state.score, day: state.wave, ending, difficulty: state.difficulty, graduated: state.graduated, date: dateKey(new Date()) });
+}
+
+/** Records today's daily score. Returns the best before this one. */
+function endDaily(): number {
+  const previous = save.dailyBests[runDaily!.key] ?? 0;
+  save.dailyBests[runDaily!.key] = Math.max(previous, state.score);
+  save.dailyBests = normalizeDailyBests(save.dailyBests);
   persist();
-  els.overTitle.textContent = state.over === 'expelled' ? '🚸 Sent to the Principal' : '🧱 Property Seized';
+  return previous;
+}
+
+const statsLine = () => {
   const st = state.stats;
-  const lines = [
-    state.over === 'expelled'
-      ? 'You slapped one too many classmates who only wanted to trade. That’s aggression, Jack. The NAP cuts both ways.'
-      : 'The teacher redistributed every last block. It’s for the greater good, apparently.',
-    `Made it to ${dayName(state.wave)}, week ${weekOf(state.wave)} · ${state.score.toLocaleString('en-US')} points${newBest ? ' · 🏆 new best!' : ` · best ${save.best.toLocaleString('en-US')}`}`,
-    `🖐️ ${st.slapped} slapped · 🧱 ${st.recovered} recovered · 🤝 ${st.trades} trades · 😢 ${st.stolen} stolen · ⚠️ ${st.violations} violations · 🔥 best streak ${st.bestCombo}`,
-  ];
+  return `🖐️ ${st.slapped} slapped · 🧱 ${st.recovered} recovered · 🤝 ${st.trades} trades · 😢 ${st.stolen} stolen · ⚠️ ${st.violations} violations · 🔥 best streak ${st.bestCombo}`;
+};
+
+function showOverScreen(title: string, lines: string[], again: string) {
+  els.overTitle.textContent = title;
   els.overBody.replaceChildren(...lines.map((t) => Object.assign(document.createElement('p'), { textContent: t })));
+  els.again.textContent = again;
   els.over.hidden = false;
   els.again.focus();
 }
 
-els.start.addEventListener('click', startGame);
-els.again.addEventListener('click', startGame);
+function showOver() {
+  const why =
+    state.over === 'expelled'
+      ? 'You slapped one too many classmates who only wanted to trade. That’s aggression, Jack. The NAP cuts both ways.'
+      : 'The teacher redistributed every last block. It’s for the greater good, apparently.';
+  const title = state.over === 'expelled' ? '🚸 Sent to the Principal' : '🧱 Property Seized';
+  if (state.daily) {
+    const previous = endDaily();
+    showOverScreen(title, [why, dailyLine(previous), statsLine()], 'Try today’s day again');
+    return;
+  }
+  const previous = save.bests[state.difficulty];
+  const rank = endRun(state.over === 'expelled' ? 'expelled' : 'seized');
+  persist();
+  const d = difficultyById(state.difficulty);
+  showOverScreen(
+    title,
+    [
+      why,
+      `Made it to ${dayName(state.wave)}, week ${weekOf(state.wave)} · ${state.score.toLocaleString('en-US')} points${state.score > previous ? ` · 🏆 new best on ${d.name}!` : ` · best on ${d.name}: ${previous.toLocaleString('en-US')}`}`,
+      rank >= 0 ? `📜 #${rank + 1} in your run history` : '',
+      statsLine(),
+    ].filter(Boolean),
+    'Try again',
+  );
+}
+
+const dailyLine = (previous: number) =>
+  `📅 Daily challenge, ${runDaily!.key}: ${state.score.toLocaleString('en-US')} points · ${state.score > previous ? (previous ? `🏆 new best today (was ${previous.toLocaleString('en-US')})` : '🏆 your first score today') : `today’s best ${previous.toLocaleString('en-US')}`}`;
+
+/** The daily challenge's one day is done. */
+function showDailyDone() {
+  const previous = endDaily();
+  const special = specialById(runDaily!.special);
+  const card = state.report;
+  showOverScreen(
+    '📅 School’s out!',
+    [
+      `You made it through today’s ${special.icon} ${special.name} with ${state.blocks}🧱 left.`,
+      card ? `Report card: ${card.defence} in defence, ${card.economics} in economics, ${card.citizenship} for playing well with others.` : '',
+      dailyLine(previous),
+      statsLine(),
+      'Same day for everyone today. A new one tomorrow.',
+    ].filter(Boolean),
+    'Try today’s day again',
+  );
+}
+
+// --- The title screen: difficulty, the daily challenge, the run history ---
+
+function renderTitle() {
+  const d = difficultyById(save.difficulty);
+  for (const b of els.difficulty.querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-checked', String(b.dataset.difficulty === save.difficulty));
+  els.difficultyNote.textContent = d.description;
+  const best = save.bests[save.difficulty];
+  els.best.textContent = [
+    best ? `Best on ${d.name}: ${best.toLocaleString('en-US')} points` : '',
+    save.graduations ? `🎓 Graduated ×${save.graduations} (best GPA ${save.bestGpa.toFixed(2)})` : '',
+    unlocked.size ? `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} achievements` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+els.difficulty.replaceChildren(
+  ...DIFFICULTIES.map((d) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.difficulty = d.id;
+    b.textContent = `${d.icon} ${d.name}`;
+    b.addEventListener('click', () => {
+      save.difficulty = d.id;
+      persist();
+      renderTitle();
+    });
+    return b;
+  }),
+);
+
+function toTitle() {
+  els.over.hidden = true;
+  els.pause.hidden = true;
+  state = newGame(els.canvas.clientWidth, els.canvas.clientHeight);
+  state.phase = 'break';
+  runDaily = null;
+  renderTitle();
+  els.title.hidden = false;
+  els.start.focus();
+}
+els.toTitle.addEventListener('click', toTitle);
+
+byId('show-daily').addEventListener('click', () => {
+  const today = dailyFor(new Date());
+  const special = specialById(today.special);
+  const best = save.dailyBests[today.key];
+  const perk = perkById(today.perk);
+  const b = buildingById(today.built);
+  els.dailyBody.innerHTML = `
+    <p class="daily-special"><span class="icon">${special.icon}</span><b>${special.name}</b><small>${special.description}</small></p>
+    <ul class="daily-kit">
+      <li>📅 ${dayName(today.day)} of week ${weekOf(today.day)}</li>
+      <li>🧱 ${today.blocks} blocks</li>
+      <li>🎒 ${today.stash.map((i) => ITEMS[i].icon).join(' ')} in your stash</li>
+      <li>${b.icon} A ${b.name.toLowerCase()} already built</li>
+      <li>${perk.icon} ${perk.name}</li>
+    </ul>
+    <p class="daily-best">Your best today: <b>${best ? best.toLocaleString('en-US') : 'none yet'}</b></p>`;
+  els.daily.hidden = false;
+  byId('start-daily').focus();
+});
+byId('hide-daily').addEventListener('click', () => {
+  els.daily.hidden = true;
+  els.start.focus();
+});
+byId('start-daily').addEventListener('click', () => startGame(true));
+
+const ENDINGS: Record<RunEnding, string> = { seized: '🧱 Property seized', expelled: '🚸 Sent to the Principal', retired: '🎓 Retired undefeated' };
+byId('show-history').addEventListener('click', () => {
+  els.historyBody.innerHTML = save.history.length
+    ? `<table class="history-table"><thead><tr><th>#</th><th>Score</th><th>Made it to</th><th>Ended</th><th>Mode</th><th>Date</th></tr></thead><tbody>${save.history
+        .map((r, i) => {
+          const d = difficultyById(r.difficulty);
+          return `<tr><td>${i + 1}</td><td><b>${r.score.toLocaleString('en-US')}</b></td><td>${dayName(r.day).slice(0, 3)} · week ${weekOf(r.day)}${r.graduated ? ' 🎓' : ''}</td><td>${ENDINGS[r.ending]}</td><td>${d.icon} ${d.name}</td><td>${r.date}</td></tr>`;
+        })
+        .join('')}</tbody></table>`
+    : '<p class="tagline">No runs yet. Go defend some property.</p>';
+  els.history.hidden = false;
+  byId('hide-history').focus();
+});
+byId('hide-history').addEventListener('click', () => {
+  els.history.hidden = true;
+  els.start.focus();
+});
+
+els.start.addEventListener('click', () => startGame(false));
+els.again.addEventListener('click', () => startGame(state.daily));
 els.next.addEventListener('click', () => {
   els.pause.hidden = true;
-  nextWave(state);
+  nextWave(state, runRng);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -964,6 +1173,10 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       closePause();
     }
+    return;
+  }
+  if (!els.daily.hidden || !els.history.hidden) {
+    if (e.key === 'Escape') (els.daily.hidden ? byId('hide-history') : byId('hide-daily')).click();
     return;
   }
   if (!els.graduation.hidden) {
@@ -997,7 +1210,7 @@ document.addEventListener('keydown', (e) => {
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { kpd: { state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => (CLASSMATES.some((c) => c.id === role) ? spawnHand(state, Math.random, 'trader', undefined, role as ClassmateId) : spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role))) } });
+  Object.assign(window, { kpd: { specials: SPECIAL_DAYS.map((d) => d.id), daily: () => startGame(true), state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => (CLASSMATES.some((c) => c.id === role) ? spawnHand(state, Math.random, 'trader', undefined, role as ClassmateId) : spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role))) } });
 }
 
-els.best.textContent = [save.best ? `Best: ${save.best.toLocaleString('en-US')} points` : '', save.graduations ? `🎓 Graduated ×${save.graduations} (best GPA ${save.bestGpa.toFixed(2)})` : '', unlocked.size ? `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} achievements` : ''].filter(Boolean).join(' · ');
+renderTitle();

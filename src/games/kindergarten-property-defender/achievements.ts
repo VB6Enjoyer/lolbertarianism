@@ -59,6 +59,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'graduate', icon: '🎓', name: 'Graduate', description: 'Survive five weeks and graduate from kindergarten.' },
   { id: 'summa', icon: '📜', name: 'Summa Cum Laude', description: 'Graduate with a GPA of 3.5 or better.' },
   { id: 'summer', icon: '🌞', name: 'Summer School', description: 'Get through a day of summer school after graduating.' },
+  // Special days, the daily challenge, Hard
+  { id: 'substitute', icon: '🥸', name: 'Who’s the Sub?', description: 'Get through a substitute day without a NAP violation.' },
+  { id: 'picture', icon: '📸', name: 'Say Cheese', description: 'Get through picture day.' },
+  { id: 'field-trip', icon: '🚌', name: 'Wheels on the Bus', description: 'Get through a field trip.' },
+  { id: 'snow', icon: '❄️', name: 'Snowed In', description: 'Get through a snow day without losing a block.' },
+  { id: 'daily', icon: '📅', name: 'Daily Grind', description: 'Finish a daily challenge.' },
+  { id: 'daily-5', icon: '🗓️', name: 'Perfect Attendance', description: 'Finish the daily challenge on five different days.' },
+  { id: 'hard', icon: '🔥', name: 'Hard Knocks', description: 'Make it through a Friday on Hard.' },
+  { id: 'hard-grad', icon: '🏛️', name: 'Ivy League', description: 'Graduate on Hard.' },
   // Capital
   { id: 'first-build', icon: '🏗️', name: 'Capital Formation', description: 'Build something with your blocks.' },
   { id: 'lemonade', icon: '🍋', name: 'Lemonade Mogul', description: 'Build the lemonade stand all the way up.' },
