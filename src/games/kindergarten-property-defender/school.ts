@@ -36,7 +36,7 @@ export const weekOf = (day: number) => Math.floor((day - 1) / DAYS.length) + 1;
 export const isFriday = (day: number) => (day - 1) % DAYS.length === DAYS.length - 1;
 
 /** The kinds of grabby hand, and the classmates who pretend to trade. */
-export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal' | 'mitten' | 'sticky' | 'superintendent' | 'board' | 'doe';
+export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal' | 'mitten' | 'sticky' | 'lunch' | 'pet' | 'superintendent' | 'board' | 'doe';
 
 export interface RoleInfo {
   id: Role;
@@ -57,6 +57,8 @@ export const ROLES: readonly RoleInfo[] = [
   { id: 'president', name: 'Class President', from: 5, weight: 1.2, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
   { id: 'principal', name: 'The Principal', from: 5, weight: 0, intro: '📢 It’s Friday: the Principal visits during show and tell. Eminent domain. Eight slaps to stop.' },
   { id: 'fraud', name: 'Monopoly-money kid', from: 6, weight: 1.2, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
+  { id: 'lunch', name: 'Free Lunch kid', from: 7, weight: 1, intro: '🥪 New today: the Free Lunch kid. Offers you something for FREE, then takes a big handful on the way out. There’s no such thing as a free lunch: slap it, no gold star lost.' },
+  { id: 'pet', name: 'Teacher’s Pet', from: 8, weight: 1.1, intro: '🍎 New today: the Teacher’s Pet. DON’T slap it, or it tells on you. RIGHT-CLICK to pinch it (on a phone, double-tap).' },
   // The later Friday bosses (they come on a schedule; see BOSSES)
   { id: 'superintendent', name: 'The Superintendent', from: 999, weight: 0, intro: '' },
   { id: 'board', name: 'The School Board', from: 999, weight: 0, intro: '' },
@@ -90,7 +92,10 @@ export const isBoss = (r: Role | null | undefined) => !!r && BOSSES.some((b) => 
 export const bossInfo = (r: Role) => BOSSES.find((b) => b.role === r);
 
 /** How the special input each troublemaker needs (most just need a slap). */
-export const NEEDS: Partial<Record<Role, 'pinch' | 'hold'>> = { mitten: 'pinch', sticky: 'hold' };
+export const NEEDS: Partial<Record<Role, 'pinch' | 'hold'>> = { mitten: 'pinch', sticky: 'hold', pet: 'pinch' };
+/** The troublemakers who come in looking like traders. */
+export const DISGUISED: readonly Role[] = ['fraud', 'lunch'];
+export const disguised = (r: Role | null | undefined) => !!r && DISGUISED.includes(r);
 
 export const roleInfo = (r: Role) => ROLES.find((x) => x.id === r)!;
 

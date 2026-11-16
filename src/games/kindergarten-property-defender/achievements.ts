@@ -29,12 +29,17 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'item', icon: '🎒', name: 'Utility Maximizer', description: 'Use something from your stash instead of selling it.' },
   { id: 'mitten', icon: '🧤', name: 'Oven Mitts Off', description: 'Pinch away a pair of Oven Mitts.' },
   { id: 'sticky', icon: '🍯', name: 'Pry Bar', description: 'Pry Sticky Fingers off your pile.' },
+  { id: 'lunch', icon: '🥪', name: 'TANSTAAFL', description: 'Slap the Free Lunch kid.' },
+  { id: 'pet', icon: '🍎', name: 'Teacher’s Pet Peeve', description: 'Pinch the Teacher’s Pet away.' },
   // Trading
   { id: 'first-trade', icon: '🤝', name: 'Voluntary Exchange', description: 'Complete your first trade.' },
   { id: 'flip', icon: '📈', name: 'Buy Low, Sell High', description: 'Sell something you traded for.' },
   { id: 'middleman', icon: '🧑‍💼', name: 'Middleman', description: 'Sell something for 2 or more blocks more than you paid.' },
   { id: 'collector', icon: '🎒', name: 'Collector', description: 'Have 5 things in your stash at once.' },
   { id: 'tycoon', icon: '🎩', name: 'Kindergarten Tycoon', description: 'Make 50 trades in one game.' },
+  // The regulars
+  { id: 'friend', icon: '💛', name: 'Repeat Customer', description: 'Become best friends with a regular.' },
+  { id: 'all-friends', icon: '🫶', name: 'Social Capital', description: 'Be best friends with Timmy, Becky and Dave at the same time.' },
   // Citizenship
   { id: 'my-bad', icon: '😬', name: 'My Bad', description: 'Slap a classmate who only wanted to trade.' },
   { id: 'redemption', icon: '⭐', name: 'Redemption', description: 'Win a gold star back with good trades.' },
@@ -65,6 +70,9 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'funny-money', icon: '🃏', name: 'Funny Money', description: 'Get paid in Monopoly money.', secret: true },
   { id: 'unpaid', icon: '🧾', name: 'Unpaid Wages', description: 'Can’t pay the security kid, who quits.', secret: true },
   { id: 'nightmare', icon: '😈', name: 'Teacher’s Nightmare', description: 'Get an F in Plays Well With Others.', secret: true },
+  { id: 'free-lunch', icon: '🍱', name: 'Someone Always Pays', description: 'Fall for a free lunch.', secret: true },
+  { id: 'tattle', icon: '🙋', name: 'Tattletale', description: 'Slap the Teacher’s Pet and get told on.', secret: true },
+  { id: 'grudge', icon: '😤', name: 'Burned Bridges', description: 'Slap a regular who was your best friend.', secret: true },
   { id: 'expelled', icon: '🚸', name: 'Principal’s Office', description: 'Get sent to the principal.', secret: true },
 ];
 

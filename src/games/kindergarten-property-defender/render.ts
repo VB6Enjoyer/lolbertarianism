@@ -3,7 +3,8 @@
 // in the middle, and long stretchy arms reaching in for it.
 
 import { holdTime, handPosition, ITEMS, needsFor, pileAt, slapRadius, type GameState, type Hand } from './logic.ts';
-import { isBoss, NEEDS, periodAt, roleInfo, type Role } from './school.ts';
+import { isBoss, disguised, NEEDS, periodAt, roleInfo, type Role } from './school.ts';
+import { classmateById, isFriend } from './classmates.ts';
 
 export interface Floater {
   x: number;
@@ -44,7 +45,7 @@ export interface Scene {
 }
 
 /** In colour-blind mode: thieves warm (orange and brown), traders blue. */
-const CB_LOOK: Partial<Record<Role, string>> = { grabby: '#e8710a', group: '#e8710a', monitor: '#b35806', mitten: '#7f3b08', sticky: '#c79a3b', fraud: '#1f77b4' };
+const CB_LOOK: Partial<Record<Role, string>> = { grabby: '#e8710a', group: '#e8710a', monitor: '#b35806', mitten: '#7f3b08', sticky: '#c79a3b', fraud: '#1f77b4', lunch: '#1f77b4', pet: '#d95f02' };
 const CB_THIEF = '#e8710a';
 const CB_TRADER = '#1f77b4';
 
@@ -57,6 +58,8 @@ const ROLE_LOOK: Record<Role, { color: string; badge?: string; scale?: number }>
   group: { color: '#c0392b', badge: '📎' },
   president: { color: '#8e44ad', badge: '🗳️' },
   fraud: { color: '#2f9e57' },
+  lunch: { color: '#2f9e57' },
+  pet: { color: '#e84393', badge: '🍎' },
   principal: { color: '#34495e', badge: '👔', scale: 1.8 },
   mitten: { color: '#1f618d' },
   superintendent: { color: '#2c3e50', badge: '🏛️', scale: 1.9 },
@@ -411,8 +414,8 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
   const t = scene.time;
   const u = unitOf(s);
   const at = handPosition(hand);
-  // The fraud kid is drawn exactly like a trader: only the tag gives it away.
-  const thief = hand.kind === 'thief' && hand.role !== 'fraud';
+  // The fraud kid and the Free Lunch kid are drawn exactly like traders: only the tag gives them away.
+  const thief = hand.kind === 'thief' && !disguised(hand.role);
   const look = hand.role ? ROLE_LOOK[hand.role] : null;
   const color = scene.colorblind ? (hand.role ? (CB_LOOK[hand.role] ?? look!.color) : thief ? CB_THIEF : CB_TRADER) : look ? look.color : thief ? THIEF : TRADER;
   // The arm: a long wobbly sleeve from off the edge, outlined in ink like a crayon drawing.
@@ -437,7 +440,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
     ctx.strokeStyle = INK;
     ctx.lineWidth = 2;
     ctx.stroke();
-    emoji(ctx, hand.kind === 'trader' || hand.role === 'fraud' ? '✋' : '✊', mid[0], mid[1] + 1, badge * 1.25);
+    emoji(ctx, hand.kind === 'trader' || disguised(hand.role) ? '✋' : '✊', mid[0], mid[1] + 1, badge * 1.25);
   }
   const r = Math.max(13, u * 0.42) * (look?.scale ?? 1);
   const w = Math.max(1.8, u * 0.065);
@@ -528,6 +531,17 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
       stroke(ctx, [[at.x + Math.cos(a) * r * 0.6, at.y + Math.sin(a) * r * 0.6], [at.x + Math.cos(a) * reach, at.y + Math.sin(a) * reach], [at.x + Math.cos(bend) * reach * 1.05 + Math.cos(dir) * r * 0.2, at.y + Math.sin(bend) * reach * 1.05 + Math.sin(dir) * r * 0.2]], w * 1.4, t, hand.id * 7 + f * 3);
     }
     wobblyCircle(ctx, at.x, at.y, r, w, t, hand.id * 13, SKIN);
+    // The Teacher's Pet: a neat white cuff and a gold star sticker.
+    if (hand.role === 'pet') {
+      const dir = Math.atan2(at.y - hand.rootY, at.x - hand.rootX);
+      const cx = at.x - Math.cos(dir) * r * 1.15;
+      const cy = at.y - Math.sin(dir) * r * 1.15;
+      const nx = -Math.sin(dir) * r * 0.85;
+      const ny = Math.cos(dir) * r * 0.85;
+      stroke(ctx, [[cx - nx, cy - ny], [cx + nx, cy + ny]], w * 3.2, t, hand.id * 29, INK, 0.6);
+      stroke(ctx, [[cx - nx, cy - ny], [cx + nx, cy + ny]], w * 2.2, t, hand.id * 29, '#fdfefe', 0.6);
+      emoji(ctx, '⭐', at.x, at.y + 1, r * 0.95);
+    }
     // Off with your blocks
     for (let k = 0; k < hand.carrying; k++) drawBlock(ctx, at.x + (k - (hand.carrying - 1) / 2) * r * 0.9, at.y, r * 0.85, hand.id + k, t);
   } else {
@@ -546,8 +560,21 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(icon, at.x, at.y);
-      const label = offer.item === 'money' ? `💵 for ${offer.price}🧱` : offer.wants === 'blocks' ? `${ITEMS[offer.item].icon} for ${offer.price}🧱` : `${offer.price}🧱 for your ${ITEMS[offer.item].icon}`;
+      const label = offer.item === 'money' ? `💵 for ${offer.price}🧱` : hand.role === 'lunch' ? `${ITEMS[offer.item].icon} FREE!` : offer.wants === 'blocks' ? `${ITEMS[offer.item].icon} for ${offer.price}🧱` : `${offer.price}🧱 for your ${ITEMS[offer.item].icon}`;
       drawTag(ctx, at.x, at.y - r * 2.3, label, Math.max(11, u * 0.26), t, hand.id, color);
+      // The regulars wear their names.
+      if (hand.classmate) {
+        const c = classmateById(hand.classmate);
+        const name = `${c.icon} ${c.name}${isFriend(s.regulars[hand.classmate]) ? ' 💛' : ''}`;
+        ctx.font = `bold ${Math.round(Math.max(11, u * 0.26))}px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#fff';
+        ctx.strokeText(name, at.x, at.y - r * 3.55);
+        ctx.fillStyle = INK;
+        ctx.fillText(name, at.x, at.y - r * 3.55);
+      }
     } else if (hand.traded) {
       ctx.font = `${Math.round(r * 1.5)}px ${FONT}`;
       ctx.textAlign = 'center';

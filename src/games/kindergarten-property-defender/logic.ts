@@ -6,8 +6,9 @@
 // happens. Slapping a trader is aggression, and it costs you a gold star.
 
 import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
+import { FRIEND_AT, GRUDGE_DAYS, isFriend, noRegulars, REGULAR_SHARE, regularsMet, type ClassmateId, type Regulars } from './classmates.ts';
 import { GRADE_POINTS, GRADUATION_WEEK, noPerks, perkChoices, type PerkId, type Perks } from './perks.ts';
-import { allowance, bossFor, bossInfo, DAY_LENGTH, emptyDay, isBoss, isFriday, NEEDS, PERIOD_LENGTH, PERIODS, periodAt, pickRole, reportCard, weekOf, type DayStats, type Period, type ReportCard, type Role } from './school.ts';
+import { allowance, bossFor, bossInfo, DAY_LENGTH, disguised, emptyDay, isBoss, isFriday, NEEDS, PERIOD_LENGTH, PERIODS, periodAt, pickRole, reportCard, weekOf, type DayStats, type Period, type ReportCard, type Role } from './school.ts';
 
 export type HandKind = 'thief' | 'trader';
 export type ItemId = 'juice' | 'dino' | 'crayons' | 'cookie' | 'car' | 'yoyo' | 'slime' | 'card' | 'money';
@@ -101,6 +102,8 @@ export interface Hand {
   beingHeld: boolean;
   /** Seconds since it appeared. */
   age: number;
+  /** Which regular it is (traders only; most traders are nobody in particular). */
+  classmate: ClassmateId | null;
 }
 
 export type GameEvent =
@@ -132,6 +135,9 @@ export type GameEvent =
   | { type: 'meter' }
   | { type: 'perk'; id: PerkId }
   | { type: 'graduation'; gpa: number }
+  | { type: 'friend'; id: ClassmateId }
+  | { type: 'grudge'; id: ClassmateId; wasFriend: boolean }
+  | { type: 'tattle'; hand: Hand; blocks: number }
   | { type: 'report'; card: ReportCard }
   | { type: 'allowance'; blocks: number }
   | { type: 'bounce'; hand: Hand; needs: 'slap' | 'pinch' | 'hold' };
@@ -193,6 +199,9 @@ export interface GameState {
   gradePoints: number;
   gradeCount: number;
   graduated: boolean;
+  /** How Jack gets on with the regulars, and the grabby hands the teacher's sending after Jack hit her pet. */
+  regulars: Regulars;
+  reprisals: number;
   /** What happened since the UI last looked. */
   events: GameEvent[];
 }
@@ -300,6 +309,8 @@ export function newGame(w: number, h: number): GameState {
     gradePoints: 0,
     gradeCount: 0,
     graduated: false,
+    regulars: noRegulars(),
+    reprisals: 0,
     events: [],
   };
 }
@@ -351,8 +362,41 @@ export function edgeAt(s: GameState, degrees: number): { x: number; y: number } 
 /** About half the classmates want something from your stash (if there's anything in it). */
 export const BUYER_SHARE = 0.5;
 
-function makeOffer(s: GameState, rng: () => number): Offer {
-  if (s.stash.length && rng() < BUYER_SHARE) {
+/** Which regular (if any) is coming: one you've met, who isn't sulking, isn't already here, and has a reason to come. */
+function pickClassmate(s: GameState, rng: () => number): ClassmateId | null {
+  if (rng() >= REGULAR_SHARE) return null;
+  const here = new Set(s.hands.map((h) => h.classmate));
+  const pool = regularsMet(s.wave).filter((c) => !s.regulars[c.id].grudge && !here.has(c.id) && (c.id !== 'dave' || s.stash.length > 0));
+  let roll = rng() * pool.reduce((sum, c) => sum + c.weight, 0);
+  for (const c of pool) {
+    roll -= c.weight;
+    if (roll <= 0) return c.id;
+  }
+  return null;
+}
+
+function makeOffer(s: GameState, rng: () => number, who: ClassmateId | null): Offer {
+  const friend = who ? isFriend(s.regulars[who]) : false;
+  // Dave only buys, and pays two over what you paid (three, for a friend).
+  if (who === 'dave' && s.stash.length) {
+    const owned = s.stash[Math.floor(rng() * s.stash.length)];
+    return { wants: 'item', item: owned.item, price: owned.cost + 2 + s.perks.sales + (friend ? 1 : 0), value: 0 };
+  }
+  // Becky asks more for her things, and buys less often.
+  if (who === 'becky') {
+    if (s.stash.length && rng() < 0.3) {
+      const owned = s.stash[Math.floor(rng() * s.stash.length)];
+      return { wants: 'item', item: owned.item, price: owned.cost + 1 + s.perks.sales, value: 0 };
+    }
+    const ask = 2 + Math.floor(rng() * 3);
+    return { wants: 'blocks', item: ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)], price: Math.max(1, ask - (friend ? 1 : 0)), value: Math.round(ask * (1.15 + rng() * 0.3) * 10) / 10 };
+  }
+  // Timmy's things are always worth a good deal more than he asks.
+  if (who === 'timmy' && !(s.stash.length && rng() < BUYER_SHARE)) {
+    const price = 1 + Math.floor(rng() * 3);
+    return { wants: 'blocks', item: ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)], price, value: Math.round(price * (1.8 + rng() * 0.4) * (friend ? 1.3 : 1) * 10) / 10 };
+  }
+  if (s.stash.length && (who === 'timmy' || rng() < BUYER_SHARE)) {
     const owned = s.stash[Math.floor(rng() * s.stash.length)];
     return { wants: 'item', item: owned.item, price: owned.cost + 1 + s.perks.sales, value: 0 };
   }
@@ -360,12 +404,13 @@ function makeOffer(s: GameState, rng: () => number): Offer {
   return { wants: 'blocks', item: ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)], price, value: Math.round(price * (1.4 + rng() * 0.9) * 10) / 10 };
 }
 
-export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forced?: Role): Hand {
+export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forced?: Role, who?: ClassmateId): Hand {
   const period = periodAt(s.waveTime);
-  kind ??= forced ? 'thief' : rng() < Math.max(0.05, Math.min(0.85, traderShare(s.stars) + period.traders)) ? 'trader' : 'thief';
+  kind ??= forced ? 'thief' : who ? 'trader' : rng() < Math.max(0.05, Math.min(0.85, traderShare(s.stars) + period.traders)) ? 'trader' : 'thief';
   const role: Role | null = kind === 'thief' ? (forced ?? pickRole(s.wave, period.id, rng)) : null;
-  // The fraud kid comes in like a trader, at a trader's pace.
-  const looksLike: HandKind = role === 'fraud' ? 'trader' : kind;
+  const classmate = kind === 'trader' ? (who ?? pickClassmate(s, rng)) : null;
+  // The fraud kid and the Free Lunch kid come in like traders, at a trader's pace.
+  const looksLike: HandKind = disguised(role) ? 'trader' : kind;
   const root = role === 'principal' || role === 'doe' ? { x: -40, y: s.h * 0.45 } : role === 'superintendent' ? { x: s.w * 0.35, y: -40 } : rootFor(s, looksLike, rng);
   const pile = pileAt(s);
   const spread = Math.min(s.w, s.h) * 0.06;
@@ -387,7 +432,14 @@ export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forc
     slapped: false,
     carrying: 0,
     grab: 1,
-    offer: kind === 'trader' ? makeOffer(s, rng) : role === 'fraud' ? { wants: 'blocks', item: 'money', price: 2 + Math.floor(rng() * 2), value: 0 } : null,
+    offer:
+      kind === 'trader'
+        ? makeOffer(s, rng, classmate)
+        : role === 'fraud'
+          ? { wants: 'blocks', item: 'money', price: 2 + Math.floor(rng() * 2), value: 0 }
+          : role === 'lunch'
+            ? { wants: 'blocks', item: ITEM_IDS[Math.floor(rng() * ITEM_IDS.length)], price: 0, value: 0 }
+            : null,
     traded: false,
     glued: 0,
     glueDone: false,
@@ -399,6 +451,7 @@ export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forc
     held: 0,
     beingHeld: false,
     age: 0,
+    classmate,
   };
   if (kind === 'thief') s.day.thieves++;
   s.hands.push(hand);
@@ -423,8 +476,19 @@ function arrive(s: GameState, hand: Hand) {
   }
   if (hand.kind === 'thief') {
     // The President taxes 10%, the Principal takes 30% (eminent domain), the fraud kid "buys" with funny money.
-    const want = hand.role === 'president' ? Math.max(1, Math.ceil(s.blocks * 0.1)) : isBoss(hand.role) ? Math.max(1, Math.ceil(s.blocks * bossInfo(hand.role!)!.take)) : hand.role === 'fraud' ? hand.offer!.price : grabFrom(s.blocks);
+    // The Free Lunch kid hands over the "free" thing, and takes 15% (at least two) for it.
+    const want =
+      hand.role === 'president'
+        ? Math.max(1, Math.ceil(s.blocks * 0.1))
+        : isBoss(hand.role)
+          ? Math.max(1, Math.ceil(s.blocks * bossInfo(hand.role!)!.take))
+          : hand.role === 'fraud'
+            ? hand.offer!.price
+            : hand.role === 'lunch'
+              ? Math.max(2, Math.ceil(s.blocks * 0.15))
+              : grabFrom(s.blocks);
     const took = Math.min(want, s.blocks);
+    if (hand.role === 'lunch') s.stash.push({ item: hand.offer!.item, cost: 0 });
     s.blocks -= took;
     hand.carrying = took;
     s.stats.stolen += took;
@@ -469,6 +533,11 @@ function arrive(s: GameState, hand: Hand) {
   s.tollCredit -= toll;
   s.blocks = Math.min(CONFIG.maxBlocks, s.blocks + toll);
   s.events.push({ type: 'trade', hand, offer, points, toll, profit });
+  if (hand.classmate) {
+    const regular = s.regulars[hand.classmate];
+    regular.trades++;
+    if (regular.trades === FRIEND_AT) s.events.push({ type: 'friend', id: hand.classmate });
+  }
   // Good trades win back the class's trust.
   s.goodwill++;
   if (s.goodwill >= (s.perks.reputation ? 2 : CONFIG.tradesPerStar) && s.stars < CONFIG.maxStars) {
@@ -500,6 +569,13 @@ export function step(s: GameState, dt: number, rng: () => number) {
       monitor.rootX = boss.rootX + (rng() - 0.5) * s.w * 0.3;
       monitor.rootY = boss.rootY;
     }
+  }
+  while (s.reprisals > 0) {
+    s.reprisals--;
+    const hand = spawnHand(s, rng, 'thief', 'grabby');
+    const root = edgeAt(s, 160 + rng() * 40);
+    hand.rootX = root.x;
+    hand.rootY = root.y;
   }
   if (spawning) {
     s.spawnIn -= dt;
@@ -675,7 +751,7 @@ function hitThief(s: GameState, hand: Hand, by: 'jack' | 'guard' | 'shout') {
     return;
   }
   s.stats.slapped++;
-  const points = (isBoss(hand.role) ? 100 : hand.role === 'monitor' || hand.role === 'president' ? base * 2 : base) * mult;
+  const points = (isBoss(hand.role) ? 100 : hand.role === 'monitor' || hand.role === 'president' || hand.role === 'pet' ? base * 2 : base) * mult;
   s.score += points;
   if (by === 'guard') s.events.push({ type: 'guard', hand, points });
   else if (by === 'shout') s.events.push({ type: 'blown', hand, points });
@@ -812,11 +888,31 @@ export function slap(s: GameState, x: number, y: number, how: 'slap' | 'pinch' =
     s.stats.violations++;
     s.day.violations++;
     s.events.push({ type: 'violation', hand });
+    if (hand.classmate) {
+      // They remember.
+      const regular = s.regulars[hand.classmate];
+      s.events.push({ type: 'grudge', id: hand.classmate, wasFriend: isFriend(regular) });
+      regular.trades = 0;
+      regular.grudge = GRUDGE_DAYS;
+    }
     if (s.stars <= 0) end(s, 'expelled');
     return hand;
   }
   // Oven Mitts need a pinch, Sticky Fingers need holding, the rest need a slap.
   const needs = needsFor(hand);
+  if (hand.role === 'pet' && how === 'slap') {
+    // TEACHER! The teacher takes 10% (at least two) off the pile and sends two grabby hands after Jack.
+    const blocks = Math.min(s.blocks, Math.max(2, Math.ceil(s.blocks * 0.1)));
+    s.blocks -= blocks;
+    s.stats.stolen += blocks;
+    s.day.stolen += blocks;
+    s.combo = 0;
+    s.reprisals += 2;
+    hand.stun = 0.35;
+    s.events.push({ type: 'tattle', hand, blocks });
+    if (s.blocks <= 0) end(s, 'seized');
+    return hand;
+  }
   if (needs !== how) {
     s.events.push({ type: 'bounce', hand, needs });
     return hand;
@@ -903,6 +999,8 @@ export function nextWave(s: GameState) {
   s.rush = 0;
   s.fence = s.perks.fence ? 2 : 0;
   s.summons = 0;
+  s.reprisals = 0;
   s.perkOffer = [];
+  for (const r of Object.values(s.regulars)) r.grudge = Math.max(0, r.grudge - 1);
   s.phase = 'playing';
 }

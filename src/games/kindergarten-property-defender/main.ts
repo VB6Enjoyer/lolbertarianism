@@ -7,6 +7,7 @@ import { build, comboCap, CONFIG, gpa, meterMax, takePerk, handPosition, ITEM_US
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
 import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
+import { CLASSMATES, classmateById, FRIEND_AT, isFriend, regularsMet, regularsNewToday, type ClassmateId } from './classmates.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -128,6 +129,11 @@ const LINES = {
   kidSoldOut: ['You sold it already?!', 'Aw, it’s gone.'],
   fraudGotAway: ['It’s legal tender at MY house!', 'Pleasure doing business, sucker!', 'Backed by the full faith and credit of my mom!'],
   fraudCaught: ['Fraud is aggression!', 'Nice try. That’s Monopoly money.', 'Counterfeit! Get out!'],
+  lunchGotAway: ['Nothing’s free, Jack!', 'Thanks for buying lunch!', 'Someone always pays. Today it’s you.'],
+  lunchCaught: ['There’s no such thing as a free lunch!', 'TANSTAAFL!', 'Nice try. Milton warned me about you.'],
+  tattle: ['TEACHER! Jack hit me!', 'I’m telling!', 'Teacher, teacher! Jack’s being mean!'],
+  tattleTeacher: ['Jack! Did you just hit my helper?!', 'That’s it. Hand them over, mister.', 'Somebody fetch the redistribution committee.'],
+  petCaught: ['Ow! I’m telling! …Telling who, though?', 'You can’t pinch me, I’m the teacher’s favourite!', 'My apple!'],
   president: ['Democracy has spoken!', 'The majority voted for your blocks!', 'It’s only fair, Jack.'],
   principal: ['This land is needed for a new nap mat.', 'Eminent domain, young man.', 'It’s for the common good.'],
   monitor: ['Just following orders!', 'Rules are rules!', 'I’m writing you up!'],
@@ -144,6 +150,12 @@ const LINES = {
     crayons: 'A fence. Like the Founders intended.',
     card: 'Shiny card for a gold star? Deal.',
   } as Record<string, string>,
+};
+/** What the regulars say when you trade, when you become best friends, and when you slap them. */
+const REGULAR_LINES: Record<ClassmateId, { trade: string[]; friend: string; grudge: string[] }> = {
+  timmy: { trade: ['Fair’s fair!', 'Thanks, Jack!', 'Same time tomorrow?'], friend: 'You’re my best friend, Jack!', grudge: ['Ow! I thought we were friends!', 'I’m telling my mom!'] },
+  becky: { trade: ['Pleasure doing business. Mostly mine.', 'I’d have taken one less. Kidding!', 'You drive a soft bargain, Jack.'], friend: 'Fine. You’re my favourite customer.', grudge: ['Hmph! Don’t talk to me.', 'You’ll regret that, Jack.'] },
+  dave: { trade: ['I know a guy who’ll pay double.', 'Buy low, sell high, Jack.', 'Got any more of those?'], friend: 'Partners, Jack. Fifty-fifty.', grudge: ['You just lost your best customer.', 'I’m taking my business elsewhere.'] },
 };
 const BOSS_STEAL: Partial<Record<Role, string>> = { principal: 'EMINENT DOMAIN!', superintendent: 'DISTRICT POLICY!', board: 'THE BOARD VOTED!', doe: 'FEDERAL MANDATE!' };
 
@@ -198,6 +210,12 @@ function handle(e: GameEvent) {
       if (e.hand.role === 'fraud') {
         float(at.x, at.y, `FRAUD! +${e.points}`, '#c0392b', true);
         say('jack', pick(LINES.fraudCaught));
+      } else if (e.hand.role === 'lunch') {
+        float(at.x, at.y, `NO FREE LUNCH! +${e.points}`, '#c0392b', true);
+        say('jack', pick(LINES.lunchCaught));
+      } else if (e.hand.role === 'pet') {
+        float(at.x, at.y, `PINCHED! +${e.points}`, '#c0392b', true);
+        say('kid', pick(LINES.petCaught), at);
       } else if (isBoss(e.hand.role)) {
         float(at.x, at.y, `${e.hand.role === 'board' ? 'MOTION DENIED!' : 'BOSS RETREATS!'} +${e.points}`, '#c0392b', true);
         say('jack', 'Not on my property!');
@@ -235,9 +253,10 @@ function handle(e: GameEvent) {
     case 'steal': {
       play('steal');
       const role = e.hand.role;
-      const label = role === 'fraud' ? `💵 Monopoly money?! −${e.blocks}🧱` : role === 'president' ? `🗳️ 10% TAX −${e.blocks}🧱` : isBoss(role) ? `${BOSS_STEAL[role!]} −${e.blocks}🧱` : `−${e.blocks}🧱`;
+      const label = role === 'fraud' ? `💵 Monopoly money?! −${e.blocks}🧱` : role === 'lunch' ? `🥪 “FREE” ${ITEMS[e.hand.offer!.item].icon}?! −${e.blocks}🧱` : role === 'president' ? `🗳️ 10% TAX −${e.blocks}🧱` : isBoss(role) ? `${BOSS_STEAL[role!]} −${e.blocks}🧱` : `−${e.blocks}🧱`;
       float(pile.x, pile.y, label, '#c0392b', true);
       if (role === 'fraud') say('kid', pick(LINES.fraudGotAway), handPosition(e.hand));
+      else if (role === 'lunch') say('kid', pick(LINES.lunchGotAway), handPosition(e.hand));
       else if (role === 'president') say('teacher', pick(LINES.president));
       else if (role === 'principal') say('teacher', pick(LINES.principal));
       else if (role === 'superintendent' || role === 'board' || role === 'doe') say('teacher', pick(LINES[role]));
@@ -247,7 +266,7 @@ function handle(e: GameEvent) {
     }
     case 'period': {
       // The bell: what period it is (and who's new today, at the start of the day)
-      const fresh = e.period.id === 'circle' ? newToday(state.wave).filter((r) => r.id !== 'principal') : [];
+      const fresh = e.period.id === 'circle' ? [...newToday(state.wave).filter((r) => r.id !== 'principal'), ...regularsNewToday(state.wave)] : [];
       const boss = e.period.id === 'show' && isFriday(state.wave) ? bossFor(weekOf(state.wave)) : null;
       scene.banner = {
         text: boss ? `📢 ${boss.title} IS COMING` : e.period.id === 'circle' ? `${dayName(state.wave)}: ${e.period.icon} ${e.period.name}` : `${e.period.icon} ${e.period.name}!`,
@@ -299,7 +318,32 @@ function handle(e: GameEvent) {
       const at = handPosition(e.hand);
       play('trade');
       float(at.x, at.y, `${e.offer.wants === 'blocks' ? `+${ITEMS[e.offer.item].icon}` : `+${e.offer.price}🧱`}${e.toll ? ` +${e.toll}🧱 toll` : ''}  +${e.points}`, '#1e8449');
-      if (Math.random() < 0.4) say('kid', pick(LINES.kidTrade), at);
+      if (e.hand.classmate) {
+        if (Math.random() < 0.6) say('kid', pick(REGULAR_LINES[e.hand.classmate].trade), at);
+      } else if (Math.random() < 0.4) say('kid', pick(LINES.kidTrade), at);
+      break;
+    }
+    case 'friend': {
+      const c = classmateById(e.id);
+      play('recover');
+      float(state.w / 2, state.h * 0.3, `💛 ${c.icon} ${c.name} is your best friend now`, '#b9770e', true);
+      say('kid', REGULAR_LINES[e.id].friend);
+      break;
+    }
+    case 'grudge': {
+      const c = classmateById(e.id);
+      say('kid', pick(REGULAR_LINES[e.id].grudge));
+      float(state.w / 2, state.h * 0.36, `😤 ${c.icon} ${c.name} won’t trade with you for a while`, '#c0392b');
+      break;
+    }
+    case 'tattle': {
+      const at = handPosition(e.hand);
+      play('violation');
+      float(at.x, at.y, '🍎 TATTLETALE!', '#e84393', true);
+      float(pile.x, pile.y, `CONFISCATED −${e.blocks}🧱`, '#c0392b', true);
+      say('kid', pick(LINES.tattle), at);
+      say('teacher', pick(LINES.tattleTeacher));
+      scene.shake = 0.4;
       break;
     }
     case 'broke': {
@@ -393,6 +437,8 @@ function checkAchievements(e: GameEvent) {
       if (e.combo >= 25) award('combo-25');
       if (e.hand.role === 'monitor') award('monitor');
       if (e.hand.role === 'fraud') award('fraud');
+      if (e.hand.role === 'lunch') award('lunch');
+      if (e.hand.role === 'pet') award('pet');
       if (e.hand.role === 'president') award('president');
       if (e.hand.role === 'principal') award('principal');
       if (e.hand.role === 'mitten') award('mitten');
@@ -413,6 +459,7 @@ function checkAchievements(e: GameEvent) {
       break;
     case 'steal':
       if (e.hand.role === 'fraud' && e.blocks > 0) award('funny-money');
+      if (e.hand.role === 'lunch' && e.blocks > 0) award('free-lunch');
       break;
     case 'trade':
       award('first-trade');
@@ -423,6 +470,16 @@ function checkAchievements(e: GameEvent) {
       break;
     case 'violation':
       award('my-bad');
+      break;
+    case 'friend':
+      award('friend');
+      if (CLASSMATES.every((c) => isFriend(state.regulars[c.id]))) award('all-friends');
+      break;
+    case 'grudge':
+      if (e.wasFriend) award('grudge');
+      break;
+    case 'tattle':
+      award('tattle');
       break;
     case 'blown':
       if (e.hand.role === 'board') {
@@ -745,6 +802,13 @@ function showBreak() {
     card ? `⭐ Grades: +${card.bonus} points.` : '',
     `🧱 ${state.blocks} blocks left: +${state.blocks * CONFIG.waveBonusPerBlock} points.`,
     state.stash.length ? `🎒 Stash: ${state.stash.map((o) => ITEMS[o.item].icon).join(' ')}` : '',
+    regularsMet(state.wave)
+      .map((c) => {
+        const r = state.regulars[c.id];
+        const how = r.grudge > 1 ? '😤 still mad tomorrow' : r.grudge === 1 ? '🙂 over it by tomorrow' : isFriend(r) ? '💛 best friends' : `${r.trades}/${FRIEND_AT} trades to best friends`;
+        return `${c.icon} ${c.name}: ${how}`;
+      })
+      .join(' · '),
   ].filter(Boolean);
   // What recess paid, and cost
   const interest = recessEvents.find((e) => e.type === 'interest');
@@ -933,7 +997,7 @@ document.addEventListener('keydown', (e) => {
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { kpd: { state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role)) } });
+  Object.assign(window, { kpd: { state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => (CLASSMATES.some((c) => c.id === role) ? spawnHand(state, Math.random, 'trader', undefined, role as ClassmateId) : spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role))) } });
 }
 
 els.best.textContent = [save.best ? `Best: ${save.best.toLocaleString('en-US')} points` : '', save.graduations ? `🎓 Graduated ×${save.graduations} (best GPA ${save.bestGpa.toFixed(2)})` : '', unlocked.size ? `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} achievements` : ''].filter(Boolean).join(' · ');

@@ -317,10 +317,12 @@ describe('kindergarten: the cast', () => {
     expect(newToday(4).map((r) => r.id)).toEqual(['sticky', 'group']);
     expect(newToday(6).map((r) => r.id)).toEqual(['fraud']);
     expect(rolesOn(2).map((r) => r.id)).not.toContain('mitten');
-    expect(rolesOn(12).length).toBe(7);
+    expect(newToday(7).map((r) => r.id)).toEqual(['lunch']);
+    expect(newToday(8).map((r) => r.id)).toEqual(['pet']);
+    expect(rolesOn(12).length).toBe(9);
     const r = rng(16);
-    const seen = new Set(Array.from({ length: 400 }, () => pickRole(9, 'show', r)));
-    expect(seen.size).toBe(7);
+    const seen = new Set(Array.from({ length: 600 }, () => pickRole(9, 'show', r)));
+    expect(seen.size).toBe(9);
     // More common every day after they turn up
     const count = (day: number) => Array.from({ length: 4000 }, () => pickRole(day, 'snack', r)).filter((x) => x === 'mitten').length;
     expect(count(9)).toBeGreaterThan(count(3) * 1.5);
@@ -629,5 +631,107 @@ describe('kindergarten: weekend perks and graduation', () => {
     s.waveTime = CONFIG.waveLength;
     step(s, 0.05, rng(115));
     expect(s.events.filter((e) => e.type === 'graduation').length).toBe(1);
+  });
+});
+
+describe('kindergarten: the regulars', () => {
+  it('Timmy sells fair, Becky asks more, Dave only buys (and pays well)', () => {
+    const s = quiet(newGame(1000, 600));
+    s.wave = 3;
+    for (let i = 0; i < 20; i++) {
+      const timmy = spawnHand(s, rng(200 + i), 'trader', undefined, 'timmy');
+      expect(timmy.classmate).toBe('timmy');
+      expect(timmy.offer!.value / timmy.offer!.price).toBeGreaterThanOrEqual(1.8);
+      const becky = spawnHand(s, rng(300 + i), 'trader', undefined, 'becky');
+      expect(becky.offer!.price).toBeGreaterThanOrEqual(2);
+      expect(becky.offer!.value / becky.offer!.price).toBeLessThan(1.5);
+      s.hands = [];
+    }
+    s.stash = [{ item: 'dino', cost: 2 }];
+    const dave = spawnHand(s, rng(400), 'trader', undefined, 'dave');
+    expect(dave.offer).toMatchObject({ wants: 'item', item: 'dino', price: 4 });
+  });
+
+  it('four trades make a best friend; a slap makes a grudge that lasts a couple of days', () => {
+    const s = quiet(newGame(1000, 600));
+    s.blocks = 40;
+    for (let i = 0; i < 4; i++) reach(s, spawnHand(s, rng(500 + i), 'trader', undefined, 'timmy'));
+    expect(s.regulars.timmy.trades).toBe(4);
+    expect(s.events.some((e) => e.type === 'friend' && e.id === 'timmy')).toBe(true);
+    // A friend's deal is better still.
+    const deal = spawnHand(s, rng(510), 'trader', undefined, 'timmy');
+    if (deal.offer!.wants === 'blocks') expect(deal.offer!.value / deal.offer!.price).toBeGreaterThanOrEqual(1.8 * 1.3);
+    deal.progress = 0.5;
+    const at = handPosition(deal);
+    s.events = [];
+    slap(s, at.x, at.y);
+    expect(s.events.find((e) => e.type === 'grudge')).toMatchObject({ id: 'timmy', wasFriend: true });
+    expect(s.regulars.timmy).toEqual({ trades: 0, grudge: 2 });
+    // He stays away (today and tomorrow), then comes back.
+    const comes = () => {
+      const seen = new Set<string | null>();
+      const r = rng(520);
+      for (let i = 0; i < 200; i++) {
+        seen.add(spawnHand(s, r, 'trader').classmate);
+        s.hands = [];
+      }
+      return seen.has('timmy');
+    };
+    expect(comes()).toBe(false);
+    s.phase = 'break';
+    nextWave(s);
+    expect(comes()).toBe(false);
+    s.phase = 'break';
+    nextWave(s);
+    expect(comes()).toBe(true);
+  });
+
+  it('a regular is never in two places at once, and Dave only comes when you have something', () => {
+    const s = quiet(newGame(1000, 600));
+    s.wave = 5;
+    const r = rng(600);
+    for (let i = 0; i < 300; i++) spawnHand(s, r, 'trader');
+    const named = s.hands.map((h) => h.classmate).filter(Boolean);
+    expect(new Set(named).size).toBe(named.length);
+    expect(named).not.toContain('dave');
+  });
+});
+
+describe('kindergarten: the Free Lunch kid and the Teacher’s Pet', () => {
+  it('the free lunch costs 15% (at least two) of the pile, but you get the thing', () => {
+    const s = quiet(newGame(1000, 600));
+    s.blocks = 40;
+    const lunch = spawnHand(s, rng(700), 'thief', 'lunch');
+    expect(lunch.offer!.price).toBe(0);
+    reach(s, lunch);
+    expect(s.blocks).toBe(34);
+    expect(s.stash).toEqual([{ item: lunch.offer!.item, cost: 0 }]);
+    // Slapping one costs no gold star.
+    const next = spawnHand(s, rng(701), 'thief', 'lunch');
+    next.progress = 0.5;
+    const at = handPosition(next);
+    slap(s, at.x, at.y);
+    expect(s.stars).toBe(CONFIG.maxStars);
+    expect(next.slapped).toBe(true);
+  });
+
+  it('slap the Teacher’s Pet and the teacher confiscates blocks and sends two more hands; pinch it instead', () => {
+    const s = quiet(newGame(1000, 600));
+    s.blocks = 30;
+    const pet = spawnHand(s, rng(800), 'thief', 'pet');
+    pet.progress = 0.4;
+    let at = handPosition(pet);
+    slap(s, at.x, at.y);
+    expect(pet.slapped).toBe(false);
+    expect(s.blocks).toBe(27);
+    expect(s.events.some((e) => e.type === 'tattle')).toBe(true);
+    const before = s.hands.length;
+    step(s, 0.01, rng(801));
+    expect(s.hands.length).toBe(before + 2);
+    pet.stun = 0;
+    at = handPosition(pet);
+    slap(s, at.x, at.y, 'pinch');
+    expect(pet.slapped).toBe(true);
+    expect(s.blocks).toBe(27);
   });
 });
