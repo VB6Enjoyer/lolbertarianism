@@ -1547,3 +1547,234 @@ button {
         font-size: 13px;
     }
 }
+
+/* --- Easter eggs: Anya's looks, and where she's touched --- */
+.anya.pink-hair .anya-hair {
+    fill: #eda09e;
+}
+
+.anya.green-eyes .anya-iris {
+    fill: url(#anya-iris-green);
+}
+
+.anya-hit {
+    cursor: pointer;
+    pointer-events: all;
+}
+
+.touch-fx {
+    position: absolute;
+    z-index: 5;
+    font: 26px/1 var(--sfx);
+    color: var(--red);
+    text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    animation: touch-fx 0.9s ease-out forwards;
+}
+
+@keyframes touch-fx {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.4);
+    }
+
+    20% {
+        opacity: 1;
+        transform: translate(-50%, -80%) scale(1.15);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -190%) scale(1);
+    }
+}
+
+.wardrobe-heading {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.wardrobe {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin: 4px 0 18px;
+}
+
+.look-toggle {
+    padding: 8px 16px;
+    border: 3px solid var(--ink);
+    background: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 var(--ink);
+}
+
+.look-toggle[aria-pressed='true'] {
+    background: #fde3e2;
+}
+
+.look-toggle:disabled {
+    cursor: not-allowed;
+    border-style: dashed;
+    box-shadow: none;
+    opacity: 0.55;
+}
+
+/* --- Stats and settings --- */
+.wide-heading {
+    width: 100%;
+}
+
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 6px;
+}
+
+.stat-card {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 3px solid var(--ink);
+    background: #fff;
+    box-shadow: 3px 3px 0 var(--ink);
+}
+
+.stat-card b {
+    font-weight: 900;
+    font-size: 24px;
+    line-height: 1.1;
+}
+
+.stat-card small {
+    color: var(--muted);
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-card.good b {
+    color: var(--green);
+}
+
+.stat-card.bad b {
+    color: var(--red);
+}
+
+.stat-bars {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 6px;
+}
+
+.stat-bar {
+    display: grid;
+    grid-template-columns: minmax(120px, 34%) 1fr auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.stat-bar .track {
+    position: relative;
+    height: 16px;
+    border: 2px solid var(--ink);
+    background: #fff;
+}
+
+.stat-bar .track i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--green);
+}
+
+.stat-bar .track i.easy {
+    background: var(--green);
+}
+
+.stat-bar .track i.medium {
+    background: var(--amber);
+}
+
+.stat-bar .track i.hard {
+    background: var(--red);
+}
+
+.stat-bar .value {
+    min-width: 72px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: right;
+}
+
+.erase-box {
+    display: grid;
+    justify-items: center;
+    width: 100%;
+    margin-bottom: 18px;
+}
+
+.erase-button {
+    border-color: var(--red);
+    color: var(--red);
+}
+
+.erase-confirm {
+    width: 100%;
+    padding: 12px 14px;
+    border: 3px dashed var(--red);
+    background: #fdecea;
+    text-align: center;
+}
+
+.erase-confirm[hidden] {
+    display: none;
+}
+
+.erase-confirm p {
+    margin: 0 0 12px;
+    font-size: 14px;
+}
+
+.danger-button {
+    border-color: var(--red);
+    background: var(--red);
+    color: #fff;
+}
+
+.danger-button:hover {
+    background: #a83a20;
+}
+
+@media (max-width: 760px) {
+    .stat-bar {
+        grid-template-columns: 1fr auto;
+    }
+
+    .stat-bar .track {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .pips li {
+        width: 14px;
+        height: 14px;
+    }
+
+    .pips {
+        gap: 3px;
+    }
+
+    .top-right {
+        gap: 6px;
+    }
+}
