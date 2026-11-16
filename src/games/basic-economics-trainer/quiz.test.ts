@@ -80,6 +80,15 @@ describe('basic economics trainer: the question bank', () => {
     for (const part of BOOK.parts) expect(BOOK.questions.filter((q) => q.part === part.n).length, `part ${part.n}`).toBeGreaterThanOrEqual(RUN_LENGTH);
   });
 
+  it('doesn’t give the answer away by its length', () => {
+    // The right answer shouldn't stand out as the longest option: rarely clearly longer, and not
+    // the longest much more often than chance (one in four) would make it.
+    const clearlyLongest = BOOK.questions.filter((q) => q.answer.length > 1.15 * Math.max(...q.wrong.map((w) => w.length)));
+    expect(clearlyLongest.map((q) => q.q)).toHaveLength(clearlyLongest.length > 3 ? 0 : clearlyLongest.length);
+    const longest = BOOK.questions.filter((q) => q.wrong.every((w) => q.answer.length > w.length)).length;
+    expect(longest / BOOK.questions.length).toBeLessThan(0.45);
+  });
+
   it('shuffles the answers but keeps track of the right one', () => {
     const bq = BOOK.questions[0];
     const positions = new Set<number>();
