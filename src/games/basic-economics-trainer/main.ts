@@ -7,6 +7,8 @@ import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { ASK_SOWELL_COST, BOOK, dateKey, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Level } from './books/types.ts';
+import { normalizeStats, recordAnswer, summarize, type Stats } from './stats.ts';
+import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -56,6 +58,7 @@ const els = {
   achievementsCount: byId('achievements-count'),
   hideAchievements: byId<HTMLButtonElement>('hide-achievements'),
   toasts: byId('toasts'),
+  settings: byId('settings'),
 };
 
 // ---------------------------------------------------------------------------
@@ -79,6 +82,9 @@ interface Save {
   stillDumbs: number;
   /** Anya's unlockable looks, and whether each is switched on. */
   looks: { pink: boolean; green: boolean };
+  stats: Stats;
+  /** Read aloud: questions and answers, and Anya's lines. */
+  tts: { questions: boolean; anya: boolean };
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -100,6 +106,8 @@ const save: Save = {
   hardRight: count(saved?.hardRight),
   stillDumbs: count(saved?.stillDumbs),
   looks: { pink: saved?.looks?.pink === true, green: saved?.looks?.green === true },
+  stats: normalizeStats(saved?.stats),
+  tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
 };
 const persist = () => slot.save(save);
 
@@ -200,9 +208,10 @@ let talking = false;
 let fullText = '';
 
 /** Types a line into her bubble. With `talk`, her mouth moves while she says it. */
-function say(text: string, opts: { talk?: boolean; quip?: boolean } = {}) {
+function say(text: string, opts: { talk?: boolean; quip?: boolean; queueSpeech?: boolean } = {}) {
   if (typing !== null) window.clearInterval(typing);
   if (!opts.quip) endQuip(false);
+  if (save.tts.anya) speak(text, 'anya', opts.queueSpeech);
   fullText = text;
   els.bubbleText.textContent = '';
   talking = !!opts.talk;
@@ -324,6 +333,7 @@ function renderMenu() {
 }
 
 function toMenu() {
+  stopSpeaking();
   screen('menu');
   renderMenu();
   els.pips.replaceChildren();
@@ -424,8 +434,12 @@ function ask() {
   renderPips();
   renderLifelines();
   setFace('neutral');
-  if (isLightning()) return;
+  if (isLightning()) {
+    readQuestion(false);
+    return;
+  }
   say(n === 1 ? `${modeLabel(mode)}. Question one: try not to embarrass yourself.` : n === quiz.questions.length ? 'Last one. Don’t choke.' : pick(ASK_LINES), { talk: true });
+  readQuestion(save.tts.anya);
 }
 
 function renderLifelines() {
@@ -449,6 +463,9 @@ function choose(i: number) {
   if (!q || (isLightning() && timeLeft() <= 0)) return;
   const right = answer(quiz, i);
   if (right === null) return;
+  recordAnswer(save.stats, q.level, right, performance.now() - askedAt, quiz.streak);
+  persist();
+  if (save.tts.questions) speak(right ? 'Right.' : `Wrong. The answer was ${'ABCD'[q.correct]}: ${q.options[q.correct]}.`, 'reader');
   const buttons = [...els.options.querySelectorAll<HTMLButtonElement>('.option')];
   buttons.forEach((b, j) => {
     b.disabled = true;
@@ -500,7 +517,7 @@ function choose(i: number) {
     return;
   }
   const streak = right && quiz.streak === 3 ? ' Three in a row. Suspicious.' : '';
-  say(right ? `${pick(RIGHT_OPENERS)} ${q.comment}${streak}` : `${pick(WRONG_OPENERS)} ${q.comment}`);
+  say(right ? `${pick(RIGHT_OPENERS)} ${q.comment}${streak}` : `${pick(WRONG_OPENERS)} ${q.comment}`, { queueSpeech: save.tts.questions });
   showNext();
 }
 
@@ -533,6 +550,7 @@ els.mindRead.addEventListener('click', () => {
   readMind = true;
   usedLifeline = true;
   award('mind-read');
+  save.stats.mindReads++;
   const wrong = q.options.map((_, i) => i).filter((i) => i !== q.correct);
   const keep = pick(wrong);
   const buttons = els.options.querySelectorAll<HTMLButtonElement>('.option');
@@ -556,6 +574,7 @@ els.swap.addEventListener('click', () => {
   save.peanuts -= SWAP_COST;
   usedLifeline = true;
   award('swap');
+  save.stats.swaps++;
   persist();
   renderPeanuts(true);
   play('page');
@@ -573,6 +592,8 @@ els.askSowell.addEventListener('click', () => {
   askedSowell = true;
   usedLifeline = true;
   award('ask-sowell');
+  save.stats.hints++;
+  if (save.tts.questions) speak(`Sowell says: ${q.hint}`, 'reader', save.tts.anya);
   els.sowellNote.innerHTML = '<b>Sowell says</b><br>';
   els.sowellNote.append(document.createTextNode(q.hint));
   els.sowellNote.hidden = false;
@@ -739,28 +760,155 @@ function renderAchievements() {
 
 let pausedTimerAt: number | null = null;
 
+/** The lightning round's clock waits while a panel is open. */
+function pauseClock() {
+  if (timerHandle === null) return;
+  pausedTimerAt = timeLeft();
+  stopTimer();
+}
+
+function resumeClock() {
+  if (pausedTimerAt === null || !els.achievements.hidden || !els.settings.hidden) return;
+  timerEnds = performance.now() + pausedTimerAt * 1000;
+  pausedTimerAt = null;
+  timerHandle = window.setInterval(renderTimer, 100);
+}
+
 function openAchievements() {
   renderAchievements();
   els.achievements.hidden = false;
-  // The lightning round's clock waits while you look.
-  if (timerHandle !== null) {
-    pausedTimerAt = timeLeft();
-    stopTimer();
-  }
+  pauseClock();
   els.hideAchievements.focus();
 }
 
 function closeAchievements() {
   els.achievements.hidden = true;
-  if (pausedTimerAt !== null) {
-    timerEnds = performance.now() + pausedTimerAt * 1000;
-    pausedTimerAt = null;
-    timerHandle = window.setInterval(renderTimer, 100);
-  }
+  resumeClock();
 }
 
 els.showAchievements.addEventListener('click', () => (els.achievements.hidden ? openAchievements() : closeAchievements()));
 els.hideAchievements.addEventListener('click', closeAchievements);
+
+// ---------------------------------------------------------------------------
+// Reading aloud, stats, and starting over
+// ---------------------------------------------------------------------------
+
+/** Reads the current question and its answers (and Sowell's hint, if asked). `force` reads it even if the setting's off (the R key). */
+function readQuestion(queue: boolean, force = false) {
+  const q = current(quiz);
+  if (!q || (!save.tts.questions && !force)) return;
+  speak(questionScript(q.q, q.options, askedSowell ? q.hint : undefined), 'reader', queue);
+}
+
+const settingsEls = {
+  panel: byId('settings'),
+  cards: byId('stats-cards'),
+  levels: byId('stats-levels'),
+  parts: byId('stats-parts'),
+  ttsQuestions: byId<HTMLButtonElement>('tts-questions'),
+  ttsAnya: byId<HTMLButtonElement>('tts-anya'),
+  speechNote: byId('speech-note'),
+  erase: byId<HTMLButtonElement>('erase'),
+  eraseConfirm: byId('erase-confirm'),
+  eraseYes: byId<HTMLButtonElement>('erase-yes'),
+  eraseNo: byId<HTMLButtonElement>('erase-no'),
+  hide: byId<HTMLButtonElement>('hide-settings'),
+  show: byId<HTMLButtonElement>('show-settings'),
+};
+
+function bar(label: string, value: number, total: number, text: string, cls = '') {
+  const row = document.createElement('div');
+  row.className = 'stat-bar';
+  row.innerHTML = `<span class="label"></span><span class="track"><i class="${cls}" style="width:${total ? Math.round((value / total) * 100) : 0}%"></i></span><span class="value"></span>`;
+  row.querySelector('.label')!.textContent = label;
+  row.querySelector('.value')!.textContent = text;
+  return row;
+}
+
+function renderSettings() {
+  const sum = summarize(save.stats, save.mastered, BOOK);
+  const card = (value: string, label: string, cls = '') => {
+    const c = document.createElement('div');
+    c.className = `stat-card ${cls}`;
+    c.innerHTML = '<b></b><small></small>';
+    c.querySelector('b')!.textContent = value;
+    c.querySelector('small')!.textContent = label;
+    return c;
+  };
+  settingsEls.cards.replaceChildren(
+    card(sum.answered.toLocaleString('en-US'), 'Questions answered'),
+    card(sum.right.toLocaleString('en-US'), 'Right answers', 'good'),
+    card(sum.wrong.toLocaleString('en-US'), 'Wrong answers', 'bad'),
+    card(`${sum.accuracy}%`, 'Right'),
+    card(sum.answered ? `${sum.averageSeconds}s` : '—', 'Average time to answer'),
+    card(String(save.stats.bestStreak), 'Longest streak'),
+    card(String(save.stats.hints), 'Hints used (Ask Sowell)'),
+    card(String(save.stats.mindReads), 'Mind-reads'),
+    card(String(save.stats.swaps), 'Swaps'),
+    card(String(save.peanutsEarned), 'Peanuts earned'),
+  );
+  settingsEls.levels.replaceChildren(...sum.levels.map((l) => bar(LEVEL_NAMES[l.level], l.right, l.answered, l.answered ? `${l.right}/${l.answered} · ${l.accuracy}%` : 'none yet', l.level)));
+  settingsEls.parts.replaceChildren(
+    bar('All 7 parts', sum.mastered, sum.total, `${sum.mastered}/${sum.total} · ${sum.total ? Math.round((sum.mastered / sum.total) * 100) : 0}%`),
+    ...sum.parts.map((p) => bar(`${roman(p.n)}. ${p.title}`, p.mastered, p.total, `${p.mastered}/${p.total}`)),
+  );
+  const supported = speechSupported();
+  const toggle = (b: HTMLButtonElement, on: boolean, label: string) => {
+    b.disabled = !supported;
+    b.setAttribute('aria-pressed', String(on && supported));
+    b.textContent = `${label}: ${on && supported ? 'on' : 'off'}`;
+  };
+  toggle(settingsEls.ttsQuestions, save.tts.questions, '📖 Questions & answers');
+  toggle(settingsEls.ttsAnya, save.tts.anya, '💬 Anya’s lines');
+  if (!supported) settingsEls.speechNote.textContent = 'Your browser can’t read aloud, sorry.';
+  settingsEls.eraseConfirm.hidden = true;
+  settingsEls.erase.hidden = false;
+}
+
+function openSettings() {
+  renderSettings();
+  settingsEls.panel.hidden = false;
+  pauseClock();
+  settingsEls.hide.focus();
+}
+
+function closeSettings() {
+  settingsEls.panel.hidden = true;
+  resumeClock();
+}
+
+settingsEls.show.addEventListener('click', () => (settingsEls.panel.hidden ? openSettings() : closeSettings()));
+settingsEls.hide.addEventListener('click', closeSettings);
+settingsEls.ttsQuestions.addEventListener('click', () => {
+  save.tts.questions = !save.tts.questions;
+  persist();
+  renderSettings();
+  if (save.tts.questions) speak('Questions and answers will be read aloud.', 'reader');
+  else stopSpeaking();
+});
+settingsEls.ttsAnya.addEventListener('click', () => {
+  save.tts.anya = !save.tts.anya;
+  persist();
+  renderSettings();
+  if (save.tts.anya) speak('Anya will read her lines. Out loud. Heh.', 'anya');
+  else stopSpeaking();
+});
+settingsEls.erase.addEventListener('click', () => {
+  settingsEls.erase.hidden = true;
+  settingsEls.eraseConfirm.hidden = false;
+  settingsEls.eraseNo.focus();
+});
+settingsEls.eraseNo.addEventListener('click', () => {
+  settingsEls.eraseConfirm.hidden = true;
+  settingsEls.erase.hidden = false;
+});
+settingsEls.eraseYes.addEventListener('click', () => {
+  // Everything goes, except the sound and read-aloud settings.
+  stopSpeaking();
+  slot.clear();
+  slot.save({ muted: save.muted, tts: save.tts } as Save);
+  location.reload();
+});
 
 // ---------------------------------------------------------------------------
 // Easter eggs: boop her nose, pat her head, poke her eyes, keep her waiting
@@ -865,7 +1013,7 @@ const IMPATIENT = [
   { after: 70, face: 'pout' as Face, lines: ['Anya is going to count to ten. One… two…', 'Is this a sit-in? Anya respects protest, but no.', 'Just pick one! Even Keynes picked one!'] },
 ];
 window.setInterval(() => {
-  const waiting = els.app.dataset.screen === 'quiz' && !answered(quiz) && !isLightning() && els.achievements.hidden && !document.hidden && typing === null;
+  const waiting = els.app.dataset.screen === 'quiz' && !answered(quiz) && !isLightning() && els.achievements.hidden && els.settings.hidden && !document.hidden && typing === null;
   if (!waiting) return;
   waited++;
   const next = IMPATIENT[impatience];
@@ -943,6 +1091,17 @@ els.lightning.addEventListener('click', () => start({ kind: 'lightning' }));
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const at = els.app.dataset.screen;
+  if (!els.settings.hidden) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSettings();
+    }
+    return;
+  }
+  if ((e.key === 'r' || e.key === 'R') && at === 'quiz' && speechSupported()) {
+    readQuestion(false, true);
+    return;
+  }
   if (!els.achievements.hidden) {
     if (e.key === 'Escape' || e.key === 'Enter') {
       e.preventDefault();

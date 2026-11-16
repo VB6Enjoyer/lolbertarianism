@@ -23,6 +23,7 @@
             <div class="top-right">
                 <span id="score" class="score" aria-live="polite"></span>
                 <span id="peanuts" class="peanuts" title="Peanuts: earn one for every right answer, spend them on lifelines">🥜 0</span>
+                <button id="show-settings" class="icon-button" type="button" aria-label="Stats and settings" title="Stats and settings">📊</button>
                 <button id="show-achievements" class="icon-button" type="button" aria-label="Achievements" title="Achievements">🏅</button>
                 <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
             </div>
@@ -97,6 +98,36 @@
                 <h3 class="menu-heading wardrobe-heading">🎀 Anya’s look <small>Looks you’ve found can be switched on and off</small></h3>
                 <div id="wardrobe" class="wardrobe"></div>
                 <button id="hide-achievements" type="button" class="next-button">Back ▶</button>
+            </div>
+        </div>
+
+        <!-- Stats and settings -->
+        <div id="settings" class="overlay" hidden>
+            <div class="overlay-panel" role="dialog" aria-labelledby="settings-title">
+                <h2 id="settings-title" class="menu-title">📊 Stats &amp; settings</h2>
+                <h3 class="menu-heading wide-heading">Your stats</h3>
+                <div id="stats-cards" class="stats-cards"></div>
+                <h3 class="menu-heading wide-heading">By difficulty</h3>
+                <div id="stats-levels" class="stat-bars"></div>
+                <h3 class="menu-heading wide-heading">The whole book <small>Questions you’ve answered right at least once</small></h3>
+                <div id="stats-parts" class="stat-bars"></div>
+                <h3 class="menu-heading wide-heading">🗣️ Read aloud <small id="speech-note">Uses your browser’s voices. Press R to hear a question again.</small></h3>
+                <div class="wardrobe">
+                    <button id="tts-questions" type="button" class="look-toggle" aria-pressed="false">📖 Questions &amp; answers: off</button>
+                    <button id="tts-anya" type="button" class="look-toggle" aria-pressed="false">💬 Anya’s lines: off</button>
+                </div>
+                <h3 class="menu-heading wide-heading">⚠️ Start over</h3>
+                <div id="erase-box" class="erase-box">
+                    <button id="erase" type="button" class="plain-button erase-button">Erase all progress…</button>
+                    <div id="erase-confirm" class="erase-confirm" hidden>
+                        <p><b>Are you sure?</b> This erases your scores, passed parts, peanuts, achievements, Anya’s looks and every stat. It can’t be undone. (Your sound and read-aloud settings stay.)</p>
+                        <div class="end-buttons">
+                            <button id="erase-yes" type="button" class="plain-button danger-button">Yes, erase everything</button>
+                            <button id="erase-no" type="button" class="next-button">Keep my progress</button>
+                        </div>
+                    </div>
+                </div>
+                <button id="hide-settings" type="button" class="next-button">Back ▶</button>
             </div>
         </div>
 
