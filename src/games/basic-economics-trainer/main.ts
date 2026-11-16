@@ -2,8 +2,9 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { anyaSvg, faceMarkup, SHOTS, type Face } from './anya.ts';
-import { QUESTIONS } from './questions.ts';
-import { answer, answered, current, finished, newQuiz, next, verdict, type Quiz } from './quiz.ts';
+import { BOOK, dateKey, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import type { Level } from './books/types.ts';
+import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -11,17 +12,31 @@ const els = {
   app: byId('app'),
   pips: byId('pips'),
   score: byId('score'),
+  peanuts: byId('peanuts'),
   mute: byId<HTMLButtonElement>('mute'),
   bubble: byId('bubble'),
   bubbleText: byId('bubble-text'),
   anya: document.getElementById('anya') as unknown as SVGSVGElement,
   sfx: byId('sfx'),
   take: byId<HTMLButtonElement>('take'),
+  menuPanel: byId('menu-panel'),
+  parts: byId('parts'),
+  drills: byId('drills'),
+  daily: byId<HTMLButtonElement>('daily'),
+  dailyNote: byId('daily-note'),
+  lightning: byId<HTMLButtonElement>('lightning'),
+  lightningNote: byId('lightning-note'),
   quizPanel: byId('quiz-panel'),
   chapter: byId('chapter'),
   counter: byId('counter'),
+  timer: byId('timer'),
+  timerBar: byId('timer-bar'),
+  timerText: byId('timer-text'),
   question: byId('question'),
   options: byId('options'),
+  mindRead: byId<HTMLButtonElement>('mind-read'),
+  swap: byId<HTMLButtonElement>('swap'),
+  hint: byId('hint'),
   next: byId<HTMLButtonElement>('next'),
   endPanel: byId('end-panel'),
   stamp: byId('stamp'),
@@ -29,6 +44,7 @@ const els = {
   review: byId('review'),
   best: byId('best'),
   again: byId<HTMLButtonElement>('again'),
+  toMenu: byId<HTMLButtonElement>('to-menu'),
 };
 
 // ---------------------------------------------------------------------------
@@ -36,12 +52,30 @@ const els = {
 // ---------------------------------------------------------------------------
 
 interface Save {
-  best: number;
   muted: boolean;
+  peanuts: number;
+  /** Best score in each part (out of 10), and the parts passed. */
+  partBest: Record<string, number>;
+  passed: number[];
+  drillBest: Record<string, number>;
+  dailyBests: Record<string, number>;
+  lightningBest: number;
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
-const save: Save = { best: Math.max(0, Math.floor(Number(saved?.best) || 0)), muted: saved?.muted === true };
+const count = (x: unknown) => Math.max(0, Math.floor(Number(x) || 0));
+const counts = (raw: unknown): Record<string, number> =>
+  Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}).map(([k, v]) => [k, count(v)]));
+const save: Save = {
+  muted: saved?.muted === true,
+  peanuts: count(saved?.peanuts ?? 5),
+  partBest: counts(saved?.partBest),
+  passed: Array.isArray(saved?.passed) ? saved.passed.filter((n): n is number => Number.isInteger(n)) : [],
+  drillBest: counts(saved?.drillBest),
+  // Keep the last two months of daily scores.
+  dailyBests: Object.fromEntries(Object.entries(counts(saved?.dailyBests)).filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 60)),
+  lightningBest: count(saved?.lightningBest),
+};
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -64,6 +98,8 @@ const sfx = {
     playTone({ wave: 'square', duration: 0.05, frequency: [[0, 900], [0.05, 200, 'exp']], gain: [[0, 0.05], [0.05, 0.001, 'exp']] });
   },
   fanfare: () => [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.16, 0.06, 'triangle'), 0.2 + i * 0.1)),
+  magic: () => [1568, 1319, 1760, 2093].forEach((hz, i) => playTone(note(hz, 0.09, 0.04, 'sine'), i * 0.05)),
+  tick: () => playTone(note(1400, 0.04, 0.03, 'square')),
 };
 
 function play<K extends keyof typeof sfx>(name: K) {
@@ -79,6 +115,15 @@ els.mute.addEventListener('click', () => {
   renderMute();
 });
 renderMute();
+
+function renderPeanuts(bump = false) {
+  els.peanuts.textContent = `🥜 ${save.peanuts}`;
+  if (bump) {
+    els.peanuts.classList.remove('bump');
+    void els.peanuts.offsetWidth;
+    els.peanuts.classList.add('bump');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Anya: her face, her shot, what she says
@@ -107,10 +152,6 @@ window.setInterval(() => {
   window.setTimeout(() => show(face), 130);
 }, 3600);
 
-function shoot(shot: keyof typeof SHOTS) {
-  els.anya.setAttribute('viewBox', SHOTS[shot]);
-}
-
 /** A manga sound effect, and focus lines for the big ones. */
 function boom(text: string, tone: 'good' | 'bad' | '', focus = false) {
   els.sfx.textContent = text;
@@ -124,14 +165,11 @@ function boom(text: string, tone: 'good' | 'bad' | '', focus = false) {
 let typing: number | null = null;
 let talking = false;
 let fullText = '';
-let afterTyping: (() => void) | null = null;
 
 /** Types a line into her bubble. With `talk`, her mouth moves while she says it. */
-function say(text: string, opts: { talk?: boolean; then?: () => void } = {}) {
+function say(text: string, opts: { talk?: boolean } = {}) {
   if (typing !== null) window.clearInterval(typing);
   fullText = text;
-  afterTyping = opts.then ?? null;
-  els.bubble.classList.remove('empty');
   els.bubbleText.textContent = '';
   talking = !!opts.talk;
   let i = 0;
@@ -150,9 +188,6 @@ function finishTyping() {
   els.bubbleText.textContent = fullText;
   talking = false;
   show(face);
-  const then = afterTyping;
-  afterTyping = null;
-  then?.();
 }
 
 els.bubble.addEventListener('click', () => {
@@ -162,20 +197,92 @@ els.bubble.addEventListener('click', () => {
 const pick = <T>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
 
 // ---------------------------------------------------------------------------
-// The quiz
+// Screens
 // ---------------------------------------------------------------------------
 
-let quiz: Quiz = newQuiz(QUESTIONS);
-let taken = false;
+type Screen = 'intro' | 'menu' | 'quiz' | 'end';
 
-function screen(name: 'intro' | 'quiz' | 'end') {
+function screen(name: Screen) {
   els.app.dataset.screen = name;
+  els.menuPanel.hidden = name !== 'menu';
   els.quizPanel.hidden = name !== 'quiz';
   els.endPanel.hidden = name !== 'end';
-  shoot(name === 'intro' ? 'full' : 'close');
+  els.anya.setAttribute('viewBox', SHOTS[name === 'intro' ? 'full' : 'close']);
+  if (name !== 'quiz') stopTimer();
+  // Panels slide in each time they're shown.
+  for (const panel of [els.menuPanel, els.quizPanel, els.endPanel]) {
+    panel.style.animation = 'none';
+    void panel.offsetWidth;
+    panel.style.animation = '';
+  }
 }
 
+const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
+
+function renderMenu() {
+  const open = unlockedParts(save.passed);
+  els.parts.replaceChildren(
+    ...BOOK.parts.map((part) => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      const passed = save.passed.includes(part.n);
+      const locked = !open.includes(part.n);
+      const best = save.partBest[part.n];
+      b.className = `part-card${passed ? ' passed' : ''}`;
+      b.disabled = locked;
+      b.innerHTML = `<span class="numeral">${roman(part.n)}</span><span class="what"><b></b><small></small></span><span class="status"></span>`;
+      b.querySelector('b')!.textContent = part.title;
+      b.querySelector('small')!.textContent = locked ? `Pass Part ${roman(part.n - 1)} to open` : `Chapters ${part.chapters[0].n}–${part.chapters[part.chapters.length - 1].n}${best !== undefined ? ` · best ${best}/${RUN_LENGTH}` : ''}`;
+      b.querySelector('.status')!.textContent = locked ? '🔒' : passed ? 'PASSED' : '▶';
+      b.addEventListener('click', () => start({ kind: 'part', part: part.n }));
+      li.append(b);
+      return li;
+    }),
+  );
+  els.drills.replaceChildren(
+    ...LEVELS.map((level) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `drill ${level}`;
+      const best = save.drillBest[level];
+      b.innerHTML = `<b>${LEVEL_NAMES[level]}</b><small>${best !== undefined ? `Best ${best}/${RUN_LENGTH}` : `${BOOK.questions.filter((q) => q.level === level).length} questions`}</small>`;
+      b.addEventListener('click', () => start({ kind: 'drill', level }));
+      return b;
+    }),
+  );
+  const today = save.dailyBests[dateKey(new Date())];
+  els.dailyNote.textContent = today !== undefined ? `Today’s best: ${today}/${RUN_LENGTH}` : 'Same 10 questions for everyone today';
+  els.lightningNote.textContent = save.lightningBest ? `Best: ${save.lightningBest} in a minute` : `${LIGHTNING_SECONDS} seconds. As many as you can.`;
+}
+
+function toMenu() {
+  screen('menu');
+  renderMenu();
+  els.pips.replaceChildren();
+  els.score.textContent = '';
+  setFace('neutral');
+  say(save.passed.length === 0 && Object.keys(save.partBest).length === 0 ? MENU_LINES[0] : pick(MENU_LINES.slice(1)), { talk: true });
+}
+
+// ---------------------------------------------------------------------------
+// A run
+// ---------------------------------------------------------------------------
+
+let mode: Mode = { kind: 'part', part: 1 };
+let quiz: Quiz = newQuiz([]);
+/** Mind-read has been used on this question. */
+let readMind = false;
+
+const isLightning = () => mode.kind === 'lightning';
+
 function renderPips() {
+  if (isLightning()) {
+    els.pips.replaceChildren();
+    els.score.textContent = `${quiz.score} right`;
+    return;
+  }
   els.pips.replaceChildren(
     ...quiz.questions.map((q, i) => {
       const li = document.createElement('li');
@@ -186,25 +293,47 @@ function renderPips() {
         li.textContent = right ? '✓' : '✗';
       }
       if (i === quiz.index && !finished(quiz)) li.classList.add('now');
-      li.setAttribute('aria-label', `Question ${i + 1}${a === null ? '' : a === q.correct ? ': right' : ': wrong'}`);
       return li;
     }),
   );
-  els.score.textContent = taken ? `${quiz.score} / ${quiz.questions.length}` : '';
+  els.score.textContent = `${quiz.score} / ${quiz.questions.length}`;
 }
 
-const ASK_LINES = ['Try not to embarrass yourself.', 'Think before you click.', 'Read the question. Slowly.', 'This one’s easy. Probably.', 'Take your time. Not too much.'];
-const RIGHT_OPENERS = ['Heh.', 'Correct.', 'Good.', 'Hmph. Fine.'];
-const WRONG_OPENERS = ['Wrong.', 'No.', '…No.', 'Ugh.'];
+function modeLabel(m: Mode): string {
+  if (m.kind === 'part') return `Part ${roman(m.part)}: ${BOOK.parts.find((p) => p.n === m.part)!.title}`;
+  if (m.kind === 'drill') return `${LEVEL_NAMES[m.level]} drill`;
+  if (m.kind === 'daily') return 'Daily quiz';
+  return 'Lightning round';
+}
+
+function start(m: Mode) {
+  mode = m.kind === 'daily' ? { kind: 'daily', key: dateKey(new Date()) } : m;
+  quiz = newQuiz(questionsFor(mode));
+  play('page');
+  screen('quiz');
+  els.timer.hidden = !isLightning();
+  els.mindRead.hidden = els.swap.hidden = isLightning();
+  els.hint.hidden = isLightning();
+  if (isLightning()) startTimer();
+  ask();
+}
+
+const ASK_LINES = ['Think before you click.', 'Read the question. Slowly.', 'This one’s easy. Probably.', 'Take your time. Not too much.', 'Anya is watching.'];
 
 function ask() {
   const q = current(quiz)!;
   const n = quiz.index + 1;
-  const total = quiz.questions.length;
-  els.chapter.textContent = `Chapter: ${q.chapter}`;
-  els.counter.textContent = `Question ${n} of ${total}`;
+  readMind = false;
+  els.chapter.innerHTML = '';
+  els.chapter.append(document.createTextNode(q.chapter));
+  const tag = document.createElement('span');
+  tag.className = `level ${q.level}`;
+  tag.textContent = LEVEL_NAMES[q.level];
+  els.chapter.append(tag);
+  els.counter.textContent = isLightning() ? `Question ${n}` : `Question ${n} of ${quiz.questions.length}`;
   els.question.textContent = q.q;
   els.next.hidden = true;
+  els.quizPanel.classList.remove('answered');
   els.options.replaceChildren(
     ...q.options.map((text, i) => {
       const b = document.createElement('button');
@@ -217,17 +346,30 @@ function ask() {
     }),
   );
   renderPips();
+  renderLifelines();
   setFace('neutral');
-  say(n === total ? 'Last one. Don’t choke.' : n === 1 ? 'Finally. Question one: try not to embarrass yourself.' : pick(ASK_LINES.slice(1)), { talk: true });
-  // The panel slides in again for each question.
-  els.quizPanel.style.animation = 'none';
-  void els.quizPanel.offsetWidth;
-  els.quizPanel.style.animation = '';
+  if (isLightning()) return;
+  say(n === 1 ? `${modeLabel(mode)}. Question one: try not to embarrass yourself.` : n === quiz.questions.length ? 'Last one. Don’t choke.' : pick(ASK_LINES), { talk: true });
 }
+
+function renderLifelines() {
+  const open = !answered(quiz);
+  els.mindRead.disabled = !open || readMind || save.peanuts < MIND_READ_COST;
+  els.swap.disabled = !open || save.peanuts < SWAP_COST;
+}
+
+/** Faces and sound effects for each level, right and wrong. */
+const REACTIONS: Record<Level, { right: [Face, string]; wrong: [Face, string] }> = {
+  easy: { right: ['smug', 'HEH.'], wrong: ['shock', 'GASP!'] },
+  medium: { right: ['smug', 'GOOD.'], wrong: ['deadpan', 'SIGH.'] },
+  hard: { right: ['happy', 'NICE!'], wrong: ['pout', 'HMPH!'] },
+};
+const RIGHT_OPENERS = ['Heh.', 'Correct.', 'Good.', 'Hmph. Fine.'];
+const WRONG_OPENERS = ['Wrong.', 'No.', '…No.', 'Ugh.'];
 
 function choose(i: number) {
   const q = current(quiz);
-  if (!q) return;
+  if (!q || (isLightning() && timeLeft() <= 0)) return;
   const right = answer(quiz, i);
   if (right === null) return;
   const buttons = [...els.options.querySelectorAll<HTMLButtonElement>('.option')];
@@ -241,21 +383,34 @@ function choose(i: number) {
   mark.className = 'mark';
   mark.textContent = right ? 'RIGHT!' : 'NOPE';
   buttons[i].append(mark);
+  els.quizPanel.classList.add('answered');
   renderPips();
+  renderLifelines();
+  const [f, word] = REACTIONS[q.level][right ? 'right' : 'wrong'];
   if (right) {
     play('right');
-    setFace(q.right);
-    boom(quiz.streak >= 3 ? 'WAKU WAKU!' : q.right === 'smug' ? 'HEH.' : 'NICE!', 'good', quiz.streak >= 3);
-    const streak = quiz.streak === 3 ? ' Three in a row. Suspicious.' : '';
-    say(`${pick(RIGHT_OPENERS)} ${q.comment}${streak}`);
+    save.peanuts++;
+    persist();
+    renderPeanuts(true);
+    setFace(quiz.streak >= 3 ? 'happy' : f);
+    boom(quiz.streak >= 3 ? 'WAKU WAKU!' : word, 'good', quiz.streak >= 3);
   } else {
     play('wrong');
-    setFace(q.wrong);
-    boom(q.wrong === 'shock' ? 'GASP!' : q.wrong === 'deadpan' ? 'SIGH.' : 'HMPH!', 'bad', q.wrong === 'shock');
+    setFace(f);
+    boom(word, 'bad', f === 'shock');
     els.anya.classList.add('shake');
     window.setTimeout(() => els.anya.classList.remove('shake'), 450);
-    say(`${pick(WRONG_OPENERS)} ${q.comment} Try to keep up.`);
   }
+  if (isLightning()) {
+    // No time for explanations: straight on to the next one.
+    say(right ? pick(['Next!', 'Faster!', 'Heh.', 'Go go go!']) : pick(['Wrong!', 'Nope!', 'Keep going!']));
+    window.setTimeout(() => {
+      if (timeLeft() > 0 && answered(quiz) && els.app.dataset.screen === 'quiz') advance();
+    }, right ? 450 : 900);
+    return;
+  }
+  const streak = right && quiz.streak === 3 ? ' Three in a row. Suspicious.' : '';
+  say(right ? `${pick(RIGHT_OPENERS)} ${q.comment}${streak}` : `${pick(WRONG_OPENERS)} ${q.comment}`);
   showNext();
 }
 
@@ -269,37 +424,135 @@ function showNext() {
 
 function advance() {
   if (!answered(quiz)) return;
-  if (typing !== null) finishTyping();
+  if (typing !== null && !isLightning()) finishTyping();
   next(quiz);
-  play('page');
+  if (!isLightning()) play('page');
   if (finished(quiz)) end();
   else ask();
 }
 
+// --- Lifelines ---
+
+/** Anya reads the examiner's mind: two wrong answers vanish. */
+els.mindRead.addEventListener('click', () => {
+  const q = current(quiz);
+  if (!q || answered(quiz) || readMind || save.peanuts < MIND_READ_COST) return;
+  save.peanuts -= MIND_READ_COST;
+  persist();
+  renderPeanuts(true);
+  readMind = true;
+  const wrong = q.options.map((_, i) => i).filter((i) => i !== q.correct);
+  const keep = pick(wrong);
+  const buttons = els.options.querySelectorAll<HTMLButtonElement>('.option');
+  for (const i of wrong) if (i !== keep) {
+    buttons[i].classList.add('gone');
+    buttons[i].disabled = true;
+  }
+  play('magic');
+  setFace('smug');
+  boom('MIND READ!', 'good', true);
+  say(pick(['Anya can read minds. The examiner is thinking about lunch. And this.', 'Heh. Anya peeked. Two of those are wrong.', 'Waku waku. Telepathy is cheating, but peanuts are peanuts.']));
+  renderLifelines();
+});
+
+/** A different question of the same difficulty. */
+els.swap.addEventListener('click', () => {
+  const q = current(quiz);
+  if (!q || answered(quiz) || save.peanuts < SWAP_COST) return;
+  const replacement = swapFor(q, quiz.questions.map((x) => x.id));
+  if (!replacement || !replaceCurrent(quiz, replacement)) return;
+  save.peanuts -= SWAP_COST;
+  persist();
+  renderPeanuts(true);
+  play('page');
+  ask();
+  say(pick(['Fine. Try this one instead.', 'Scared of that one? Here.', 'Different question. Same Anya.']), { talk: true });
+});
+
+// --- The lightning round's clock ---
+
+let timerEnds = 0;
+let timerHandle: number | null = null;
+let lastTick = 0;
+const timeLeft = () => Math.max(0, (timerEnds - performance.now()) / 1000);
+
+function startTimer() {
+  timerEnds = performance.now() + LIGHTNING_SECONDS * 1000;
+  lastTick = LIGHTNING_SECONDS;
+  stopTimer();
+  timerHandle = window.setInterval(renderTimer, 100);
+  renderTimer();
+}
+
+function stopTimer() {
+  if (timerHandle !== null) window.clearInterval(timerHandle);
+  timerHandle = null;
+}
+
+function renderTimer() {
+  const left = timeLeft();
+  els.timerBar.style.width = `${(left / LIGHTNING_SECONDS) * 100}%`;
+  els.timerText.textContent = `${Math.ceil(left)}s`;
+  els.timer.classList.toggle('low', left <= 10);
+  const whole = Math.ceil(left);
+  if (whole <= 5 && whole < lastTick && whole > 0) play('tick');
+  lastTick = whole;
+  if (left <= 0) {
+    stopTimer();
+    if (els.app.dataset.screen === 'quiz') end();
+  }
+}
+
+// --- The verdict ---
+
 function end() {
+  stopTimer();
   screen('end');
   renderPips();
-  const total = quiz.questions.length;
-  const v = verdict(quiz.score, total);
-  const newBest = quiz.score > save.best;
-  save.best = Math.max(save.best, quiz.score);
+  const done = asked(quiz);
+  const total = isLightning() ? done.length : quiz.questions.length;
+  const v = isLightning() ? lightningVerdict(quiz.score) : verdict(quiz.score, total);
+  let bestLine = '';
+  if (mode.kind === 'part') {
+    const part = mode.part;
+    const was = save.partBest[part];
+    save.partBest[part] = Math.max(was ?? 0, quiz.score);
+    if (quiz.score >= PASS_MARK && !save.passed.includes(part)) {
+      save.passed.push(part);
+      const nextPart = BOOK.parts.find((p) => p.n === part + 1);
+      bestLine = nextPart ? `📖 Part ${roman(part)} passed! Part ${roman(nextPart.n)}, “${nextPart.title},” is open.` : '🎓 You’ve passed every part of the book!';
+    } else bestLine = was === undefined || quiz.score > was ? '🏆 Your best on this part yet!' : `Your best on this part: ${was}/${RUN_LENGTH}`;
+  } else if (mode.kind === 'drill') {
+    const was = save.drillBest[mode.level];
+    save.drillBest[mode.level] = Math.max(was ?? 0, quiz.score);
+    bestLine = was === undefined || quiz.score > was ? `🏆 Your best ${LEVEL_NAMES[mode.level].toLowerCase()} drill yet!` : `Your best: ${was}/${RUN_LENGTH}`;
+  } else if (mode.kind === 'daily') {
+    const was = save.dailyBests[mode.key];
+    save.dailyBests[mode.key] = Math.max(was ?? 0, quiz.score);
+    bestLine = `📅 Daily quiz, ${mode.key}: ${was === undefined ? 'your first score today.' : quiz.score > was ? `new best today (was ${was}).` : `today’s best is ${was}.`} New questions tomorrow.`;
+  } else {
+    const was = save.lightningBest;
+    save.lightningBest = Math.max(was, quiz.score);
+    bestLine = quiz.score > was ? '🏆 Your best lightning round yet!' : `Your best: ${was} in a minute`;
+  }
   persist();
   els.stamp.textContent = v.stamp;
   els.stamp.className = `stamp ${v.tone}`;
-  els.finalScore.textContent = `${quiz.score} out of ${total}`;
+  els.finalScore.textContent = isLightning() ? `${quiz.score} right out of ${total} in ${LIGHTNING_SECONDS} seconds` : `${quiz.score} out of ${total}`;
   els.review.replaceChildren(
-    ...quiz.questions.map((q, i) => {
+    ...done.map((q, i) => {
       const li = document.createElement('li');
-      const right = quiz.answers[i] === q.correct;
+      const a = quiz.answers[i];
+      const right = a === q.correct;
       li.className = right ? 'right' : 'wrong';
       li.innerHTML = '<span class="tick"></span><span><b></b><small></small></span>';
       li.querySelector('.tick')!.textContent = right ? '✓' : '✗';
       li.querySelector('b')!.textContent = q.q;
-      li.querySelector('small')!.textContent = right ? q.options[q.correct] : `You said “${q.options[quiz.answers[i]!]}”. It’s “${q.options[q.correct]}”.`;
+      li.querySelector('small')!.textContent = right ? q.options[q.correct] : a === null || a === undefined ? `Out of time. It’s “${q.options[q.correct]}”.` : `You said “${q.options[a]}”. It’s “${q.options[q.correct]}”.`;
       return li;
     }),
   );
-  els.best.textContent = newBest && quiz.score > 0 ? '🏆 Your best yet!' : `Your best: ${save.best} out of ${total}`;
+  els.best.textContent = bestLine;
   setFace(v.face);
   window.setTimeout(() => {
     play('stamp');
@@ -310,13 +563,13 @@ function end() {
   els.again.focus({ preventScroll: true });
 }
 
-function start() {
-  quiz = newQuiz(QUESTIONS);
-  screen('quiz');
-  ask();
-}
+// ---------------------------------------------------------------------------
+// The meme, to start
+// ---------------------------------------------------------------------------
 
-/** Takes the book from her: it flies at you, and the quiz opens. */
+let taken = false;
+
+/** Takes the book from her: it flies at you, and the menu opens. */
 function take() {
   if (taken) return;
   taken = true;
@@ -326,23 +579,30 @@ function take() {
   setFace('smug');
   window.setTimeout(() => {
     els.anya.classList.remove('taking');
-    start();
+    toMenu();
   }, 600);
 }
 
 els.take.addEventListener('click', take);
 els.anya.querySelector('#anya-book')!.addEventListener('click', take);
 els.next.addEventListener('click', advance);
-els.again.addEventListener('click', () => {
+els.again.addEventListener('click', () => start(mode));
+els.toMenu.addEventListener('click', () => {
   play('page');
-  start();
+  toMenu();
 });
+els.daily.addEventListener('click', () => start({ kind: 'daily', key: dateKey(new Date()) }));
+els.lightning.addEventListener('click', () => start({ kind: 'lightning' }));
 
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  const screenName = els.app.dataset.screen;
+  const at = els.app.dataset.screen;
+  if (e.key === 'Escape' && (at === 'quiz' || at === 'end')) {
+    toMenu();
+    return;
+  }
   if (e.key === 'Enter' || e.key === ' ') {
-    if (document.activeElement instanceof HTMLButtonElement && document.activeElement !== document.body) {
+    if (document.activeElement instanceof HTMLButtonElement) {
       if (typing !== null) {
         e.preventDefault();
         finishTyping();
@@ -351,26 +611,23 @@ document.addEventListener('keydown', (e) => {
     }
     e.preventDefault();
     if (typing !== null) finishTyping();
-    else if (screenName === 'intro') take();
-    else if (screenName === 'quiz' && answered(quiz)) advance();
-    else if (screenName === 'end') els.again.click();
+    else if (at === 'intro') take();
+    else if (at === 'quiz' && answered(quiz)) advance();
+    else if (at === 'end') els.again.click();
     return;
   }
-  if (screenName !== 'quiz' || els.quizPanel.hidden || answered(quiz)) return;
+  if (at !== 'quiz' || answered(quiz)) return;
   const n = '1234'.indexOf(e.key) >= 0 ? '1234'.indexOf(e.key) : 'abcd'.indexOf(e.key.toLowerCase());
-  if (n >= 0 && n < (current(quiz)?.options.length ?? 0)) choose(n);
+  const button = els.options.querySelectorAll<HTMLButtonElement>('.option')[n];
+  if (n >= 0 && button && !button.disabled) choose(n);
 });
-
-// ---------------------------------------------------------------------------
-// The meme, to start
-// ---------------------------------------------------------------------------
 
 screen('intro');
 setFace('shock');
-renderPips();
+renderPeanuts();
 window.setTimeout(() => say('Take the book. I don’t have all day.'), 500);
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { bet: { quiz: () => quiz, setFace, take, choose } });
+  Object.assign(window, { bet: { quiz: () => quiz, save, start, setFace, take, choose, timeLeft } });
 }
