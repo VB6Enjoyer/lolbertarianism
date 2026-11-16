@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { listedGames as games } from './src/games.ts';
@@ -52,9 +53,23 @@ function socialPreviews(): Plugin {
   };
 }
 
+/**
+ * Keeps the source books (public/books/, the PDFs the quiz questions are written from) out of the
+ * deployed site: they're copyrighted, and the games don't need them.
+ */
+function dropSourceBooks(): Plugin {
+  return {
+    name: 'drop-source-books',
+    apply: 'build',
+    closeBundle() {
+      rmSync(resolve(root, 'dist', 'books'), { recursive: true, force: true });
+    },
+  };
+}
+
 export default defineConfig({
   base,
-  plugins: [legacyRedirects(), socialPreviews()],
+  plugins: [legacyRedirects(), socialPreviews(), dropSourceBooks()],
   build: {
     rolldownOptions: {
       input: {
