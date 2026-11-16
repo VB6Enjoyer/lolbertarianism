@@ -22,6 +22,7 @@
             <ol id="pips" class="pips" aria-label="Progress"></ol>
             <div class="top-right">
                 <span id="score" class="score" aria-live="polite"></span>
+                <span id="peanuts" class="peanuts" title="Peanuts: earn one for every right answer, spend them on lifelines">🥜 0</span>
                 <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
             </div>
         </header>
@@ -40,12 +41,31 @@
                 <button id="take" type="button" class="take-button">Take the book</button>
             </section>
 
+            <!-- The menu -->
+            <section class="panel menu-panel" id="menu-panel" hidden>
+                <p class="end-kicker">Basic Economics · Thomas Sowell</p>
+                <h2 class="menu-title">Pick a lesson</h2>
+                <h3 class="menu-heading">📚 The book, part by part <small>Pass a part (7 out of 10) to open the next</small></h3>
+                <ol id="parts" class="parts"></ol>
+                <h3 class="menu-heading">🎯 Drills <small>10 questions from anywhere in the book</small></h3>
+                <div id="drills" class="drills"></div>
+                <div class="specials">
+                    <button id="daily" type="button" class="special-card"><span class="icon">📅</span><b>Daily quiz</b><small id="daily-note">Same 10 questions for everyone today</small></button>
+                    <button id="lightning" type="button" class="special-card"><span class="icon">⚡</span><b>Lightning round</b><small id="lightning-note">60 seconds. As many as you can.</small></button>
+                </div>
+            </section>
+
             <!-- The question -->
             <section class="panel quiz-panel" id="quiz-panel" hidden>
                 <p class="chapter-line"><span id="chapter" class="chapter"></span><span id="counter" class="counter"></span></p>
+                <div id="timer" class="timer" hidden><i id="timer-bar"></i><b id="timer-text"></b></div>
                 <h2 id="question" class="question"></h2>
                 <div id="options" class="options"></div>
                 <div class="quiz-footer">
+                    <div class="lifelines">
+                        <button id="mind-read" type="button" class="lifeline" title="Anya reads the examiner’s mind: two wrong answers disappear">🔮 Mind-read <span>3🥜</span></button>
+                        <button id="swap" type="button" class="lifeline" title="Swap this question for another of the same difficulty">🔄 Swap <span>2🥜</span></button>
+                    </div>
                     <p id="hint" class="hint">Tap an answer, or press 1–4</p>
                     <button id="next" type="button" class="next-button" hidden>Next ▶</button>
                 </div>
@@ -58,7 +78,10 @@
                 <p id="final-score" class="final-score"></p>
                 <ol id="review" class="review"></ol>
                 <p id="best" class="best"></p>
-                <button id="again" type="button" class="next-button">Read it again ▶</button>
+                <div class="end-buttons">
+                    <button id="again" type="button" class="next-button">Again ▶</button>
+                    <button id="to-menu" type="button" class="plain-button">Back to the menu</button>
+                </div>
             </section>
         </main>
     </div>

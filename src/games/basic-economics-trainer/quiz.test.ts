@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { anyaSvg, faceMarkup, type Face } from './anya.ts';
-import { QUESTIONS } from './questions.ts';
-import { answer, answered, current, finished, newQuiz, next, verdict } from './quiz.ts';
+import { BOOK, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
+import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict } from './quiz.ts';
+
+const run = () => questionsFor({ kind: 'part', part: 1 }, seededRng(1));
 
 describe('basic economics trainer: the quiz', () => {
   it('answers once, scores right answers, and keeps a streak', () => {
-    const quiz = newQuiz(QUESTIONS);
+    const quiz = newQuiz(run());
     const first = current(quiz)!;
     expect(next(quiz)).toBe(false); // not answered yet
     expect(answer(quiz, first.correct)).toBe(true);
@@ -17,12 +19,14 @@ describe('basic economics trainer: the quiz', () => {
     expect(answer(quiz, (second.correct + 1) % second.options.length)).toBe(false);
     expect(quiz.score).toBe(1);
     expect(quiz.streak).toBe(0);
+    expect(quiz.bestStreak).toBe(1);
     expect(answer(quiz, 99)).toBeNull();
   });
 
   it('finishes after the last question', () => {
-    const quiz = newQuiz(QUESTIONS);
-    for (const q of QUESTIONS) {
+    const questions = run();
+    const quiz = newQuiz(questions);
+    for (const q of questions) {
       expect(finished(quiz)).toBe(false);
       answer(quiz, q.correct);
       expect(answered(quiz)).toBe(true);
@@ -30,22 +34,86 @@ describe('basic economics trainer: the quiz', () => {
     }
     expect(finished(quiz)).toBe(true);
     expect(current(quiz)).toBeNull();
-    expect(quiz.score).toBe(QUESTIONS.length);
+    expect(quiz.score).toBe(questions.length);
+    expect(asked(quiz)).toHaveLength(questions.length);
+  });
+
+  it('swaps a question only before it’s answered', () => {
+    const quiz = newQuiz(run());
+    const q = current(quiz)!;
+    const other = swapFor(q, quiz.questions.map((x) => x.id), seededRng(2))!;
+    expect(other.id).not.toBe(q.id);
+    expect(other.level).toBe(q.level);
+    expect(replaceCurrent(quiz, other)).toBe(true);
+    expect(current(quiz)!.id).toBe(other.id);
+    answer(quiz, 0);
+    expect(replaceCurrent(quiz, q)).toBe(false);
   });
 
   it('gives the verdict', () => {
-    expect(verdict(5, 5).stamp).toBe('NOT DUMB');
-    expect(verdict(3, 5).stamp).toBe('MEDIOCRE');
-    expect(verdict(2, 5).stamp).toBe('STILL DUMB');
+    expect(verdict(10, 10).stamp).toBe('NOT DUMB');
+    expect(verdict(PASS_MARK, 10).stamp).toBe('PASSED');
+    expect(verdict(5, 10).stamp).toBe('MEDIOCRE');
+    expect(verdict(2, 10).stamp).toBe('STILL DUMB');
     expect(verdict(0, 0).stamp).toBe('STILL DUMB');
+    expect(lightningVerdict(16).tone).toBe('good');
+    expect(lightningVerdict(3).tone).toBe('bad');
+  });
+});
+
+describe('basic economics trainer: the question bank', () => {
+  it('every question has a right answer, three different wrong ones, an explanation and a real chapter', () => {
+    const chapters = new Set(BOOK.parts.flatMap((p) => p.chapters.map((c) => `${p.n}:${c.n}`)));
+    for (const q of BOOK.questions) {
+      const options = [q.answer, ...q.wrong];
+      expect(new Set(options).size, q.q).toBe(4);
+      expect(options.every((o) => o.trim().length > 0), q.q).toBe(true);
+      expect(q.why.length, q.q).toBeGreaterThan(10);
+      expect(chapters.has(`${q.part}:${q.chapter}`), `${q.q} (${q.part}:${q.chapter})`).toBe(true);
+      expect(LEVELS).toContain(q.level);
+    }
   });
 
-  it('every question has four options and a valid answer', () => {
-    for (const q of QUESTIONS) {
-      expect(q.options).toHaveLength(4);
-      expect(q.correct).toBeGreaterThanOrEqual(0);
-      expect(q.correct).toBeLessThan(q.options.length);
+  it('has no duplicate questions, and enough of each level and part for a run', () => {
+    expect(new Set(BOOK.questions.map((q) => q.id)).size).toBe(BOOK.questions.length);
+    for (const level of LEVELS) expect(BOOK.questions.filter((q) => q.level === level).length).toBeGreaterThanOrEqual(RUN_LENGTH * 2);
+    for (const part of BOOK.parts) expect(BOOK.questions.filter((q) => q.part === part.n).length, `part ${part.n}`).toBeGreaterThanOrEqual(RUN_LENGTH);
+  });
+
+  it('shuffles the answers but keeps track of the right one', () => {
+    const bq = BOOK.questions[0];
+    const positions = new Set<number>();
+    for (let seed = 1; seed < 40; seed++) {
+      const q = toQuestion(bq, seededRng(seed));
+      expect(q.options[q.correct]).toBe(bq.answer);
+      positions.add(q.correct);
     }
+    expect(positions.size).toBe(4);
+  });
+
+  it('a part run is ten questions from that part, easiest first', () => {
+    for (const part of BOOK.parts) {
+      const qs = questionsFor({ kind: 'part', part: part.n }, seededRng(part.n));
+      expect(qs).toHaveLength(RUN_LENGTH);
+      expect(new Set(qs.map((q) => q.id)).size).toBe(RUN_LENGTH);
+      expect(qs.every((q) => q.chapter.startsWith(`Part ${['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][part.n]} ·`))).toBe(true);
+      const rank = { easy: 0, medium: 1, hard: 2 };
+      for (let i = 1; i < qs.length; i++) expect(rank[qs[i].level]).toBeGreaterThanOrEqual(rank[qs[i - 1].level]);
+    }
+  });
+
+  it('a drill sticks to its level, and the daily quiz is the same all day', () => {
+    expect(questionsFor({ kind: 'drill', level: 'hard' }).every((q) => q.level === 'hard')).toBe(true);
+    const a = questionsFor({ kind: 'daily', key: '2026-11-16' });
+    const b = questionsFor({ kind: 'daily', key: '2026-11-16' });
+    expect(a).toEqual(b);
+    expect(questionsFor({ kind: 'daily', key: '2026-11-17' })).not.toEqual(a);
+  });
+
+  it('opens the next part once the one before it is passed', () => {
+    expect(unlockedParts([])).toEqual([1]);
+    expect(unlockedParts([1])).toEqual([1, 2]);
+    expect(unlockedParts([1, 2, 3])).toEqual([1, 2, 3, 4]);
   });
 });
 
@@ -55,7 +123,6 @@ describe('basic economics trainer: Anya', () => {
     expect(svg).toContain('id="anya-face"');
     expect(svg).toContain('id="anya-book"');
     const faces: Face[] = ['neutral', 'talk', 'shock', 'smug', 'happy', 'deadpan', 'pout', 'blink'];
-    const drawn = new Set(faces.map(faceMarkup));
-    expect(drawn.size).toBe(faces.length);
+    expect(new Set(faces.map(faceMarkup)).size).toBe(faces.length);
   });
 });
