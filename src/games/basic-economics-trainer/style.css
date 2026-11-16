@@ -1547,3 +1547,79 @@ button {
         font-size: 13px;
     }
 }
+
+/* --- Easter eggs: Anya's looks, and where she's touched --- */
+.anya.pink-hair .anya-hair {
+    fill: #eda09e;
+}
+
+.anya.green-eyes .anya-iris {
+    fill: url(#anya-iris-green);
+}
+
+.anya-hit {
+    cursor: pointer;
+    pointer-events: all;
+}
+
+.touch-fx {
+    position: absolute;
+    z-index: 5;
+    font: 26px/1 var(--sfx);
+    color: var(--red);
+    text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    animation: touch-fx 0.9s ease-out forwards;
+}
+
+@keyframes touch-fx {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.4);
+    }
+
+    20% {
+        opacity: 1;
+        transform: translate(-50%, -80%) scale(1.15);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -190%) scale(1);
+    }
+}
+
+.wardrobe-heading {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.wardrobe {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin: 4px 0 18px;
+}
+
+.look-toggle {
+    padding: 8px 16px;
+    border: 3px solid var(--ink);
+    background: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 var(--ink);
+}
+
+.look-toggle[aria-pressed='true'] {
+    background: #fde3e2;
+}
+
+.look-toggle:disabled {
+    cursor: not-allowed;
+    border-style: dashed;
+    box-shadow: none;
+    opacity: 0.55;
+}

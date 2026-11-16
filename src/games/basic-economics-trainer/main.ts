@@ -1,7 +1,9 @@
 import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
-import { anyaSvg, faceMarkup, SHOTS, type Face } from './anya.ts';
+import * as anyaV2 from './anya.ts';
+import type { Face } from './anya.ts';
+import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { ASK_SOWELL_COST, BOOK, dateKey, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Level } from './books/types.ts';
@@ -75,6 +77,8 @@ interface Save {
   peanutsEarned: number;
   hardRight: number;
   stillDumbs: number;
+  /** Anya's unlockable looks, and whether each is switched on. */
+  looks: { pink: boolean; green: boolean };
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -95,6 +99,7 @@ const save: Save = {
   peanutsEarned: count(saved?.peanutsEarned),
   hardRight: count(saved?.hardRight),
   stillDumbs: count(saved?.stillDumbs),
+  looks: { pink: saved?.looks?.pink === true, green: saved?.looks?.green === true },
 };
 const persist = () => slot.save(save);
 
@@ -120,6 +125,8 @@ const sfx = {
   fanfare: () => [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.16, 0.06, 'triangle'), 0.2 + i * 0.1)),
   magic: () => [1568, 1319, 1760, 2093].forEach((hz, i) => playTone(note(hz, 0.09, 0.04, 'sine'), i * 0.05)),
   tick: () => playTone(note(1400, 0.04, 0.03, 'square')),
+  boop: () => playTone({ wave: 'sine', duration: 0.16, frequency: [[0, 600], [0.08, 1300, 'exp'], [0.16, 900, 'exp']], gain: [[0, 0.09], [0.16, 0.001, 'exp']] }),
+  poke: () => playTone({ wave: 'triangle', duration: 0.1, frequency: [[0, 1200], [0.1, 500, 'exp']], gain: [[0, 0.06], [0.1, 0.001, 'exp']] }),
 };
 
 function play<K extends keyof typeof sfx>(name: K) {
@@ -149,15 +156,21 @@ function renderPeanuts(bump = false) {
 // Anya: her face, her shot, what she says
 // ---------------------------------------------------------------------------
 
-els.anya.innerHTML = anyaSvg();
+// The current drawing, or the first one with ?anya=v1 (kept as a backup).
+const art = new URLSearchParams(location.search).get('anya') === 'v1' ? anyaV1 : anyaV2;
+els.anya.innerHTML = art.anyaSvg();
 const faceLayer = els.anya.querySelector('#anya-face')!;
+const overLayer = els.anya.querySelector('#anya-over');
 let face: Face = 'neutral';
 let shown: Face = 'neutral';
+/** A passing reaction (a boop, a pat) shows over her current face for a moment. */
+let quipFace: Face | null = null;
 
 function show(f: Face) {
   if (f === shown) return;
   shown = f;
-  faceLayer.innerHTML = faceMarkup(f);
+  faceLayer.innerHTML = art.faceMarkup(f);
+  if (overLayer) overLayer.innerHTML = art.overMarkup(f);
 }
 
 function setFace(f: Face) {
@@ -167,7 +180,7 @@ function setFace(f: Face) {
 
 // She blinks now and then (unless she's mid-reaction).
 window.setInterval(() => {
-  if (face !== 'neutral' || talking) return;
+  if (face !== 'neutral' || talking || quipFace) return;
   show('blink');
   window.setTimeout(() => show(face), 130);
 }, 3600);
@@ -187,8 +200,9 @@ let talking = false;
 let fullText = '';
 
 /** Types a line into her bubble. With `talk`, her mouth moves while she says it. */
-function say(text: string, opts: { talk?: boolean } = {}) {
+function say(text: string, opts: { talk?: boolean; quip?: boolean } = {}) {
   if (typing !== null) window.clearInterval(typing);
+  if (!opts.quip) endQuip(false);
   fullText = text;
   els.bubbleText.textContent = '';
   talking = !!opts.talk;
@@ -196,7 +210,7 @@ function say(text: string, opts: { talk?: boolean } = {}) {
   typing = window.setInterval(() => {
     i++;
     els.bubbleText.textContent = text.slice(0, i);
-    if (talking) show(i % 4 < 2 ? 'talk' : face);
+    if (talking) show(i % 4 < 2 ? 'talk' : (quipFace ?? face));
     if (i % 3 === 0 && text[i] !== ' ') play('blip');
     if (i >= text.length) finishTyping();
   }, 22);
@@ -207,6 +221,38 @@ function finishTyping() {
   typing = null;
   els.bubbleText.textContent = fullText;
   talking = false;
+  show(quipFace ?? face);
+}
+
+let quipTimer: number | null = null;
+/** What the bubble said before the quip, to go back to. */
+let quipReturn: string | null = null;
+
+/** A quick aside (a boop, a pat, impatience): a line and a face for a moment, then back to what she was saying. */
+function quip(text: string, f: Face, ms = 2400) {
+  const back = quipReturn ?? (typing !== null ? fullText : els.bubbleText.textContent ?? '');
+  say(text, { quip: true });
+  quipReturn = back;
+  quipFace = f;
+  show(f);
+  if (quipTimer !== null) window.clearTimeout(quipTimer);
+  quipTimer = window.setTimeout(() => endQuip(true), ms);
+}
+
+function endQuip(restore: boolean) {
+  if (quipTimer !== null) window.clearTimeout(quipTimer);
+  quipTimer = null;
+  const back = quipReturn;
+  quipReturn = null;
+  if (quipFace === null) return;
+  quipFace = null;
+  if (restore && back !== null) {
+    if (typing !== null) window.clearInterval(typing);
+    typing = null;
+    talking = false;
+    fullText = back;
+    els.bubbleText.textContent = back;
+  }
   show(face);
 }
 
@@ -227,7 +273,7 @@ function screen(name: Screen) {
   els.menuPanel.hidden = name !== 'menu';
   els.quizPanel.hidden = name !== 'quiz';
   els.endPanel.hidden = name !== 'end';
-  els.anya.setAttribute('viewBox', SHOTS[name === 'intro' ? 'full' : 'close']);
+  els.anya.setAttribute('viewBox', art.SHOTS[name === 'intro' ? 'full' : 'close']);
   if (name !== 'quiz') stopTimer();
   // Panels slide in each time they're shown.
   for (const panel of [els.menuPanel, els.quizPanel, els.endPanel]) {
@@ -351,6 +397,8 @@ function ask() {
   readMind = false;
   askedSowell = false;
   askedAt = performance.now();
+  waited = 0;
+  impatience = 0;
   els.sowellNote.hidden = true;
   els.chapter.innerHTML = '';
   els.chapter.append(document.createTextNode(q.chapter));
@@ -672,6 +720,7 @@ function award(id: string) {
 }
 
 function renderAchievements() {
+  renderWardrobe();
   els.achievementsCount.textContent = `${unlocked.size} / ${ACHIEVEMENTS.length}`;
   els.achievementsGrid.replaceChildren(
     ...ACHIEVEMENTS.map((a) => {
@@ -712,6 +761,152 @@ function closeAchievements() {
 
 els.showAchievements.addEventListener('click', () => (els.achievements.hidden ? openAchievements() : closeAchievements()));
 els.hideAchievements.addEventListener('click', closeAchievements);
+
+// ---------------------------------------------------------------------------
+// Easter eggs: boop her nose, pat her head, poke her eyes, keep her waiting
+// ---------------------------------------------------------------------------
+
+function applyLooks() {
+  els.anya.classList.toggle('pink-hair', save.looks.pink && unlocked.has('pink-hair'));
+  els.anya.classList.toggle('green-eyes', save.looks.green && unlocked.has('green-eyes'));
+}
+applyLooks();
+
+/** A little effect where she was touched: a heart for pats, a star for pokes, a "boop". */
+function touchFx(e: PointerEvent, text: string) {
+  const stage = byId('anya-stage');
+  const r = stage.getBoundingClientRect();
+  const fx = document.createElement('span');
+  fx.className = 'touch-fx';
+  fx.textContent = text;
+  fx.style.left = `${e.clientX - r.left}px`;
+  fx.style.top = `${e.clientY - r.top}px`;
+  stage.append(fx);
+  window.setTimeout(() => fx.remove(), 900);
+}
+
+let boops = 0;
+let pats = 0;
+let pokes = 0;
+
+const BOOP_LINES = ['Hey! No booping!', 'Anya’s nose is private property.', 'That’s aggression. The NAP says no.', 'Boop yourself.', 'Anya will remember this.', 'Hmph!'];
+const BOOP_LINES_ANGRY = ['ANYA SAID NO BOOPING.', 'Anya is filing a complaint with the Department of Education.', 'One more boop and the quiz gets harder. (It won’t. But still.)', 'Anya is getting a lawyer.'];
+const PAT_LINES = ['Hehe.', '…Anya allows it.', 'Head pats are a voluntary exchange.', 'Waku waku.', 'One more. Fine.'];
+const POKE_LINES = ['Ow! Anya’s eyes!', 'Anya needs those to read!', 'Stop poking!', 'Anya can’t see the book!', 'Hey!'];
+
+function boop(e: PointerEvent) {
+  boops++;
+  play('boop');
+  touchFx(e, 'BOOP');
+  boom('BOOP!', 'bad');
+  award('boop');
+  quip(boops >= 5 ? pick(BOOP_LINES_ANGRY) : pick(BOOP_LINES), 'pout', 2200);
+}
+
+function pat(e: PointerEvent) {
+  pats++;
+  play('blip');
+  touchFx(e, '♥');
+  if (pats % 10 === 0) {
+    const first = !unlocked.has('pink-hair');
+    award('pink-hair');
+    save.looks.pink = true;
+    persist();
+    applyLooks();
+    makeoverCheck();
+    play('magic');
+    boom('WAKU WAKU!', 'good', true);
+    quip(first ? 'Anya’s hair… is pink?! Anya likes it.' : 'Pink again! Waku waku!', 'happy', 3000);
+    return;
+  }
+  quip(pats % 10 >= 6 ? 'Anya’s head feels… tingly.' : pick(PAT_LINES), pats % 10 >= 6 ? 'smug' : 'happy', 1300);
+}
+
+function poke(e: PointerEvent) {
+  pokes++;
+  touchFx(e, '✦');
+  if (pokes % 10 === 0) {
+    const first = !unlocked.has('green-eyes');
+    award('green-eyes');
+    save.looks.green = true;
+    persist();
+    applyLooks();
+    makeoverCheck();
+    play('magic');
+    boom('SPARKLE!', 'good', true);
+    quip(first ? 'Woah. Anya’s eyes are green now. Like money. Heh.' : 'Green again! Anya can see profits.', 'happy', 3000);
+    return;
+  }
+  play('poke');
+  show('blink');
+  window.setTimeout(() => quip(pokes % 10 >= 6 ? 'Anya’s eyes feel… greener?' : pick(POKE_LINES), 'pout', 1500), 120);
+}
+
+function makeoverCheck() {
+  if (unlocked.has('pink-hair') && unlocked.has('green-eyes')) award('makeover');
+}
+
+els.anya.querySelector('#anya-hits')?.addEventListener('pointerdown', (e) => {
+  const part = (e.target as Element).getAttribute('data-part');
+  if (!part) return;
+  e.preventDefault();
+  getAudioContext();
+  if (part === 'nose') boop(e as PointerEvent);
+  else if (part === 'head') pat(e as PointerEvent);
+  else if (part === 'eye') poke(e as PointerEvent);
+});
+
+// She gets impatient if a question sits unanswered too long.
+let waited = 0;
+let impatience = 0;
+const IMPATIENT = [
+  { after: 25, face: 'deadpan' as Face, lines: ['Anya is waiting.', 'Take your time. Not this much time.', 'Hello? The answer won’t pick itself.'] },
+  { after: 45, face: 'pout' as Face, lines: ['Anya could read the whole chapter by now.', 'Tick tock. Tick tock.', 'Anya is getting old here.'] },
+  { after: 70, face: 'pout' as Face, lines: ['Anya is going to count to ten. One… two…', 'Is this a sit-in? Anya respects protest, but no.', 'Just pick one! Even Keynes picked one!'] },
+];
+window.setInterval(() => {
+  const waiting = els.app.dataset.screen === 'quiz' && !answered(quiz) && !isLightning() && els.achievements.hidden && !document.hidden && typing === null;
+  if (!waiting) return;
+  waited++;
+  const next = IMPATIENT[impatience];
+  if (!next && waited % 30 === 0) {
+    quip(pick(IMPATIENT[IMPATIENT.length - 1].lines), 'pout', 3000);
+    boom('TAP TAP', 'bad');
+    return;
+  }
+  if (!next || waited < next.after) return;
+  impatience++;
+  award('impatient');
+  quip(pick(next.lines), next.face, 3200);
+  if (impatience >= 2) boom(impatience >= 3 ? 'TAP TAP TAP' : 'TAP TAP', 'bad');
+}, 1000);
+
+/** The wardrobe, in the achievements panel: switch the looks you've found on and off. */
+function renderWardrobe() {
+  const box = byId('wardrobe');
+  const looks: { key: 'pink' | 'green'; id: string; label: string }[] = [
+    { key: 'pink', id: 'pink-hair', label: '🌸 Pink hair' },
+    { key: 'green', id: 'green-eyes', label: '💚 Green eyes' },
+  ];
+  box.replaceChildren(
+    ...looks.map((look) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'small-toggle look-toggle';
+      const got = unlocked.has(look.id);
+      b.disabled = !got;
+      b.setAttribute('aria-pressed', String(got && save.looks[look.key]));
+      b.textContent = got ? `${look.label}: ${save.looks[look.key] ? 'on' : 'off'}` : '🔒 A secret look';
+      b.addEventListener('click', () => {
+        save.looks[look.key] = !save.looks[look.key];
+        persist();
+        applyLooks();
+        renderWardrobe();
+      });
+      return b;
+    }),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // The meme, to start
@@ -787,5 +982,5 @@ window.setTimeout(() => say('Take the book. I don’t have all day.'), 500);
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { bet: { award, quiz: () => quiz, save, start, setFace, take, choose, timeLeft } });
+  Object.assign(window, { bet: { wait: (n: number) => (waited += n), award, quiz: () => quiz, save, start, setFace, take, choose, timeLeft } });
 }

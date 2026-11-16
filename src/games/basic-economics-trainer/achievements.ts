@@ -47,6 +47,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'lucky', icon: '🍀', name: 'Lucky Guess', description: 'Get a hard question right within two seconds.', secret: true },
   { id: 'cant-help', icon: '🤯', name: 'Even Anya Can’t Help', description: 'Get it wrong after Mind-read left only two answers.', secret: true },
   { id: 'sowell-said', icon: '🙉', name: 'Didn’t Listen', description: 'Get it wrong right after asking Sowell.', secret: true },
+  // Easter eggs (secret): touch Anya, or keep her waiting
+  { id: 'boop', icon: '👃', name: 'Boop!', description: 'Boop Anya’s nose.', secret: true },
+  { id: 'impatient', icon: '⏰', name: 'Tick Tock', description: 'Keep Anya waiting until she gets impatient.', secret: true },
+  { id: 'pink-hair', icon: '🌸', name: 'Pretty in Pink', description: 'Pat Anya’s head ten times.', secret: true },
+  { id: 'green-eyes', icon: '💚', name: 'Green-Eyed', description: 'Poke Anya’s eyes ten times.', secret: true },
+  { id: 'makeover', icon: '🎀', name: 'Full Makeover', description: 'Unlock both of Anya’s new looks.', secret: true },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);

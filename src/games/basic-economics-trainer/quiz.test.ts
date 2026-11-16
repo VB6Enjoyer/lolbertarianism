@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anyaSvg, faceMarkup, type Face } from './anya.ts';
+import { anyaSvg, faceMarkup, SHOTS, type Face } from './anya.ts';
 import { BOOK, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict } from './quiz.ts';
 
@@ -150,5 +150,22 @@ describe('basic economics trainer: Anya', () => {
     expect(svg).toContain('id="anya-book"');
     const faces: Face[] = ['neutral', 'talk', 'shock', 'smug', 'happy', 'deadpan', 'pout', 'blink'];
     expect(new Set(faces.map(faceMarkup)).size).toBe(faces.length);
+  });
+
+  it('can be booped, patted and poked, and recolored', () => {
+    const svg = anyaSvg();
+    for (const part of ['nose', 'head', 'eye']) expect(svg).toContain(`data-part="${part}"`);
+    expect(svg).toContain('class="anya-hair"');
+    expect(svg).toContain('id="anya-iris-green"');
+    expect(faceMarkup('neutral')).toContain('class="anya-iris"');
+    expect(svg).toContain('id="anya-over"');
+  });
+
+  it('keeps the first drawing as a backup with the same interface', async () => {
+    const v1 = await import('./anya-v1.ts');
+    expect(v1.anyaSvg()).toContain('id="anya-face"');
+    expect(v1.faceMarkup('shock')).toContain('<ellipse');
+    expect(v1.overMarkup('pout')).toBe('');
+    expect(v1.SHOTS).toEqual(SHOTS);
   });
 });
