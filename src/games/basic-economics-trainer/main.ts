@@ -2,7 +2,8 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { anyaSvg, faceMarkup, SHOTS, type Face } from './anya.ts';
-import { BOOK, dateKey, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
+import { ASK_SOWELL_COST, BOOK, dateKey, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Level } from './books/types.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
 
@@ -45,6 +46,14 @@ const els = {
   best: byId('best'),
   again: byId<HTMLButtonElement>('again'),
   toMenu: byId<HTMLButtonElement>('to-menu'),
+  askSowell: byId<HTMLButtonElement>('ask-sowell'),
+  sowellNote: byId('sowell-note'),
+  showAchievements: byId<HTMLButtonElement>('show-achievements'),
+  achievements: byId('achievements'),
+  achievementsGrid: byId('achievements-grid'),
+  achievementsCount: byId('achievements-count'),
+  hideAchievements: byId<HTMLButtonElement>('hide-achievements'),
+  toasts: byId('toasts'),
 };
 
 // ---------------------------------------------------------------------------
@@ -60,6 +69,12 @@ interface Save {
   drillBest: Record<string, number>;
   dailyBests: Record<string, number>;
   lightningBest: number;
+  achievements: string[];
+  /** Questions answered right at least once, and running totals for achievements. */
+  mastered: string[];
+  peanutsEarned: number;
+  hardRight: number;
+  stillDumbs: number;
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -75,6 +90,11 @@ const save: Save = {
   // Keep the last two months of daily scores.
   dailyBests: Object.fromEntries(Object.entries(counts(saved?.dailyBests)).filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 60)),
   lightningBest: count(saved?.lightningBest),
+  achievements: [...normalizeUnlocked(saved?.achievements)],
+  mastered: Array.isArray(saved?.mastered) ? saved.mastered.filter((id): id is string => typeof id === 'string') : [],
+  peanutsEarned: count(saved?.peanutsEarned),
+  hardRight: count(saved?.hardRight),
+  stillDumbs: count(saved?.stillDumbs),
 };
 const persist = () => slot.save(save);
 
@@ -274,6 +294,10 @@ let mode: Mode = { kind: 'part', part: 1 };
 let quiz: Quiz = newQuiz([]);
 /** Mind-read has been used on this question. */
 let readMind = false;
+/** Asked Sowell on this question; any lifeline used this run; when this question appeared. */
+let askedSowell = false;
+let usedLifeline = false;
+let askedAt = 0;
 
 const isLightning = () => mode.kind === 'lightning';
 
@@ -312,7 +336,8 @@ function start(m: Mode) {
   play('page');
   screen('quiz');
   els.timer.hidden = !isLightning();
-  els.mindRead.hidden = els.swap.hidden = isLightning();
+  els.mindRead.hidden = els.swap.hidden = els.askSowell.hidden = isLightning();
+  usedLifeline = false;
   els.hint.hidden = isLightning();
   if (isLightning()) startTimer();
   ask();
@@ -324,6 +349,9 @@ function ask() {
   const q = current(quiz)!;
   const n = quiz.index + 1;
   readMind = false;
+  askedSowell = false;
+  askedAt = performance.now();
+  els.sowellNote.hidden = true;
   els.chapter.innerHTML = '';
   els.chapter.append(document.createTextNode(q.chapter));
   const tag = document.createElement('span');
@@ -356,6 +384,7 @@ function renderLifelines() {
   const open = !answered(quiz);
   els.mindRead.disabled = !open || readMind || save.peanuts < MIND_READ_COST;
   els.swap.disabled = !open || save.peanuts < SWAP_COST;
+  els.askSowell.disabled = !open || askedSowell || save.peanuts < ASK_SOWELL_COST;
 }
 
 /** Faces and sound effects for each level, right and wrong. */
@@ -390,6 +419,17 @@ function choose(i: number) {
   if (right) {
     play('right');
     save.peanuts++;
+    save.peanutsEarned++;
+    if (!save.mastered.includes(q.id)) save.mastered.push(q.id);
+    if (q.level === 'hard') save.hardRight++;
+    award('first-right');
+    if (quiz.streak >= 5) award('streak-5');
+    if (quiz.streak >= 10) award('streak-10');
+    if (save.mastered.length >= 100) award('well-read');
+    if (BOOK.questions.every((x) => save.mastered.includes(x.id))) award('whole-book');
+    if (save.hardRight >= 50) award('empiricist');
+    if (save.peanutsEarned >= 100) award('peanuts-100');
+    if (q.level === 'hard' && performance.now() - askedAt < 2000) award('lucky');
     persist();
     renderPeanuts(true);
     setFace(quiz.streak >= 3 ? 'happy' : f);
@@ -398,6 +438,8 @@ function choose(i: number) {
     play('wrong');
     setFace(f);
     boom(word, 'bad', f === 'shock');
+    if (readMind) award('cant-help');
+    if (askedSowell) award('sowell-said');
     els.anya.classList.add('shake');
     window.setTimeout(() => els.anya.classList.remove('shake'), 450);
   }
@@ -441,6 +483,8 @@ els.mindRead.addEventListener('click', () => {
   persist();
   renderPeanuts(true);
   readMind = true;
+  usedLifeline = true;
+  award('mind-read');
   const wrong = q.options.map((_, i) => i).filter((i) => i !== q.correct);
   const keep = pick(wrong);
   const buttons = els.options.querySelectorAll<HTMLButtonElement>('.option');
@@ -462,11 +506,32 @@ els.swap.addEventListener('click', () => {
   const replacement = swapFor(q, quiz.questions.map((x) => x.id));
   if (!replacement || !replaceCurrent(quiz, replacement)) return;
   save.peanuts -= SWAP_COST;
+  usedLifeline = true;
+  award('swap');
   persist();
   renderPeanuts(true);
   play('page');
   ask();
   say(pick(['Fine. Try this one instead.', 'Scared of that one? Here.', 'Different question. Same Anya.']), { talk: true });
+});
+
+/** Ask Sowell: a hint from the book, not the answer. */
+els.askSowell.addEventListener('click', () => {
+  const q = current(quiz);
+  if (!q || answered(quiz) || askedSowell || save.peanuts < ASK_SOWELL_COST) return;
+  save.peanuts -= ASK_SOWELL_COST;
+  persist();
+  renderPeanuts(true);
+  askedSowell = true;
+  usedLifeline = true;
+  award('ask-sowell');
+  els.sowellNote.innerHTML = '<b>Sowell says</b><br>';
+  els.sowellNote.append(document.createTextNode(q.hint));
+  els.sowellNote.hidden = false;
+  play('page');
+  setFace('neutral');
+  say(pick(['Fine. Here’s what the book says.', 'Anya asked the author. He says this.', 'Read the hint. Then think. In that order.']), { talk: true });
+  renderLifelines();
 });
 
 // --- The lightning round's clock ---
@@ -535,6 +600,26 @@ function end() {
     save.lightningBest = Math.max(was, quiz.score);
     bestLine = quiz.score > was ? '🏆 Your best lightning round yet!' : `Your best: ${was} in a minute`;
   }
+  // Achievements for the run
+  if (!isLightning()) {
+    if (quiz.score === total && total === RUN_LENGTH) award('perfect');
+    if (quiz.score === 0 && total === RUN_LENGTH) award('still-dumb');
+    if (v.stamp === 'STILL DUMB' && ++save.stillDumbs >= 3) award('no-refunds');
+  }
+  if (mode.kind === 'part' && quiz.score >= PASS_MARK) {
+    award(`part-${mode.part}`);
+    if (!usedLifeline) award('no-lifelines');
+    if (BOOK.parts.every((p) => save.passed.includes(p.n))) award('all-parts');
+  }
+  if (mode.kind === 'drill' && mode.level === 'hard' && quiz.score >= 8) award('drill-hard');
+  if (mode.kind === 'daily') {
+    award('daily');
+    if (Object.keys(save.dailyBests).length >= 5) award('daily-5');
+  }
+  if (isLightning()) {
+    if (quiz.score >= 10) award('lightning-10');
+    if (quiz.score >= 20) award('lightning-20');
+  }
   persist();
   els.stamp.textContent = v.stamp;
   els.stamp.className = `stamp ${v.tone}`;
@@ -564,6 +649,71 @@ function end() {
 }
 
 // ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+const unlocked = new Set(save.achievements);
+
+function award(id: string) {
+  if (unlocked.has(id)) return;
+  const a = achievementById(id);
+  if (!a) return;
+  unlocked.add(id);
+  save.achievements = [...unlocked];
+  persist();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = '<span class="icon"></span><small>ACHIEVEMENT UNLOCKED</small><b></b>';
+  el.querySelector('.icon')!.textContent = a.icon;
+  el.querySelector('b')!.textContent = a.name;
+  els.toasts.append(el);
+  window.setTimeout(() => el.remove(), 4300);
+  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
+}
+
+function renderAchievements() {
+  els.achievementsCount.textContent = `${unlocked.size} / ${ACHIEVEMENTS.length}`;
+  els.achievementsGrid.replaceChildren(
+    ...ACHIEVEMENTS.map((a) => {
+      const got = unlocked.has(a.id);
+      const hidden = a.secret && !got;
+      const card = document.createElement('div');
+      card.className = `achievement${got ? '' : ' locked'}`;
+      card.innerHTML = '<span class="icon"></span><b></b><small></small>';
+      card.querySelector('.icon')!.textContent = hidden ? '❓' : a.icon;
+      card.querySelector('b')!.textContent = hidden ? 'Secret' : a.name;
+      card.querySelector('small')!.textContent = hidden ? 'Keep reading. You’ll know it when it happens.' : a.description;
+      return card;
+    }),
+  );
+}
+
+let pausedTimerAt: number | null = null;
+
+function openAchievements() {
+  renderAchievements();
+  els.achievements.hidden = false;
+  // The lightning round's clock waits while you look.
+  if (timerHandle !== null) {
+    pausedTimerAt = timeLeft();
+    stopTimer();
+  }
+  els.hideAchievements.focus();
+}
+
+function closeAchievements() {
+  els.achievements.hidden = true;
+  if (pausedTimerAt !== null) {
+    timerEnds = performance.now() + pausedTimerAt * 1000;
+    pausedTimerAt = null;
+    timerHandle = window.setInterval(renderTimer, 100);
+  }
+}
+
+els.showAchievements.addEventListener('click', () => (els.achievements.hidden ? openAchievements() : closeAchievements()));
+els.hideAchievements.addEventListener('click', closeAchievements);
+
+// ---------------------------------------------------------------------------
 // The meme, to start
 // ---------------------------------------------------------------------------
 
@@ -573,6 +723,7 @@ let taken = false;
 function take() {
   if (taken) return;
   taken = true;
+  award('took-book');
   getAudioContext();
   play('page');
   els.anya.classList.add('taking');
@@ -597,6 +748,13 @@ els.lightning.addEventListener('click', () => start({ kind: 'lightning' }));
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const at = els.app.dataset.screen;
+  if (!els.achievements.hidden) {
+    if (e.key === 'Escape' || e.key === 'Enter') {
+      e.preventDefault();
+      closeAchievements();
+    }
+    return;
+  }
   if (e.key === 'Escape' && (at === 'quiz' || at === 'end')) {
     toMenu();
     return;
@@ -629,5 +787,5 @@ window.setTimeout(() => say('Take the book. I don’t have all day.'), 500);
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { bet: { quiz: () => quiz, save, start, setFace, take, choose, timeLeft } });
+  Object.assign(window, { bet: { award, quiz: () => quiz, save, start, setFace, take, choose, timeLeft } });
 }

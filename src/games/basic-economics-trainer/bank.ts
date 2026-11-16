@@ -55,6 +55,7 @@ export function toQuestion(bq: BankQuestion, rng: () => number, book: Book = BOO
     options,
     correct: options.indexOf(bq.answer),
     comment: bq.why,
+    hint: bq.hint,
   };
 }
 
@@ -103,3 +104,4 @@ export const unlockedParts = (passed: readonly number[], book: Book = BOOK) => b
 /** Lifeline prices, in peanuts. */
 export const MIND_READ_COST = 3;
 export const SWAP_COST = 2;
+export const ASK_SOWELL_COST = 1;
