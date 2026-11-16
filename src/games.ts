@@ -12,6 +12,11 @@ export interface Game {
   status: GameStatus;
   /** Old file names under vidya/ that should redirect here. */
   legacyPaths?: string[];
+  /**
+   * Shelved for now: kept in the repo (and still opens on the dev server), but left off the
+   * homepage, out of the production build and out of the feedback forms.
+   */
+  hidden?: boolean;
 }
 
 export const games: Game[] = [
@@ -42,6 +47,8 @@ export const games: Game[] = [
     blurb: 'The praxeology rap battle. Throw THE BOOK at money printers before inflation wins.',
     status: 'prototype',
     legacyPaths: ["Eminem's Human Action - Econ Defender.html"],
+    // Too close to Kindergarten Property Defender, and the jokes need real work on the lyrics.
+    hidden: true,
   },
   {
     slug: 'kindergarten-property-defender',
@@ -72,3 +79,6 @@ export const games: Game[] = [
     legacyPaths: ['JUST GETTING STARTED 😈.html'],
   },
 ];
+
+/** The games on the homepage and in the build (everything but the shelved ones). */
+export const listedGames = games.filter((g) => !g.hidden);

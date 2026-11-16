@@ -1,5 +1,5 @@
 import './style.css';
-import { games, type GameStatus } from '../games.ts';
+import { listedGames as games, type GameStatus } from '../games.ts';
 import { issueUrl } from '../shared/feedback.ts';
 
 // Feedback links in the footer, prefilled with the browser.
