@@ -34,6 +34,6 @@ export function stopSpeaking() {
   if (speechSupported()) window.speechSynthesis.cancel();
 }
 
-/** How a question is read: the question, then each answer with its letter. */
-export const questionScript = (q: string, options: readonly string[], hint?: string) =>
-  [q, ...(hint ? [`Sowell says: ${hint}`] : []), ...options.map((o, i) => `${'ABCD'[i]}: ${o}.`)].join(' ');
+/** How a question is read: the question, the author's hint if asked for, then each answer with its letter. */
+export const questionScript = (q: string, options: readonly string[], hint?: string, author = 'The author') =>
+  [q, ...(hint ? [`${author} says: ${hint}`] : []), ...options.map((o, i) => `${'ABCD'[i]}: ${o}.`)].join(' ');

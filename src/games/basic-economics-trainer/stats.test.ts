@@ -39,6 +39,6 @@ describe('basic economics trainer: stats', () => {
   });
 
   it('reads a question with its lettered answers', () => {
-    expect(questionScript('Why?', ['One', 'Two', 'Three', 'Four'], 'Think.')).toBe('Why? Sowell says: Think. A: One. B: Two. C: Three. D: Four.');
+    expect(questionScript('Why?', ['One', 'Two', 'Three', 'Four'], 'Think.', 'Sowell')).toBe('Why? Sowell says: Think. A: One. B: Two. C: Three. D: Four.');
   });
 });

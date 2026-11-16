@@ -689,6 +689,7 @@ export const BASIC_ECONOMICS: Book = {
   id: 'be',
   title: 'Basic Economics',
   author: 'Thomas Sowell',
+  short: 'Sowell',
   parts: PARTS,
   questions: QUESTIONS,
 };

@@ -15,7 +15,7 @@ export interface BankQuestion {
   wrong: readonly [string, string, string];
   /** Why, in a sentence or two. */
   why: string;
-  /** The “Ask Sowell” lifeline: a nudge from the book, without giving the answer away. */
+  /** The “Ask the author” lifeline (Ask Sowell, Ask Mises): a nudge from the book, without giving the answer away. */
   hint: string;
 }
 
@@ -23,6 +23,8 @@ export interface Book {
   id: string;
   title: string;
   author: string;
+  /** The author's surname, for the hint lifeline: “Ask Sowell”, “Mises says”. */
+  short: string;
   parts: readonly { n: number; title: string; chapters: readonly { n: number; title: string }[] }[];
   questions: readonly BankQuestion[];
 }

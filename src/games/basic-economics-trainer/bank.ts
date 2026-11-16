@@ -2,11 +2,15 @@
 // Pure (no DOM), with seeded shuffles so the daily quiz is the same for everyone.
 
 import { BASIC_ECONOMICS } from './books/basic-economics.ts';
+import { HUMAN_ACTION } from './books/human-action.ts';
 import type { BankQuestion, Book, Level } from './books/types.ts';
 import type { Question } from './questions.ts';
 
-export const BOOKS: readonly Book[] = [BASIC_ECONOMICS];
+/** The books Anya can hand you, in the order her arrows go through them. Each has its own questions and progress. */
+export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, HUMAN_ACTION];
+/** The first book, and the default wherever a book isn't given. */
 export const BOOK = BASIC_ECONOMICS;
+export const bookById = (id: unknown): Book => BOOKS.find((b) => b.id === id) ?? BOOK;
 export const LEVELS: readonly Level[] = ['easy', 'medium', 'hard'];
 
 /** Questions in a part-by-part run, how many of them you need right to pass, and how they split by level. */
@@ -104,4 +108,4 @@ export const unlockedParts = (passed: readonly number[], book: Book = BOOK) => b
 /** Lifeline prices, in peanuts. */
 export const MIND_READ_COST = 3;
 export const SWAP_COST = 2;
-export const ASK_SOWELL_COST = 1;
+export const HINT_COST = 1;
