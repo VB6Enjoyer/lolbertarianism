@@ -854,3 +854,35 @@ describe('kindergarten: difficulty, the daily challenge, run history', () => {
     ]);
   });
 });
+
+describe('kindergarten: the guided first morning and the music', () => {
+  it('the clock stands still during the guided morning, and a hand holds at its pause point', () => {
+    const s = newGame(1000, 600);
+    s.tutorial = true;
+    const hand = spawnHand(s, rng(970), 'thief', 'grabby');
+    hand.pauseAt = 0.45;
+    for (let i = 0; i < 400; i++) step(s, 0.02, rng(971 + i));
+    expect(s.waveTime).toBe(0);
+    expect(s.blocks).toBe(CONFIG.startBlocks); // no homesteading either
+    expect(s.hands.length).toBe(1);
+    expect(hand.progress).toBeGreaterThanOrEqual(0.45);
+    expect(hand.progress).toBeLessThan(0.5);
+    hand.pauseAt = null;
+    reach(s, hand);
+    expect(s.blocks).toBe(CONFIG.startBlocks - 1);
+    expect(s.events.some((e) => e.type === 'period')).toBe(false);
+  });
+
+  it('each tune is four bars of eighths, mostly chord tones, with a breath at the end of each phrase', async () => {
+    const { compose } = await import('./music.ts');
+    const mood = { bpm: 120, bars: [[48, 60, 64, 67], [45, 57, 60, 64], [41, 57, 60, 65], [43, 55, 59, 62]], busy: 0.6, drums: 'full' as const, lead: 'square' as const, volume: 0.5 };
+    const tune = compose(mood, rng(980));
+    expect(tune.length).toBe(32);
+    expect(tune[14]).toBeNull();
+    expect(tune[31]).toBeNull();
+    const notes = tune.filter((n): n is number => n !== null);
+    expect(notes.length).toBeGreaterThan(8);
+    expect(Math.min(...notes)).toBeGreaterThanOrEqual(60);
+    expect(Math.max(...notes)).toBeLessThanOrEqual(96);
+  });
+});

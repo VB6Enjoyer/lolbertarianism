@@ -3,7 +3,8 @@ import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { GRADUATION_WEEK, honours, perkById, PERKS, type PerkId } from './perks.ts';
-import { build, comboCap, CONFIG, gpa, meterMax, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type ItemId } from './logic.ts';
+import { Playground, type MoodId } from './music.ts';
+import { build, comboCap, CONFIG, edgeAt, gpa, meterMax, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type Hand, type ItemId } from './logic.ts';
 import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
 import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
@@ -58,6 +59,9 @@ const els = {
   dailyBody: byId('daily-body'),
   history: byId('history'),
   historyBody: byId('history-body'),
+  coach: byId('coach'),
+  coachText: byId('coach-text'),
+  coachSkip: byId<HTMLButtonElement>('coach-skip'),
 };
 
 // ---------------------------------------------------------------------------
@@ -76,6 +80,9 @@ interface Save {
   /** Orange and blue instead of red and green, with a ✊/✋ on every sleeve. */
   colorblind: boolean;
   difficulty: DifficultyId;
+  music: boolean;
+  /** Whether the guided first morning has been played (or skipped). */
+  tutorialDone: boolean;
   /** The ten best runs, and the best daily-challenge score per date. */
   history: ReturnType<typeof normalizeHistory>;
   dailyBests: Record<string, number>;
@@ -94,6 +101,9 @@ const save: Save = {
   achievements: [...normalizeUnlocked(saved?.achievements)],
   colorblind: saved?.colorblind === true,
   difficulty: isDifficulty(saved?.difficulty) ? saved.difficulty : 'normal',
+  music: saved?.music !== false,
+  // Anyone who's already played (a best score, or achievements) has seen the classroom before.
+  tutorialDone: saved?.tutorialDone === true || Number((saved as { best?: unknown } | null)?.best) > 0 || (Array.isArray(saved?.achievements) && saved.achievements.length > 0),
   history: normalizeHistory(saved?.history),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
@@ -197,7 +207,7 @@ const BOSS_STEAL: Partial<Record<Role, string>> = { principal: 'EMINENT DOMAIN!'
 const ctx = els.canvas.getContext('2d')!;
 let state: GameState = newGame(els.canvas.clientWidth || 800, els.canvas.clientHeight || 600);
 state.phase = 'break'; // nothing happens behind the title screen
-const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, flash: -99, touch: matchMedia('(pointer: coarse)').matches, colorblind: false };
+const scene: Scene = { time: 0, floaters: [], bubbles: [], shake: 0, slapAt: null, guardAt: null, pointer: null, banner: null, flash: -99, mood: null, hits: [], struck: {}, pointAt: null, touch: matchMedia('(pointer: coarse)').matches, colorblind: false };
 renderColorblind();
 const pauseReasons = new Set<'menu' | 'user'>();
 let paused = false;
@@ -233,6 +243,8 @@ function float(x: number, y: number, text: string, color: string, big = false) {
 
 function handle(e: GameEvent) {
   checkAchievements(e);
+  juice(e);
+  if (lesson) lessonEvent(e);
   const pile = pileAt(state);
   switch (e.type) {
     case 'slap': {
@@ -678,6 +690,226 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.colorblind-toggle
   });
 }
 
+function renderMusicToggle() {
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.music-toggle')) {
+    b.textContent = `🎵 Music: ${save.music ? 'on' : 'off'}`;
+    b.setAttribute('aria-pressed', String(save.music));
+  }
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('.music-toggle')) {
+  b.addEventListener('click', () => {
+    save.music = !save.music;
+    persist();
+    renderMusicToggle();
+  });
+}
+renderMusicToggle();
+
+// ---------------------------------------------------------------------------
+// Music: a playground chiptune that follows the school day
+// ---------------------------------------------------------------------------
+
+const music = new Playground();
+
+/** Plays while a day's on (and the sound and music are on); quiet otherwise. Follows the period, or the boss. */
+function syncMusic() {
+  const want = !save.muted && save.music && state.phase === 'playing' && !paused && els.title.hidden && !state.tutorial;
+  if (want && !music.playing) {
+    const audio = getAudioContext();
+    if (audio.state === 'running') music.start(audio);
+  } else if (!want && music.playing) music.stop();
+  if (!music.playing) return;
+  const boss = state.hands.some((h) => isBoss(h.role) && !h.slapped);
+  music.setMood(boss ? 'boss' : (periodAt(state.waveTime).id as MoodId));
+}
+
+// ---------------------------------------------------------------------------
+// Juice: bursts where slaps land, a moment of hit-stop, and Jack's face
+// ---------------------------------------------------------------------------
+
+let hitStop = 0;
+
+function landed(hand: Hand, big: boolean) {
+  const at = handPosition(hand);
+  scene.hits.push({ x: at.x, y: at.y, t: scene.time, big, miss: false });
+  scene.struck[hand.id] = scene.time;
+  hitStop = Math.max(hitStop, big ? 0.07 : 0.035);
+}
+
+function juice(e: GameEvent) {
+  switch (e.type) {
+    case 'slap':
+      landed(e.hand, e.combo >= 5 || isBoss(e.hand.role));
+      if (e.combo >= 5) scene.shake = Math.max(scene.shake, 0.12 + Math.min(0.2, e.combo * 0.01));
+      break;
+    case 'bonk':
+    case 'recover':
+    case 'guard':
+    case 'blown':
+    case 'tattle':
+      landed(e.hand, e.type === 'recover' || isBoss(e.hand.role));
+      if (e.type === 'tattle') scene.mood = { kind: 'upset', until: scene.time + 1.6 };
+      break;
+    case 'violation':
+      landed(e.hand, false);
+      scene.mood = { kind: 'upset', until: scene.time + 1.2 };
+      break;
+    case 'miss':
+      scene.hits.push({ x: e.x, y: e.y, t: scene.time, big: false, miss: true });
+      break;
+    case 'steal':
+      if (e.blocks > 0) scene.mood = { kind: 'upset', until: scene.time + 1.5 };
+      break;
+    case 'trade':
+      scene.mood = { kind: 'happy', until: scene.time + 1.1 };
+      break;
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The guided first morning: three hands, one at a time, with the clock stopped
+// ---------------------------------------------------------------------------
+
+/** Which lesson it's on, the hand it's about, and what happens next (and when). */
+let lesson: { step: number; hand: Hand | null; next: { step: number; at: number } | null; release: number } | null = null;
+
+function coach(html: string) {
+  els.coachText.innerHTML = html;
+  els.coach.hidden = false;
+}
+
+function lessonHand(kind: 'thief' | 'trader', degrees: number, travel: number): Hand {
+  const hand = spawnHand(state, Math.random, kind, kind === 'thief' ? 'grabby' : undefined);
+  const root = edgeAt(state, degrees);
+  hand.rootX = root.x;
+  hand.rootY = root.y;
+  hand.wobble = 0;
+  hand.surge = 0;
+  hand.travel = travel;
+  if (kind === 'trader') {
+    hand.classmate = null;
+    hand.offer = { wants: 'blocks', item: 'cookie', price: 1, value: 2.5 };
+  }
+  scene.pointAt = hand.id;
+  return hand;
+}
+
+function startLesson() {
+  if (state.phase !== 'playing' || !els.title.hidden || state.daily) return;
+  state.tutorial = true;
+  state.hands = [];
+  lesson = { step: 0, hand: null, next: null, release: 0 };
+  goLesson(0);
+}
+
+function goLesson(step: number) {
+  if (!lesson) return;
+  lesson.step = step;
+  lesson.next = null;
+  switch (step) {
+    case 0:
+      lesson.hand = lessonHand('thief', 180, 3);
+      lesson.hand.pauseAt = 0.45;
+      coach('👋 <b>Red sleeve, grabby fist:</b> the teacher, coming to redistribute your blocks. <b>Tap it to slap it!</b>');
+      break;
+    case 1:
+      lesson.hand = lessonHand('trader', 55, 3.2);
+      lesson.hand.pauseAt = 0.45;
+      lesson.release = scene.time + 3.2;
+      coach('🤝 <b>Green sleeve, open hand:</b> a classmate offering a trade, 🍪 for 1🧱. <b>Don’t slap this one.</b> Let it reach your pile.');
+      break;
+    case 2:
+      lesson.hand = lessonHand('thief', 165, 2.6);
+      coach('Here comes another grabby hand. This time, <b>let it grab</b>…');
+      break;
+    case 3:
+      lesson.hand = null;
+      scene.pointAt = null;
+      coach('🔔 That’s the job, Jack. <b>Survive five periods, till 3pm.</b> Trade with your classmates, slap the teacher, and keep an eye out for new troublemakers: you’ll meet them as they turn up.');
+      lesson.next = { step: 4, at: scene.time + 5 };
+      break;
+    default:
+      endLesson(true);
+  }
+}
+
+/** Waits for the player to do the thing. */
+function lessonEvent(e: GameEvent) {
+  if (!lesson || !('hand' in e) || e.hand !== lesson.hand) return;
+  const later = (step: number, delay: number) => (lesson!.next = { step, at: scene.time + delay });
+  if (lesson.step === 0 && e.type === 'slap') {
+    coach('💥 <b>SLAP!</b> That’s the spirit. Thieves get faster every day, so keep those hands ready.');
+    scene.pointAt = null;
+    later(1, 2.2);
+  }
+  if (lesson.step === 1 && e.type === 'trade') {
+    coach('🤝 <b>Deal!</b> The 🍪 is in your stash (up top). Use it in a pinch, or sell it to the next kid for more than you paid.');
+    scene.pointAt = null;
+    later(2, 3.2);
+  }
+  if (lesson.step === 1 && e.type === 'violation') {
+    // Forgiven, this once.
+    state.stars = CONFIG.maxStars;
+    state.stats.violations--;
+    state.day.violations--;
+    coach('😬 Whoa, that was a <b>classmate</b>! On a real day that costs you a gold star. Let’s try that again.');
+    scene.pointAt = null;
+    later(1, 2.4);
+  }
+  if (lesson.step === 2 && e.type === 'steal') {
+    e.hand.travel = 9; // a slow getaway, so there's time
+    coach('😱 It got a block! Quick: <b>slap it on its way out</b> to get it back.');
+  }
+  if (lesson.step === 2 && e.type === 'slap') {
+    coach('Ha, good reflexes! But let this one <b>reach your pile</b>, so you can see what happens.');
+    scene.pointAt = null;
+    later(2, 2);
+  }
+  if (lesson.step === 2 && e.type === 'recover') {
+    coach('🔙 <b>Repossessed!</b> Catch a thief on its way out and the blocks come back.');
+    scene.pointAt = null;
+    later(3, 2.6);
+  }
+}
+
+function lessonTick() {
+  if (!lesson) return;
+  if (lesson.next && scene.time >= lesson.next.at) {
+    goLesson(lesson.next.step);
+    return;
+  }
+  const hand = lesson.hand;
+  // The trader waits a moment (so you can read it), then comes in.
+  if (lesson.step === 1 && hand && hand.pauseAt !== null && scene.time >= lesson.release) hand.pauseAt = null;
+  // The thief got away with it: give the block back and send another.
+  if (lesson.step === 2 && hand && !lesson.next && !state.hands.includes(hand)) {
+    state.blocks++;
+    coach('Too slow! Here’s another one.');
+    lesson.hand = null;
+    lesson.next = { step: 2, at: scene.time + 1.5 };
+  }
+}
+
+/** The guided morning's over (or skipped): the bell rings and the day starts properly. */
+function endLesson(done: boolean) {
+  els.coach.hidden = true;
+  scene.pointAt = null;
+  if (!lesson) return;
+  lesson = null;
+  state.tutorial = false;
+  state.hands = [];
+  state.waveTime = 0;
+  state.period = -1;
+  state.spawnIn = 1;
+  if (done || !save.tutorialDone) {
+    save.tutorialDone = true;
+    persist();
+  }
+}
+els.coachSkip.addEventListener('click', () => endLesson(true));
+
 /** The stash's groups (one button per kind of item), in the order they were first got. */
 const stashGroups = () => {
   const counts = new Map<ItemId, number>();
@@ -744,9 +976,14 @@ function frame(now: number) {
   last = now;
   if (!paused) {
     scene.time += dt;
+    // A slap that lands freezes the action for a few hundredths of a second (hit-stop).
+    const frozen = hitStop > 0;
+    hitStop = Math.max(0, hitStop - dt);
     // Holding on to Sticky Fingers
-    if (pressing && state.phase === 'playing') press(state, pressing.x, pressing.y, dt);
-    step(state, dt, runRng);
+    if (pressing && state.phase === 'playing' && !frozen) press(state, pressing.x, pressing.y, dt);
+    if (!frozen) step(state, dt, runRng);
+    if (lesson) lessonTick();
+    scene.hits = scene.hits.filter((h) => scene.time - h.t < 0.5);
     if (state.events.some((e) => e.type === 'wave-end')) recessEvents = state.events.filter((e) => e.type === 'interest' || e.type === 'wages' || e.type === 'allowance');
     for (const e of state.events) handle(e);
     state.events = [];
@@ -755,6 +992,7 @@ function frame(now: number) {
   }
   render(ctx, state, scene);
   renderHud();
+  syncMusic();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -828,7 +1066,7 @@ document.addEventListener('visibilitychange', () => {
 let runDaily: Daily | null = null;
 let runRng: () => number = Math.random;
 
-function startGame(daily = false) {
+function startGame(daily = false, guided = !save.tutorialDone && !daily) {
   getAudioContext();
   runDaily = daily ? dailyFor(new Date()) : null;
   runRng = runDaily ? seededRng(runDaily.seed) : Math.random;
@@ -843,8 +1081,14 @@ function startGame(daily = false) {
   els.pause.hidden = true;
   els.daily.hidden = true;
   els.history.hidden = true;
+  endLesson(false);
   say('teacher', 'Jack, you should share your toys.');
   setTimeout(() => say('jack', 'Have you not heard about property rights?'), 1200);
+  if (guided) {
+    // The clock waits from the first second; the first lesson comes after the teacher's said her piece.
+    state.tutorial = true;
+    setTimeout(startLesson, 1800);
+  }
 }
 
 function showBreak() {
@@ -1111,6 +1355,8 @@ function toTitle() {
 }
 els.toTitle.addEventListener('click', toTitle);
 
+byId('show-tutorial').addEventListener('click', () => startGame(false, true));
+
 byId('show-daily').addEventListener('click', () => {
   const today = dailyFor(new Date());
   const special = specialById(today.special);
@@ -1210,7 +1456,7 @@ document.addEventListener('keydown', (e) => {
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { kpd: { specials: SPECIAL_DAYS.map((d) => d.id), daily: () => startGame(true), state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => (CLASSMATES.some((c) => c.id === role) ? spawnHand(state, Math.random, 'trader', undefined, role as ClassmateId) : spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role))) } });
+  Object.assign(window, { kpd: { scene: () => scene, lesson: () => lesson, musicOn: () => music.playing, specials: SPECIAL_DAYS.map((d) => d.id), daily: () => startGame(true), state: () => state, showBreak, handAt: handPosition, spawn: (role: string) => (CLASSMATES.some((c) => c.id === role) ? spawnHand(state, Math.random, 'trader', undefined, role as ClassmateId) : spawnHand(state, Math.random, role === 'trader' ? 'trader' : 'thief', role === 'trader' ? undefined : (role as Role))) } });
 }
 
 renderTitle();

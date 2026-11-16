@@ -38,6 +38,13 @@ export interface Scene {
   pointer: { x: number; y: number } | null;
   /** When the picture-day camera last flashed. */
   flash: number;
+  /** Jack's face for a moment (upset when blocks go, happy after a trade); on a streak he's smug anyway. */
+  mood: { kind: 'upset' | 'happy'; until: number } | null;
+  /** Slaps landing (a burst) and missing (a puff of dust), and when each hand was last hit. */
+  hits: { x: number; y: number; t: number; big: boolean; miss: boolean }[];
+  struck: Record<number, number>;
+  /** The guided first morning points at this hand. */
+  pointAt: number | null;
   /** A big announcement across the top (a new period, a new troublemaker). */
   banner: { text: string; sub?: string; until: number } | null;
   /** Playing on a touch screen (double-tap instead of right-click). */
@@ -205,16 +212,7 @@ function drawJack(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
     stroke(ctx, [[shoulder.x, shoulder.y], [shoulder.x - u * 0.7, shoulder.y + u * 1.1]], w, t, 120);
   }
   wobblyCircle(ctx, h.x, h.y, h.r, w, t, 130, '#fff');
-  // Angry eyebrows, beady eyes, a frown
-  stroke(ctx, [[h.x - h.r * 0.6, h.y - h.r * 0.45], [h.x - h.r * 0.12, h.y - h.r * 0.15]], w, t, 140);
-  stroke(ctx, [[h.x + h.r * 0.6, h.y - h.r * 0.45], [h.x + h.r * 0.12, h.y - h.r * 0.15]], w, t, 150);
-  ctx.fillStyle = INK;
-  for (const dx of [-0.3, 0.3]) {
-    ctx.beginPath();
-    ctx.arc(h.x + h.r * dx, h.y - h.r * 0.02, Math.max(2, w), 0, Math.PI * 2);
-    ctx.fill();
-  }
-  stroke(ctx, [[h.x - h.r * 0.32, h.y + h.r * 0.55], [h.x, h.y + h.r * 0.38], [h.x + h.r * 0.32, h.y + h.r * 0.55]], w, t, 160);
+  drawJackFace(ctx, s, scene, h, w);
   // The desk: the ancap flag, as in the meme (yellow, with black across the lower right)
   const top = s.h - u * 1.9;
   const left = s.w * 0.7;
@@ -228,6 +226,156 @@ function drawJack(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
   ctx.closePath();
   ctx.fill();
   stroke(ctx, [[left, s.h], [left, top], [s.w, top]], w, t, 170);
+}
+
+/**
+ * Jack's face: angry by default (the meme), smug on a streak (shades from 15 in a row), upset when
+ * blocks are taken, pleased after a trade.
+ */
+function drawJackFace(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene, h: { x: number; y: number; r: number }, w: number) {
+  const t = scene.time;
+  const mood = scene.mood && scene.mood.until > t ? scene.mood.kind : s.combo >= 5 && s.phase === 'playing' ? 'smug' : 'angry';
+  const eye = (dx: number, dy = -0.02) => {
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.arc(h.x + h.r * dx, h.y + h.r * dy, Math.max(2, w), 0, Math.PI * 2);
+    ctx.fill();
+  };
+  if (mood === 'upset') {
+    // Worried brows, wide eyes, an open mouth, and a tear
+    stroke(ctx, [[h.x - h.r * 0.6, h.y - h.r * 0.2], [h.x - h.r * 0.15, h.y - h.r * 0.45]], w, t, 140);
+    stroke(ctx, [[h.x + h.r * 0.6, h.y - h.r * 0.2], [h.x + h.r * 0.15, h.y - h.r * 0.45]], w, t, 150);
+    wobblyCircle(ctx, h.x - h.r * 0.3, h.y, h.r * 0.13, w * 0.8, t, 141, '#fff');
+    wobblyCircle(ctx, h.x + h.r * 0.3, h.y, h.r * 0.13, w * 0.8, t, 151, '#fff');
+    eye(-0.3, 0.02);
+    eye(0.3, 0.02);
+    wobblyCircle(ctx, h.x, h.y + h.r * 0.5, h.r * 0.18, w, t, 160, '#7b241c');
+    ctx.fillStyle = '#5dade2';
+    const drop = (t * 1.5) % 1;
+    ctx.beginPath();
+    ctx.ellipse(h.x + h.r * 0.42, h.y + h.r * (0.2 + drop * 0.5), h.r * 0.07, h.r * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (mood === 'happy') {
+    eye(-0.3);
+    eye(0.3);
+    stroke(ctx, [[h.x - h.r * 0.38, h.y + h.r * 0.38], [h.x, h.y + h.r * 0.62], [h.x + h.r * 0.38, h.y + h.r * 0.38]], w, t, 160);
+    return;
+  }
+  if (mood === 'smug') {
+    // One brow up, a smirk, and shades on a long streak
+    stroke(ctx, [[h.x - h.r * 0.6, h.y - h.r * 0.38], [h.x - h.r * 0.12, h.y - h.r * 0.3]], w, t, 140);
+    stroke(ctx, [[h.x + h.r * 0.6, h.y - h.r * 0.6], [h.x + h.r * 0.12, h.y - h.r * 0.42]], w, t, 150);
+    if (s.combo >= 15) {
+      ctx.fillStyle = INK;
+      ctx.fillRect(h.x - h.r * 0.62, h.y - h.r * 0.16, h.r * 0.52, h.r * 0.28);
+      ctx.fillRect(h.x + h.r * 0.1, h.y - h.r * 0.16, h.r * 0.52, h.r * 0.28);
+      ctx.fillRect(h.x - h.r * 0.12, h.y - h.r * 0.12, h.r * 0.24, h.r * 0.06);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(h.x - h.r * 0.55, h.y - h.r * 0.12, h.r * 0.12, h.r * 0.07);
+    } else {
+      eye(-0.3);
+      eye(0.3);
+    }
+    stroke(ctx, [[h.x - h.r * 0.3, h.y + h.r * 0.5], [h.x + h.r * 0.1, h.y + h.r * 0.5], [h.x + h.r * 0.38, h.y + h.r * 0.36]], w, t, 160);
+    return;
+  }
+  // Angry eyebrows, beady eyes, a frown
+  stroke(ctx, [[h.x - h.r * 0.6, h.y - h.r * 0.45], [h.x - h.r * 0.12, h.y - h.r * 0.15]], w, t, 140);
+  stroke(ctx, [[h.x + h.r * 0.6, h.y - h.r * 0.45], [h.x + h.r * 0.12, h.y - h.r * 0.15]], w, t, 150);
+  eye(-0.3);
+  eye(0.3);
+  stroke(ctx, [[h.x - h.r * 0.32, h.y + h.r * 0.55], [h.x, h.y + h.r * 0.38], [h.x + h.r * 0.32, h.y + h.r * 0.55]], w, t, 160);
+}
+
+/** A slap landing: a jagged burst with speed lines. A miss: a little puff of dust. */
+function drawHits(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
+  const u = unitOf(s);
+  for (const hit of scene.hits) {
+    const age = scene.time - hit.t;
+    const life = hit.miss ? 0.3 : 0.28;
+    if (age < 0 || age > life) continue;
+    const k = age / life;
+    if (hit.miss) {
+      ctx.globalAlpha = 0.5 * (1 - k);
+      ctx.fillStyle = '#bbb';
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(hit.x + Math.cos(a) * u * 0.4 * (0.4 + k), hit.y + Math.sin(a) * u * 0.25 * (0.4 + k), u * 0.12 * (1 - k * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      continue;
+    }
+    const r = u * (hit.big ? 0.95 : 0.7) * (0.6 + k * 0.6);
+    const pts: [number, number][] = [];
+    for (let i = 0; i <= 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + hit.t * 7;
+      const rr = i % 2 ? r * 0.5 : r;
+      pts.push([hit.x + Math.cos(a) * rr, hit.y + Math.sin(a) * rr]);
+    }
+    ctx.globalAlpha = 1 - k;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.fillStyle = hit.big ? '#f5b041' : '#fff3a0';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Speed lines
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.2;
+      ctx.beginPath();
+      ctx.moveTo(hit.x + Math.cos(a) * r * 1.15, hit.y + Math.sin(a) * r * 1.15);
+      ctx.lineTo(hit.x + Math.cos(a) * r * (1.5 + k * 0.6), hit.y + Math.sin(a) * r * (1.5 + k * 0.6));
+      ctx.stroke();
+    }
+    if (hit.big && k < 0.6) {
+      ctx.font = `bold ${Math.round(u * 0.42)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = INK;
+      ctx.fillText('POW!', hit.x, hit.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** The guided first morning: a bouncing arrow over the hand it's talking about. */
+function drawPointer(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene) {
+  const hand = s.hands.find((h) => h.id === scene.pointAt);
+  if (!hand || hand.slapped || hand.traded) return;
+  const at = handPosition(hand);
+  const u = unitOf(s);
+  const bob = Math.sin(scene.time * 6) * u * 0.18;
+  const y = at.y - u * 1.9 + bob;
+  ctx.beginPath();
+  ctx.moveTo(at.x, y + u * 0.75);
+  ctx.lineTo(at.x - u * 0.45, y + u * 0.15);
+  ctx.lineTo(at.x - u * 0.18, y + u * 0.15);
+  ctx.lineTo(at.x - u * 0.18, y - u * 0.5);
+  ctx.lineTo(at.x + u * 0.18, y - u * 0.5);
+  ctx.lineTo(at.x + u * 0.18, y + u * 0.15);
+  ctx.lineTo(at.x + u * 0.45, y + u * 0.15);
+  ctx.closePath();
+  ctx.fillStyle = '#f5b041';
+  ctx.fill();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  // A ring around it
+  ctx.beginPath();
+  ctx.arc(at.x, at.y, u * (0.9 + 0.12 * Math.sin(scene.time * 6)), 0, Math.PI * 2);
+  ctx.setLineDash([7, 6]);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#f39c12';
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawClassmates(ctx: CanvasRenderingContext2D, s: GameState, t: number) {
@@ -471,7 +619,8 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
     ctx.stroke();
     emoji(ctx, hand.kind === 'trader' || disguised(hand.role) ? '✋' : '✊', mid[0], mid[1] + 1, badge * 1.25);
   }
-  const r = Math.max(13, u * 0.42) * (look?.scale ?? 1);
+  const struck = t - (scene.struck[hand.id] ?? -9);
+  const r = Math.max(13, u * 0.42) * (look?.scale ?? 1) * (struck < 0.12 ? 1.3 - struck * 2.5 : 1);
   const w = Math.max(1.8, u * 0.065);
   // Tough ones show how many slaps they've got left.
   if (hand.hp > 1 && !hand.slapped) {
@@ -559,7 +708,7 @@ function drawHand(ctx: CanvasRenderingContext2D, s: GameState, hand: Hand, scene
       const bend = dir + f * 0.45 + (grab - 0.5) * 1.2 * Math.sign(f || 1);
       stroke(ctx, [[at.x + Math.cos(a) * r * 0.6, at.y + Math.sin(a) * r * 0.6], [at.x + Math.cos(a) * reach, at.y + Math.sin(a) * reach], [at.x + Math.cos(bend) * reach * 1.05 + Math.cos(dir) * r * 0.2, at.y + Math.sin(bend) * reach * 1.05 + Math.sin(dir) * r * 0.2]], w * 1.4, t, hand.id * 7 + f * 3);
     }
-    wobblyCircle(ctx, at.x, at.y, r, w, t, hand.id * 13, SKIN);
+    wobblyCircle(ctx, at.x, at.y, r, w, t, hand.id * 13, struck < 0.1 ? '#fff' : SKIN);
     // The Teacher's Pet: a neat white cuff and a gold star sticker.
     if (hand.role === 'pet') {
       const dir = Math.atan2(at.y - hand.rootY, at.x - hand.rootX);
@@ -737,6 +886,8 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
     ctx.stroke();
     ctx.setLineDash([]);
   }
+  drawHits(ctx, s, scene);
+  if (scene.pointAt !== null) drawPointer(ctx, s, scene);
   if (s.special === 'snow' && s.phase === 'playing') drawSnow(ctx, s, t);
   if (s.photo === 'freeze' && s.phase === 'playing') drawViewfinder(ctx, s, t);
   if (t - scene.flash < 0.45) {

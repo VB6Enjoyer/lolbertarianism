@@ -106,6 +106,8 @@ export interface Hand {
   age: number;
   /** Which regular it is (traders only; most traders are nobody in particular). */
   classmate: ClassmateId | null;
+  /** Holds still here on the way in (the guided first morning). */
+  pauseAt: number | null;
 }
 
 export type GameEvent =
@@ -212,6 +214,8 @@ export interface GameState {
   difficulty: DifficultyId;
   /** A daily challenge: one school day, then it's over. */
   daily: boolean;
+  /** The guided first morning is on: the clock stands still. */
+  tutorial: boolean;
   /** What happened since the UI last looked. */
   events: GameEvent[];
 }
@@ -331,6 +335,7 @@ export function newGame(w: number, h: number, difficulty: DifficultyId = 'normal
     photo: 'normal',
     difficulty,
     daily: false,
+    tutorial: false,
     events: [],
   };
 }
@@ -472,6 +477,7 @@ export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forc
     beingHeld: false,
     age: 0,
     classmate,
+    pauseAt: null,
   };
   if (kind === 'thief') s.day.thieves++;
   s.hands.push(hand);
@@ -567,8 +573,68 @@ function arrive(s: GameState, hand: Hand) {
   }
 }
 
+/** Moves every hand along (and lets the ones that reach the pile grab or trade). False if that ended the game. */
+function moveHands(s: GameState, dt: number, rng: () => number, photo: Photo): boolean {
+  for (const hand of s.hands) {
+    hand.age += dt;
+    if (hand.state === 'reaching' && hand.kind === 'thief') {
+      // Halfway there, a Gadsden flag might scare it off.
+      if (!hand.flagChecked && hand.progress >= 0.5) {
+        hand.flagChecked = true;
+        if (s.built.flag && !isBoss(hand.role) && rng() < FLAG_SCARE[s.built.flag - 1]) {
+          hand.state = 'leaving';
+          hand.slapped = true;
+          s.day.stopped++;
+          s.events.push({ type: 'scared', hand });
+          continue;
+        }
+      }
+      // Dazed after a slap it shrugged off
+      if (hand.stun > 0) {
+        hand.stun -= dt;
+        continue;
+      }
+      // Close to the pile, the glue moat holds it for a moment.
+      if (s.built.glue && !hand.glueDone && hand.progress >= 0.82) {
+        hand.glueDone = true;
+        hand.glued = GLUE_SECONDS[s.built.glue - 1];
+        s.events.push({ type: 'glued', hand });
+      }
+      if (hand.glued > 0) {
+        hand.glued -= dt;
+        continue;
+      }
+    }
+    if (hand.state === 'reaching') {
+      if (photo === 'freeze') continue; // Say cheese!
+      if (hand.pauseAt !== null && hand.progress >= hand.pauseAt) continue; // the guided morning holds it here
+      const surge = 1 + hand.surge * Math.sin(hand.phase * 3 + hand.progress * 10);
+      const held = hand.beingHeld ? 0.25 : 1;
+      hand.progress += (dt / hand.travel) * surge * held * (photo === 'rush' && hand.kind === 'thief' ? PHOTO_RUSH_SPEED : 1);
+      if (hand.progress >= 1) {
+        hand.progress = 1;
+        arrive(s, hand);
+        if ((s.phase as GameState['phase']) === 'over') return false; // the hand that arrived may have ended it
+      }
+    } else {
+      hand.progress -= (dt / hand.travel) * (hand.slapped ? 3.5 : 1.6);
+    }
+  }
+  for (const hand of s.hands) {
+    if (!hand.beingHeld) hand.held = Math.max(0, hand.held - dt * 0.6);
+    hand.beingHeld = false;
+  }
+  s.hands = s.hands.filter((hand) => hand.state === 'reaching' || hand.progress > 0);
+  return true;
+}
+
 export function step(s: GameState, dt: number, rng: () => number) {
   if (s.phase !== 'playing') return;
+  // The guided first morning: the clock waits while the hands come one at a time.
+  if (s.tutorial) {
+    moveHands(s, dt, rng, 'normal');
+    return;
+  }
   const busFrom = s.special === 'field-trip' ? pileAt(s).x : 0;
   s.waveTime += dt;
   const spawning = s.waveTime < todayLength(s);
@@ -656,55 +722,7 @@ export function step(s: GameState, dt: number, rng: () => number) {
       } else s.guardIn = 0.25;
     }
   }
-  for (const hand of s.hands) {
-    hand.age += dt;
-    if (hand.state === 'reaching' && hand.kind === 'thief') {
-      // Halfway there, a Gadsden flag might scare it off.
-      if (!hand.flagChecked && hand.progress >= 0.5) {
-        hand.flagChecked = true;
-        if (s.built.flag && !isBoss(hand.role) && rng() < FLAG_SCARE[s.built.flag - 1]) {
-          hand.state = 'leaving';
-          hand.slapped = true;
-          s.day.stopped++;
-          s.events.push({ type: 'scared', hand });
-          continue;
-        }
-      }
-      // Dazed after a slap it shrugged off
-      if (hand.stun > 0) {
-        hand.stun -= dt;
-        continue;
-      }
-      // Close to the pile, the glue moat holds it for a moment.
-      if (s.built.glue && !hand.glueDone && hand.progress >= 0.82) {
-        hand.glueDone = true;
-        hand.glued = GLUE_SECONDS[s.built.glue - 1];
-        s.events.push({ type: 'glued', hand });
-      }
-      if (hand.glued > 0) {
-        hand.glued -= dt;
-        continue;
-      }
-    }
-    if (hand.state === 'reaching') {
-      if (photo === 'freeze') continue; // Say cheese!
-      const surge = 1 + hand.surge * Math.sin(hand.phase * 3 + hand.progress * 10);
-      const held = hand.beingHeld ? 0.25 : 1;
-      hand.progress += (dt / hand.travel) * surge * held * (photo === 'rush' && hand.kind === 'thief' ? PHOTO_RUSH_SPEED : 1);
-      if (hand.progress >= 1) {
-        hand.progress = 1;
-        arrive(s, hand);
-        if ((s.phase as GameState['phase']) === 'over') return; // the hand that arrived may have ended it
-      }
-    } else {
-      hand.progress -= (dt / hand.travel) * (hand.slapped ? 3.5 : 1.6);
-    }
-  }
-  for (const hand of s.hands) {
-    if (!hand.beingHeld) hand.held = Math.max(0, hand.held - dt * 0.6);
-    hand.beingHeld = false;
-  }
-  s.hands = s.hands.filter((hand) => hand.state === 'reaching' || hand.progress > 0);
+  if (!moveHands(s, dt, rng, photo)) return;
   // The wave's over once the last hand has gone.
   if (!spawning && s.hands.length === 0) {
     const bonus = s.blocks * CONFIG.waveBonusPerBlock;
