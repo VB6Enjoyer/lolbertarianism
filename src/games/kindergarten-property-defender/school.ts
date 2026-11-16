@@ -36,7 +36,7 @@ export const weekOf = (day: number) => Math.floor((day - 1) / DAYS.length) + 1;
 export const isFriday = (day: number) => (day - 1) % DAYS.length === DAYS.length - 1;
 
 /** The kinds of grabby hand, and the classmates who pretend to trade. */
-export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal';
+export type Role = 'grabby' | 'monitor' | 'group' | 'president' | 'fraud' | 'principal' | 'mitten' | 'sticky' | 'lunch' | 'pet' | 'superintendent' | 'board' | 'doe';
 
 export interface RoleInfo {
   id: Role;
@@ -50,26 +50,75 @@ export interface RoleInfo {
 
 export const ROLES: readonly RoleInfo[] = [
   { id: 'grabby', name: 'Grabby hand', from: 1, weight: 10, intro: '' },
-  { id: 'monitor', name: 'Hall Monitor', from: 2, weight: 2, intro: '🦺 New today: the Hall Monitor. Takes three slaps. Just following orders.' },
-  { id: 'group', name: 'Group Project', from: 3, weight: 2, intro: '👯 New today: the Group Project kids. They come in pairs. “We did it together!”' },
-  { id: 'president', name: 'Class President', from: 4, weight: 1.5, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
-  { id: 'fraud', name: 'Monopoly-money kid', from: 4, weight: 1.5, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
+  { id: 'monitor', name: 'Hall Monitor', from: 2, weight: 1.5, intro: '🦺 New today: the Hall Monitor. Takes three slaps. Just following orders.' },
+  { id: 'mitten', name: 'Oven Mitts', from: 3, weight: 1.2, intro: '🧤 New today: Oven Mitts. Slaps bounce right off. RIGHT-CLICK to pinch (on a phone, double-tap).' },
+  { id: 'sticky', name: 'Sticky Fingers', from: 4, weight: 1.2, intro: '🍯 New today: Sticky Fingers. Won’t let go of a slap. PRESS AND HOLD on it to pry it off.' },
+  { id: 'group', name: 'Group Project', from: 4, weight: 1.5, intro: '👯 Also new: the Group Project kids. They come in pairs. “We did it together!”' },
+  { id: 'president', name: 'Class President', from: 5, weight: 1.2, intro: '🗳️ New today: the Class President, here to collect a 10% tax. Slap the ballot box.' },
   { id: 'principal', name: 'The Principal', from: 5, weight: 0, intro: '📢 It’s Friday: the Principal visits during show and tell. Eminent domain. Eight slaps to stop.' },
+  { id: 'fraud', name: 'Monopoly-money kid', from: 6, weight: 1.2, intro: '💵 Careful: the Monopoly-money kid looks like a trader, but pays in funny money. Fraud is aggression: slap it, no gold star lost.' },
+  { id: 'lunch', name: 'Free Lunch kid', from: 7, weight: 1, intro: '🥪 New today: the Free Lunch kid. Offers you something for FREE, then takes a big handful on the way out. There’s no such thing as a free lunch: slap it, no gold star lost.' },
+  { id: 'pet', name: 'Teacher’s Pet', from: 8, weight: 1.1, intro: '🍎 New today: the Teacher’s Pet. DON’T slap it, or it tells on you. RIGHT-CLICK to pinch it (on a phone, double-tap).' },
+  // The later Friday bosses (they come on a schedule; see BOSSES)
+  { id: 'superintendent', name: 'The Superintendent', from: 999, weight: 0, intro: '' },
+  { id: 'board', name: 'The School Board', from: 999, weight: 0, intro: '' },
+  { id: 'doe', name: 'The Department of Education', from: 999, weight: 0, intro: '' },
 ];
+
+/** Friday's boss, a bigger one each week. */
+export interface Boss {
+  role: Role;
+  title: string;
+  warning: string;
+  /** Hits to send it away, and the share of the pile it takes if it gets there. */
+  hp: number;
+  take: number;
+}
+
+export const BOSSES: readonly Boss[] = [
+  { role: 'principal', title: 'THE PRINCIPAL', warning: 'Eminent domain: it takes 30% of your pile. Eight slaps to send it away.', hp: 8, take: 0.3 },
+  { role: 'superintendent', title: 'THE SUPERINTENDENT', warning: 'Comes with a Hall Monitor escort, and calls in more as you slap it. Ten slaps. Takes 35%.', hp: 10, take: 0.35 },
+  { role: 'board', title: 'THE SCHOOL BOARD', warning: 'Three members, from three directions. Four slaps each. Each one takes 15%.', hp: 4, take: 0.15 },
+  { role: 'doe', title: 'THE DEPARTMENT OF EDUCATION', warning: 'Switches between needing slaps and needing pinches (right-click). Fourteen hits. Takes 40%.', hp: 14, take: 0.4 },
+];
+
+/** This week's boss (the Department of Education keeps coming back, tougher every week). */
+export const bossFor = (week: number): Boss => {
+  const b = BOSSES[Math.min(week, BOSSES.length) - 1];
+  return week > BOSSES.length ? { ...b, hp: b.hp + 3 * (week - BOSSES.length) } : b;
+};
+
+export const isBoss = (r: Role | null | undefined) => !!r && BOSSES.some((b) => b.role === r);
+export const bossInfo = (r: Role) => BOSSES.find((b) => b.role === r);
+
+/** How the special input each troublemaker needs (most just need a slap). */
+export const NEEDS: Partial<Record<Role, 'pinch' | 'hold'>> = { mitten: 'pinch', sticky: 'hold', pet: 'pinch' };
+/** The troublemakers who come in looking like traders. */
+export const DISGUISED: readonly Role[] = ['fraud', 'lunch'];
+export const disguised = (r: Role | null | undefined) => !!r && DISGUISED.includes(r);
 
 export const roleInfo = (r: Role) => ROLES.find((x) => x.id === r)!;
 
 /** Which troublemakers are around on a day (the Principal comes on a schedule, not by chance). */
 export function rolesOn(day: number): RoleInfo[] {
-  const intoWeek = day > DAYS.length ? DAYS.length : day;
-  return ROLES.filter((r) => r.weight > 0 && r.from <= intoWeek);
+  return ROLES.filter((r) => r.weight > 0 && r.from <= day);
+}
+
+/**
+ * Troublemakers get more common every day after they first turn up (the ones that need a pinch or a hold
+ * fastest), and plain grabby hands get rarer.
+ */
+export function weightOn(r: RoleInfo, day: number): number {
+  if (r.id === 'grabby') return Math.max(5, r.weight - 0.4 * (day - 1));
+  const since = day - r.from;
+  return NEEDS[r.id] ? r.weight * Math.min(4, 1 + 0.5 * since) : r.weight * Math.min(3, 1 + 0.3 * since);
 }
 
 /** Who's new today (first week only). */
-export const newToday = (day: number): RoleInfo[] => (day <= DAYS.length ? ROLES.filter((r) => r.from === day && r.id !== 'grabby') : []);
+export const newToday = (day: number): RoleInfo[] => ROLES.filter((r) => r.from === day && r.id !== 'grabby');
 
 export function pickRole(day: number, period: PeriodId, rng: () => number): Role {
-  const pool = rolesOn(day).map((r) => ({ id: r.id, weight: r.weight * (period === 'show' && r.id !== 'grabby' ? 2.5 : 1) }));
+  const pool = rolesOn(day).map((r) => ({ id: r.id, weight: weightOn(r, day) * (period === 'show' && r.id !== 'grabby' ? 2 : 1) }));
   let roll = rng() * pool.reduce((sum, r) => sum + r.weight, 0);
   for (const r of pool) {
     roll -= r.weight;
@@ -103,9 +152,10 @@ export interface ReportCard {
   bonus: number;
 }
 
-export function reportCard(d: DayStats): ReportCard {
+/** `length` is the share of a full day that school was open (a snow day is shorter, so it needs fewer trades). */
+export function reportCard(d: DayStats, length = 1): ReportCard {
   const defence = grade(d.thieves ? d.stopped / d.thieves : 1, [0.9, 0.75, 0.6, 0.45]);
-  const economics = grade(d.trades + Math.max(0, d.profit) / 3, [10, 7, 4, 2]);
+  const economics = grade((d.trades + Math.max(0, d.profit) / 3) / length, [10, 7, 4, 2]);
   const citizenship: Grade = (['A', 'B', 'C', 'D'] as Grade[])[d.violations] ?? 'F';
   const points: Record<Grade, number> = { A: 100, B: 60, C: 30, D: 10, F: 0 };
   const comment =
@@ -124,4 +174,4 @@ export function reportCard(d: DayStats): ReportCard {
 }
 
 /** The weekend's allowance (after Friday): more each week. */
-export const allowance = (week: number) => 5 + week * 3;
+export const allowance = (week: number) => 3 + week * 2;

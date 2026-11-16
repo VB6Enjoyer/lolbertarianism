@@ -117,9 +117,79 @@ body {
     text-transform: none;
 }
 
-.stash-stat b {
+.stash-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
     min-width: 2em;
     font-size: 16px;
+}
+
+.stash-items .item {
+    padding: 1px 6px;
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    background: #fff8c4;
+    font: 16px var(--font);
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.stash-items .item:not(:disabled):hover {
+    transform: translateY(-2px) rotate(-3deg);
+}
+
+.stash-items .item:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.shout-button {
+    position: relative;
+    display: grid;
+    align-content: center;
+    gap: 3px;
+    min-width: 150px;
+    padding: 4px 10px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    background: #fff;
+    color: var(--muted);
+    font: bold 13px var(--font);
+    cursor: pointer;
+}
+
+.shout-button i {
+    display: block;
+    height: 8px;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.shout-button i b {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #8e44ad;
+    transition: width 0.2s;
+}
+
+.shout-button:disabled {
+    cursor: default;
+}
+
+.shout-button.ready {
+    background: #f5e6ff;
+    color: #6c3483;
+    animation: shout-ready 0.6s infinite alternate;
+}
+
+@keyframes shout-ready {
+    to {
+        transform: rotate(-2deg) scale(1.04);
+        box-shadow: 0 0 0 4px rgba(142, 68, 173, 0.35);
+    }
 }
 
 .icon-button {
@@ -290,7 +360,13 @@ body {
     }
 
     .stash-stat {
-        display: none;
+        order: 6;
+        flex: 1;
+    }
+
+    .shout-button {
+        order: 7;
+        min-width: 120px;
     }
 
     .wave-stat {
@@ -479,7 +555,7 @@ body {
     font-size: 15px;
 }
 
-#show-achievements {
+#pause {
     margin-left: auto;
 }
 
@@ -581,5 +657,330 @@ body {
     .toasts {
         top: 110px;
         left: 12px;
+    }
+}
+
+/* --- Pause, and options --- */
+.options {
+    margin: 4px 0 10px;
+}
+
+.small-toggle {
+    padding: 6px 14px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    background: #fff;
+    color: var(--ink);
+    font: 16px var(--font);
+    cursor: pointer;
+}
+
+.small-toggle[aria-pressed='true'] {
+    background: #fff8c4;
+}
+
+.small-toggle:hover {
+    transform: rotate(-1deg);
+}
+
+.pause-keys {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.pause-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Colour-blind mode: the title screen's legend matches the classroom */
+body.colorblind {
+    --thief: #e8710a;
+    --trader: #1f77b4;
+}
+
+/* --- Weekend perks --- */
+.perks {
+    text-align: left;
+}
+
+.perks h2 {
+    margin: 10px 0 6px;
+    font-size: 22px;
+}
+
+.perk-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.perk {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    padding: 12px 10px;
+    border: 3px solid #8e44ad;
+    border-radius: var(--sketch);
+    background: #fbf3ff;
+    color: var(--ink);
+    font: 15px var(--font);
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.perk:hover {
+    transform: translateY(-3px) rotate(-1deg);
+    box-shadow: 4px 5px 0 rgba(142, 68, 173, 0.25);
+}
+
+.perk .icon {
+    font-size: 32px;
+}
+
+.perk b {
+    font-size: 18px;
+}
+
+.perk small {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.3;
+}
+
+.owned-perks {
+    margin: 8px 0 0;
+    font-size: 14px;
+}
+
+.owned-perk {
+    display: inline-block;
+    margin: 2px 4px 2px 0;
+    padding: 1px 8px;
+    border: 1px solid #8e44ad;
+    border-radius: 999px;
+    background: #fbf3ff;
+    cursor: help;
+}
+
+.big-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* --- The diploma --- */
+.diploma-panel {
+    width: min(680px, 100%);
+}
+
+.diploma {
+    margin-bottom: 14px;
+    padding: 18px 22px;
+    border: 6px double #b9770e;
+    border-radius: 6px;
+    background: repeating-linear-gradient(0deg, #fffdf2, #fffdf2 26px, #f7f0d8 27px);
+}
+
+.diploma p {
+    margin: 0 0 8px;
+}
+
+.diploma .seal {
+    font-size: 52px;
+    margin: 0;
+}
+
+.diploma .certify {
+    font-size: 18px;
+}
+
+.diploma .name {
+    font-size: 48px;
+    font-weight: bold;
+    line-height: 1.1;
+    text-decoration: underline wavy #b9770e;
+}
+
+.diploma .gpa {
+    color: var(--muted);
+    font-size: 15px;
+}
+
+.diploma .signed {
+    margin-top: 14px;
+    font-style: italic;
+}
+
+.diploma .signed span {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+/* --- Difficulty, the daily challenge, run history --- */
+.difficulty {
+    display: inline-flex;
+    gap: 0;
+    margin: 4px 0 2px;
+    border: 2px solid var(--ink);
+    border-radius: var(--sketch);
+    overflow: hidden;
+}
+
+.difficulty button {
+    padding: 6px 16px;
+    border: 0;
+    border-left: 2px solid var(--ink);
+    background: #fff;
+    color: var(--ink);
+    font: 17px var(--font);
+    cursor: pointer;
+}
+
+.difficulty button:first-child {
+    border-left: 0;
+}
+
+.difficulty button:hover {
+    background: #fffbe0;
+}
+
+.difficulty button[aria-checked='true'] {
+    background: var(--gold);
+    font-weight: bold;
+}
+
+.difficulty-note {
+    margin: 2px 0 6px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.daily-special {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    margin: 0 0 10px;
+    padding: 12px;
+    border: 3px dashed var(--gold);
+    border-radius: var(--sketch);
+    background: #fffbe0;
+}
+
+.daily-special .icon {
+    font-size: 40px;
+}
+
+.daily-special b {
+    font-size: 22px;
+}
+
+.daily-special small {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.daily-kit {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    padding: 0;
+    list-style: none;
+}
+
+.daily-kit li {
+    padding: 3px 10px;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 15px;
+}
+
+.daily-best {
+    margin: 0 0 12px;
+}
+
+.history-body {
+    overflow-x: auto;
+    margin-bottom: 14px;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+}
+
+.history-table th,
+.history-table td {
+    padding: 6px 8px;
+    border-bottom: 2px dashed #ddd;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.history-table th {
+    color: var(--muted);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.history-table tbody tr:first-child td {
+    background: #fffbe0;
+}
+
+/* --- The guided first morning --- */
+.coach {
+    position: absolute;
+    top: 84px;
+    left: 50%;
+    z-index: 5;
+    width: min(560px, calc(100% - 32px));
+    padding: 12px 16px;
+    border: 3px solid var(--ink);
+    border-radius: var(--sketch);
+    background: #fffdf0;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.15);
+    text-align: center;
+    transform: translateX(-50%) rotate(-0.5deg);
+    animation: coach-in 0.25s ease-out;
+}
+
+.coach[hidden] {
+    display: none;
+}
+
+.coach p {
+    margin: 0 0 8px;
+    font-size: 19px;
+    line-height: 1.35;
+}
+
+.coach .small-toggle {
+    padding: 3px 12px;
+    font-size: 14px;
+}
+
+@keyframes coach-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-8px) rotate(-0.5deg);
+    }
+}
+
+@media (max-width: 640px) {
+    .coach {
+        top: 116px;
+    }
+
+    .coach p {
+        font-size: 16px;
     }
 }

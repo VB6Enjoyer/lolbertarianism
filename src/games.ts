@@ -46,8 +46,8 @@ export const games: Game[] = [
   {
     slug: 'kindergarten-property-defender',
     title: 'Kindergarten Property Defender',
-    blurb: 'The teacher wants to redistribute your blocks. Slap the grabby hands, but let your classmates trade.',
-    status: 'prototype',
+    blurb: 'The teacher wants to redistribute your blocks. Slap the grabby hands, trade with your classmates, and graduate with a minor in Austrian Economics.',
+    status: 'released', // v1.0
     legacyPaths: ['Kindergarten Property Defender.html'],
   },
   {

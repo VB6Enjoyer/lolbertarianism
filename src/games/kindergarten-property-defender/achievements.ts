@@ -21,12 +21,25 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'fraud', icon: '💵', name: 'Fraud Is Aggression', description: 'Slap the Monopoly-money kid.' },
   { id: 'president', icon: '🗳️', name: 'Vote With Your Hands', description: 'Slap the Class President before the tax comes in.' },
   { id: 'principal', icon: '📢', name: 'No Eminent Domain', description: 'Send the Principal away.' },
+  { id: 'superintendent', icon: '🏛️', name: 'District Overruled', description: 'Send the Superintendent away.' },
+  { id: 'board', icon: '📋', name: 'Motion Denied', description: 'Send all three School Board members away.' },
+  { id: 'doe', icon: '🦅', name: 'Abolish It', description: 'Send the Department of Education away.' },
+  { id: 'shout', icon: '📢', name: 'Property Rights!', description: 'Shout PROPERTY RIGHTS! with a full meter.' },
+  { id: 'shout-5', icon: '🌪️', name: 'Hurricane Jack', description: 'Blow away 5 or more hands with one shout.' },
+  { id: 'item', icon: '🎒', name: 'Utility Maximizer', description: 'Use something from your stash instead of selling it.' },
+  { id: 'mitten', icon: '🧤', name: 'Oven Mitts Off', description: 'Pinch away a pair of Oven Mitts.' },
+  { id: 'sticky', icon: '🍯', name: 'Pry Bar', description: 'Pry Sticky Fingers off your pile.' },
+  { id: 'lunch', icon: '🥪', name: 'TANSTAAFL', description: 'Slap the Free Lunch kid.' },
+  { id: 'pet', icon: '🍎', name: 'Teacher’s Pet Peeve', description: 'Pinch the Teacher’s Pet away.' },
   // Trading
   { id: 'first-trade', icon: '🤝', name: 'Voluntary Exchange', description: 'Complete your first trade.' },
   { id: 'flip', icon: '📈', name: 'Buy Low, Sell High', description: 'Sell something you traded for.' },
   { id: 'middleman', icon: '🧑‍💼', name: 'Middleman', description: 'Sell something for 2 or more blocks more than you paid.' },
   { id: 'collector', icon: '🎒', name: 'Collector', description: 'Have 5 things in your stash at once.' },
   { id: 'tycoon', icon: '🎩', name: 'Kindergarten Tycoon', description: 'Make 50 trades in one game.' },
+  // The regulars
+  { id: 'friend', icon: '💛', name: 'Repeat Customer', description: 'Become best friends with a regular.' },
+  { id: 'all-friends', icon: '🫶', name: 'Social Capital', description: 'Be best friends with Timmy, Becky and Dave at the same time.' },
   // Citizenship
   { id: 'my-bad', icon: '😬', name: 'My Bad', description: 'Slap a classmate who only wanted to trade.' },
   { id: 'redemption', icon: '⭐', name: 'Redemption', description: 'Win a gold star back with good trades.' },
@@ -36,10 +49,25 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   // Getting through the weeks
   { id: 'tgif', icon: '🎉', name: 'TGIF', description: 'Make it through your first Friday.' },
   { id: 'week-2', icon: '📅', name: 'Two Weeks’ Notice', description: 'Make it through two weeks.' },
-  { id: 'week-3', icon: '🎓', name: 'Tenure', description: 'Make it through three weeks.' },
+  { id: 'week-3', icon: '🍎', name: 'Tenure', description: 'Make it through three weeks.' },
   { id: 'night-watch', icon: '🔦', name: 'Night Watch', description: 'Get through nap time without losing a block.' },
   { id: 'score-10k', icon: '🏅', name: 'Gold Star Student', description: 'Score 10,000 points in one game.' },
   { id: 'score-50k', icon: '🏆', name: 'Valedictorian', description: 'Score 50,000 points in one game.' },
+  // Weekends and graduation
+  { id: 'perk', icon: '🏖️', name: 'Weekend Warrior', description: 'Pick your first weekend perk.' },
+  { id: 'perks-5', icon: '🧰', name: 'Well-Rounded', description: 'Have five different perks in one game.' },
+  { id: 'graduate', icon: '🎓', name: 'Graduate', description: 'Survive five weeks and graduate from kindergarten.' },
+  { id: 'summa', icon: '📜', name: 'Summa Cum Laude', description: 'Graduate with a GPA of 3.5 or better.' },
+  { id: 'summer', icon: '🌞', name: 'Summer School', description: 'Get through a day of summer school after graduating.' },
+  // Special days, the daily challenge, Hard
+  { id: 'substitute', icon: '🥸', name: 'Who’s the Sub?', description: 'Get through a substitute day without a NAP violation.' },
+  { id: 'picture', icon: '📸', name: 'Say Cheese', description: 'Get through picture day.' },
+  { id: 'field-trip', icon: '🚌', name: 'Wheels on the Bus', description: 'Get through a field trip.' },
+  { id: 'snow', icon: '❄️', name: 'Snowed In', description: 'Get through a snow day without losing a block.' },
+  { id: 'daily', icon: '📅', name: 'Daily Grind', description: 'Finish a daily challenge.' },
+  { id: 'daily-5', icon: '🗓️', name: 'Perfect Attendance', description: 'Finish the daily challenge on five different days.' },
+  { id: 'hard', icon: '🔥', name: 'Hard Knocks', description: 'Make it through a Friday on Hard.' },
+  { id: 'hard-grad', icon: '🏛️', name: 'Ivy League', description: 'Graduate on Hard.' },
   // Capital
   { id: 'first-build', icon: '🏗️', name: 'Capital Formation', description: 'Build something with your blocks.' },
   { id: 'lemonade', icon: '🍋', name: 'Lemonade Mogul', description: 'Build the lemonade stand all the way up.' },
@@ -51,6 +79,9 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'funny-money', icon: '🃏', name: 'Funny Money', description: 'Get paid in Monopoly money.', secret: true },
   { id: 'unpaid', icon: '🧾', name: 'Unpaid Wages', description: 'Can’t pay the security kid, who quits.', secret: true },
   { id: 'nightmare', icon: '😈', name: 'Teacher’s Nightmare', description: 'Get an F in Plays Well With Others.', secret: true },
+  { id: 'free-lunch', icon: '🍱', name: 'Someone Always Pays', description: 'Fall for a free lunch.', secret: true },
+  { id: 'tattle', icon: '🙋', name: 'Tattletale', description: 'Slap the Teacher’s Pet and get told on.', secret: true },
+  { id: 'grudge', icon: '😤', name: 'Burned Bridges', description: 'Slap a regular who was your best friend.', secret: true },
   { id: 'expelled', icon: '🚸', name: 'Principal’s Office', description: 'Get sent to the principal.', secret: true },
 ];
 
