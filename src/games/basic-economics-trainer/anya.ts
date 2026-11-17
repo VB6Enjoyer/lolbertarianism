@@ -147,8 +147,18 @@ export function faceMarkup(face: Face, mouth?: Mouth): string {
   return `${parts.upper}${nose}${mouth ? talkingMouth(face, mouth) : parts.mouth}${parts.extra}`;
 }
 
-/** The pages, seen from the side. */
-const PAGES = `<path d="M 168 300 L 178 296 L 178 424 L 168 428 Z" fill="#f4efe6" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
+/** The block of pages: the fore-edge on the right and the top edge above the cover, each with faint
+ *  page lines, so the book reads as solid rather than an open shell. */
+const pageLines = [0.3, 0.55, 0.78]
+  .map((t) => {
+    const dx = (10 * t).toFixed(1);
+    const dy = (4 * t).toFixed(1);
+    return `<path d="M ${64 + 10 * t} ${302 - 4 * t} L ${168 + 10 * t} ${300 - 4 * t}" stroke="#cfc4b1" stroke-width="0.8"/><path d="M ${168 + +dx} ${300 - +dy} L ${168 + +dx} ${428 - +dy}" stroke="#cfc4b1" stroke-width="0.8"/>`;
+  })
+  .join('');
+const PAGES = `<path d="M 168 300 L 178 296 L 178 424 L 168 428 Z" fill="#f4efe6" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 64 302 L 74 298 L 178 296 L 168 300 Z" fill="#f8f3ea" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+    ${pageLines}`;
 const SANS = `'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
 
 /** Each book's cover, drawn on the same face (64,300 to 168,430) so they can swap on the plate. */
