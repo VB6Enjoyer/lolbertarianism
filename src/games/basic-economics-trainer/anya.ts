@@ -87,33 +87,64 @@ export function overMarkup(face: Face): string {
   return '';
 }
 
-/** The face layer: brows, eyes, nose and mouth for an expression. */
-export function faceMarkup(face: Face): string {
-  const nose = path('M 199 251 Q 201 254 203 252', 'none', 2);
+/** While she talks, her mouth opens and closes; her eyes and brows keep the expression. */
+export type Mouth = 'closed' | 'open';
+
+const NEUTRAL_MOUTH = path('M 193 272 Q 200 275 207 272');
+const TALK_MOUTH = `<ellipse cx="200" cy="273" rx="7" ry="6" fill="#fff" stroke="${INK}" stroke-width="2.6"/>`;
+const HAPPY_MOUTH = `${path('M 182 265 Q 200 294 218 265 Z', '#f1a99a', 3)}${paint('M 190 279 Q 200 286 210 279 Q 200 283 190 279 Z', 'fill="#e07f72" stroke="none"')}`;
+const SHOCK_MOUTH = `<ellipse cx="200" cy="274" rx="10" ry="13" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+const POUT_MOUTH = path('M 189 276 Q 194 269 200 275 Q 206 269 211 276');
+
+/** An expression in pieces: the eyes and brows, its own mouth, and anything drawn over the mouth (blush, marks). */
+function faceParts(face: Face): { upper: string; mouth: string; extra: string } {
   const eyes = (opts: Parameters<typeof eye>[3] = {}) => EYES.map((e) => eye(e.x, e.y, e.side, opts)).join('');
   switch (face) {
     case 'shock':
       // The meme: wide eyes, a little white "o"
-      return `${brows('up')}${eyes({ iris: 0.82 })}${nose}<ellipse cx="200" cy="274" rx="10" ry="13" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+      return { upper: `${brows('up')}${eyes({ iris: 0.82 })}`, mouth: SHOCK_MOUTH, extra: '' };
     case 'smug':
       // Heh: half-lidded, a cat smile, a blush
-      return `${brows('flat')}${eyes({ lid: 0.5 })}${nose}${path('M 184 268 Q 192 276 200 269 Q 208 276 216 268')}${blush()}`;
+      return { upper: `${brows('flat')}${eyes({ lid: 0.5 })}`, mouth: path('M 184 268 Q 192 276 200 269 Q 208 276 216 268'), extra: blush() };
     case 'happy':
       // Waku waku: sparkly eyes, a big open smile
-      return `${brows('up')}${eyes({ stars: true, iris: 1.05 })}${nose}${path('M 182 265 Q 200 294 218 265 Z', '#f1a99a', 3)}${paint('M 190 279 Q 200 286 210 279 Q 200 283 190 279 Z', 'fill="#e07f72" stroke="none"')}${blush()}`;
+      return { upper: `${brows('up')}${eyes({ stars: true, iris: 1.05 })}`, mouth: HAPPY_MOUTH, extra: blush() };
     case 'deadpan':
       // Flat lids, dot pupils, a flat mouth
-      return `${brows('flat')}${EYES.map(({ x, y }) => `${path(`M ${x - 24} ${y - 2} L ${x + 24} ${y - 2}`, 'none', 5)}<circle cx="${x}" cy="${y + 8}" r="4.5" fill="${INK}"/>`).join('')}${nose}${path('M 190 274 L 210 274')}`;
+      return { upper: `${brows('flat')}${EYES.map(({ x, y }) => `${path(`M ${x - 24} ${y - 2} L ${x + 24} ${y - 2}`, 'none', 5)}<circle cx="${x}" cy="${y + 8}" r="4.5" fill="${INK}"/>`).join('')}`, mouth: path('M 190 274 L 210 274'), extra: '' };
     case 'pout':
       // Cross: angry brows, narrowed eyes, a wobbly pout, puffed cheek and an anger mark
-      return `${brows('angry')}${eyes({ lid: 0.25, iris: 0.95 })}${nose}${path('M 189 276 Q 194 269 200 275 Q 206 269 211 276')}${path('M 268 262 q 6 4 4 10', 'none', 2)}`;
+      return { upper: `${brows('angry')}${eyes({ lid: 0.25, iris: 0.95 })}`, mouth: POUT_MOUTH, extra: path('M 268 262 q 6 4 4 10', 'none', 2) };
     case 'blink':
-      return `${brows('normal')}${EYES.map(({ x, y }) => path(`M ${x - 26} ${y + 2} Q ${x} ${y + 14} ${x + 26} ${y + 2}`, 'none', 5)).join('')}${nose}${path('M 193 272 Q 200 275 207 272')}`;
+      return { upper: `${brows('normal')}${EYES.map(({ x, y }) => path(`M ${x - 26} ${y + 2} Q ${x} ${y + 14} ${x + 26} ${y + 2}`, 'none', 5)).join('')}`, mouth: NEUTRAL_MOUTH, extra: '' };
     case 'talk':
-      return `${brows('normal')}${eyes()}${nose}<ellipse cx="200" cy="273" rx="7" ry="6" fill="#fff" stroke="${INK}" stroke-width="2.6"/>`;
+      return { upper: `${brows('normal')}${eyes()}`, mouth: TALK_MOUTH, extra: '' };
     default:
-      return `${brows('normal')}${eyes()}${nose}${path('M 193 272 Q 200 275 207 272')}`;
+      return { upper: `${brows('normal')}${eyes()}`, mouth: NEUTRAL_MOUTH, extra: '' };
   }
+}
+
+/** The mouth while talking, closed or open, in a shape that suits the expression. */
+function talkingMouth(face: Face, mouth: Mouth): string {
+  if (mouth === 'open') {
+    if (face === 'happy') return HAPPY_MOUTH;
+    if (face === 'shock') return SHOCK_MOUTH;
+    if (face === 'pout') return `<ellipse cx="200" cy="274" rx="6" ry="5" fill="#fff" stroke="${INK}" stroke-width="2.6"/>`;
+    return TALK_MOUTH;
+  }
+  if (face === 'happy') return path('M 187 269 Q 200 280 213 269');
+  if (face === 'shock') return `<ellipse cx="200" cy="274" rx="6" ry="7" fill="#fff" stroke="${INK}" stroke-width="2.6"/>`;
+  if (face === 'pout') return POUT_MOUTH;
+  if (face === 'deadpan') return path('M 192 274 L 208 274');
+  if (face === 'smug') return path('M 191 271 Q 200 277 209 271');
+  return NEUTRAL_MOUTH;
+}
+
+/** The face layer: brows, eyes, nose and mouth for an expression. With `mouth`, she's mid-sentence. */
+export function faceMarkup(face: Face, mouth?: Mouth): string {
+  const nose = path('M 199 251 Q 201 254 203 252', 'none', 2);
+  const parts = faceParts(face);
+  return `${parts.upper}${nose}${mouth ? talkingMouth(face, mouth) : parts.mouth}${parts.extra}`;
 }
 
 /** The pages, seen from the side. */
