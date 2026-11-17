@@ -177,7 +177,18 @@ describe('basic economics trainer: Anya', () => {
     expect(svg).toContain('id="anya-face"');
     expect(svg).toContain('id="anya-book"');
     const faces: Face[] = ['neutral', 'talk', 'shock', 'smug', 'happy', 'deadpan', 'pout', 'blink'];
-    expect(new Set(faces.map(faceMarkup)).size).toBe(faces.length);
+    expect(new Set(faces.map((f) => faceMarkup(f))).size).toBe(faces.length);
+  });
+
+  it('only moves her mouth while she talks, keeping the eyes of her expression', () => {
+    const eyesOf = (markup: string) => markup.slice(0, markup.indexOf('M 199 251'));
+    for (const face of ['neutral', 'smug', 'happy', 'shock', 'pout', 'deadpan'] as Face[]) {
+      const open = faceMarkup(face, 'open');
+      const closed = faceMarkup(face, 'closed');
+      expect(eyesOf(open), face).toBe(eyesOf(faceMarkup(face)));
+      expect(eyesOf(closed), face).toBe(eyesOf(faceMarkup(face)));
+      expect(open, face).not.toBe(closed);
+    }
   });
 
   it('can be booped, patted and poked, and recolored', () => {

@@ -3,7 +3,7 @@ import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import * as anyaV2 from './anya.ts';
 import { coverMarkup } from './anya.ts';
-import type { Face } from './anya.ts';
+import type { Face, Mouth } from './anya.ts';
 import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
 import { BOOKS, bookById, dateKey, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
@@ -202,14 +202,16 @@ els.anya.innerHTML = art.anyaSvg();
 const faceLayer = els.anya.querySelector('#anya-face')!;
 const overLayer = els.anya.querySelector('#anya-over');
 let face: Face = 'neutral';
-let shown: Face = 'neutral';
+/** What's drawn right now, including the mouth when she's talking, so nothing is redrawn needlessly. */
+let shownKey = 'neutral';
 /** A passing reaction (a boop, a pat) shows over her current face for a moment. */
 let quipFace: Face | null = null;
 
-function show(f: Face) {
-  if (f === shown) return;
-  shown = f;
-  faceLayer.innerHTML = art.faceMarkup(f);
+function show(f: Face, mouth?: Mouth) {
+  const key = mouth ? `${f}:${mouth}` : f;
+  if (key === shownKey) return;
+  shownKey = key;
+  faceLayer.innerHTML = art.faceMarkup(f, mouth);
   if (overLayer) overLayer.innerHTML = art.overMarkup(f);
 }
 
@@ -251,7 +253,8 @@ function say(text: string, opts: { talk?: boolean; quip?: boolean; queueSpeech?:
   typing = window.setInterval(() => {
     i++;
     els.bubbleText.textContent = text.slice(0, i);
-    if (talking) show(i % 4 < 2 ? 'talk' : (quipFace ?? face));
+    // Only the mouth moves, opening and closing every few letters; her eyes keep the expression.
+    if (talking) show(quipFace ?? face, Math.floor(i / 5) % 2 === 0 ? 'open' : 'closed');
     if (i % 3 === 0 && text[i] !== ' ') play('blip');
     if (i >= text.length) finishTyping();
   }, 22);

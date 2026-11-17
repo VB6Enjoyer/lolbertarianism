@@ -65,7 +65,13 @@ const blush = () =>
     .join('');
 
 /** The face layer: brows, eyes, nose and mouth for an expression. */
-export function faceMarkup(face: Face): string {
+/** The first drawing talks the old way: its plain talking face when the mouth is open. */
+export function faceMarkup(face: Face, mouth?: 'closed' | 'open'): string {
+  if (mouth === 'open') return faceMarkupV1('talk');
+  return faceMarkupV1(face);
+}
+
+function faceMarkupV1(face: Face): string {
   const nose = path('M 199 251 Q 201 254 203 252', 'none', 2);
   const eyes = (opts: Parameters<typeof eye>[3] = {}) => EYES.map((e) => eye(e.x, e.y, e.side, opts)).join('');
   switch (face) {
