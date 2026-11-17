@@ -2143,6 +2143,32 @@ button {
     background: #2f6b73;
 }
 
+/* Forty Centuries of Wage and Price Controls: a dark sepia page with fine engraving hatches, cream paper, rust accents */
+:root[data-book='fc'] {
+    --page: #3a2d22;
+    --paper: #f6f0e4;
+    --paper-light: #fbf8f1;
+    --muted: #6d5a49;
+    --accent: #b4502c;
+    --accent-ink: #8a3a1d;
+}
+
+:root[data-book='fc'] body {
+    background-image: repeating-linear-gradient(135deg, rgba(240, 220, 190, 0.07) 0 1px, transparent 1px 7px);
+}
+
+:root[data-book='fc'] .brand-cover {
+    background: linear-gradient(#f3eee3 0 46%, #c0532f 46% 58%, #e7dcc6 58% 82%, #2b2724 82%);
+}
+
+:root[data-book='fc'] .anya-ribbon {
+    fill: #b4502c;
+}
+
+.stat-bar .track i.book-fc {
+    background: #b4502c;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {

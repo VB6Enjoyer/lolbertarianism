@@ -86,6 +86,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'dmf-part-7', icon: '🚚', name: 'Capitalist Truck', description: 'Pass Part VII: New Stuff.' },
   { id: 'dmf-all-parts', icon: '🔩', name: 'Agoric Order', description: 'Pass every part of The Machinery of Freedom.' },
   { id: 'dmf-whole-book', icon: '🏴', name: 'Anarchy Is Not Chaos', description: 'Answer every question in The Machinery of Freedom right at least once.' },
+  { id: 'fc-part-1', icon: '🔺', name: 'Edict of Diocletian', description: 'Pass Part I of Forty Centuries of Wage and Price Controls: The Ancient World and Rome.' },
+  { id: 'fc-part-2', icon: '🦫', name: 'No Corn, No Beaver', description: 'Pass Part II: Medieval Times to the Revolution.' },
+  { id: 'fc-part-3', icon: '🌽', name: 'Corn Laws Repealed', description: 'Pass Part III: Corn Laws to the Interwar Years.' },
+  { id: 'fc-part-4', icon: '🛑', name: 'Price Stop', description: 'Pass Part IV: Dictatorships and Democracies at War.' },
+  { id: 'fc-part-5', icon: '🏚️', name: 'San Francisco, 1906', description: 'Pass Part V: Rents, Incomes and Currencies.' },
+  { id: 'fc-part-6', icon: '🥩', name: 'Phase Four', description: 'Pass Part VI: The 1970s and Inflation’s Causes.' },
+  { id: 'fc-part-7', icon: '🪶', name: 'Pelatiah Webster', description: 'Pass Part VII: Cures, Effects and Conclusions.' },
+  { id: 'fc-all-parts', icon: '🏺', name: 'Forty Centuries', description: 'Pass every part of Forty Centuries of Wage and Price Controls.' },
+  { id: 'fc-whole-book', icon: '🎈', name: 'How Not to Fight Inflation', description: 'Answer every question in Forty Centuries of Wage and Price Controls right at least once.' },
   // Every book
   { id: 'well-read', icon: '📚', name: 'Well Read', description: 'Answer 100 different questions right.' },
   // Drills

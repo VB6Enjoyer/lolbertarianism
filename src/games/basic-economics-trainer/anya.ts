@@ -298,6 +298,36 @@ const COVERS: Record<string, () => string> = {
     <rect x="70" y="413" width="92" height="0.9" fill="#1f4e5a"/>
     <text x="116" y="423" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="6.5" fill="#1f4e5a" letter-spacing="0.5" textLength="76" lengthAdjust="spacingAndGlyphs">DAVID D. FRIEDMAN</text>`;
   },
+  // Forty Centuries of Wage and Price Controls: a cream cover with the title in rust capitals at the
+  // right, a sepia engraving of pyramids and labourers on a slope, and the authors on a black band.
+  fc: () => {
+    const SEPIA = '#7a6550';
+    const hatch = Array.from({ length: 20 }, (_, i) => {
+      const x = 68 + i * 4.6;
+      const y = 372 + i * 1.3;
+      return `<path d="M ${x.toFixed(1)} ${(y + 3).toFixed(1)} l 3 -2.2" stroke="${SEPIA}" stroke-width="0.6"/><path d="M ${(x + 1.5).toFixed(1)} ${(y + 9).toFixed(1)} l 3 -2.2" stroke="${SEPIA}" stroke-width="0.6"/>`;
+    }).join('');
+    const worker = (x: number, y: number, flip = 1) =>
+      `<g stroke="${SEPIA}" stroke-width="1" fill="none" stroke-linecap="round"><circle cx="${x}" cy="${y}" r="1.6" fill="${SEPIA}"/><path d="M ${x} ${y + 1.6} L ${x - flip * 1.2} ${y + 7} M ${x - flip * 1.2} ${y + 7} L ${x - flip * 3} ${y + 11} M ${x - flip * 1.2} ${y + 7} L ${x + flip * 1.5} ${y + 11} M ${x - flip * 0.3} ${y + 3.5} L ${x + flip * 4} ${y + 1} M ${x + flip * 4} ${y + 1} L ${x + flip * 5.5} ${y + 5}"/></g>`;
+    return `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#f3eee3" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 68 371 L 79 352 L 90 369 Z M 84 369 L 93 356 L 102 368 Z" fill="#ebe3d3" stroke="${SEPIA}" stroke-width="0.8" stroke-linejoin="round"/>
+    <path d="M 79 352 L 82 370 M 93 356 L 95 368" stroke="${SEPIA}" stroke-width="0.5"/>
+    <text font-family="Georgia, 'Times New Roman', serif" fill="#c0532f" text-anchor="end">
+      <tspan x="162" y="316" font-size="9">FORTY</tspan>
+      <tspan x="162" y="326" font-size="9">CENTURIES</tspan>
+      <tspan x="162" y="335.5" font-size="8"><tspan font-style="italic">of</tspan> WAGE &amp; PRICE</tspan>
+      <tspan x="162" y="345" font-size="9">CONTROLS</tspan>
+      <tspan x="162" y="353" font-size="4.8" font-style="italic" textLength="58" lengthAdjust="spacingAndGlyphs">How Not to Fight Inflation</tspan>
+    </text>
+    <path d="M 66 372 Q 116 362 166 392 L 166 408 L 66 408 Z" fill="#e7dcc6"/>
+    <path d="M 66 372 Q 116 362 166 392" fill="none" stroke="${SEPIA}" stroke-width="0.9"/>
+    ${hatch}
+    ${worker(108, 362)}${worker(122, 364, -1)}${worker(136, 368)}${worker(152, 376, -1)}
+    <path d="M 64.5 408 L 167.5 408 L 167.5 427.5 L 64.5 429.5 Z" fill="#2b2724"/>
+    <text x="70" y="416" font-family="Georgia, serif" font-size="5" fill="#f3eee3">Robert L. Schuettinger</text>
+    <text x="70" y="424" font-family="Georgia, serif" font-size="5" fill="#f3eee3"><tspan font-style="italic">and</tspan> Eamonn F. Butler</text>`;
+  },
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */
