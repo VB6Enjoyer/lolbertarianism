@@ -271,6 +271,33 @@ const COVERS: Record<string, () => string> = {
     <text x="76" y="392" font-family="Georgia, 'Times New Roman', serif" font-size="10" fill="#f6ead8">Economic</text>
     <text x="76" y="404" font-family="Georgia, 'Times New Roman', serif" font-size="10" fill="#f6ead8">Cycles</text>
     <text x="76" y="420" font-family="Georgia, serif" font-size="3.6" fill="#e6cdb8" letter-spacing="0.3" textLength="64" lengthAdjust="spacingAndGlyphs">TRANSLATED BY MELINDA A. STROUP</text>`,
+  // The Machinery of Freedom: a cream cover with the title in deep teal over a train of meshing gears,
+  // brass and teal, and the author along the bottom.
+  dmf: () => {
+    const gear = (cx: number, cy: number, r: number, n: number, fill: string, turn = 0) => {
+      const pts: string[] = [];
+      const step = (Math.PI * 2) / n;
+      for (let i = 0; i < n; i++) {
+        const a = i * step + turn;
+        for (const [f, rr] of [[0, 0.8], [0.12, 1], [0.42, 1], [0.54, 0.8]] as const) {
+          pts.push(`${(cx + Math.cos(a + f * step) * r * rr).toFixed(1)},${(cy + Math.sin(a + f * step) * r * rr).toFixed(1)}`);
+        }
+      }
+      return `<polygon points="${pts.join(' ')}" fill="${fill}" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+        <circle cx="${cx}" cy="${cy}" r="${(r * 0.55).toFixed(1)}" fill="none" stroke="#f3ead6" stroke-width="0.8" opacity="0.7"/>
+        <circle cx="${cx}" cy="${cy}" r="${(r * 0.22).toFixed(1)}" fill="#efe6d1" stroke="${INK}" stroke-width="1"/>`;
+    };
+    return `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#efe6d1" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="70" y="307" width="92" height="0.9" fill="#1f4e5a"/>
+    <text x="116" y="320" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="6" fill="#1f4e5a" letter-spacing="1">THE</text>
+    <text x="116" y="335" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="13" font-weight="bold" fill="#1f4e5a" textLength="90" lengthAdjust="spacingAndGlyphs">MACHINERY</text>
+    <text x="116" y="347" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="8" fill="#1f4e5a" letter-spacing="0.6" textLength="62" lengthAdjust="spacingAndGlyphs">OF FREEDOM</text>
+    <text x="116" y="356" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="4.4" fill="#6b5a3a" textLength="72" lengthAdjust="spacingAndGlyphs">Guide to a Radical Capitalism</text>
+    ${gear(96, 391, 19, 12, '#b8892e')}${gear(128, 382, 13, 9, '#2f6b73', 0.2)}${gear(144, 400, 9, 7, '#8a6420', 0.1)}
+    <rect x="70" y="413" width="92" height="0.9" fill="#1f4e5a"/>
+    <text x="116" y="423" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="6.5" fill="#1f4e5a" letter-spacing="0.5" textLength="76" lengthAdjust="spacingAndGlyphs">DAVID D. FRIEDMAN</text>`;
+  },
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */

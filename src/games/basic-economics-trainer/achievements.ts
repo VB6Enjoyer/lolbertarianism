@@ -77,6 +77,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'jhs-part-7', icon: '🔒', name: 'Full Reserve', description: 'Pass Part VII: Central Banking, Free Banking and Reform.' },
   { id: 'jhs-all-parts', icon: '🇪🇸', name: 'School of Salamanca', description: 'Pass every part of Money, Bank Credit, and Economic Cycles.' },
   { id: 'jhs-whole-book', icon: '💯', name: '100-Percent Reserve', description: 'Answer every question in Money, Bank Credit, and Economic Cycles right at least once.' },
+  { id: 'dmf-part-1', icon: '🏠', name: 'Love, Trade or Force', description: 'Pass Part I of The Machinery of Freedom: In Defense of Property.' },
+  { id: 'dmf-part-2', icon: '🚕', name: 'Jitney Transit', description: 'Pass Part II: Schools, Streets and Moon Shots.' },
+  { id: 'dmf-part-3', icon: '🥛', name: 'Certified Raw Milk', description: 'Pass Part III: Drugs, Youth and Creeping Capitalism.' },
+  { id: 'dmf-part-4', icon: '📺', name: 'Tannahelp Inc.', description: 'Pass Part IV: Anarchy Is Not Chaos.' },
+  { id: 'dmf-part-5', icon: '🌋', name: 'Lawspeaker', description: 'Pass Part V: For Libertarians.' },
+  { id: 'dmf-part-6', icon: '🗡️', name: 'Right Makes Might', description: 'Pass Part VI: Further Thoughts.' },
+  { id: 'dmf-part-7', icon: '🚚', name: 'Capitalist Truck', description: 'Pass Part VII: New Stuff.' },
+  { id: 'dmf-all-parts', icon: '🔩', name: 'Agoric Order', description: 'Pass every part of The Machinery of Freedom.' },
+  { id: 'dmf-whole-book', icon: '🏴', name: 'Anarchy Is Not Chaos', description: 'Answer every question in The Machinery of Freedom right at least once.' },
   // Every book
   { id: 'well-read', icon: '📚', name: 'Well Read', description: 'Answer 100 different questions right.' },
   // Drills
