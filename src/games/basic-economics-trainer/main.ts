@@ -346,10 +346,14 @@ const BOOK_LINES: Record<string, { menu: string[]; hint: string[] }> = {
     menu: ['Follow the money. All the way to the Fed.', 'Banks make money out of thin air. Anya makes peanuts out of nothing.', 'Rothbard says the mystery is simple. Anya will be the judge.'],
     hint: ['Anya asked Rothbard. He laughed his big laugh, then said this.', 'Rothbard says: check the T-account.', 'Mr. Libertarian has a hint. He’s very excited about it.'],
   },
+  mes: {
+    menu: ['Fourteen hundred pages. Anya counted. Twice.', 'Start from the action axiom. Everything else follows. Supposedly.', 'Crusoe first. Then the whole economy. Then the State. Easy.'],
+    hint: ['Anya asked Rothbard. He deduced it from the action axiom.', 'Rothbard says: if A, then B. Here’s your B.', 'Professor Rothbard left a footnote for you. A long one.'],
+  },
 };
 const bookLines = () => BOOK_LINES[book.id] ?? BOOK_LINES.be;
 /** Each book's icon, in its cover's colour. */
-const bookIcon = (id: string) => ({ be: '📕', ha: '📘', eol: '📓', tmb: '📗' })[id] ?? '📗';
+const bookIcon = (id: string) => ({ be: '📕', ha: '📘', eol: '📓', tmb: '📗', mes: '♟️' })[id] ?? '📗';
 
 const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
 
@@ -371,7 +375,7 @@ function renderMenu() {
       // An introduction before chapter 1 (Human Action), or an appendix after the last chapter (The Mystery of Banking)
       const appendix = chapters[chapters.length - 1].title.startsWith('Appendix');
       const body = appendix ? chapters.slice(0, -1) : chapters;
-      const span = `${part.chapters[0].n === 0 ? 'Introduction, chapters' : 'Chapters'} ${body[0].n}–${body[body.length - 1].n}${appendix ? ' and appendix' : ''}`;
+      const span = part.label ?? `${part.chapters[0].n === 0 ? 'Introduction, chapters' : 'Chapters'} ${body[0].n}–${body[body.length - 1].n}${appendix ? ' and appendix' : ''}`;
       b.querySelector('small')!.textContent = locked ? `Pass Part ${roman(part.n - 1)} to open` : `${span}${best !== undefined ? ` · best ${best}/${RUN_LENGTH}` : ''}`;
       b.querySelector('.status')!.textContent = locked ? '🔒' : passed ? 'PASSED' : '▶';
       b.addEventListener('click', () => start({ kind: 'part', part: part.n }));
@@ -1196,6 +1200,7 @@ const OFFER_LINES: Record<string, { face: Face; lines: string[] }> = {
   be: { face: 'smug', lines: ['Basic Economics. Common sense, with footnotes.', 'Sowell. Start here. Trust Anya.', 'The easy one. Well, easier.', 'Back to Sowell. Anya likes the cover.'] },
   eol: { face: 'smug', lines: ['Economics in One Lesson. Just one! Even Anya can manage one.', 'Hazlitt. Short book, long consequences.', 'Look beyond the broken window. Anya always does.', 'One lesson. Two hundred pages to say it properly.'] },
   tmb: { face: 'shock', lines: ['The Mystery of Banking. Anya will solve it. Detective Anya!', 'Rothbard! Banks make money out of thin air?! Waku waku!', 'A crystal ball full of dollars. Anya wants one.', 'Where does money come from? Not storks. Read on.'] },
+  mes: { face: 'smug', lines: ['Man, Economy, and State. Two books in one! Anya brought a forklift.', 'Rothbard’s big one. Chess pieces on the cover, so you know it’s smart.', 'Praxeology, then the State. Anya plays the long game.', 'Checkmate, statists. Anya read the blurb.'] },
   ha: { face: 'happy', lines: ['Human Action. Nine hundred pages. Anya believes in you. A little.', 'Mises! Praxeology! Waku waku!', 'This one’s heavy. Lift with your legs.', 'A treatise. Like a book, but it judges you.'] },
 };
 
@@ -1243,7 +1248,7 @@ function switchBook(dir: 1 | -1) {
     bookEl.classList.add(dir > 0 ? 'in-right' : 'in-left');
     const offer = OFFER_LINES[book.id] ?? OFFER_LINES.be;
     setFace(offer.face);
-    boom(({ ha: 'THUD!', eol: 'PLOP!', tmb: 'KA-CHING!' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
+    boom(({ ha: 'THUD!', eol: 'PLOP!', tmb: 'KA-CHING!', mes: 'CHECK!' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
     say(pick(offer.lines), { talk: true });
     window.setTimeout(() => {
       bookEl.classList.remove('in-right', 'in-left');

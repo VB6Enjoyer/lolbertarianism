@@ -2059,6 +2059,34 @@ button {
     background: #6f7a2e;
 }
 
+/* Man, Economy, and State: a walnut page with a faint chessboard, warm cream paper, copper accents */
+:root[data-book='mes'] {
+    --page: #2b1d13;
+    --paper: #f3ebdf;
+    --paper-light: #fbf7f0;
+    --muted: #6b5442;
+    --accent: #b0662f;
+    --accent-ink: #7f4519;
+}
+
+:root[data-book='mes'] body {
+    background-image:
+        conic-gradient(rgba(255, 236, 210, 0.06) 25%, transparent 0 50%, rgba(255, 236, 210, 0.06) 0 75%, transparent 0);
+    background-size: 56px 56px;
+}
+
+:root[data-book='mes'] .brand-cover {
+    background: linear-gradient(#0d0b09 0 62%, #7a5232 62% 76%, #3b2616 76%);
+}
+
+:root[data-book='mes'] .anya-ribbon {
+    fill: #b0662f;
+}
+
+.stat-bar .track i.book-mes {
+    background: #b0662f;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {

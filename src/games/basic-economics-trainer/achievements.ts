@@ -57,6 +57,16 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'tmb-part-7', icon: '🏝️', name: 'Jekyll Island', description: 'Pass Part VII: The National Banks, the Fed and Sound Money.' },
   { id: 'tmb-all-parts', icon: '🥇', name: '100 Percent Reserve', description: 'Pass every part of The Mystery of Banking.' },
   { id: 'tmb-whole-book', icon: '🔮', name: 'Mystery Solved', description: 'Answer every question in The Mystery of Banking right at least once.' },
+  // Man, Economy, and State with Power and Market, part by part
+  { id: 'mes-part-1', icon: '🫐', name: 'Crusoe’s Stick', description: 'Pass Part I of Man, Economy, and State: Human Action and Exchange.' },
+  { id: 'mes-part-2', icon: '⏳', name: 'Time Preference', description: 'Pass Part II: Prices, Production and Interest.' },
+  { id: 'mes-part-3', icon: '🧭', name: 'Capitalist-Entrepreneur', description: 'Pass Part III: Factors, Entrepreneurs and Incomes.' },
+  { id: 'mes-part-4', icon: '🎭', name: 'Illusion of Monopoly Price', description: 'Pass Part IV: Monopoly and Money.' },
+  { id: 'mes-part-5', icon: '🛡️', name: 'Private Defense', description: 'Pass Part V: Violent Intervention.' },
+  { id: 'mes-part-6', icon: '🔺', name: 'Triangular Intervention', description: 'Pass Part VI: Triangular and Binary Intervention.' },
+  { id: 'mes-part-7', icon: '⚔️', name: 'Market versus Hegemony', description: 'Pass Part VII: Government, Ethics and Policy.' },
+  { id: 'mes-all-parts', icon: '♟️', name: 'Checkmate', description: 'Pass every part of Man, Economy, and State.' },
+  { id: 'mes-whole-book', icon: '👑', name: 'Power and Market', description: 'Answer every question in Man, Economy, and State right at least once.' },
   // Every book
   { id: 'well-read', icon: '📚', name: 'Well Read', description: 'Answer 100 different questions right.' },
   // Drills
