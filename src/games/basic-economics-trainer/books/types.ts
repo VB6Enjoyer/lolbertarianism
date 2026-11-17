@@ -25,7 +25,8 @@ export interface Book {
   author: string;
   /** The author's surname, for the hint lifeline: “Ask Sowell”, “Mises says”. */
   short: string;
-  parts: readonly { n: number; title: string; chapters: readonly { n: number; title: string }[] }[];
+  /** `label` overrides the menu’s “Chapters 4–6” line, for books whose numbering needs explaining. */
+  parts: readonly { n: number; title: string; label?: string; chapters: readonly { n: number; title: string }[] }[];
   questions: readonly BankQuestion[];
 }
 

@@ -4,12 +4,13 @@
 import { BASIC_ECONOMICS } from './books/basic-economics.ts';
 import { ECONOMICS_IN_ONE_LESSON } from './books/economics-in-one-lesson.ts';
 import { HUMAN_ACTION } from './books/human-action.ts';
+import { MAN_ECONOMY_AND_STATE } from './books/man-economy-and-state.ts';
 import { THE_MYSTERY_OF_BANKING } from './books/the-mystery-of-banking.ts';
 import type { BankQuestion, Book, Level } from './books/types.ts';
 import type { Question } from './questions.ts';
 
 /** The books Anya can hand you, in the order her arrows go through them. Each has its own questions and progress. */
-export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, HUMAN_ACTION, ECONOMICS_IN_ONE_LESSON, THE_MYSTERY_OF_BANKING];
+export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, HUMAN_ACTION, ECONOMICS_IN_ONE_LESSON, THE_MYSTERY_OF_BANKING, MAN_ECONOMY_AND_STATE];
 /** The first book, and the default wherever a book isn't given. */
 export const BOOK = BASIC_ECONOMICS;
 export const bookById = (id: unknown): Book => BOOKS.find((b) => b.id === id) ?? BOOK;

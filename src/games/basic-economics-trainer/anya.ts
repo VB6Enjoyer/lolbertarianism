@@ -219,6 +219,37 @@ const COVERS: Record<string, () => string> = {
       </g>
       <ellipse cx="106" cy="378" rx="7" ry="4.5" fill="#fff" opacity="0.75" transform="rotate(-30 106 378)"/>
     </g>`,
+  // Man, Economy, and State with Power and Market, the Scholar's Edition: cream serif title on
+  // black, a copper rule, and wooden chess pieces on a board, the author's name along the bottom.
+  mes: () => {
+    const wood = (x: number, base: number, tall: number, king = false) => {
+      const top = base - tall;
+      const crown = king
+        ? `<rect x="${x - 0.8}" y="${top - 7}" width="1.6" height="5" fill="#d9a46a"/><rect x="${x - 2.2}" y="${top - 5.6}" width="4.4" height="1.4" fill="#d9a46a"/>`
+        : `<circle cx="${x}" cy="${top - 2.6}" r="3.3" fill="url(#mes-wood)"/>`;
+      return `${crown}<path d="M ${x - 3.2} ${top} Q ${x} ${top - 1.6} ${x + 3.2} ${top} L ${x + 4.6} ${base - 2} L ${x - 4.6} ${base - 2} Z" fill="url(#mes-wood)"/>
+      <rect x="${x - 5.6}" y="${base - 2.4}" width="11.2" height="2.4" rx="0.8" fill="#6e4423"/>`;
+    };
+    const squares: string[] = [];
+    for (let i = 0; i < 9; i++) squares.push(`<rect x="${64 + i * 12}" y="403" width="12" height="9" fill="${i % 2 ? '#3b2616' : '#7a5232'}"/>`);
+    return `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#0d0b09" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <clipPath id="mes-face"><path d="M 64 302 L 168 300 L 168 428 L 64 430 Z"/></clipPath>
+    <linearGradient id="mes-wood" x1="0" x2="1"><stop offset="0" stop-color="#5e3a1d"/><stop offset="0.45" stop-color="#c58a52"/><stop offset="1" stop-color="#6e4423"/></linearGradient>
+    <g clip-path="url(#mes-face)">
+      <text x="160" y="309" text-anchor="end" font-family="Georgia, serif" font-style="italic" font-size="4" fill="#c87a3c">2nd edition</text>
+      <text x="70" y="320" font-family="Georgia, 'Times New Roman', serif" font-size="11" fill="#f1e6d2" textLength="90" lengthAdjust="spacingAndGlyphs">Man, Economy,</text>
+      <text x="70" y="333" font-family="Georgia, serif" font-size="6" fill="#f1e6d2">and</text>
+      <text x="82" y="333" font-family="Georgia, 'Times New Roman', serif" font-size="11" fill="#f1e6d2">State</text>
+      <text x="70" y="343" font-family="Georgia, serif" font-size="5" fill="#f1e6d2">with</text>
+      <text x="82" y="343" font-family="Georgia, 'Times New Roman', serif" font-size="7.5" fill="#f1e6d2" textLength="68" lengthAdjust="spacingAndGlyphs">Power and Market</text>
+      <rect x="70" y="347" width="54" height="0.8" fill="#c87a3c"/>
+      <text x="70" y="355" font-family="Georgia, serif" font-size="4.6" fill="#f1e6d2">Scholar’s Edition</text>
+      ${squares.join('')}
+      ${wood(150, 395, 26, true)}${wood(132, 398, 22, true)}${wood(84, 402, 14)}${wood(100, 404, 13)}${wood(118, 405, 12)}${wood(158, 406, 13)}
+      <text x="116" y="423" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="9" fill="#f1e6d2" textLength="86" lengthAdjust="spacingAndGlyphs">Murray N. Rothbard</text>
+    </g>`;
+  },
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */
