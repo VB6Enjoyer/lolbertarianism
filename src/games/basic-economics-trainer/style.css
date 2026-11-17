@@ -2113,6 +2113,36 @@ button {
     background: #8c2f39;
 }
 
+/* The Machinery of Freedom: a dark steel-teal page with faint gear rings, cool cream paper, teal and brass */
+:root[data-book='dmf'] {
+    --page: #1d353b;
+    --paper: #f1eee4;
+    --paper-light: #faf8f2;
+    --muted: #4f5f5e;
+    --accent: #2f6b73;
+    --accent-ink: #1f4e55;
+}
+
+:root[data-book='dmf'] body {
+    background-image:
+        radial-gradient(circle, transparent 9px, rgba(201, 162, 74, 0.13) 10px 12px, transparent 13px),
+        radial-gradient(circle, transparent 5px, rgba(201, 162, 74, 0.1) 6px 7px, transparent 8px);
+    background-size: 64px 64px, 64px 64px;
+    background-position: 0 0, 32px 32px;
+}
+
+:root[data-book='dmf'] .brand-cover {
+    background: linear-gradient(#efe6d1 0 58%, #b8892e 58% 72%, #2f6b73 72%);
+}
+
+:root[data-book='dmf'] .anya-ribbon {
+    fill: #b8892e;
+}
+
+.stat-bar .track i.book-dmf {
+    background: #2f6b73;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {
