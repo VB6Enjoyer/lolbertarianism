@@ -164,6 +164,15 @@ describe('basic economics trainer: the books', () => {
     expect(coverMarkup('be')).toContain('Thomas Sowell');
   });
 
+  it('keeps Capital secret: off the shelf, with only secret achievements, until Anya gives up on you', async () => {
+    const { ACHIEVEMENTS } = await import('./achievements.ts');
+    const secret = BOOKS.filter((b) => b.secret);
+    expect(secret.map((b) => b.id)).toEqual(['kap']);
+    expect(BOOKS[0].secret).toBeFalsy();
+    expect(ACHIEVEMENTS.find((a) => a.id === 'red-pill')?.secret).toBe(true);
+    for (const a of ACHIEVEMENTS.filter((a) => a.id.startsWith('kap-'))) expect(a.secret, a.id).toBe(true);
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);

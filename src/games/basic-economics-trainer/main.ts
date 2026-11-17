@@ -102,6 +102,8 @@ interface Save {
   stats: Record<string, Stats>;
   /** Read aloud: questions and answers, and Anya's lines. */
   tts: { questions: boolean; anya: boolean };
+  /** Wrong answers in a row, across quizzes (ten of them earn you the secret book). */
+  wrongStreak: number;
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -135,11 +137,16 @@ const save: Save = {
   looks: { pink: saved?.looks?.pink === true, green: saved?.looks?.green === true },
   stats: normalizeBookStats(saved?.stats, BOOKS.map((b) => b.id)),
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
+  wrongStreak: count(saved?.wrongStreak),
 };
 const persist = () => slot.save(save);
 
+/** The secret book (Capital) is unlocked by this achievement; until then it stays off Anya’s shelf. */
+const SECRET_UNLOCK = 'red-pill';
+/** The books Anya can hold out: every book, except secret ones you haven’t unlocked. */
+const shelf = () => BOOKS.filter((b) => !b.secret || save.achievements.includes(SECRET_UNLOCK));
 /** The book in hand, and its scores. */
-let book: Book = bookById(save.book);
+let book: Book = shelf().includes(bookById(save.book)) ? bookById(save.book) : BOOKS[0];
 const prog = () => save.progress[book.id];
 const bookStats = () => save.stats[book.id];
 
@@ -358,6 +365,10 @@ const BOOK_LINES: Record<string, { menu: string[]; hint: string[] }> = {
     menu: ['Four thousand years of the same mistake. Anya is taking notes.', 'Hammurabi to Nixon. Nobody learns. Except you, maybe.', 'Price ceilings: Anya’s peanut stash says no.'],
     hint: ['Anya asked Schuettinger. He sighed and said “Diocletian tried that.”', 'The authors say: look at the money supply.', 'Butler helped with this one. It’s a joint hint.'],
   },
+  kap: {
+    menu: ['You didn’t ask for this. Your wrong answers did.', 'Three volumes. The third one Engels had to finish. Even Marx gave up.', 'Study hard. Know your enemy. Then go back to Sowell.'],
+    hint: ['Anya asked Marx. He said it’s exploitation. It’s always exploitation.', 'Marx says: it’s all congealed labour. Ew.', 'Marx has a hint. Engels edited it.'],
+  },
   mes: {
     menu: ['Fourteen hundred pages. Anya counted. Twice.', 'Start from the action axiom. Everything else follows. Supposedly.', 'Crusoe first. Then the whole economy. Then the State. Easy.'],
     hint: ['Anya asked Rothbard. He deduced it from the action axiom.', 'Rothbard says: if A, then B. Here’s your B.', 'Professor Rothbard left a footnote for you. A long one.'],
@@ -365,7 +376,7 @@ const BOOK_LINES: Record<string, { menu: string[]; hint: string[] }> = {
 };
 const bookLines = () => BOOK_LINES[book.id] ?? BOOK_LINES.be;
 /** Each book's icon, in its cover's colour. */
-const bookIcon = (id: string) => ({ be: '📕', ha: '📘', eol: '📓', tmb: '📗', mes: '♟️', jhs: '📙', dmf: '⚙️', fc: '🏺' })[id] ?? '📗';
+const bookIcon = (id: string) => ({ be: '📕', ha: '📘', eol: '📓', tmb: '📗', mes: '♟️', jhs: '📙', dmf: '⚙️', fc: '🏺', kap: '🚩' })[id] ?? '📗';
 
 const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
 
@@ -529,6 +540,35 @@ function renderLifelines() {
   els.askSowell.disabled = !open || askedSowell || save.peanuts < HINT_COST;
 }
 
+// --- The secret book ---
+
+/** Wrong answers ever, across every book. */
+const totalWrong = () => BOOKS.reduce((t, b) => t + save.stats[b.id].answered - save.stats[b.id].right, 0);
+/** Ten wrong in a row, or a hundred wrong in all, and Anya gives up on you. */
+const earnedSecretBook = () => !save.achievements.includes(SECRET_UNLOCK) && (save.wrongStreak >= 10 || totalWrong() >= 100);
+
+/** What she says when she gives up and hands you Capital instead. */
+const SECRET_LINES = {
+  streak: [
+    'TEN wrong in a row?! That’s it. Forget Sowell. Anya has the perfect book for you: Capital, by Karl Marx. You’ll love it. Nothing in it adds up either. It’s on the shelf now.',
+    'Ten in a row. Wrong. All of them. Fine! Read Marx! Three volumes on how your boss is a vampire. Anya put it on the shelf. Use the arrows, comrade.',
+  ],
+  total: [
+    'One hundred wrong answers. Congratulations, you’ve earned the special book: Capital, by Karl Marx. Very popular with people who get economics wrong. It’s on the shelf now.',
+    'A hundred wrong! Anya surrenders. Here: Das Kapital. The labour theory of value, a hundred-and-fifty years of being wrong. You two will get along. Check the shelf.',
+  ],
+};
+
+function giveSecretBook() {
+  const why = save.wrongStreak >= 10 ? 'streak' : 'total';
+  award(SECRET_UNLOCK);
+  persist();
+  setFace('pout');
+  boom('ENOUGH!', 'bad', true);
+  window.setTimeout(() => play('page'), 350);
+  say(pick(SECRET_LINES[why]), { queueSpeech: save.tts.questions });
+}
+
 /** Faces and sound effects for each level, right and wrong. */
 const REACTIONS: Record<Level, { right: [Face, string]; wrong: [Face, string] }> = {
   easy: { right: ['smug', 'HEH.'], wrong: ['shock', 'GASP!'] },
@@ -561,6 +601,8 @@ function choose(i: number) {
   renderPips();
   renderLifelines();
   const [f, word] = REACTIONS[q.level][right ? 'right' : 'wrong'];
+  save.wrongStreak = right ? 0 : save.wrongStreak + 1;
+  const redPill = !right && earnedSecretBook();
   if (right) {
     play('right');
     save.peanuts++;
@@ -587,6 +629,15 @@ function choose(i: number) {
     if (askedSowell) award('sowell-said');
     els.anya.classList.add('shake');
     window.setTimeout(() => els.anya.classList.remove('shake'), 450);
+  }
+  if (redPill) {
+    giveSecretBook();
+    if (isLightning()) {
+      window.setTimeout(() => {
+        if (timeLeft() > 0 && answered(quiz) && els.app.dataset.screen === 'quiz') advance();
+      }, 2600);
+    } else showNext();
+    return;
   }
   if (isLightning()) {
     // No time for explanations: straight on to the next one.
@@ -946,13 +997,14 @@ function renderSettings() {
   const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
   if (all) {
     // Every book, and all of them together
-    const books = BOOKS.map((b) => summarize(save.stats[b.id], save.mastered, b));
+    const shown = shelf();
+    const books = shown.map((b) => summarize(save.stats[b.id], save.mastered, b));
     const mastered = books.reduce((t, x) => t + x.mastered, 0);
     const total = books.reduce((t, x) => t + x.total, 0);
     settingsEls.partsTitle.textContent = 'Every book';
     settingsEls.parts.replaceChildren(
       bar('All books', mastered, total, `${mastered}/${total} · ${percent(mastered, total)}%`),
-      ...BOOKS.map((b, i) => bar(`${bookIcon(b.id)} ${b.title}`, books[i].mastered, books[i].total, `${books[i].mastered}/${books[i].total} · ${percent(books[i].mastered, books[i].total)}%`, `book-${b.id}`)),
+      ...shown.map((b, i) => bar(`${bookIcon(b.id)} ${b.title}`, books[i].mastered, books[i].total, `${books[i].mastered}/${books[i].total} · ${percent(books[i].mastered, books[i].total)}%`, `book-${b.id}`)),
     );
   } else {
     const whole = summarize(stats, save.mastered, book);
@@ -1190,7 +1242,7 @@ function take() {
   taken = true;
   award('took-book');
   if (!save.opened.includes(book.id)) save.opened.push(book.id);
-  if (BOOKS.every((b) => save.opened.includes(b.id))) award('second-book');
+  if (BOOKS.filter((b) => !b.secret).every((b) => save.opened.includes(b.id))) award('second-book');
   persist();
   getAudioContext();
   play('page');
@@ -1216,6 +1268,7 @@ const OFFER_LINES: Record<string, { face: Face; lines: string[] }> = {
   jhs: { face: 'happy', lines: ['Money, Bank Credit, and Economic Cycles. From Madrid, with love!', 'Huerta de Soto! Deposits, loans and Roman law. Waku waku!', 'Nine hundred pages on why banks shouldn’t lend your deposit.', '¡Hola! Anya practiced her Spanish for this one.'] },
   dmf: { face: 'smug', lines: ['The Machinery of Freedom. Anya brought a wrench.', 'Friedman! The son, not the father. Anya checked.', 'Anarchy without chaos. Like Anya’s room, but organized.', 'Gears on the cover, freedom inside. Waku waku!'] },
   fc: { face: 'shock', lines: ['Forty Centuries of Wage and Price Controls! Forty! Anya can only count to twenty.', 'Pyramids on the cover. Price controls inside. Both very old.', 'How not to fight inflation. Anya already knows how not to do homework.', 'Diocletian, Robespierre, Nixon. Same idea, same result. Waku waku!'] },
+  kap: { face: 'deadpan', lines: ['Capital. By Karl Marx. You earned it, comrade. Sadly.', 'The labour theory of value. Anya’s peanuts disagree.', 'Three volumes, zero working price systems. Enjoy.', 'Know your enemy, they say. Fine. Anya will be over here with Mises.'] },
   mes: { face: 'smug', lines: ['Man, Economy, and State. Two books in one! Anya brought a forklift.', 'Rothbard’s big one. Chess pieces on the cover, so you know it’s smart.', 'Praxeology, then the State. Anya plays the long game.', 'Checkmate, statists. Anya read the blurb.'] },
   ha: { face: 'happy', lines: ['Human Action. Nine hundred pages. Anya believes in you. A little.', 'Mises! Praxeology! Waku waku!', 'This one’s heavy. Lift with your legs.', 'A treatise. Like a book, but it judges you.'] },
 };
@@ -1237,7 +1290,7 @@ function applyBook() {
   els.bookDots.replaceChildren(
     title,
     author,
-    ...BOOKS.map((b) => {
+    ...shelf().map((b) => {
       const dot = document.createElement('i');
       if (b === book) dot.className = 'on';
       return dot;
@@ -1253,7 +1306,8 @@ function switchBook(dir: 1 | -1) {
   switching = true;
   getAudioContext();
   play('page');
-  const nextBook = BOOKS[(BOOKS.indexOf(book) + dir + BOOKS.length) % BOOKS.length];
+  const books = shelf();
+  const nextBook = books[(books.indexOf(book) + dir + books.length) % books.length];
   bookEl.classList.add(dir > 0 ? 'out-left' : 'out-right');
   window.setTimeout(() => {
     book = nextBook;
@@ -1264,7 +1318,7 @@ function switchBook(dir: 1 | -1) {
     bookEl.classList.add(dir > 0 ? 'in-right' : 'in-left');
     const offer = OFFER_LINES[book.id] ?? OFFER_LINES.be;
     setFace(offer.face);
-    boom(({ ha: 'THUD!', eol: 'PLOP!', tmb: 'KA-CHING!', mes: 'CHECK!', jhs: 'OLÉ!', dmf: 'CLANK!', fc: 'FREEZE!' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
+    boom(({ ha: 'THUD!', eol: 'PLOP!', tmb: 'KA-CHING!', mes: 'CHECK!', jhs: 'OLÉ!', dmf: 'CLANK!', fc: 'FREEZE!', kap: 'COMRADE.' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
     say(pick(offer.lines), { talk: true });
     window.setTimeout(() => {
       bookEl.classList.remove('in-right', 'in-left');
@@ -1277,6 +1331,8 @@ function switchBook(dir: 1 | -1) {
 function toIntro() {
   stopSpeaking();
   taken = false;
+  // The shelf may have grown (the secret book), so redraw the dots.
+  applyBook();
   screen('intro');
   els.pips.replaceChildren();
   els.score.textContent = '';
