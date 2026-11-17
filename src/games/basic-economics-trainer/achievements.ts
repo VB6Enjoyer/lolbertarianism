@@ -47,6 +47,16 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'eol-part-7', icon: '🐖', name: 'Thrifty Benjamin', description: 'Pass Part VII: Inflation, Saving and the Lesson Restated.' },
   { id: 'eol-all-parts', icon: '🧑‍🏫', name: 'One Lesson Learned', description: 'Pass every part of Economics in One Lesson.' },
   { id: 'eol-whole-book', icon: '👤', name: 'The Forgotten Man', description: 'Answer every question in Economics in One Lesson right at least once.' },
+  // The Mystery of Banking, part by part
+  { id: 'tmb-part-1', icon: '🐚', name: 'Double Coincidence', description: 'Pass Part I of The Mystery of Banking: Money and Prices.' },
+  { id: 'tmb-part-2', icon: '😇', name: 'Angel Gabriel', description: 'Pass Part II: Supply and Demand for Money.' },
+  { id: 'tmb-part-3', icon: '🧾', name: 'Warehouse Receipt', description: 'Pass Part III: Banking.' },
+  { id: 'tmb-part-4', icon: '🏃', name: 'Bank Run', description: 'Pass Part IV: Free Banking and Central Banking.' },
+  { id: 'tmb-part-5', icon: '🪑', name: 'The Fed Bought My Desk', description: 'Pass Part V: How the Central Bank Inflates.' },
+  { id: 'tmb-part-6', icon: '🏦', name: 'Suffolk System', description: 'Pass Part VI: Central Banking in History.' },
+  { id: 'tmb-part-7', icon: '🏝️', name: 'Jekyll Island', description: 'Pass Part VII: The National Banks, the Fed and Sound Money.' },
+  { id: 'tmb-all-parts', icon: '🥇', name: '100 Percent Reserve', description: 'Pass every part of The Mystery of Banking.' },
+  { id: 'tmb-whole-book', icon: '🔮', name: 'Mystery Solved', description: 'Answer every question in The Mystery of Banking right at least once.' },
   // Every book
   { id: 'well-read', icon: '📚', name: 'Well Read', description: 'Answer 100 different questions right.' },
   // Drills

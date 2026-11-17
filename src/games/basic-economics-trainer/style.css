@@ -2037,6 +2037,28 @@ button {
     background: #c9a23a;
 }
 
+/* The Mystery of Banking: an olive page like the cover's band, pale greenback paper, olive accents */
+:root[data-book='tmb'] {
+    --page: #a8ac69;
+    --paper: #eef0e2;
+    --paper-light: #f8f9f1;
+    --muted: #5b6142;
+    --accent: #6f7a2e;
+    --accent-ink: #56601f;
+}
+
+:root[data-book='tmb'] .brand-cover {
+    background: linear-gradient(#fff 0 38%, #a8ac69 38% 52%, #e9e6d8 52%);
+}
+
+:root[data-book='tmb'] .anya-ribbon {
+    fill: #8f9a3d;
+}
+
+.stat-bar .track i.book-tmb {
+    background: #6f7a2e;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {

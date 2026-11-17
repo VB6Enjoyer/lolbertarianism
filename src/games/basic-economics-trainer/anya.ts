@@ -194,6 +194,31 @@ const COVERS: Record<string, () => string> = {
     <text x="116" y="405" text-anchor="middle" font-family="Georgia, serif" font-size="6" fill="#b8983a" textLength="64" lengthAdjust="spacingAndGlyphs">BASIC ECONOMICS</text>
     <rect x="84" y="411" width="64" height="11" fill="#a5243a"/>
     <text x="116" y="419" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="6.2" fill="#fff" letter-spacing="0.6">HENRY HAZLITT</text>`,
+  // The Mystery of Banking, second edition: the title in black serif on white, an olive band with
+  // the author's name, and a crystal ball holding a rolled $100 bill on a gold stand.
+  tmb: () => `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#f7f5ee" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <clipPath id="tmb-face"><path d="M 64 302 L 168 300 L 168 428 L 64 430 Z"/></clipPath>
+    <g clip-path="url(#tmb-face)">
+      <path d="M 64 360 L 168 358 L 168 428 L 64 430 Z" fill="#e9e6d8"/>
+      <text x="152" y="311" text-anchor="end" font-family="Georgia, serif" font-style="italic" font-size="4.6" fill="#7d6a3a">2nd Edition</text>
+      <text x="116" y="325" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14" fill="#1a1a1a" textLength="84" lengthAdjust="spacingAndGlyphs">The Mystery</text>
+      <text x="80" y="341" font-family="Georgia, serif" font-style="italic" font-size="9" fill="#1a1a1a">of</text>
+      <text x="92" y="341" font-family="Georgia, 'Times New Roman', serif" font-size="13" fill="#1a1a1a" textLength="62" lengthAdjust="spacingAndGlyphs">BANKING</text>
+      <path d="M 64 346 L 168 345 L 168 356 L 64 357 Z" fill="#a8ac69"/>
+      <text x="116" y="353.6" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="5.6" fill="#2b2d14" letter-spacing="0.4">MURRAY N. ROTHBARD</text>
+      <path d="M 96 416 L 136 416 L 140 432 L 92 432 Z" fill="#b59a4a"/>
+      <ellipse cx="116" cy="416" rx="20" ry="4" fill="#d9c47a"/>
+      <circle cx="116" cy="389" r="25" fill="#eef0ea" stroke="#9aa08e" stroke-width="1.2"/>
+      <g transform="rotate(-24 116 391)">
+        <rect x="99" y="377" width="34" height="26" rx="3" fill="#c9d2b4" stroke="#6f7a5a" stroke-width="0.9"/>
+        <path d="M 99 384 Q 116 378 133 384" fill="none" stroke="#6f7a5a" stroke-width="0.7"/>
+        <circle cx="116" cy="392" r="5.5" fill="#dfe5cf" stroke="#6f7a5a" stroke-width="0.7"/>
+        <text x="103" y="400" font-family="Georgia, serif" font-weight="700" font-size="5.5" fill="#4f5a3a">100</text>
+        <text x="129" y="383.5" text-anchor="end" font-family="Georgia, serif" font-weight="700" font-size="4.5" fill="#4f5a3a">100</text>
+      </g>
+      <ellipse cx="106" cy="378" rx="7" ry="4.5" fill="#fff" opacity="0.75" transform="rotate(-30 106 378)"/>
+    </g>`,
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */
