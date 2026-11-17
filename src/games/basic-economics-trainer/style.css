@@ -2169,6 +2169,34 @@ button {
     background: #b4502c;
 }
 
+/* Capital (the secret book): a deep red page with faint gold stars, warm paper, red accents */
+:root[data-book='kap'] {
+    --page: #5c0b10;
+    --paper: #f7eee6;
+    --paper-light: #fcf7f2;
+    --muted: #6f4a44;
+    --accent: #a8161c;
+    --accent-ink: #7e0f14;
+}
+
+:root[data-book='kap'] body {
+    background-image: radial-gradient(rgba(217, 180, 90, 0.22) 1.2px, transparent 1.6px);
+    background-size: 26px 26px;
+}
+
+:root[data-book='kap'] .brand-cover {
+    background: linear-gradient(135deg, #b51c22, #76090f);
+    box-shadow: inset 0 0 0 2px #d9b45a;
+}
+
+:root[data-book='kap'] .anya-ribbon {
+    fill: #d9b45a;
+}
+
+.stat-bar .track i.book-kap {
+    background: #a8161c;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {

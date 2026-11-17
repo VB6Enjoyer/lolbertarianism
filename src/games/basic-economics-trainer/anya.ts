@@ -328,6 +328,29 @@ const COVERS: Record<string, () => string> = {
     <text x="70" y="416" font-family="Georgia, serif" font-size="5" fill="#f3eee3">Robert L. Schuettinger</text>
     <text x="70" y="424" font-family="Georgia, serif" font-size="5" fill="#f3eee3"><tspan font-style="italic">and</tspan> Eamonn F. Butler</text>`;
   },
+  // Capital (the secret book): a red cloth cover, gold-stamped, with a star, the title in big gold capitals,
+  // and the three volumes at the foot. Anya hands it over in disgust.
+  kap: () => {
+    const GOLD = '#d9b45a';
+    const star = (cx: number, cy: number, r: number) =>
+      Array.from({ length: 10 }, (_, i) => {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rr = i % 2 ? r * 0.42 : r;
+        return `${(cx + Math.cos(a) * rr).toFixed(1)},${(cy + Math.sin(a) * rr).toFixed(1)}`;
+      }).join(' ');
+    return `${PAGES}
+    <linearGradient id="kap-cover" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#b51c22"/><stop offset="1" stop-color="#76090f"/></linearGradient>
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="url(#kap-cover)" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 70 307 L 162 305.5 L 162 422.5 L 70 424 Z" fill="none" stroke="${GOLD}" stroke-width="1"/>
+    <path d="M 73 310 L 159 308.7 L 159 419.5 L 73 421 Z" fill="none" stroke="${GOLD}" stroke-width="0.5"/>
+    <text x="116" y="322" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="6.5" fill="${GOLD}" letter-spacing="1.5">KARL MARX</text>
+    <polygon points="${star(116, 342, 10)}" fill="${GOLD}"/>
+    <text x="116" y="374" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" font-weight="bold" fill="${GOLD}" textLength="78" lengthAdjust="spacingAndGlyphs">CAPITAL</text>
+    <text x="116" y="384" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="4.8" fill="${GOLD}" textLength="70" lengthAdjust="spacingAndGlyphs">A Critique of Political Economy</text>
+    <rect x="90" y="393" width="52" height="0.7" fill="${GOLD}"/>
+    <text x="116" y="404" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="5.2" fill="${GOLD}" letter-spacing="0.8">VOLUMES I · II · III</text>
+    <rect x="90" y="409" width="52" height="0.7" fill="${GOLD}"/>`;
+  },
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */

@@ -28,6 +28,8 @@ export interface Book {
   /** `label` overrides the menu’s “Chapters 4–6” line, for books whose numbering needs explaining. */
   parts: readonly { n: number; title: string; label?: string; chapters: readonly { n: number; title: string }[] }[];
   questions: readonly BankQuestion[];
+  /** Hidden from Anya’s shelf until it’s unlocked (an easter egg). */
+  secret?: boolean;
 }
 
 /** A short, stable id from the question text (FNV-1a). */

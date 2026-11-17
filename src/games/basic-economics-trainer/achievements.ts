@@ -123,6 +123,17 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'pink-hair', icon: '🌸', name: 'Pretty in Pink', description: 'Pat Anya’s head ten times.', secret: true },
   { id: 'green-eyes', icon: '💚', name: 'Green-Eyed', description: 'Poke Anya’s eyes ten times.', secret: true },
   { id: 'makeover', icon: '🎀', name: 'Full Makeover', description: 'Unlock both of Anya’s new looks.', secret: true },
+  // The secret book: Anya hands you Capital after too many wrong answers. Every one of these is a secret.
+  { id: 'red-pill', icon: '🚩', name: 'Reading List', description: 'Get ten answers wrong in a row, or a hundred wrong in all. Anya has a book for you.', secret: true },
+  { id: 'kap-part-1', icon: '🧥', name: '20 Yards of Linen', description: 'Pass Part I of Capital: Commodities, Money and Capital.', secret: true },
+  { id: 'kap-part-2', icon: '🧛', name: 'Vampire-Like', description: 'Pass Part II: Surplus-Value, the Working Day and Machinery.', secret: true },
+  { id: 'kap-part-3', icon: '🐑', name: 'Sheep-Walk', description: 'Pass Part III: Wages, Accumulation and Expropriation.', secret: true },
+  { id: 'kap-part-4', icon: '🔁', name: 'Circuit of Capital', description: 'Pass Part IV: The Circulation of Capital.', secret: true },
+  { id: 'kap-part-5', icon: '⚗️', name: 'Transformation Problem', description: 'Pass Part V: Profit and Prices of Production.', secret: true },
+  { id: 'kap-part-6', icon: '📉', name: 'Tendency to Fall', description: 'Pass Part VI: The Falling Rate of Profit and Merchant’s Capital.', secret: true },
+  { id: 'kap-part-7', icon: '🍐', name: 'Pear-Trees Bearing Pears', description: 'Pass Part VII: Interest, Credit, Rent and Classes.', secret: true },
+  { id: 'kap-all-parts', icon: '⚒️', name: 'Expropriators Expropriated', description: 'Pass every part of Capital.', secret: true },
+  { id: 'kap-whole-book', icon: '🕵️', name: 'Know Your Enemy', description: 'Answer every question in Capital right at least once.', secret: true },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
