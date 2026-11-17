@@ -67,6 +67,16 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'mes-part-7', icon: '⚔️', name: 'Market versus Hegemony', description: 'Pass Part VII: Government, Ethics and Policy.' },
   { id: 'mes-all-parts', icon: '♟️', name: 'Checkmate', description: 'Pass every part of Man, Economy, and State.' },
   { id: 'mes-whole-book', icon: '👑', name: 'Power and Market', description: 'Answer every question in Man, Economy, and State right at least once.' },
+  // Money, Bank Credit, and Economic Cycles, part by part
+  { id: 'jhs-part-1', icon: '⚖️', name: 'Tantundem', description: 'Pass Part I of Money, Bank Credit, and Economic Cycles: The Irregular Deposit.' },
+  { id: 'jhs-part-2', icon: '🏛️', name: 'Bank of Amsterdam', description: 'Pass Part II: Banking History.' },
+  { id: 'jhs-part-3', icon: '📜', name: 'Aliud Est Credere', description: 'Pass Part III: Legal Justifications.' },
+  { id: 'jhs-part-4', icon: '✖️', name: 'Ex Nihilo', description: 'Pass Part IV: The Credit Expansion Process.' },
+  { id: 'jhs-part-5', icon: '🏗️', name: 'Ricardo Effect', description: 'Pass Part V: Credit Expansion and the Cycle.' },
+  { id: 'jhs-part-6', icon: '🎢', name: 'Manic-Depressive Economy', description: 'Pass Part VI: The Cycle and Its Critics.' },
+  { id: 'jhs-part-7', icon: '🔒', name: 'Full Reserve', description: 'Pass Part VII: Central Banking, Free Banking and Reform.' },
+  { id: 'jhs-all-parts', icon: '🇪🇸', name: 'School of Salamanca', description: 'Pass every part of Money, Bank Credit, and Economic Cycles.' },
+  { id: 'jhs-whole-book', icon: '💯', name: '100-Percent Reserve', description: 'Answer every question in Money, Bank Credit, and Economic Cycles right at least once.' },
   // Every book
   { id: 'well-read', icon: '📚', name: 'Well Read', description: 'Answer 100 different questions right.' },
   // Drills

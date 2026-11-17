@@ -2087,6 +2087,32 @@ button {
     background: #b0662f;
 }
 
+/* Money, Bank Credit, and Economic Cycles: a deep burgundy page with rose dots, rosy paper, burgundy accents */
+:root[data-book='jhs'] {
+    --page: #4a1a1f;
+    --paper: #f5ebe7;
+    --paper-light: #fbf6f4;
+    --muted: #6e4d4d;
+    --accent: #8c2f39;
+    --accent-ink: #6e2027;
+}
+
+:root[data-book='jhs'] body {
+    background-image: radial-gradient(rgba(214, 150, 150, 0.28) 1.1px, transparent 1.4px);
+}
+
+:root[data-book='jhs'] .brand-cover {
+    background: linear-gradient(90deg, #9a5a5a, #5e2228 35%, #2a0d10);
+}
+
+:root[data-book='jhs'] .anya-ribbon {
+    fill: #8c2f39;
+}
+
+.stat-bar .track i.book-jhs {
+    background: #8c2f39;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {
