@@ -1981,3 +1981,28 @@ button {
         display: none;
     }
 }
+
+/* The stats panel: the book in hand, or every book */
+.stats-scope {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin: 4px 0 2px;
+}
+
+.scope-button {
+    padding: 8px 14px;
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--ink);
+    font: 800 14px var(--font);
+    cursor: pointer;
+}
+
+.scope-button[aria-pressed='true'] {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 3px 3px 0 var(--ink);
+}

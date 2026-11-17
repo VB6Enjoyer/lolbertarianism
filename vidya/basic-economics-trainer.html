@@ -115,11 +115,15 @@
         <div id="settings" class="overlay" hidden>
             <div class="overlay-panel" role="dialog" aria-labelledby="settings-title">
                 <h2 id="settings-title" class="menu-title">📊 Stats &amp; settings</h2>
-                <h3 class="menu-heading wide-heading">Your stats</h3>
+                <div class="stats-scope" role="group" aria-label="Whose stats">
+                    <button id="scope-book" type="button" class="scope-button" aria-pressed="true">📕 Basic Economics</button>
+                    <button id="scope-all" type="button" class="scope-button" aria-pressed="false">📚 All books</button>
+                </div>
+                <h3 id="stats-heading" class="menu-heading wide-heading">Your stats</h3>
                 <div id="stats-cards" class="stats-cards"></div>
                 <h3 class="menu-heading wide-heading">By difficulty</h3>
                 <div id="stats-levels" class="stat-bars"></div>
-                <h3 class="menu-heading wide-heading">The books <small id="stats-parts-note">Questions you’ve answered right at least once</small></h3>
+                <h3 class="menu-heading wide-heading"><span id="stats-parts-title">The whole book</span> <small id="stats-parts-note">Questions you’ve answered right at least once</small></h3>
                 <div id="stats-parts" class="stat-bars"></div>
                 <h3 class="menu-heading wide-heading">🗣️ Read aloud <small id="speech-note">Uses your browser’s voices. Press R to hear a question again.</small></h3>
                 <div class="wardrobe">

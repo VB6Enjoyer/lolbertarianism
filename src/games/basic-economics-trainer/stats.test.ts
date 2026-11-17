@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BOOK } from './bank.ts';
 import { questionScript } from './speech.ts';
-import { emptyStats, MAX_ANSWER_MS, normalizeStats, recordAnswer, summarize } from './stats.ts';
+import { combineStats, emptyStats, MAX_ANSWER_MS, normalizeBookStats, normalizeStats, recordAnswer, summarize, summarizeAnswers } from './stats.ts';
 
 describe('basic economics trainer: stats', () => {
   it('counts answers, accuracy, time and streaks', () => {
@@ -36,6 +36,22 @@ describe('basic economics trainer: stats', () => {
     expect(s.byLevel.easy).toEqual([2, 2]);
     expect(s.byLevel.hard).toEqual([0, 0]);
     expect(s.hints).toBe(0);
+  });
+
+  it('keeps stats per book, moves old saves to Basic Economics, and adds books together', () => {
+    const legacy = normalizeBookStats({ answered: 4, right: 3, bestStreak: 2 }, ['be', 'ha']);
+    expect(legacy.be.answered).toBe(4);
+    expect(legacy.ha).toEqual(emptyStats());
+    const split = normalizeBookStats({ be: { answered: 2, right: 1 }, ha: { answered: 5, right: 5, bestStreak: 5 } }, ['be', 'ha']);
+    expect(split.ha.right).toBe(5);
+    recordAnswer(split.be, 'easy', true, 1000, 1);
+    recordAnswer(split.ha, 'easy', false, 3000, 0);
+    const all = combineStats([split.be, split.ha]);
+    expect(all.answered).toBe(9);
+    expect(all.right).toBe(7);
+    expect(all.bestStreak).toBe(5);
+    expect(all.byLevel.easy).toEqual([1, 2]);
+    expect(summarizeAnswers(all).accuracy).toBe(78);
   });
 
   it('reads a question with its lettered answers', () => {

@@ -8,7 +8,7 @@ import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
 import { BOOKS, bookById, dateKey, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
-import { normalizeStats, recordAnswer, summarize, type Stats } from './stats.ts';
+import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
 
@@ -98,7 +98,8 @@ interface Save {
   stillDumbs: number;
   /** Anya's unlockable looks, and whether each is switched on. */
   looks: { pink: boolean; green: boolean };
-  stats: Stats;
+  /** Each book's stats, by book id. */
+  stats: Record<string, Stats>;
   /** Read aloud: questions and answers, and Anya's lines. */
   tts: { questions: boolean; anya: boolean };
 }
@@ -132,7 +133,7 @@ const save: Save = {
   hardRight: count(saved?.hardRight),
   stillDumbs: count(saved?.stillDumbs),
   looks: { pink: saved?.looks?.pink === true, green: saved?.looks?.green === true },
-  stats: normalizeStats(saved?.stats),
+  stats: normalizeBookStats(saved?.stats, BOOKS.map((b) => b.id)),
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
 };
 const persist = () => slot.save(save);
@@ -140,6 +141,7 @@ const persist = () => slot.save(save);
 /** The book in hand, and its scores. */
 let book: Book = bookById(save.book);
 const prog = () => save.progress[book.id];
+const bookStats = () => save.stats[book.id];
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -323,6 +325,21 @@ function screen(name: Screen) {
 }
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+/** A few lines of Anya's that depend on the book in hand. */
+const BOOK_LINES: Record<string, { menu: string[]; hint: string[] }> = {
+  be: {
+    menu: ['Sowell would want you to read the footnotes.', 'Common sense, one part at a time.'],
+    hint: ['Sowell has a footnote for this.', 'Anya asked Sowell. He sighed, then said this.'],
+  },
+  ha: {
+    menu: ['Praxeology time. Anya brought snacks.', 'Nine hundred pages. One part at a time.', 'Mises wrote this in exile. You can read it in pajamas.'],
+    hint: ['Anya asked Mises. He says it’s a priori.', 'Mises says this. He was very sure.', 'Herr Professor has a hint for you.'],
+  },
+};
+const bookLines = () => BOOK_LINES[book.id] ?? BOOK_LINES.be;
+/** Each book's icon, in its cover's colour. */
+const bookIcon = (id: string) => ({ be: '📕', ha: '📘' })[id] ?? '📗';
+
 const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
 
 function renderMenu() {
@@ -371,7 +388,7 @@ function toMenu() {
   els.pips.replaceChildren();
   els.score.textContent = '';
   setFace('neutral');
-  say(prog().passed.length === 0 && Object.keys(prog().partBest).length === 0 ? MENU_LINES[0] : pick(MENU_LINES.slice(1)), { talk: true });
+  say(prog().passed.length === 0 && Object.keys(prog().partBest).length === 0 ? MENU_LINES[0] : pick([...MENU_LINES.slice(1), ...bookLines().menu]), { talk: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -495,7 +512,7 @@ function choose(i: number) {
   if (!q || (isLightning() && timeLeft() <= 0)) return;
   const right = answer(quiz, i);
   if (right === null) return;
-  recordAnswer(save.stats, q.level, right, performance.now() - askedAt, quiz.streak);
+  recordAnswer(bookStats(), q.level, right, performance.now() - askedAt, quiz.streak);
   persist();
   if (save.tts.questions) speak(right ? 'Right.' : `Wrong. The answer was ${'ABCD'[q.correct]}: ${q.options[q.correct]}.`, 'reader');
   const buttons = [...els.options.querySelectorAll<HTMLButtonElement>('.option')];
@@ -582,7 +599,7 @@ els.mindRead.addEventListener('click', () => {
   readMind = true;
   usedLifeline = true;
   award('mind-read');
-  save.stats.mindReads++;
+  bookStats().mindReads++;
   const wrong = q.options.map((_, i) => i).filter((i) => i !== q.correct);
   const keep = pick(wrong);
   const buttons = els.options.querySelectorAll<HTMLButtonElement>('.option');
@@ -606,7 +623,7 @@ els.swap.addEventListener('click', () => {
   save.peanuts -= SWAP_COST;
   usedLifeline = true;
   award('swap');
-  save.stats.swaps++;
+  bookStats().swaps++;
   persist();
   renderPeanuts(true);
   play('page');
@@ -624,14 +641,14 @@ els.askSowell.addEventListener('click', () => {
   askedSowell = true;
   usedLifeline = true;
   award('ask-sowell');
-  save.stats.hints++;
+  bookStats().hints++;
   if (save.tts.questions) speak(`${book.short} says: ${q.hint}`, 'reader', save.tts.anya);
   els.sowellNote.innerHTML = `<b>${book.short} says</b><br>`;
   els.sowellNote.append(document.createTextNode(q.hint));
   els.sowellNote.hidden = false;
   play('page');
   setFace('neutral');
-  say(pick(['Fine. Here’s what the book says.', 'Anya asked the author. He says this.', 'Read the hint. Then think. In that order.']), { talk: true });
+  say(pick(['Fine. Here’s what the book says.', 'Read the hint. Then think. In that order.', ...bookLines().hint]), { talk: true });
   renderLifelines();
 });
 
@@ -838,6 +855,10 @@ const settingsEls = {
   levels: byId('stats-levels'),
   parts: byId('stats-parts'),
   partsNote: byId('stats-parts-note'),
+  partsTitle: byId('stats-parts-title'),
+  heading: byId('stats-heading'),
+  scopeBook: byId<HTMLButtonElement>('scope-book'),
+  scopeAll: byId<HTMLButtonElement>('scope-all'),
   ttsQuestions: byId<HTMLButtonElement>('tts-questions'),
   ttsAnya: byId<HTMLButtonElement>('tts-anya'),
   speechNote: byId('speech-note'),
@@ -858,8 +879,17 @@ function bar(label: string, value: number, total: number, text: string, cls = ''
   return row;
 }
 
+/** Which stats the panel shows: the book in hand, or every book together. */
+let statsScope: 'book' | 'all' = 'book';
+
 function renderSettings() {
-  const sum = summarize(save.stats, save.mastered, book);
+  const all = statsScope === 'all';
+  const stats = all ? combineStats(BOOKS.map((b) => save.stats[b.id])) : bookStats();
+  const sum = summarizeAnswers(stats);
+  settingsEls.scopeBook.textContent = `${bookIcon(book.id)} ${book.title}`;
+  settingsEls.scopeBook.setAttribute('aria-pressed', String(!all));
+  settingsEls.scopeAll.setAttribute('aria-pressed', String(all));
+  settingsEls.heading.textContent = all ? 'Your stats · all books' : `Your stats · ${book.title}`;
   const card = (value: string, label: string, cls = '') => {
     const c = document.createElement('div');
     c.className = `stat-card ${cls}`;
@@ -874,22 +904,34 @@ function renderSettings() {
     card(sum.wrong.toLocaleString('en-US'), 'Wrong answers', 'bad'),
     card(`${sum.accuracy}%`, 'Right'),
     card(sum.answered ? `${sum.averageSeconds}s` : '—', 'Average time to answer'),
-    card(String(save.stats.bestStreak), 'Longest streak'),
-    card(String(save.stats.hints), 'Hints used (Ask the author)'),
-    card(String(save.stats.mindReads), 'Mind-reads'),
-    card(String(save.stats.swaps), 'Swaps'),
-    card(String(save.peanutsEarned), 'Peanuts earned'),
+    card(String(stats.bestStreak), 'Longest streak'),
+    card(String(stats.hints), all ? 'Hints used (Ask the author)' : `Hints used (Ask ${book.short})`),
+    card(String(stats.mindReads), 'Mind-reads'),
+    card(String(stats.swaps), 'Swaps'),
+    // Every right answer earns a peanut; the all-books count also covers older saves.
+    card(String(all ? Math.max(save.peanutsEarned, stats.right) : stats.right), 'Peanuts earned'),
   );
   settingsEls.levels.replaceChildren(...sum.levels.map((l) => bar(LEVEL_NAMES[l.level], l.right, l.answered, l.answered ? `${l.right}/${l.answered} · ${l.accuracy}%` : 'none yet', l.level)));
   const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
-  settingsEls.parts.replaceChildren(
-    ...BOOKS.map((b) => {
-      const s = b === book ? sum : summarize(save.stats, save.mastered, b);
-      return bar(`📕 ${b.title}`, s.mastered, s.total, `${s.mastered}/${s.total} · ${percent(s.mastered, s.total)}%`, `book-${b.id}`);
-    }),
-    ...sum.parts.map((p) => bar(`${roman(p.n)}. ${p.title}`, p.mastered, p.total, `${p.mastered}/${p.total}`)),
-  );
-  settingsEls.partsNote.textContent = `Questions you’ve answered right at least once. Parts: ${book.title}.`;
+  if (all) {
+    // Every book, and all of them together
+    const books = BOOKS.map((b) => summarize(save.stats[b.id], save.mastered, b));
+    const mastered = books.reduce((t, x) => t + x.mastered, 0);
+    const total = books.reduce((t, x) => t + x.total, 0);
+    settingsEls.partsTitle.textContent = 'Every book';
+    settingsEls.parts.replaceChildren(
+      bar('All books', mastered, total, `${mastered}/${total} · ${percent(mastered, total)}%`),
+      ...BOOKS.map((b, i) => bar(`${bookIcon(b.id)} ${b.title}`, books[i].mastered, books[i].total, `${books[i].mastered}/${books[i].total} · ${percent(books[i].mastered, books[i].total)}%`, `book-${b.id}`)),
+    );
+  } else {
+    const whole = summarize(stats, save.mastered, book);
+    settingsEls.partsTitle.textContent = `The whole book`;
+    settingsEls.parts.replaceChildren(
+      bar(`All ${book.parts.length} parts`, whole.mastered, whole.total, `${whole.mastered}/${whole.total} · ${percent(whole.mastered, whole.total)}%`, `book-${book.id}`),
+      ...whole.parts.map((p) => bar(`${roman(p.n)}. ${p.title}`, p.mastered, p.total, `${p.mastered}/${p.total}`)),
+    );
+  }
+  settingsEls.partsNote.textContent = 'Questions you’ve answered right at least once';
   const supported = speechSupported();
   const toggle = (b: HTMLButtonElement, on: boolean, label: string) => {
     b.disabled = !supported;
@@ -904,10 +946,13 @@ function renderSettings() {
 }
 
 function openSettings() {
+  statsScope = 'book';
   renderSettings();
   settingsEls.panel.hidden = false;
   pauseClock();
-  settingsEls.hide.focus();
+  // Start at the top, on the book / all-books switch.
+  settingsEls.panel.querySelector('.overlay-panel')!.scrollTop = 0;
+  settingsEls.scopeBook.focus({ preventScroll: true });
 }
 
 function closeSettings() {
@@ -917,6 +962,14 @@ function closeSettings() {
 
 settingsEls.show.addEventListener('click', () => (settingsEls.panel.hidden ? openSettings() : closeSettings()));
 settingsEls.hide.addEventListener('click', closeSettings);
+settingsEls.scopeBook.addEventListener('click', () => {
+  statsScope = 'book';
+  renderSettings();
+});
+settingsEls.scopeAll.addEventListener('click', () => {
+  statsScope = 'all';
+  renderSettings();
+});
 settingsEls.ttsQuestions.addEventListener('click', () => {
   save.tts.questions = !save.tts.questions;
   persist();
@@ -1135,6 +1188,8 @@ function applyBook() {
   document.documentElement.dataset.book = book.id;
   bookEl.innerHTML = coverMarkup(book.id);
   els.brandTitle.textContent = book.title;
+  document.title = `${book.title} Trainer`;
+  els.anya.setAttribute('aria-label', `Anya, holding out a copy of ${book.title} on a plate`);
   els.menuKicker.textContent = `${book.title} · ${book.author}`;
   els.askSowell.innerHTML = `👓 Ask ${book.short} <span>${HINT_COST}🥜</span>`;
   const title = document.createElement('span');
