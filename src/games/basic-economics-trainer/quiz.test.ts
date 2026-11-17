@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { anyaSvg, faceMarkup, SHOTS, type Face } from './anya.ts';
-import { BOOK, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
+import { anyaSvg, coverMarkup, faceMarkup, SHOTS, type Face } from './anya.ts';
+import { BOOK, BOOKS, bookById, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict } from './quiz.ts';
 
 const run = () => questionsFor({ kind: 'part', part: 1 }, seededRng(1));
@@ -61,10 +61,11 @@ describe('basic economics trainer: the quiz', () => {
   });
 });
 
-describe('basic economics trainer: the question bank', () => {
+for (const book of BOOKS)
+describe(`basic economics trainer: the question bank of ${book.title}`, () => {
   it('every question has a right answer, three different wrong ones, an explanation and a real chapter', () => {
-    const chapters = new Set(BOOK.parts.flatMap((p) => p.chapters.map((c) => `${p.n}:${c.n}`)));
-    for (const q of BOOK.questions) {
+    const chapters = new Set(book.parts.flatMap((p) => p.chapters.map((c) => `${p.n}:${c.n}`)));
+    for (const q of book.questions) {
       const options = [q.answer, ...q.wrong];
       expect(new Set(options).size, q.q).toBe(4);
       expect(options.every((o) => o.trim().length > 0), q.q).toBe(true);
@@ -75,25 +76,25 @@ describe('basic economics trainer: the question bank', () => {
   });
 
   it('has no duplicate questions, and enough of each level and part for a run', () => {
-    expect(new Set(BOOK.questions.map((q) => q.id)).size).toBe(BOOK.questions.length);
-    for (const level of LEVELS) expect(BOOK.questions.filter((q) => q.level === level).length).toBeGreaterThanOrEqual(RUN_LENGTH * 2);
-    for (const part of BOOK.parts) expect(BOOK.questions.filter((q) => q.part === part.n).length, `part ${part.n}`).toBeGreaterThanOrEqual(RUN_LENGTH);
+    expect(new Set(book.questions.map((q) => q.id)).size).toBe(book.questions.length);
+    for (const level of LEVELS) expect(book.questions.filter((q) => q.level === level).length).toBeGreaterThanOrEqual(RUN_LENGTH * 2);
+    for (const part of book.parts) expect(book.questions.filter((q) => q.part === part.n).length, `part ${part.n}`).toBeGreaterThanOrEqual(RUN_LENGTH);
   });
 
   it('doesn’t give the answer away by its length', () => {
     // The right answer shouldn't stand out as the longest option: rarely clearly longer, and not
     // the longest much more often than chance (one in four) would make it.
-    const clearlyLongest = BOOK.questions.filter((q) => q.answer.length > 1.15 * Math.max(...q.wrong.map((w) => w.length)));
+    const clearlyLongest = book.questions.filter((q) => q.answer.length > 1.15 * Math.max(...q.wrong.map((w) => w.length)));
     expect(clearlyLongest.map((q) => q.q)).toHaveLength(clearlyLongest.length > 3 ? 0 : clearlyLongest.length);
-    const longest = BOOK.questions.filter((q) => q.wrong.every((w) => q.answer.length > w.length)).length;
-    expect(longest / BOOK.questions.length).toBeLessThan(0.45);
+    const longest = book.questions.filter((q) => q.wrong.every((w) => q.answer.length > w.length)).length;
+    expect(longest / book.questions.length).toBeLessThan(0.45);
   });
 
   it('shuffles the answers but keeps track of the right one', () => {
-    const bq = BOOK.questions[0];
+    const bq = book.questions[0];
     const positions = new Set<number>();
     for (let seed = 1; seed < 40; seed++) {
-      const q = toQuestion(bq, seededRng(seed));
+      const q = toQuestion(bq, seededRng(seed), book);
       expect(q.options[q.correct]).toBe(bq.answer);
       positions.add(q.correct);
     }
@@ -101,8 +102,8 @@ describe('basic economics trainer: the question bank', () => {
   });
 
   it('a part run is ten questions from that part, easiest first', () => {
-    for (const part of BOOK.parts) {
-      const qs = questionsFor({ kind: 'part', part: part.n }, seededRng(part.n));
+    for (const part of book.parts) {
+      const qs = questionsFor({ kind: 'part', part: part.n }, seededRng(part.n), book);
       expect(qs).toHaveLength(RUN_LENGTH);
       expect(new Set(qs.map((q) => q.id)).size).toBe(RUN_LENGTH);
       expect(qs.every((q) => q.chapter.startsWith(`Part ${['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][part.n]} ·`))).toBe(true);
@@ -112,23 +113,23 @@ describe('basic economics trainer: the question bank', () => {
   });
 
   it('a drill sticks to its level, and the daily quiz is the same all day', () => {
-    expect(questionsFor({ kind: 'drill', level: 'hard' }).every((q) => q.level === 'hard')).toBe(true);
-    const a = questionsFor({ kind: 'daily', key: '2026-11-16' });
-    const b = questionsFor({ kind: 'daily', key: '2026-11-16' });
+    expect(questionsFor({ kind: 'drill', level: 'hard' }, Math.random, book).every((q) => q.level === 'hard')).toBe(true);
+    const a = questionsFor({ kind: 'daily', key: '2026-11-16' }, Math.random, book);
+    const b = questionsFor({ kind: 'daily', key: '2026-11-16' }, Math.random, book);
     expect(a).toEqual(b);
-    expect(questionsFor({ kind: 'daily', key: '2026-11-17' })).not.toEqual(a);
+    expect(questionsFor({ kind: 'daily', key: '2026-11-17' }, Math.random, book)).not.toEqual(a);
   });
 
   it('opens the next part once the one before it is passed', () => {
-    expect(unlockedParts([])).toEqual([1]);
-    expect(unlockedParts([1])).toEqual([1, 2]);
-    expect(unlockedParts([1, 2, 3])).toEqual([1, 2, 3, 4]);
+    expect(unlockedParts([], book)).toEqual([1]);
+    expect(unlockedParts([1], book)).toEqual([1, 2]);
+    expect(unlockedParts([1, 2, 3], book)).toEqual([1, 2, 3, 4]);
   });
 });
 
 describe('basic economics trainer: hints and achievements', () => {
   it('every question has a hint, and no hint gives the answer away word for word', () => {
-    for (const q of BOOK.questions) {
+    for (const q of BOOKS.flatMap((b) => b.questions)) {
       expect(q.hint.length, q.q).toBeGreaterThan(10);
       expect(q.hint.toLowerCase().includes(q.answer.toLowerCase()), q.q).toBe(false);
       expect(q.hint, q.q).not.toBe(q.why);
@@ -138,8 +139,35 @@ describe('basic economics trainer: hints and achievements', () => {
   it('achievements have unique ids, and there is one for passing each part', async () => {
     const { ACHIEVEMENTS, normalizeUnlocked } = await import('./achievements.ts');
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
-    for (const part of BOOK.parts) expect(ACHIEVEMENTS.some((a) => a.id === `part-${part.n}`)).toBe(true);
+    const { partAchievement, allPartsAchievement, wholeBookAchievement } = await import('./achievements.ts');
+    for (const book of BOOKS) {
+      for (const part of book.parts) expect(ACHIEVEMENTS.some((a) => a.id === partAchievement(book.id, part.n)), `${book.id} part ${part.n}`).toBe(true);
+      for (const id of [allPartsAchievement(book.id), wholeBookAchievement(book.id)]) expect(ACHIEVEMENTS.some((a) => a.id === id), id).toBe(true);
+    }
+    expect(partAchievement('be', 1)).toBe('part-1');
+    expect(partAchievement('ha', 1)).toBe('ha-part-1');
     expect([...normalizeUnlocked(['perfect', 'nope', 3])]).toEqual(['perfect']);
+  });
+});
+
+describe('basic economics trainer: the books', () => {
+  it('each book has its own id, author name, cover, and question ids', () => {
+    expect(new Set(BOOKS.map((b) => b.id)).size).toBe(BOOKS.length);
+    const ids = BOOKS.flatMap((b) => b.questions.map((q) => q.id));
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const book of BOOKS) {
+      expect(book.short.length).toBeGreaterThan(2);
+      expect(book.questions.every((q) => q.book === book.id && q.id.startsWith(`${book.id}-`))).toBe(true);
+    }
+    expect(new Set(BOOKS.map((b) => coverMarkup(b.id))).size).toBe(BOOKS.length);
+    expect(coverMarkup('ha')).toContain('Ludwig von Mises');
+    expect(coverMarkup('be')).toContain('Thomas Sowell');
+  });
+
+  it('finds books by id, falling back to the first', () => {
+    expect(bookById('ha').title).toBe('Human Action');
+    expect(bookById('nope')).toBe(BOOK);
+    expect(bookById(undefined)).toBe(BOOK);
   });
 });
 

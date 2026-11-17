@@ -2,11 +2,12 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import * as anyaV2 from './anya.ts';
+import { coverMarkup } from './anya.ts';
 import type { Face } from './anya.ts';
 import * as anyaV1 from './anya-v1.ts';
-import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
-import { ASK_SOWELL_COST, BOOK, dateKey, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
-import type { Level } from './books/types.ts';
+import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
+import { BOOKS, bookById, dateKey, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import type { Book, Level } from './books/types.ts';
 import { normalizeStats, recordAnswer, summarize, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
@@ -59,21 +60,36 @@ const els = {
   hideAchievements: byId<HTMLButtonElement>('hide-achievements'),
   toasts: byId('toasts'),
   settings: byId('settings'),
+  brandTitle: byId('brand-title'),
+  menuKicker: byId('menu-kicker'),
+  switchBook: byId<HTMLButtonElement>('switch-book'),
+  prevBook: byId<HTMLButtonElement>('prev-book'),
+  nextBook: byId<HTMLButtonElement>('next-book'),
+  bookDots: byId('book-dots'),
 };
 
 // ---------------------------------------------------------------------------
 // Save
 // ---------------------------------------------------------------------------
 
-interface Save {
-  muted: boolean;
-  peanuts: number;
+/** Scores in one book. */
+interface Progress {
   /** Best score in each part (out of 10), and the parts passed. */
   partBest: Record<string, number>;
   passed: number[];
   drillBest: Record<string, number>;
   dailyBests: Record<string, number>;
   lightningBest: number;
+}
+
+interface Save {
+  muted: boolean;
+  peanuts: number;
+  /** The book Anya is holding out, and the books you've taken from her. */
+  book: string;
+  opened: string[];
+  /** Each book's scores, by book id. */
+  progress: Record<string, Progress>;
   achievements: string[];
   /** Questions answered right at least once, and running totals for achievements. */
   mastered: string[];
@@ -91,15 +107,25 @@ const saved = slot.load();
 const count = (x: unknown) => Math.max(0, Math.floor(Number(x) || 0));
 const counts = (raw: unknown): Record<string, number> =>
   Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}).map(([k, v]) => [k, count(v)]));
+function progressFrom(raw: unknown): Progress {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    partBest: counts(r.partBest),
+    passed: Array.isArray(r.passed) ? r.passed.filter((n): n is number => Number.isInteger(n)) : [],
+    drillBest: counts(r.drillBest),
+    // Keep the last two months of daily scores.
+    dailyBests: Object.fromEntries(Object.entries(counts(r.dailyBests)).filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 60)),
+    lightningBest: count(r.lightningBest),
+  };
+}
+// Saves from before there was a second book kept Basic Economics' scores at the top level.
+const savedProgress = (saved?.progress && typeof saved.progress === 'object' ? saved.progress : { be: saved }) as Record<string, unknown>;
 const save: Save = {
   muted: saved?.muted === true,
   peanuts: count(saved?.peanuts ?? 5),
-  partBest: counts(saved?.partBest),
-  passed: Array.isArray(saved?.passed) ? saved.passed.filter((n): n is number => Number.isInteger(n)) : [],
-  drillBest: counts(saved?.drillBest),
-  // Keep the last two months of daily scores.
-  dailyBests: Object.fromEntries(Object.entries(counts(saved?.dailyBests)).filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 60)),
-  lightningBest: count(saved?.lightningBest),
+  book: bookById(saved?.book).id,
+  opened: Array.isArray(saved?.opened) ? saved.opened.filter((id): id is string => BOOKS.some((b) => b.id === id)) : saved?.achievements?.includes('took-book') ? ['be'] : [],
+  progress: Object.fromEntries(BOOKS.map((b) => [b.id, progressFrom(savedProgress[b.id])])),
   achievements: [...normalizeUnlocked(saved?.achievements)],
   mastered: Array.isArray(saved?.mastered) ? saved.mastered.filter((id): id is string => typeof id === 'string') : [],
   peanutsEarned: count(saved?.peanutsEarned),
@@ -110,6 +136,10 @@ const save: Save = {
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
 };
 const persist = () => slot.save(save);
+
+/** The book in hand, and its scores. */
+let book: Book = bookById(save.book);
+const prog = () => save.progress[book.id];
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -296,20 +326,22 @@ const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', medium: 'Medium', har
 const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
 
 function renderMenu() {
-  const open = unlockedParts(save.passed);
+  const open = unlockedParts(prog().passed, book);
   els.parts.replaceChildren(
-    ...BOOK.parts.map((part) => {
+    ...book.parts.map((part) => {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button';
-      const passed = save.passed.includes(part.n);
+      const passed = prog().passed.includes(part.n);
       const locked = !open.includes(part.n);
-      const best = save.partBest[part.n];
+      const best = prog().partBest[part.n];
       b.className = `part-card${passed ? ' passed' : ''}`;
       b.disabled = locked;
       b.innerHTML = `<span class="numeral">${roman(part.n)}</span><span class="what"><b></b><small></small></span><span class="status"></span>`;
       b.querySelector('b')!.textContent = part.title;
-      b.querySelector('small')!.textContent = locked ? `Pass Part ${roman(part.n - 1)} to open` : `Chapters ${part.chapters[0].n}–${part.chapters[part.chapters.length - 1].n}${best !== undefined ? ` · best ${best}/${RUN_LENGTH}` : ''}`;
+      const chapters = part.chapters.filter((c) => c.n > 0);
+      const span = `${part.chapters[0].n === 0 ? 'Introduction, chapters' : 'Chapters'} ${chapters[0].n}–${chapters[chapters.length - 1].n}`;
+      b.querySelector('small')!.textContent = locked ? `Pass Part ${roman(part.n - 1)} to open` : `${span}${best !== undefined ? ` · best ${best}/${RUN_LENGTH}` : ''}`;
       b.querySelector('.status')!.textContent = locked ? '🔒' : passed ? 'PASSED' : '▶';
       b.addEventListener('click', () => start({ kind: 'part', part: part.n }));
       li.append(b);
@@ -321,15 +353,15 @@ function renderMenu() {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = `drill ${level}`;
-      const best = save.drillBest[level];
-      b.innerHTML = `<b>${LEVEL_NAMES[level]}</b><small>${best !== undefined ? `Best ${best}/${RUN_LENGTH}` : `${BOOK.questions.filter((q) => q.level === level).length} questions`}</small>`;
+      const best = prog().drillBest[level];
+      b.innerHTML = `<b>${LEVEL_NAMES[level]}</b><small>${best !== undefined ? `Best ${best}/${RUN_LENGTH}` : `${book.questions.filter((q) => q.level === level).length} questions`}</small>`;
       b.addEventListener('click', () => start({ kind: 'drill', level }));
       return b;
     }),
   );
-  const today = save.dailyBests[dateKey(new Date())];
+  const today = prog().dailyBests[dateKey(new Date())];
   els.dailyNote.textContent = today !== undefined ? `Today’s best: ${today}/${RUN_LENGTH}` : 'Same 10 questions for everyone today';
-  els.lightningNote.textContent = save.lightningBest ? `Best: ${save.lightningBest} in a minute` : `${LIGHTNING_SECONDS} seconds. As many as you can.`;
+  els.lightningNote.textContent = prog().lightningBest ? `Best: ${prog().lightningBest} in a minute` : `${LIGHTNING_SECONDS} seconds. As many as you can.`;
 }
 
 function toMenu() {
@@ -339,7 +371,7 @@ function toMenu() {
   els.pips.replaceChildren();
   els.score.textContent = '';
   setFace('neutral');
-  say(save.passed.length === 0 && Object.keys(save.partBest).length === 0 ? MENU_LINES[0] : pick(MENU_LINES.slice(1)), { talk: true });
+  say(prog().passed.length === 0 && Object.keys(prog().partBest).length === 0 ? MENU_LINES[0] : pick(MENU_LINES.slice(1)), { talk: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +382,7 @@ let mode: Mode = { kind: 'part', part: 1 };
 let quiz: Quiz = newQuiz([]);
 /** Mind-read has been used on this question. */
 let readMind = false;
-/** Asked Sowell on this question; any lifeline used this run; when this question appeared. */
+/** Asked the author on this question; any lifeline used this run; when this question appeared. */
 let askedSowell = false;
 let usedLifeline = false;
 let askedAt = 0;
@@ -380,7 +412,7 @@ function renderPips() {
 }
 
 function modeLabel(m: Mode): string {
-  if (m.kind === 'part') return `Part ${roman(m.part)}: ${BOOK.parts.find((p) => p.n === m.part)!.title}`;
+  if (m.kind === 'part') return `Part ${roman(m.part)}: ${book.parts.find((p) => p.n === m.part)!.title}`;
   if (m.kind === 'drill') return `${LEVEL_NAMES[m.level]} drill`;
   if (m.kind === 'daily') return 'Daily quiz';
   return 'Lightning round';
@@ -388,7 +420,7 @@ function modeLabel(m: Mode): string {
 
 function start(m: Mode) {
   mode = m.kind === 'daily' ? { kind: 'daily', key: dateKey(new Date()) } : m;
-  quiz = newQuiz(questionsFor(mode));
+  quiz = newQuiz(questionsFor(mode, Math.random, book));
   play('page');
   screen('quiz');
   els.timer.hidden = !isLightning();
@@ -446,7 +478,7 @@ function renderLifelines() {
   const open = !answered(quiz);
   els.mindRead.disabled = !open || readMind || save.peanuts < MIND_READ_COST;
   els.swap.disabled = !open || save.peanuts < SWAP_COST;
-  els.askSowell.disabled = !open || askedSowell || save.peanuts < ASK_SOWELL_COST;
+  els.askSowell.disabled = !open || askedSowell || save.peanuts < HINT_COST;
 }
 
 /** Faces and sound effects for each level, right and wrong. */
@@ -491,7 +523,7 @@ function choose(i: number) {
     if (quiz.streak >= 5) award('streak-5');
     if (quiz.streak >= 10) award('streak-10');
     if (save.mastered.length >= 100) award('well-read');
-    if (BOOK.questions.every((x) => save.mastered.includes(x.id))) award('whole-book');
+    if (book.questions.every((x) => save.mastered.includes(x.id))) award(wholeBookAchievement(book.id));
     if (save.hardRight >= 50) award('empiricist');
     if (save.peanutsEarned >= 100) award('peanuts-100');
     if (q.level === 'hard' && performance.now() - askedAt < 2000) award('lucky');
@@ -569,7 +601,7 @@ els.mindRead.addEventListener('click', () => {
 els.swap.addEventListener('click', () => {
   const q = current(quiz);
   if (!q || answered(quiz) || save.peanuts < SWAP_COST) return;
-  const replacement = swapFor(q, quiz.questions.map((x) => x.id));
+  const replacement = swapFor(q, quiz.questions.map((x) => x.id), Math.random, book);
   if (!replacement || !replaceCurrent(quiz, replacement)) return;
   save.peanuts -= SWAP_COST;
   usedLifeline = true;
@@ -582,19 +614,19 @@ els.swap.addEventListener('click', () => {
   say(pick(['Fine. Try this one instead.', 'Scared of that one? Here.', 'Different question. Same Anya.']), { talk: true });
 });
 
-/** Ask Sowell: a hint from the book, not the answer. */
+/** Ask the author (Sowell, Mises): a hint from the book, not the answer. */
 els.askSowell.addEventListener('click', () => {
   const q = current(quiz);
-  if (!q || answered(quiz) || askedSowell || save.peanuts < ASK_SOWELL_COST) return;
-  save.peanuts -= ASK_SOWELL_COST;
+  if (!q || answered(quiz) || askedSowell || save.peanuts < HINT_COST) return;
+  save.peanuts -= HINT_COST;
   persist();
   renderPeanuts(true);
   askedSowell = true;
   usedLifeline = true;
   award('ask-sowell');
   save.stats.hints++;
-  if (save.tts.questions) speak(`Sowell says: ${q.hint}`, 'reader', save.tts.anya);
-  els.sowellNote.innerHTML = '<b>Sowell says</b><br>';
+  if (save.tts.questions) speak(`${book.short} says: ${q.hint}`, 'reader', save.tts.anya);
+  els.sowellNote.innerHTML = `<b>${book.short} says</b><br>`;
   els.sowellNote.append(document.createTextNode(q.hint));
   els.sowellNote.hidden = false;
   play('page');
@@ -649,24 +681,24 @@ function end() {
   let bestLine = '';
   if (mode.kind === 'part') {
     const part = mode.part;
-    const was = save.partBest[part];
-    save.partBest[part] = Math.max(was ?? 0, quiz.score);
-    if (quiz.score >= PASS_MARK && !save.passed.includes(part)) {
-      save.passed.push(part);
-      const nextPart = BOOK.parts.find((p) => p.n === part + 1);
+    const was = prog().partBest[part];
+    prog().partBest[part] = Math.max(was ?? 0, quiz.score);
+    if (quiz.score >= PASS_MARK && !prog().passed.includes(part)) {
+      prog().passed.push(part);
+      const nextPart = book.parts.find((p) => p.n === part + 1);
       bestLine = nextPart ? `📖 Part ${roman(part)} passed! Part ${roman(nextPart.n)}, “${nextPart.title},” is open.` : '🎓 You’ve passed every part of the book!';
     } else bestLine = was === undefined || quiz.score > was ? '🏆 Your best on this part yet!' : `Your best on this part: ${was}/${RUN_LENGTH}`;
   } else if (mode.kind === 'drill') {
-    const was = save.drillBest[mode.level];
-    save.drillBest[mode.level] = Math.max(was ?? 0, quiz.score);
+    const was = prog().drillBest[mode.level];
+    prog().drillBest[mode.level] = Math.max(was ?? 0, quiz.score);
     bestLine = was === undefined || quiz.score > was ? `🏆 Your best ${LEVEL_NAMES[mode.level].toLowerCase()} drill yet!` : `Your best: ${was}/${RUN_LENGTH}`;
   } else if (mode.kind === 'daily') {
-    const was = save.dailyBests[mode.key];
-    save.dailyBests[mode.key] = Math.max(was ?? 0, quiz.score);
+    const was = prog().dailyBests[mode.key];
+    prog().dailyBests[mode.key] = Math.max(was ?? 0, quiz.score);
     bestLine = `📅 Daily quiz, ${mode.key}: ${was === undefined ? 'your first score today.' : quiz.score > was ? `new best today (was ${was}).` : `today’s best is ${was}.`} New questions tomorrow.`;
   } else {
-    const was = save.lightningBest;
-    save.lightningBest = Math.max(was, quiz.score);
+    const was = prog().lightningBest;
+    prog().lightningBest = Math.max(was, quiz.score);
     bestLine = quiz.score > was ? '🏆 Your best lightning round yet!' : `Your best: ${was} in a minute`;
   }
   // Achievements for the run
@@ -676,14 +708,14 @@ function end() {
     if (v.stamp === 'STILL DUMB' && ++save.stillDumbs >= 3) award('no-refunds');
   }
   if (mode.kind === 'part' && quiz.score >= PASS_MARK) {
-    award(`part-${mode.part}`);
+    award(partAchievement(book.id, mode.part));
     if (!usedLifeline) award('no-lifelines');
-    if (BOOK.parts.every((p) => save.passed.includes(p.n))) award('all-parts');
+    if (book.parts.every((p) => prog().passed.includes(p.n))) award(allPartsAchievement(book.id));
   }
   if (mode.kind === 'drill' && mode.level === 'hard' && quiz.score >= 8) award('drill-hard');
   if (mode.kind === 'daily') {
     award('daily');
-    if (Object.keys(save.dailyBests).length >= 5) award('daily-5');
+    if (new Set(Object.values(save.progress).flatMap((p) => Object.keys(p.dailyBests))).size >= 5) award('daily-5');
   }
   if (isLightning()) {
     if (quiz.score >= 10) award('lightning-10');
@@ -793,11 +825,11 @@ els.hideAchievements.addEventListener('click', closeAchievements);
 // Reading aloud, stats, and starting over
 // ---------------------------------------------------------------------------
 
-/** Reads the current question and its answers (and Sowell's hint, if asked). `force` reads it even if the setting's off (the R key). */
+/** Reads the current question and its answers (and the author's hint, if asked). `force` reads it even if the setting's off (the R key). */
 function readQuestion(queue: boolean, force = false) {
   const q = current(quiz);
   if (!q || (!save.tts.questions && !force)) return;
-  speak(questionScript(q.q, q.options, askedSowell ? q.hint : undefined), 'reader', queue);
+  speak(questionScript(q.q, q.options, askedSowell ? q.hint : undefined, book.short), 'reader', queue);
 }
 
 const settingsEls = {
@@ -805,6 +837,7 @@ const settingsEls = {
   cards: byId('stats-cards'),
   levels: byId('stats-levels'),
   parts: byId('stats-parts'),
+  partsNote: byId('stats-parts-note'),
   ttsQuestions: byId<HTMLButtonElement>('tts-questions'),
   ttsAnya: byId<HTMLButtonElement>('tts-anya'),
   speechNote: byId('speech-note'),
@@ -826,7 +859,7 @@ function bar(label: string, value: number, total: number, text: string, cls = ''
 }
 
 function renderSettings() {
-  const sum = summarize(save.stats, save.mastered, BOOK);
+  const sum = summarize(save.stats, save.mastered, book);
   const card = (value: string, label: string, cls = '') => {
     const c = document.createElement('div');
     c.className = `stat-card ${cls}`;
@@ -842,16 +875,21 @@ function renderSettings() {
     card(`${sum.accuracy}%`, 'Right'),
     card(sum.answered ? `${sum.averageSeconds}s` : '—', 'Average time to answer'),
     card(String(save.stats.bestStreak), 'Longest streak'),
-    card(String(save.stats.hints), 'Hints used (Ask Sowell)'),
+    card(String(save.stats.hints), 'Hints used (Ask the author)'),
     card(String(save.stats.mindReads), 'Mind-reads'),
     card(String(save.stats.swaps), 'Swaps'),
     card(String(save.peanutsEarned), 'Peanuts earned'),
   );
   settingsEls.levels.replaceChildren(...sum.levels.map((l) => bar(LEVEL_NAMES[l.level], l.right, l.answered, l.answered ? `${l.right}/${l.answered} · ${l.accuracy}%` : 'none yet', l.level)));
+  const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
   settingsEls.parts.replaceChildren(
-    bar('All 7 parts', sum.mastered, sum.total, `${sum.mastered}/${sum.total} · ${sum.total ? Math.round((sum.mastered / sum.total) * 100) : 0}%`),
+    ...BOOKS.map((b) => {
+      const s = b === book ? sum : summarize(save.stats, save.mastered, b);
+      return bar(`📕 ${b.title}`, s.mastered, s.total, `${s.mastered}/${s.total} · ${percent(s.mastered, s.total)}%`, `book-${b.id}`);
+    }),
     ...sum.parts.map((p) => bar(`${roman(p.n)}. ${p.title}`, p.mastered, p.total, `${p.mastered}/${p.total}`)),
   );
+  settingsEls.partsNote.textContent = `Questions you’ve answered right at least once. Parts: ${book.title}.`;
   const supported = speechSupported();
   const toggle = (b: HTMLButtonElement, on: boolean, label: string) => {
     b.disabled = !supported;
@@ -903,10 +941,10 @@ settingsEls.eraseNo.addEventListener('click', () => {
   settingsEls.erase.hidden = false;
 });
 settingsEls.eraseYes.addEventListener('click', () => {
-  // Everything goes, except the sound and read-aloud settings.
+  // Everything goes, except the sound and read-aloud settings (and the book in hand).
   stopSpeaking();
   slot.clear();
-  slot.save({ muted: save.muted, tts: save.tts } as Save);
+  slot.save({ muted: save.muted, tts: save.tts, book: save.book } as Save);
   location.reload();
 });
 
@@ -1064,9 +1102,12 @@ let taken = false;
 
 /** Takes the book from her: it flies at you, and the menu opens. */
 function take() {
-  if (taken) return;
+  if (taken || switching) return;
   taken = true;
   award('took-book');
+  if (!save.opened.includes(book.id)) save.opened.push(book.id);
+  if (BOOKS.every((b) => save.opened.includes(b.id))) award('second-book');
+  persist();
   getAudioContext();
   play('page');
   els.anya.classList.add('taking');
@@ -1077,8 +1118,88 @@ function take() {
   }, 600);
 }
 
+// ---------------------------------------------------------------------------
+// Anya's books: arrows switch which one she's holding out
+// ---------------------------------------------------------------------------
+
+const bookEl = els.anya.querySelector('#anya-book')!;
+
+/** What she says about each book when she switches to it. */
+const OFFER_LINES: Record<string, { face: Face; lines: string[] }> = {
+  be: { face: 'smug', lines: ['Basic Economics. Common sense, with footnotes.', 'Sowell. Start here. Trust Anya.', 'The easy one. Well, easier.', 'Back to Sowell. Anya likes the cover.'] },
+  ha: { face: 'happy', lines: ['Human Action. Nine hundred pages. Anya believes in you. A little.', 'Mises! Praxeology! Waku waku!', 'This one’s heavy. Lift with your legs.', 'A treatise. Like a book, but it judges you.'] },
+};
+
+/** Dresses the page for the book in hand: the cover on the plate, the colours, the names. */
+function applyBook() {
+  document.documentElement.dataset.book = book.id;
+  bookEl.innerHTML = coverMarkup(book.id);
+  els.brandTitle.textContent = book.title;
+  els.menuKicker.textContent = `${book.title} · ${book.author}`;
+  els.askSowell.innerHTML = `👓 Ask ${book.short} <span>${HINT_COST}🥜</span>`;
+  const title = document.createElement('span');
+  title.textContent = book.title;
+  const author = document.createElement('span');
+  author.className = 'by';
+  author.textContent = ` · ${book.author}`;
+  els.bookDots.replaceChildren(
+    title,
+    author,
+    ...BOOKS.map((b) => {
+      const dot = document.createElement('i');
+      if (b === book) dot.className = 'on';
+      return dot;
+    }),
+  );
+}
+
+let switching = false;
+
+/** Swaps the book on her plate: the old one slides off, the new one slides on, the page changes colour. */
+function switchBook(dir: 1 | -1) {
+  if (switching || taken || els.app.dataset.screen !== 'intro') return;
+  switching = true;
+  getAudioContext();
+  play('page');
+  const nextBook = BOOKS[(BOOKS.indexOf(book) + dir + BOOKS.length) % BOOKS.length];
+  bookEl.classList.add(dir > 0 ? 'out-left' : 'out-right');
+  window.setTimeout(() => {
+    book = nextBook;
+    save.book = book.id;
+    persist();
+    applyBook();
+    bookEl.classList.remove('out-left', 'out-right');
+    bookEl.classList.add(dir > 0 ? 'in-right' : 'in-left');
+    const offer = OFFER_LINES[book.id] ?? OFFER_LINES.be;
+    setFace(offer.face);
+    boom(book.id === 'ha' ? 'THUD!' : 'SWISH!', '');
+    say(pick(offer.lines), { talk: true });
+    window.setTimeout(() => {
+      bookEl.classList.remove('in-right', 'in-left');
+      switching = false;
+    }, 340);
+  }, 260);
+}
+
+/** Back from the menu to Anya, to pick another book. */
+function toIntro() {
+  stopSpeaking();
+  taken = false;
+  screen('intro');
+  els.pips.replaceChildren();
+  els.score.textContent = '';
+  setFace('smug');
+  say(BOOKS.length > 1 ? 'Another book? Use the arrows. Anya will wait. Briefly.' : 'Take the book. I don’t have all day.', { talk: true });
+}
+
+els.prevBook.addEventListener('click', () => switchBook(-1));
+els.nextBook.addEventListener('click', () => switchBook(1));
+els.switchBook.addEventListener('click', () => {
+  play('page');
+  toIntro();
+});
 els.take.addEventListener('click', take);
-els.anya.querySelector('#anya-book')!.addEventListener('click', take);
+bookEl.addEventListener('click', take);
 els.next.addEventListener('click', advance);
 els.again.addEventListener('click', () => start(mode));
 els.toMenu.addEventListener('click', () => {
@@ -1109,6 +1230,11 @@ document.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (at === 'intro' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    switchBook(e.key === 'ArrowLeft' ? -1 : 1);
+    return;
+  }
   if (e.key === 'Escape' && (at === 'quiz' || at === 'end')) {
     toMenu();
     return;
@@ -1134,6 +1260,7 @@ document.addEventListener('keydown', (e) => {
   if (n >= 0 && button && !button.disabled) choose(n);
 });
 
+applyBook();
 screen('intro');
 setFace('shock');
 renderPeanuts();
@@ -1141,5 +1268,5 @@ window.setTimeout(() => say('Take the book. I don’t have all day.'), 500);
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { bet: { wait: (n: number) => (waited += n), award, quiz: () => quiz, save, start, setFace, take, choose, timeLeft } });
+  Object.assign(window, { bet: { wait: (n: number) => (waited += n), award, quiz: () => quiz, save, start, setFace, take, choose, timeLeft, switchBook, book: () => book } });
 }

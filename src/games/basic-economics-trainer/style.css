@@ -9,6 +9,10 @@
     --red: #c9482a;
     --green: #2e7d4f;
     --amber: #c98a12;
+    /* The book's colours: the page behind the panels, and the accent (Basic Economics' red). */
+    --page: #e6d7bf;
+    --accent: var(--red);
+    --accent-ink: var(--red);
     --tone: radial-gradient(rgba(26, 26, 26, 0.16) 1.1px, transparent 1.4px);
     --font: 'Montserrat', system-ui, sans-serif;
     --sfx: 'Bangers', 'Impact', sans-serif;
@@ -25,8 +29,9 @@ body {
 }
 
 body {
-    background: #e6d7bf;
+    background-color: var(--page);
     background-image: var(--tone);
+    transition: background-color 0.6s ease;
     background-size: 7px 7px;
     color: var(--ink);
     font: 500 16px/1.45 var(--font);
@@ -84,7 +89,7 @@ button {
 }
 
 .brand-name small {
-    color: var(--red);
+    color: var(--accent-ink);
     font-weight: 800;
     font-size: 12px;
     text-transform: uppercase;
@@ -220,7 +225,7 @@ button {
 }
 
 #app:not([data-screen='intro']) .caption,
-#app:not([data-screen='intro']) .take-button {
+#app:not([data-screen='intro']) .take-row {
     display: none;
 }
 
@@ -420,7 +425,7 @@ button {
     margin: 0 0 18px;
     padding: 12px 30px;
     border: 3px solid var(--ink);
-    background: var(--red);
+    background: var(--accent);
     color: #fff;
     font-weight: 900;
     font-size: 19px;
@@ -482,7 +487,7 @@ button {
 }
 
 .chapter {
-    color: var(--red);
+    color: var(--accent-ink);
 }
 
 .counter {
@@ -661,13 +666,13 @@ button {
     letter-spacing: 0.5px;
     text-transform: uppercase;
     cursor: pointer;
-    box-shadow: 4px 4px 0 var(--red);
+    box-shadow: 4px 4px 0 var(--accent);
     transition: transform 0.1s, box-shadow 0.1s;
 }
 
 .next-button:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--red);
+    box-shadow: 6px 6px 0 var(--accent);
 }
 
 .next-button[hidden] {
@@ -1114,7 +1119,7 @@ button {
     background-size: 6px 6px;
     color: var(--ink);
     cursor: pointer;
-    box-shadow: 4px 4px 0 var(--red);
+    box-shadow: 4px 4px 0 var(--accent);
     transition: transform 0.1s, box-shadow 0.1s;
 }
 
@@ -1320,7 +1325,7 @@ button {
     padding: 10px 14px 10px 44px;
     border: 3px solid var(--ink);
     border-left-width: 10px;
-    border-left-color: var(--red);
+    border-left-color: var(--accent);
     background: #fff;
     font-weight: 600;
     font-style: italic;
@@ -1344,7 +1349,7 @@ button {
     text-transform: uppercase;
     letter-spacing: 1px;
     font-size: 12px;
-    color: var(--red);
+    color: var(--accent-ink);
 }
 
 .sowell-note[hidden] {
@@ -1451,7 +1456,7 @@ button {
     padding: 10px 14px;
     border: 3px solid var(--ink);
     background: #fffbe6;
-    box-shadow: 4px 4px 0 var(--red);
+    box-shadow: 4px 4px 0 var(--accent);
     animation: toast 4.2s ease-in-out forwards;
 }
 
@@ -1461,7 +1466,7 @@ button {
 }
 
 .toast small {
-    color: var(--red);
+    color: var(--accent-ink);
     font-weight: 900;
     font-size: 11px;
     letter-spacing: 1.5px;
@@ -1532,7 +1537,7 @@ button {
     .toast {
         min-width: 0;
         padding: 6px 10px;
-        box-shadow: 3px 3px 0 var(--red);
+        box-shadow: 3px 3px 0 var(--accent);
     }
 
     .toast .icon {
@@ -1566,7 +1571,7 @@ button {
     position: absolute;
     z-index: 5;
     font: 26px/1 var(--sfx);
-    color: var(--red);
+    color: var(--accent-ink);
     text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
     pointer-events: none;
     transform: translate(-50%, -50%);
@@ -1776,5 +1781,203 @@ button {
 
     .top-right {
         gap: 6px;
+    }
+}
+
+/* --- Anya's books: each one dresses the page in its colours --- */
+.panel,
+.topbar {
+    transition: background-color 0.6s ease;
+}
+
+/* Human Action (the Scholar's Edition): a turquoise page, cool white paper, turquoise accents */
+:root[data-book='ha'] {
+    --page: #0280b2;
+    --paper: #e4f0f5;
+    --paper-light: #f6fafc;
+    --muted: #4a6370;
+    --accent: #0280b2;
+    --accent-ink: #026792;
+}
+
+:root[data-book='ha'] .brand-cover {
+    background: linear-gradient(transparent 0 78%, #0280b2 78%), linear-gradient(90deg, #0280b2 0 50%, #fff 50%);
+}
+
+/* Her ribbon matches the book she's holding */
+.anya-ribbon {
+    transition: fill 0.6s ease;
+}
+
+:root[data-book='ha'] .anya-ribbon {
+    fill: #0280b2;
+}
+
+/* The arrows either side of “Take the book” */
+.take-row {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 18px;
+    margin: 0 0 12px;
+}
+
+.take-middle {
+    display: grid;
+    justify-items: center;
+}
+
+.take-row .take-button {
+    margin: 0;
+}
+
+.book-arrow {
+    display: grid;
+    place-items: center;
+    width: 50px;
+    height: 50px;
+    padding: 0 0 2px;
+    border: 3px solid var(--ink);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--ink);
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 var(--ink);
+    transition: transform 0.1s, box-shadow 0.1s, background-color 0.2s;
+}
+
+.book-arrow:hover {
+    transform: translateY(-2px);
+    background: #fffbe6;
+}
+
+.book-arrow:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--ink);
+}
+
+.book-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}
+
+.book-dots i {
+    display: block;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    background: #fff;
+}
+
+.book-dots i:first-of-type {
+    margin-left: 4px;
+}
+
+.book-dots i.on {
+    background: var(--accent);
+}
+
+/* Swapping books: the old one slides off the plate, the new one slides on */
+#app[data-screen='intro'] #anya-book.out-left {
+    animation: book-out-left 0.26s ease-in forwards;
+}
+
+#app[data-screen='intro'] #anya-book.out-right {
+    animation: book-out-right 0.26s ease-in forwards;
+}
+
+#app[data-screen='intro'] #anya-book.in-right {
+    animation: book-in-right 0.34s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+#app[data-screen='intro'] #anya-book.in-left {
+    animation: book-in-left 0.34s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+@keyframes book-out-left {
+    to {
+        transform: translate(-150px, 10px) rotate(-26deg);
+        opacity: 0;
+    }
+}
+
+@keyframes book-out-right {
+    to {
+        transform: translate(150px, 10px) rotate(26deg);
+        opacity: 0;
+    }
+}
+
+@keyframes book-in-right {
+    from {
+        transform: translate(170px, -30px) rotate(20deg);
+        opacity: 0;
+    }
+}
+
+@keyframes book-in-left {
+    from {
+        transform: translate(-170px, -30px) rotate(-20deg);
+        opacity: 0;
+    }
+}
+
+/* The menu: which book, and a way back to Anya for another */
+.menu-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.switch-book {
+    padding: 6px 12px;
+    font-size: 13px;
+    box-shadow: 3px 3px 0 var(--accent);
+}
+
+.stat-bar .track i.book-be {
+    background: #c9482a;
+}
+
+.stat-bar .track i.book-ha {
+    background: #0280b2;
+}
+
+.book-dots .by {
+    margin-left: -6px;
+}
+
+@media (max-width: 760px) {
+    /* Narrow enough that the left arrow stays clear of the site's corner buttons */
+    .take-row {
+        gap: 8px;
+        padding-left: 16px;
+    }
+
+    .take-row .take-button {
+        padding: 10px 16px;
+        font-size: 16px;
+    }
+
+    .book-arrow {
+        width: 44px;
+        height: 44px;
+        font-size: 17px;
+    }
+
+    .book-dots .by {
+        display: none;
     }
 }

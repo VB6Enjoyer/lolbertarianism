@@ -1,6 +1,6 @@
 // Anya, hand-inked as an SVG in the meme's style: black ink on cream, the book held out on a plate.
 // Version 2, drawn closer to the character: softer bangs in curved locks, hair that flicks out at the
-// ends, rounded cat-ear clips with bands, and the red ribbon at her collar (red, like the book).
+// ends, rounded cat-ear clips with bands, and the ribbon at her collar (the colour of the book she’s holding).
 // The face is a separate layer, so expressions swap without redrawing her. Hair and eyes carry
 // classes so the unlockable looks (pink hair, green eyes) can recolor them from CSS. Invisible
 // hit zones (nose, eyes, head) are on top, for the easter eggs. Version 1 is kept in anya-v1.ts.
@@ -116,17 +116,46 @@ export function faceMarkup(face: Face): string {
   }
 }
 
-/** The book (the meme's cover: black over red), standing on the plate. */
-export const bookMarkup = () => `
-  <g id="anya-book">
-    <path d="M 168 300 L 178 296 L 178 424 L 168 428 Z" fill="#f4efe6" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+/** The pages, seen from the side. */
+const PAGES = `<path d="M 168 300 L 178 296 L 178 424 L 168 428 Z" fill="#f4efe6" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
+const SANS = `'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
+
+/** Each book's cover, drawn on the same face (64,300 to 168,430) so they can swap on the plate. */
+const COVERS: Record<string, () => string> = {
+  // Basic Economics: the meme's cover, black over red.
+  be: () => `${PAGES}
     <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#c9482a" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
     <path d="M 64 302 L 168 300 L 168 368 L 64 370 Z" fill="#141414"/>
     <text x="116" y="328" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#fff" letter-spacing="0.5">BASIC</text>
     <text x="116" y="348" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14" fill="#fff" letter-spacing="0.3">ECONOMICS</text>
     <text x="116" y="382" text-anchor="middle" font-family="Georgia, serif" font-size="5.6" fill="#1a1a1a">A Common Sense Guide to the Economy</text>
-    <text x="116" y="402" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="12" fill="#1a1a1a">Thomas Sowell</text>
-  </g>`;
+    <text x="116" y="402" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="12" fill="#1a1a1a">Thomas Sowell</text>`,
+  // Human Action, the Scholar's Edition: white, a turquoise block of diagonal stripes, the title in black.
+  ha: () => {
+    const stripes: string[] = [];
+    for (let i = 0; i < 14; i++) {
+      const y = 404 + i * 7;
+      stripes.push(`<path d="M 60 ${y} L 124 ${y - 64}" stroke="#7cc8e6" stroke-width="${(1 + (i % 3) * 0.7).toFixed(1)}" opacity="${(0.35 + (i % 4) * 0.12).toFixed(2)}"/>`);
+    }
+    return `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#fff" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <clipPath id="ha-block"><path d="M 64 322 L 116 321 L 116 405 L 64 406 Z"/></clipPath>
+    <path d="M 64 322 L 116 321 L 116 405 L 64 406 Z" fill="#0280b2"/>
+    <g clip-path="url(#ha-block)" fill="none">${stripes.join('')}</g>
+    <path d="M 64 405 L 168 403 L 168 428 L 64 430 Z" fill="#0280b2" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <text x="91" y="315" text-anchor="middle" font-family="${SANS}" font-size="4" fill="#1a1a1a" textLength="46" lengthAdjust="spacingAndGlyphs">A TREATISE ON ECONOMICS</text>
+    <text x="142" y="334" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="13" fill="#1a1a1a" textLength="46" lengthAdjust="spacingAndGlyphs">HUMAN</text>
+    <text x="142" y="349" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="13" fill="#1a1a1a" textLength="46" lengthAdjust="spacingAndGlyphs">ACTION</text>
+    <text x="142" y="368" text-anchor="middle" font-family="${SANS}" font-size="3.8" fill="#1a1a1a" textLength="42" lengthAdjust="spacingAndGlyphs">THE SCHOLAR’S EDITION</text>
+    <text x="116" y="421" text-anchor="middle" font-family="${SANS}" font-size="10.5" fill="#fff" letter-spacing="0.2">Ludwig von Mises</text>`;
+  },
+};
+
+/** A book's cover, for the plate (the inside of #anya-book). */
+export const coverMarkup = (book: string) => (COVERS[book] ?? COVERS.be)();
+
+/** The book standing on the plate. */
+export const bookMarkup = (book = 'be') => `<g id="anya-book">${coverMarkup(book)}</g>`;
 
 /** Focus lines (manga speed lines) radiating from behind her, for big reactions. */
 function focusLines(): string {
@@ -178,10 +207,10 @@ export function anyaSvg(): string {
   <circle cx="200" cy="380" r="4.5" fill="#fff" stroke="${INK}" stroke-width="2"/>
   ${path('M 200 326 C 178 318 148 326 146 342 C 148 360 182 364 200 340 Z', '#fff', 3)}
   ${path('M 200 326 C 222 318 252 326 254 342 C 252 360 218 364 200 340 Z', '#fff', 3)}
-  ${path('M 200 344 L 182 334 L 184 356 Z', RIBBON, 2.5)}
-  ${path('M 200 344 L 218 334 L 216 356 Z', RIBBON, 2.5)}
-  ${path('M 196 344 L 190 368 L 200 362 L 210 368 L 204 344 Z', RIBBON, 2.5)}
-  <circle cx="200" cy="345" r="5" fill="${RIBBON}" stroke="${INK}" stroke-width="2.5"/>
+  ${path('M 200 344 L 182 334 L 184 356 Z', RIBBON, 2.5, 'class="anya-ribbon"')}
+  ${path('M 200 344 L 218 334 L 216 356 Z', RIBBON, 2.5, 'class="anya-ribbon"')}
+  ${path('M 196 344 L 190 368 L 200 362 L 210 368 L 204 344 Z', RIBBON, 2.5, 'class="anya-ribbon"')}
+  <circle class="anya-ribbon" cx="200" cy="345" r="5" fill="${RIBBON}" stroke="${INK}" stroke-width="2.5"/>
   <!-- Face -->
   ${path('M 118 186 C 118 250 152 294 200 298 C 248 294 282 250 282 186 Z', SKIN, 3.2)}
   <g id="anya-face">${faceMarkup('neutral')}</g>
