@@ -149,6 +149,20 @@ const COVERS: Record<string, () => string> = {
     <text x="142" y="368" text-anchor="middle" font-family="${SANS}" font-size="3.8" fill="#1a1a1a" textLength="42" lengthAdjust="spacingAndGlyphs">THE SCHOLAR’S EDITION</text>
     <text x="116" y="421" text-anchor="middle" font-family="${SANS}" font-size="10.5" fill="#fff" letter-spacing="0.2">Ludwig von Mises</text>`;
   },
+  // Economics in One Lesson: white over black, the title in gold serif, “in” in a red circle,
+  // and the author's name in a red box.
+  eol: () => `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#141414" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 64 302 L 168 300 L 168 352 L 64 353 Z" fill="#fff"/>
+    <text x="116" y="313" text-anchor="middle" font-family="${SANS}" font-size="3.6" fill="#a5243a" textLength="56" lengthAdjust="spacingAndGlyphs">OVER ONE MILLION COPIES SOLD</text>
+    <text x="116" y="340" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="#b8983a" textLength="92" lengthAdjust="spacingAndGlyphs">ECONOMICS</text>
+    <circle cx="116" cy="356" r="7" fill="#a5243a"/>
+    <text x="116" y="358.5" text-anchor="middle" font-family="Georgia, serif" font-size="7" fill="#fff">in</text>
+    <text x="116" y="383" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#b8983a" textLength="92" lengthAdjust="spacingAndGlyphs">ONE LESSON</text>
+    <text x="116" y="396" text-anchor="middle" font-family="${SANS}" font-size="3.8" fill="#fff" textLength="70" lengthAdjust="spacingAndGlyphs">The Shortest &amp; Surest Way to Understand</text>
+    <text x="116" y="405" text-anchor="middle" font-family="Georgia, serif" font-size="6" fill="#b8983a" textLength="64" lengthAdjust="spacingAndGlyphs">BASIC ECONOMICS</text>
+    <rect x="84" y="411" width="64" height="11" fill="#a5243a"/>
+    <text x="116" y="419" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="6.2" fill="#fff" letter-spacing="0.6">HENRY HAZLITT</text>`,
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */

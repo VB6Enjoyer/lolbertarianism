@@ -1955,9 +1955,7 @@ button {
     background: #0280b2;
 }
 
-.book-dots .by {
-    margin-left: -6px;
-}
+
 
 @media (max-width: 760px) {
     /* Narrow enough that the left arrow stays clear of the site's corner buttons */
@@ -2005,4 +2003,59 @@ button {
     background: var(--accent);
     color: #fff;
     box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* Economics in One Lesson: a warm black page dotted in gold, ivory paper, gold accents and ribbon */
+:root[data-book='eol'] {
+    --page: #1c1915;
+    --paper: #f4eedf;
+    --paper-light: #fbf8ef;
+    --muted: #6a5d44;
+    --accent: #c9a23a;
+    --accent-ink: #7a5d12;
+}
+
+:root[data-book='eol'] body {
+    background-image: radial-gradient(rgba(201, 162, 58, 0.3) 1.1px, transparent 1.4px);
+}
+
+:root[data-book='eol'] .brand-cover {
+    background: linear-gradient(#fff 0 40%, #141414 40%);
+}
+
+:root[data-book='eol'] .anya-ribbon {
+    fill: #c9a23a;
+}
+
+/* Gold is light, so text on it is ink rather than white */
+:root[data-book='eol'] .take-button,
+:root[data-book='eol'] .scope-button[aria-pressed='true'] {
+    color: var(--ink);
+}
+
+.stat-bar .track i.book-eol {
+    background: #c9a23a;
+}
+
+/* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
+@media (max-width: 760px) {
+    .brand {
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+
+    .brand-name {
+        min-width: 0;
+    }
+
+    .brand-name b {
+        line-height: 1.1;
+    }
+}
+
+@media (max-width: 380px) {
+    .brand-name b {
+        font-size: 12px;
+        letter-spacing: 0;
+    }
 }
