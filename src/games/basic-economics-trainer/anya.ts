@@ -147,8 +147,18 @@ export function faceMarkup(face: Face, mouth?: Mouth): string {
   return `${parts.upper}${nose}${mouth ? talkingMouth(face, mouth) : parts.mouth}${parts.extra}`;
 }
 
-/** The pages, seen from the side. */
-const PAGES = `<path d="M 168 300 L 178 296 L 178 424 L 168 428 Z" fill="#f4efe6" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
+/** The block of pages: the fore-edge on the right and the top edge above the cover, each with faint
+ *  page lines, so the book reads as solid rather than an open shell. */
+const pageLines = [0.3, 0.55, 0.78]
+  .map((t) => {
+    const dx = (10 * t).toFixed(1);
+    const dy = (4 * t).toFixed(1);
+    return `<path d="M ${64 + 10 * t} ${302 - 4 * t} L ${168 + 10 * t} ${300 - 4 * t}" stroke="#cfc4b1" stroke-width="0.8"/><path d="M ${168 + +dx} ${300 - +dy} L ${168 + +dx} ${428 - +dy}" stroke="#cfc4b1" stroke-width="0.8"/>`;
+  })
+  .join('');
+const PAGES = `<path d="M 168 300 L 178 296 L 178 424 L 168 428 Z" fill="#f4efe6" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 64 302 L 74 298 L 178 296 L 168 300 Z" fill="#f8f3ea" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+    ${pageLines}`;
 const SANS = `'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
 
 /** Each book's cover, drawn on the same face (64,300 to 168,430) so they can swap on the plate. */
@@ -250,6 +260,17 @@ const COVERS: Record<string, () => string> = {
       <text x="116" y="423" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="9" fill="#f1e6d2" textLength="86" lengthAdjust="spacingAndGlyphs">Murray N. Rothbard</text>
     </g>`;
   },
+  // Money, Bank Credit, and Economic Cycles: a burgundy cover shading from rose at the left to near-black,
+  // the author in small caps at the top and the title in large cream serif below.
+  jhs: () => `${PAGES}
+    <linearGradient id="jhs-cover" x1="0" x2="1"><stop offset="0" stop-color="#9a5a5a"/><stop offset="0.35" stop-color="#5e2228"/><stop offset="1" stop-color="#2a0d10"/></linearGradient>
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="url(#jhs-cover)" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <text x="76" y="318" font-family="Georgia, 'Times New Roman', serif" font-size="6" fill="#f1e2cf" letter-spacing="0.4" textLength="82" lengthAdjust="spacingAndGlyphs">JESÚS HUERTA DE SOTO</text>
+    <text x="76" y="368" font-family="Georgia, 'Times New Roman', serif" font-size="10" fill="#f6ead8">Money,</text>
+    <text x="76" y="380" font-family="Georgia, 'Times New Roman', serif" font-size="10" fill="#f6ead8" textLength="78" lengthAdjust="spacingAndGlyphs">Bank Credit, and</text>
+    <text x="76" y="392" font-family="Georgia, 'Times New Roman', serif" font-size="10" fill="#f6ead8">Economic</text>
+    <text x="76" y="404" font-family="Georgia, 'Times New Roman', serif" font-size="10" fill="#f6ead8">Cycles</text>
+    <text x="76" y="420" font-family="Georgia, serif" font-size="3.6" fill="#e6cdb8" letter-spacing="0.3" textLength="64" lengthAdjust="spacingAndGlyphs">TRANSLATED BY MELINDA A. STROUP</text>`,
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */
