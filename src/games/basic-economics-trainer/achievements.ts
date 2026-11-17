@@ -12,7 +12,7 @@ export interface Achievement {
 export const ACHIEVEMENTS: readonly Achievement[] = [
   // Getting started
   { id: 'took-book', icon: '📕', name: 'Here, Take This', description: 'Take a book from Anya.' },
-  { id: 'second-book', icon: '📚', name: 'Bookworm', description: 'Take both of Anya’s books.' },
+  { id: 'second-book', icon: '📚', name: 'Bookworm', description: 'Take every one of Anya’s books.' },
   { id: 'first-right', icon: '✅', name: 'Not Dumb After All', description: 'Get your first answer right.' },
   { id: 'streak-5', icon: '😏', name: 'Heh.', description: 'Get five right in a row.' },
   { id: 'streak-10', icon: '✨', name: 'Waku Waku', description: 'Get ten right in a row.' },
@@ -37,7 +37,17 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'ha-part-7', icon: '🦉', name: 'Nondescript No More', description: 'Pass Part Seven: The Place of Economics in Society.' },
   { id: 'ha-all-parts', icon: '🎩', name: 'Misesian', description: 'Pass every part of Human Action.' },
   { id: 'ha-whole-book', icon: '📜', name: 'Read the Whole Treatise', description: 'Answer every question in Human Action right at least once.' },
-  // Both books
+  // Economics in One Lesson, part by part
+  { id: 'eol-part-1', icon: '🪟', name: 'Broken Window', description: 'Pass Part I of Economics in One Lesson: The Lesson.' },
+  { id: 'eol-part-2', icon: '🌉', name: 'The Unbuilt Homes', description: 'Pass Part II: Spending, Taxes and Credit.' },
+  { id: 'eol-part-3', icon: '⚙️', name: 'Technophile', description: 'Pass Part III: Machines and Jobs.' },
+  { id: 'eol-part-4', icon: '🧶', name: 'Cheaper Sweaters', description: 'Pass Part IV: Trade and Protection.' },
+  { id: 'eol-part-5', icon: '🚂', name: 'The Governor', description: 'Pass Part V: Prices and Price-Fixing.' },
+  { id: 'eol-part-6', icon: '🪙', name: 'Real Wages', description: 'Pass Part VI: Wages, Unions and Profits.' },
+  { id: 'eol-part-7', icon: '🐖', name: 'Thrifty Benjamin', description: 'Pass Part VII: Inflation, Saving and the Lesson Restated.' },
+  { id: 'eol-all-parts', icon: '🧑‍🏫', name: 'One Lesson Learned', description: 'Pass every part of Economics in One Lesson.' },
+  { id: 'eol-whole-book', icon: '👤', name: 'The Forgotten Man', description: 'Answer every question in Economics in One Lesson right at least once.' },
+  // Every book
   { id: 'well-read', icon: '📚', name: 'Well Read', description: 'Answer 100 different questions right.' },
   // Drills
   { id: 'drill-hard', icon: '🧠', name: 'Hard Mode', description: 'Get 8 or more right in a hard drill.' },

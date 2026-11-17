@@ -335,10 +335,14 @@ const BOOK_LINES: Record<string, { menu: string[]; hint: string[] }> = {
     menu: ['Praxeology time. Anya brought snacks.', 'Nine hundred pages. One part at a time.', 'Mises wrote this in exile. You can read it in pajamas.'],
     hint: ['Anya asked Mises. He says it’s a priori.', 'Mises says this. He was very sure.', 'Herr Professor has a hint for you.'],
   },
+  eol: {
+    menu: ['One lesson. Many chapters. No shortcuts.', 'Remember the tailor. Nobody else does.', 'Hazlitt wrote this for beginners. So, for you.'],
+    hint: ['Hazlitt says: look at all the consequences.', 'Think of the Forgotten Man. Then read this.', 'Anya asked Hazlitt. He pointed at the broken window.'],
+  },
 };
 const bookLines = () => BOOK_LINES[book.id] ?? BOOK_LINES.be;
 /** Each book's icon, in its cover's colour. */
-const bookIcon = (id: string) => ({ be: '📕', ha: '📘' })[id] ?? '📗';
+const bookIcon = (id: string) => ({ be: '📕', ha: '📘', eol: '📓' })[id] ?? '📗';
 
 const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
 
@@ -1180,6 +1184,7 @@ const bookEl = els.anya.querySelector('#anya-book')!;
 /** What she says about each book when she switches to it. */
 const OFFER_LINES: Record<string, { face: Face; lines: string[] }> = {
   be: { face: 'smug', lines: ['Basic Economics. Common sense, with footnotes.', 'Sowell. Start here. Trust Anya.', 'The easy one. Well, easier.', 'Back to Sowell. Anya likes the cover.'] },
+  eol: { face: 'smug', lines: ['Economics in One Lesson. Just one! Even Anya can manage one.', 'Hazlitt. Short book, long consequences.', 'Look beyond the broken window. Anya always does.', 'One lesson. Two hundred pages to say it properly.'] },
   ha: { face: 'happy', lines: ['Human Action. Nine hundred pages. Anya believes in you. A little.', 'Mises! Praxeology! Waku waku!', 'This one’s heavy. Lift with your legs.', 'A treatise. Like a book, but it judges you.'] },
 };
 
@@ -1196,7 +1201,7 @@ function applyBook() {
   title.textContent = book.title;
   const author = document.createElement('span');
   author.className = 'by';
-  author.textContent = ` · ${book.author}`;
+  author.textContent = `· ${book.author}`;
   els.bookDots.replaceChildren(
     title,
     author,
@@ -1227,7 +1232,7 @@ function switchBook(dir: 1 | -1) {
     bookEl.classList.add(dir > 0 ? 'in-right' : 'in-left');
     const offer = OFFER_LINES[book.id] ?? OFFER_LINES.be;
     setFace(offer.face);
-    boom(book.id === 'ha' ? 'THUD!' : 'SWISH!', '');
+    boom(({ ha: 'THUD!', eol: 'PLOP!' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
     say(pick(offer.lines), { talk: true });
     window.setTimeout(() => {
       bookEl.classList.remove('in-right', 'in-left');
