@@ -614,6 +614,23 @@ body {
     font-size: 18px;
 }
 
+/* A new regular: who they are, for longer than an achievement. */
+.toast.regular {
+    max-width: 330px;
+    background: #e8f4ff;
+    animation: toast-in 0.3s ease-out, toast-out 0.4s ease-in 7s forwards;
+}
+
+.toast.regular small {
+    color: #1f618d;
+}
+
+.toast .desc {
+    grid-column: 2;
+    font-size: 13px;
+    line-height: 1.3;
+}
+
 @keyframes toast-in {
     from {
         transform: translateX(120%) rotate(4deg);

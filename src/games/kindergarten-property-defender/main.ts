@@ -84,6 +84,8 @@ interface Save {
   music: boolean;
   /** Whether the guided first morning has been played (or skipped). */
   tutorialDone: boolean;
+  /** The regulars who've introduced themselves (the first time each one came by). */
+  metRegulars: ClassmateId[];
   /** The ten best runs, and the best daily-challenge score per date. */
   history: ReturnType<typeof normalizeHistory>;
   dailyBests: Record<string, number>;
@@ -105,6 +107,7 @@ const save: Save = {
   music: saved?.music !== false,
   // Anyone who's already played (a best score, or achievements) has seen the classroom before.
   tutorialDone: saved?.tutorialDone === true || Number((saved as { best?: unknown } | null)?.best) > 0 || (Array.isArray(saved?.achievements) && saved.achievements.length > 0),
+  metRegulars: Array.isArray(saved?.metRegulars) ? saved.metRegulars.filter((id): id is ClassmateId => CLASSMATES.some((c) => c.id === id)) : [],
   history: normalizeHistory(saved?.history),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
@@ -232,10 +235,36 @@ function fit() {
 window.addEventListener('resize', fit);
 fit();
 
-function say(who: 'teacher' | 'jack' | 'kid', text: string, at?: { x: number; y: number }) {
-  // One bubble per speaker at a time (a classmate's replaces the last classmate's).
+function say(who: 'teacher' | 'jack' | 'kid', text: string, at?: { x: number; y: number }, opts: { seconds?: number; hand?: Hand } = {}) {
+  // One bubble per speaker at a time (a classmate's replaces the last classmate's)…
+  const keep = scene.bubbles.find((b) => b.who === who && b.hand && b.until > scene.time);
+  // …except a regular saying hello, which isn't cut off by small talk.
+  if (keep && !opts.hand) return;
   scene.bubbles = scene.bubbles.filter((b) => b.who !== who && b.until > scene.time);
-  scene.bubbles.push({ who, text, until: scene.time + 1.8, x: at?.x, y: at?.y });
+  scene.bubbles.push({ who, text, until: scene.time + (opts.seconds ?? 1.8), x: at?.x, y: at?.y, hand: opts.hand });
+}
+
+/** What each regular says the first time they come by. */
+const HELLO: Record<ClassmateId, string> = {
+  timmy: 'Hi, I’m Timmy! Fair trades, every time. Pinky promise.',
+  becky: 'I’m Becky. Everything’s negotiable. Mostly in my favour.',
+  dave: 'Name’s Dave. I don’t sell. I buy. What’ve you got?',
+};
+
+/** A regular's first visit: they say hello, and a card says who they are and what friendship gets you. */
+function introduce(id: ClassmateId, hand: Hand) {
+  save.metRegulars.push(id);
+  persist();
+  const c = classmateById(id);
+  say('kid', HELLO[id], undefined, { seconds: 4.5, hand });
+  const el = document.createElement('div');
+  el.className = 'toast regular';
+  el.innerHTML = '<span class="icon"></span><small>NEW REGULAR</small><b></b><span class="desc"></span>';
+  el.querySelector('.icon')!.textContent = c.icon;
+  el.querySelector('b')!.textContent = c.name;
+  el.querySelector('.desc')!.textContent = `${c.blurb} Trade with ${id === 'becky' ? 'her' : 'him'} ${FRIEND_AT} times to be best friends: ${c.friendPerk.charAt(0).toLowerCase()}${c.friendPerk.slice(1)} Slap ${id === 'becky' ? 'her' : 'him'} and ${id === 'becky' ? 'she' : 'he'} stays away for a while.`;
+  els.toasts.append(el);
+  setTimeout(() => el.remove(), 7600);
 }
 
 function float(x: number, y: number, text: string, color: string, big = false) {
@@ -434,6 +463,8 @@ function handle(e: GameEvent) {
       setTimeout(showOver, 700);
       break;
     case 'spawn':
+      // The first time a regular comes by, they introduce themselves.
+      if (e.hand.classmate && !lesson && !save.metRegulars.includes(e.hand.classmate)) introduce(e.hand.classmate, e.hand);
       break;
     case 'produce':
       play('homestead');

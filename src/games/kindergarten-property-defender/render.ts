@@ -20,9 +20,10 @@ export interface Bubble {
   who: 'teacher' | 'jack' | 'kid';
   text: string;
   until: number;
-  /** Where a classmate's bubble goes (their hand). */
+  /** Where a classmate's bubble goes (their hand): a fixed spot, or a hand to follow. */
   x?: number;
   y?: number;
+  hand?: Hand;
 }
 
 export interface Scene {
@@ -817,10 +818,14 @@ function drawBubble(ctx: CanvasRenderingContext2D, s: GameState, b: Bubble, t: n
     tailX = head.x - head.r * 0.2;
     tailY = head.y - head.r;
   } else {
-    x = Math.max(6, Math.min(s.w - w - 6, (b.x ?? s.w / 2) - w / 2));
-    y = Math.max(6, (b.y ?? s.h / 2) - h - u * 1.2);
-    tailX = b.x ?? s.w / 2;
-    tailY = (b.y ?? s.h / 2) - u * 0.6;
+    const at = b.hand ? handPosition(b.hand) : { x: b.x ?? s.w / 2, y: b.y ?? s.h / 2 };
+    // Keep it on screen (a hand starts off the edge).
+    const ax = Math.max(u * 2, Math.min(s.w - u * 2, at.x));
+    const ay = Math.max(h + u * 2, Math.min(s.h - u, at.y));
+    x = Math.max(6, Math.min(s.w - w - 6, ax - w / 2));
+    y = Math.max(6, ay - h - u * 1.2);
+    tailX = ax;
+    tailY = ay - u * 0.6;
   }
   ctx.fillStyle = '#fff';
   ctx.strokeStyle = INK;
