@@ -799,9 +799,8 @@ Friedman vs. everyone who says capitalism is dying.
   STARTED 😈".
 - `bot.ts` plays whole runs for the tests and balancing (it gets past the
   first boss in most runs and rarely wins; people do better).
-- Next: "Late Stages" (difficulty levels unlocked by winning), the secret
-  David Friedman boss and Machinery of Freedom cards, more cards and events,
-  sound polish.
+- Next: the secret David Friedman boss and Machinery of Freedom cards, more
+  cards and events, sound polish.
 
 #### Readability, achievements, the daily run and sharing ✅
 
@@ -868,3 +867,17 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
   in the meme. The old one is kept: ⚙️ Options → Classic arm.
 - The busted screen, the share text and the share card show how long you
   lasted (⏱️ m:ss).
+
+#### Late Stages, and laser eyes on his actual eyes ✅
+
+- Late Stages (`stages.ts`): ten difficulty levels. Winning on your highest
+  stage opens the next; each keeps every twist before it: panels hit 25%
+  harder, a Regret to start, enemies +15% Credibility, the green room heals
+  20%, bosses get back up once, 60 max Credibility, bookstore prices +25%,
+  30% fewer Royalties, and Inflation in every fight. A run scores 15% more per
+  stage. The title screen picks the stage; the top bar shows it (LS4).
+  Daily runs are always stage 1. Two achievements: win on stage 5, and on 10.
+- The laser eyes were drawn under his eyes (a guess at 53% down the photo).
+  They're now on his pupils, measured from the photo (27.3%, 45.4% and 61.3%,
+  42.9%; his head tilts, so the streak tilts 5° with it), in the game and on
+  the share card. The full Laser Eyes blast aims at the enemies.

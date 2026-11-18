@@ -12,13 +12,14 @@ import { eventById } from './events.ts';
 import { RELICS, relicDef } from './relics.ts';
 import {
   ACTS, buyCard, buyRelic, chooseEvent, choiceOpen, enterNode, finishCombat, LANES, leaveEvent, leaveReward, leaveShop, type MapNode, newRun,
-  nextAct, nodeAt, reachable, rehearse, removeCard, rest, REST_HEAL, ROWS, type Run, takeRewardCard, takeRewardRelic,
+  nextAct, nodeAt, reachable, rehearse, removeCard, rest, restHeal, ROWS, type Run, takeRewardCard, takeRewardRelic,
 } from './run.ts';
 import { BASED_MAX, type Card, type Combat, type Fx, type Status } from './state.ts';
 import { ACHIEVEMENTS, achievementById, earnedNow, normalizeUnlocked } from './achievements.ts';
 import { dailyFor, normalizeDailyBests, twistById } from './daily.ts';
 import { CARD_H, CARD_W, drawShareCard, shareText, type RunSummary } from './share.ts';
 import { runScore } from './run.ts';
+import { clampStage, MAX_STAGE, STAGES, stageInfo } from './stages.ts';
 
 // ---------------------------------------------------------------------------
 // Save
@@ -42,6 +43,9 @@ interface Save {
   achievements: string[];
   /** The best daily-run score, per date. */
   dailyBests: Record<string, number>;
+  /** The highest Late Stage open (win on it to open the next), and the one picked for new runs. */
+  stageUnlocked: number;
+  stage: number;
 }
 
 const slot = createSaveSlot<Save>({ game: 'just-getting-started', version: 1 });
@@ -60,7 +64,11 @@ function runFrom(raw: unknown): Run | null {
     if (r.screen === 'lost' || r.screen === 'won') return null;
     r.visited ??= [];
     r.daily ??= null;
-    if (r.combat) r.combat.twist ??= null;
+    r.stage = clampStage(r.stage);
+    if (r.combat) {
+      r.combat.twist ??= null;
+      r.combat.stage = clampStage(r.combat.stage);
+    }
     return r;
   } catch {
     return null;
@@ -81,7 +89,10 @@ const save: Save = {
   },
   achievements: normalizeUnlocked(saved?.achievements),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
+  stageUnlocked: clampStage(saved?.stageUnlocked),
+  stage: 1,
 };
+save.stage = Math.min(clampStage(saved?.stage), save.stageUnlocked);
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -363,6 +374,13 @@ function renderHud() {
     deck,
     relics,
   );
+  if (run.stage > 1) {
+    const st = stageInfo(run.stage);
+    const badge = h('span', 'stat stage-badge', `LS${run.stage}`);
+    badge.dataset.tip = `<b>Late Stage ${run.stage}: ${st.name}</b><br>${STAGES.slice(1, run.stage).map((x) => x.rule).join('<br>')}`;
+    badge.tabIndex = 0;
+    els.hud.append(badge);
+  }
   if (run.daily) {
     const twist = twistById(run.daily.twist);
     if (twist) {
@@ -432,6 +450,8 @@ function renderTitle() {
     buttons.append(button(`▶ Continue <small>Act ${run.act} · ${run.hp}/${run.maxHp} ❤️</small>`, 'big-button', () => go('run')));
     buttons.append(button('New run', 'big-button secondary', confirmNewRun));
   } else buttons.append(button('▶ Start a run', 'big-button', startRun));
+  // The stage picker sits above the buttons (the buttons go in after it).
+  if (save.stageUnlocked > 1 && !run) s.append(stagePicker());
   const d = dailyFor(new Date());
   buttons.append(button(`📅 Daily run <small>${d.twist.icon} ${d.twist.name}</small>`, 'big-button secondary', showDaily));
   buttons.append(button(`🏅 Achievements <small>${save.achievements.length}/${ACHIEVEMENTS.length}</small>`, 'big-button secondary', showAchievements));
@@ -445,6 +465,33 @@ function renderTitle() {
   els.screen.append(s);
 }
 
+/** Which Late Stage new runs are played on, and what it adds (with everything before it). */
+function stagePicker(): HTMLElement {
+  const box = h('div', 'stage-picker');
+  const info = stageInfo(save.stage);
+  const step = (d: number) => {
+    save.stage = Math.max(1, Math.min(save.stageUnlocked, save.stage + d));
+    persist();
+    render();
+  };
+  const prev = button('◀', 'stage-step', () => step(-1), save.stage <= 1);
+  const next = button('▶', 'stage-step', () => step(1), save.stage >= save.stageUnlocked);
+  prev.setAttribute('aria-label', 'Easier stage');
+  next.setAttribute('aria-label', 'Harder stage');
+  const label = h('div', 'stage-label', `<b>LATE STAGE ${save.stage}</b><small></small>`);
+  label.querySelector('small')!.textContent = info.name;
+  const rules = h('ul', 'stage-rules');
+  for (const st of STAGES.slice(1, save.stage)) {
+    const li = h('li');
+    li.textContent = `${st.n}. ${st.rule}`;
+    rules.append(li);
+  }
+  if (save.stage === 1) rules.append(Object.assign(h('li'), { textContent: STAGES[0].rule }));
+  box.append(prev, label, next, rules);
+  box.dataset.tip = `Win on your highest stage to open the next one (${save.stageUnlocked}/${MAX_STAGE} open). Each stage keeps every twist before it, and scores 15% more.`;
+  return box;
+}
+
 function go(to: 'title' | 'run') {
   view = to;
   selected = null;
@@ -453,7 +500,7 @@ function go(to: 'title' | 'run') {
 }
 
 function startRun() {
-  save.run = newRun((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0);
+  save.run = newRun((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, null, save.stage);
   persist();
   go('run');
 }
@@ -487,6 +534,7 @@ function showHowTo() {
         <li>🎈 <b>Inflation</b> clogs your hand and costs Credibility. 😔 <b>Regret</b> is forever. You know what you did.</li>
         <li>❔ Not sure what a word means? <b>Hover</b> over it (on a phone, <b>long-press</b> a card, or tap a chip or an intent).</li>
         <li>📅 A <b>daily run</b>: the same run for everyone each day, with a twist, and a best score to beat.</li>
+        <li>🪜 Win a run and <b>Late Stage 2</b> opens: harder, and worth more points. Up to Late Stage 10. Each stage keeps every twist before it. It’s never over.</li>
         <li>⌨️ Keys: <kbd>1</kbd>–<kbd>9</kbd> play a card, <kbd>L</kbd> laser eyes, <kbd>E</kbd> end turn, <kbd>Esc</kbd> cancel.</li>`,
       ),
       button('Got it', 'big-button', closeOverlay),
@@ -873,12 +921,22 @@ function recordEnd(run: Run, won: boolean) {
 /** The run's over (won or lost): the records, the daily best, the achievements. */
 function endOfRun(run: Run) {
   recordEnd(run, run.screen === 'won');
+  // Win on your highest stage, and the next one opens (and becomes the one you'll play).
+  unlockedNow = null;
+  if (run.screen === 'won' && !run.daily && run.stage >= save.stageUnlocked && save.stageUnlocked < MAX_STAGE) {
+    save.stageUnlocked = run.stage + 1;
+    save.stage = save.stageUnlocked;
+    unlockedNow = save.stageUnlocked;
+  }
   if (run.daily) {
     save.meta.dailies++;
     save.dailyBests[run.daily.key] = Math.max(save.dailyBests[run.daily.key] ?? 0, runScore(run));
   }
   checkAchievements();
 }
+
+/** The stage that the run just ended opened (for the end screen). */
+let unlockedNow: number | null = null;
 
 /** Unlocks whatever the run (and the fight) has earned since the last look. */
 function checkAchievements() {
@@ -973,6 +1031,7 @@ function summaryOf(run: Run): RunSummary {
     damage: run.stats.damage,
     lasers: run.stats.lasers,
     deck: run.deck.length,
+    stage: run.stage,
     daily: run.daily && twist ? { key: run.daily.key, name: twist.name, icon: twist.icon } : null,
     url: `${location.origin}${location.pathname}`,
   };
@@ -1122,12 +1181,18 @@ function renderEnd(run: Run) {
         ? 'It announced its own death one more time, and once again it was wrong. Capitalism: still not dead. You: very based.'
         : `Act ${run.act}, floor ${run.pos ? run.pos.row + 1 : 0}. The studio audience boos. Somewhere, a thread gets 40,000 likes.`,
     ),
-    h('p', 'score-line', `🏆 <b>${runScore(run)}</b> points`),
+    h('p', 'score-line', `🏆 <b>${runScore(run)}</b> points${run.stage > 1 ? ` <small>on Late Stage ${run.stage}</small>` : ''}`),
     h('p', 'meta', `${st.fights} arguments won · ${st.damage} Credibility knocked off · ${st.lasers} laser blasts · ${st.cardsPlayed} cards played · ${run.deck.length} cards in your act`),
   );
   if (run.daily) {
     const twist = twistById(run.daily.twist);
     s.append(h('p', 'meta', `📅 Daily run ${run.daily.key} · ${twist?.icon ?? ''} ${twist?.name ?? ''} · your best today: <b>${save.dailyBests[run.daily.key] ?? runScore(run)}</b>`));
+  }
+  if (unlockedNow) {
+    const st = stageInfo(unlockedNow);
+    const note = h('p', 'stage-unlocked', `🔓 <b>Late Stage ${st.n}: ${st.name}</b> is open. <span></span> It’s never over.`);
+    note.querySelector('span')!.textContent = st.rule;
+    s.append(note);
   }
   const status = h('p', 'share-status');
   const share = h('div', 'menu-buttons');
@@ -1206,7 +1271,7 @@ function renderShop(run: Run) {
 
 function renderRest(run: Run) {
   const s = h('section', 'panel-screen rest-screen');
-  const heal = Math.min(run.maxHp - run.hp, Math.round(run.maxHp * REST_HEAL));
+  const heal = Math.min(run.maxHp - run.hp, Math.round(run.maxHp * restHeal(run)));
   s.append(h('h2', 'screen-title', '🛋️ The Green Room'), h('p', 'screen-sub', 'Ten minutes to air. Coffee, a pipe, and a choice.'));
   const row = h('div', 'relic-row');
   row.append(

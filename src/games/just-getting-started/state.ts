@@ -90,6 +90,8 @@ export interface Combat {
   flags: Record<string, number>;
   /** The daily run's twist, if this is one. */
   twist: TwistId | null;
+  /** The Late Stage (1 to 10; see stages.ts). */
+  stage: number;
 }
 
 export const HAND_LIMIT = 10;
@@ -221,6 +223,7 @@ export function zap(c: Combat, i: number, amount: number) {
 
 /** An enemy hits Friedman. */
 export function enemyStrike(c: Combat, e: Enemy, base: number, hits = 1) {
-  const boost = c.twist === 'bull-market' ? 1.25 : 1;
+  // Bull Market Day hits harder; so do hostile panels from Late Stage 2.
+  const boost = (c.twist === 'bull-market' ? 1.25 : 1) * (c.kind === 'elite' && c.stage >= 2 ? 1.25 : 1);
   for (let h = 0; h < hits && c.player.hp > 0; h++) hit(c, c.player, Math.floor(attackDamage(base, e, c.player) * boost), 'player');
 }

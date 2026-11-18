@@ -37,6 +37,8 @@ const LIST: Def[] = [
   { id: 'boss-1', icon: '🧵', name: 'Thread Unrolled', description: 'Beat the Doomposter.', done: (x) => x.run.stats.bosses >= 1 || (x.combat?.kind === 'boss' && x.combat.act === 1 && x.combat.result === 'won') },
   { id: 'boss-2', icon: '🖨️', name: 'Printer Jammed', description: 'Beat the Fed Chair.', done: (x) => x.run.stats.bosses >= 2 || (x.combat?.kind === 'boss' && x.combat.act === 2 && x.combat.result === 'won') },
   { id: 'win', icon: '😈', name: 'Just Getting Started', description: 'Beat Late Stage Capitalism and win a run.', done: (x) => x.run.screen === 'won' },
+  { id: 'stage-5', icon: '🪜', name: 'Stage Five Capitalism', description: 'Win a run on Late Stage 5 or higher.', done: (x) => x.run.screen === 'won' && (x.run.stage ?? 1) >= 5 },
+  { id: 'stage-10', icon: '🏁', name: 'Terminal, Allegedly', description: 'Win a run on Late Stage 10.', done: (x) => x.run.screen === 'won' && (x.run.stage ?? 1) >= 10 },
   { id: 'elite-3', icon: '😤', name: 'Hostile Audience', description: 'Beat three hostile panels in one run.', done: (x) => x.run.stats.elites >= 3 },
   { id: 'no-regret', icon: '😇', name: 'No Regrets', description: 'Win a run without a Regret in your deck.', done: (x) => x.run.screen === 'won' && cards(x, 'regret') === 0 },
   { id: 'lean', icon: '✂️', name: 'Lean Production', description: 'Win a run with 15 cards or fewer.', done: (x) => x.run.screen === 'won' && x.run.deck.length <= 15 },

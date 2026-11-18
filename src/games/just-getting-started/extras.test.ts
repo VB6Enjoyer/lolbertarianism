@@ -6,6 +6,7 @@ import { dailyFor, normalizeDailyBests, TWISTS } from './daily.ts';
 import { makeRng } from './rng.ts';
 import { enterNode, newRun, runScore } from './run.ts';
 import { shareText } from './share.ts';
+import { clampStage, MAX_STAGE, STAGES, stageMultiplier } from './stages.ts';
 import type { Card } from './state.ts';
 
 const deck = (ids: string[]): Card[] => ids.map((id, i) => ({ uid: i + 1, id, up: false }));
@@ -103,12 +104,73 @@ describe('achievements', () => {
 
 describe('sharing', () => {
   it('sums up the run in a few lines', () => {
-    const text = shareText({ won: false, score: 230, act: 2, floor: 4, fights: 9, damage: 600, lasers: 5, deck: 18, daily: { key: '2026-11-18', name: 'Bull Market Day', icon: '🐂' }, url: 'https://example.com/jgs' });
+    const text = shareText({ won: false, score: 230, act: 2, floor: 4, fights: 9, damage: 600, lasers: 5, deck: 18, stage: 1, daily: { key: '2026-11-18', name: 'Bull Market Day', icon: '🐂' }, url: 'https://example.com/jgs' });
     expect(text.split('\n')).toEqual([
       '😈 JUST GETTING STARTED · 🐂 Daily 2026-11-18 (Bull Market Day)',
       'Ratio’d in Act 2, floor 4 😔',
       '🏆 230 points · 🎙️ 9 arguments won · 🔴 5 laser blasts',
       'https://example.com/jgs',
     ]);
+  });
+});
+
+describe('Late Stages', () => {
+  it('go from 1 to 10, each with its twist, and score more the higher you go', () => {
+    expect(STAGES.map((s) => s.n)).toEqual(Array.from({ length: MAX_STAGE }, (_, i) => i + 1));
+    expect(clampStage(0)).toBe(1);
+    expect(clampStage('7')).toBe(7);
+    expect(clampStage(99)).toBe(10);
+    expect(stageMultiplier(1)).toBe(1);
+    expect(stageMultiplier(5)).toBeCloseTo(1.6);
+  });
+
+  it('pile up: a Regret from stage 3, 60 Credibility from stage 7, and daily runs stay on stage 1', () => {
+    expect(newRun(1, null, 1).deck.some((c) => c.id === 'regret')).toBe(false);
+    expect(newRun(1, null, 3).deck.some((c) => c.id === 'regret')).toBe(true);
+    expect(newRun(1, null, 6).maxHp).toBe(70);
+    expect(newRun(1, null, 7).maxHp).toBe(60);
+    const daily = newRun(1, { key: '2026-11-18', twist: 'bull-market' }, 9);
+    expect(daily.stage).toBe(1);
+  });
+
+  it('make enemies tougher, panels hit harder, and fights start with Inflation at the top', () => {
+    const low = startCombat(setup({ enemies: ['gouging'], kind: 'elite', stage: 1, rng: makeRng(3) }));
+    const high = startCombat(setup({ enemies: ['gouging'], kind: 'elite', stage: 10, rng: makeRng(3) }));
+    expect(high.enemies[0].maxHp).toBe(Math.round(low.enemies[0].maxHp * 1.15));
+    expect([...high.draw, ...high.hand].filter((c) => c.id === 'inflation').length).toBe(1);
+    for (const c of [low, high]) {
+      c.fx = [];
+      c.hand = [];
+      c.enemies[0].move = 'outrage';
+      endTurn(c);
+    }
+    const lost = (c: typeof low) => 70 - c.player.hp;
+    expect(lost(high)).toBeGreaterThan(lost(low));
+  });
+
+  it('let bosses get back up once from stage 6', () => {
+    for (const [stage, revives] of [[5, false], [6, true]] as const) {
+      const c = startCombat(setup({ enemies: ['doomposter'], kind: 'boss', stage }));
+      c.player.energy = 99;
+      for (let i = 0; i < 40 && !c.result; i++) {
+        c.hand = [{ uid: 1000 + i, id: 'nobel', up: true }];
+        playCard(c, 0, 0);
+      }
+      expect(c.result).toBe('won');
+      expect(!!c.flags.revived, `stage ${stage}`).toBe(revives);
+    }
+  });
+
+  it('are harder for the bot the higher you go', () => {
+    const floors = (stage: number) => {
+      let total = 0;
+      for (let seed = 1; seed <= 40; seed++) {
+        const run = newRun(seed, null, stage);
+        botRun(run);
+        total += run.stats.floors;
+      }
+      return total;
+    };
+    expect(floors(10)).toBeLessThan(floors(1) * 0.85);
   });
 });

@@ -195,9 +195,18 @@ button {
     -webkit-user-drag: none;
 }
 
+/* Where his pupils are in the photo (measured): his head tilts, so the right eye sits a little higher,
+   and the beams tilt with the line between them. */
+.friedman {
+    --eye-lx: 27.3%;
+    --eye-ly: 45.4%;
+    --eye-rx: 61.3%;
+    --eye-ry: 42.9%;
+    --eye-tilt: -5deg;
+}
+
 .friedman .eye {
     position: absolute;
-    top: 53%;
     width: 9%;
     aspect-ratio: 1;
     border-radius: 50%;
@@ -207,34 +216,29 @@ button {
     filter: drop-shadow(0 0 6px #ff1a00);
 }
 
-.friedman .eye.l {
-    left: 31%;
+.friedman .eye.l,
+.friedman .beam.l {
+    left: var(--eye-lx);
+    top: var(--eye-ly);
 }
 
-.friedman .eye.r {
-    left: 68%;
+.friedman .eye.r,
+.friedman .beam.r {
+    left: var(--eye-rx);
+    top: var(--eye-ry);
 }
 
 /* The meme's horizontal streaks through the eyes. */
 .friedman .beam {
     position: absolute;
-    top: 53%;
     height: 4px;
     width: 170%;
     border-radius: 4px;
     background: linear-gradient(90deg, rgb(255 0 0 / 0), #ff2a1a 30%, #fff 50%, #ff2a1a 70%, rgb(255 0 0 / 0));
-    transform: translate(-50%, -50%) scaleX(calc(0.15 + var(--based) * 0.85));
+    transform: translate(-50%, -50%) rotate(var(--eye-tilt)) scaleX(calc(0.15 + var(--based) * 0.85));
     opacity: var(--based);
     filter: drop-shadow(0 0 5px #ff1a00);
     pointer-events: none;
-}
-
-.friedman .beam.l {
-    left: 31%;
-}
-
-.friedman .beam.r {
-    left: 68%;
 }
 
 .friedman.lasers-on .eye,
@@ -265,14 +269,11 @@ button {
 .lasering .friedman .beam {
     height: 14px;
     width: 1400px;
-    left: 31%;
-    transform: translate(0, -50%);
+    /* The blast aims at the enemies (a touch downward), not along the tilt of his head. */
+    transform: translate(0, -50%) rotate(3deg);
+    transform-origin: 0 50%;
     opacity: 1;
     animation: beam 0.9s ease-out;
-}
-
-.lasering .friedman .beam.r {
-    left: 68%;
 }
 
 .lasering .arena {
@@ -1697,4 +1698,78 @@ kbd {
     border: 1px solid var(--gold);
     border-radius: 999px;
     color: var(--gold);
+}
+
+/* --- Late Stages --- */
+.stage-picker {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 6px 12px;
+    width: min(460px, 100%);
+    padding: 10px 14px;
+    border: 2px solid var(--red-dark);
+    border-radius: 14px;
+    background: rgb(22 18 18 / 0.9);
+}
+
+.stage-step {
+    width: 40px;
+    height: 40px;
+    border: 2px solid var(--red);
+    border-radius: 50%;
+    background: #1c1010;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.stage-step:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.stage-label {
+    display: grid;
+    text-align: center;
+}
+
+.stage-label b {
+    font: 26px/1 var(--meme);
+    letter-spacing: 1px;
+    color: var(--red);
+}
+
+.stage-label small {
+    color: var(--muted);
+}
+
+.stage-rules {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding-left: 20px;
+    color: var(--muted);
+    font-size: 14px;
+    text-align: left;
+}
+
+.stage-badge {
+    padding: 2px 8px;
+    border: 1px solid var(--red);
+    border-radius: 999px;
+    color: var(--red);
+    font-weight: 700;
+}
+
+.stage-unlocked {
+    margin: 0;
+    padding: 8px 14px;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: #2b2112;
+}
+
+.score-line small {
+    font: 500 15px/1 var(--body);
+    color: var(--muted);
 }

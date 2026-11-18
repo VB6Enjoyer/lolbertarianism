@@ -5,6 +5,7 @@
 import { canUpgrade, POOL, type Rarity, STARTER_DECK } from './cards.ts';
 import { startCombat } from './combat.ts';
 import type { TwistId } from './daily.ts';
+import { clampStage, stageMultiplier } from './stages.ts';
 import { pickEncounter, ENCOUNTERS } from './enemies.ts';
 import { type Effect, EVENTS, eventById } from './events.ts';
 import { BOSS_RELICS, COMMON_RELICS } from './relics.ts';
@@ -83,6 +84,8 @@ export interface Run {
   stats: RunStats;
   /** A daily run: its date and twist (null for a normal run). */
   daily: { key: string; twist: TwistId } | null;
+  /** The Late Stage it's played on (1 to 10). */
+  stage: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,14 +137,16 @@ export function reachable(run: Run): MapNode[] {
 // A new run
 // ---------------------------------------------------------------------------
 
-export function newRun(seed: number, daily: { key: string; twist: TwistId } | null = null): Run {
+export function newRun(seed: number, daily: { key: string; twist: TwistId } | null = null, stage = 1): Run {
+  stage = daily ? 1 : clampStage(stage);
+  const hp = stage >= 7 ? START_HP - 10 : START_HP;
   const rng = makeRng(seed);
   const run: Run = {
     seed,
     rng,
     act: 1,
-    hp: START_HP,
-    maxHp: START_HP,
+    hp,
+    maxHp: hp,
     royalties: START_ROYALTIES,
     deck: [],
     relics: ['glasses'],
@@ -160,8 +165,10 @@ export function newRun(seed: number, daily: { key: string; twist: TwistId } | nu
     fightsThisAct: 0,
     stats: { floors: 0, fights: 0, elites: 0, bosses: 0, damage: 0, lasers: 0, cardsPlayed: 0 },
     daily,
+    stage,
   };
   run.deck = STARTER_DECK.map((id) => newCard(run, id));
+  if (stage >= 3) run.deck.push(newCard(run, 'regret'));
   if (daily?.twist === 'helicopter') {
     run.deck.push(newCard(run, 'helicopter'), newCard(run, 'helicopter'));
     run.royalties += 100;
@@ -173,7 +180,8 @@ export function newRun(seed: number, daily: { key: string; twist: TwistId } | nu
 export const newCard = (run: Run, id: string, up = false): Card => ({ uid: run.nextUid++, id, up });
 
 /** A run's score (for the daily best and the share card): floors climbed, elites and bosses beaten, and a bonus for winning. */
-export const runScore = (run: Run) => run.stats.floors * 10 + run.stats.elites * 25 + run.stats.bosses * 100 + (run.screen === 'won' ? 500 : 0);
+export const runScore = (run: Run) =>
+  Math.round((run.stats.floors * 10 + run.stats.elites * 25 + run.stats.bosses * 100 + (run.screen === 'won' ? 500 : 0)) * stageMultiplier(run.stage ?? 1));
 
 // ---------------------------------------------------------------------------
 // Moving on the map
@@ -228,6 +236,7 @@ function startFight(run: Run, kind: FightKind, enemies: string[]) {
     rng: { s: run.rng.s },
     nextUid: run.nextUid,
     twist: run.daily?.twist ?? null,
+    stage: run.stage,
   });
   run.screen = 'combat';
 }
@@ -257,7 +266,7 @@ export function finishCombat(run: Run) {
   if (run.relics.includes('freelunch')) run.hp = Math.min(run.maxHp, run.hp + 6);
 
   const base = c.kind === 'boss' ? int(run.rng, 70, 90) : c.kind === 'elite' ? int(run.rng, 28, 38) : int(run.rng, 12, 20);
-  const royalties = Math.round((base + (run.relics.includes('newsweek') ? 15 : 0)) * (run.daily?.twist === 'gold-standard' ? 0.5 : 1));
+  const royalties = Math.round((base + (run.relics.includes('newsweek') ? 15 : 0)) * (run.daily?.twist === 'gold-standard' ? 0.5 : 1) * (run.stage >= 9 ? 0.7 : 1));
   run.royalties += royalties;
   if (c.kind === 'boss' && run.act === ACTS) {
     run.screen = 'won';
@@ -341,16 +350,18 @@ export function addRelic(run: Run, id: string) {
 // ---------------------------------------------------------------------------
 
 const PRICES: Record<string, [number, number]> = { common: [45, 55], uncommon: [70, 82], rare: [140, 160] };
+/** Late Stage 8: everything in the bookstore costs a quarter more. */
+const priceRise = (run: Run) => (run.stage >= 8 ? 1.25 : 1);
 
 function makeShop(run: Run): Shop {
   const common = rollCards(run, 3, 'fight');
   const cards = [...common, ...rollCards(run, 2, 'elite', common.map((c) => c.id))].map((card) => {
     const [lo, hi] = PRICES[POOL.find((d) => d.id === card.id)!.rarity];
-    return { card, price: int(run.rng, lo, hi), sold: false };
+    return { card, price: Math.round(int(run.rng, lo, hi) * priceRise(run)), sold: false };
   });
   const relics = shuffleInPlace(run.rng, COMMON_RELICS.filter((id) => !run.relics.includes(id)))
     .slice(0, 2)
-    .map((id) => ({ id, price: int(run.rng, 140, 180), sold: false }));
+    .map((id) => ({ id, price: Math.round(int(run.rng, 140, 180) * priceRise(run)), sold: false }));
   return { cards, relics, removed: false };
 }
 
@@ -390,11 +401,13 @@ export function leaveShop(run: Run) {
 }
 
 export const REST_HEAL = 0.3;
+/** The green room's heal: less from Late Stage 5. */
+export const restHeal = (run: Run) => (run.stage >= 5 ? 0.2 : REST_HEAL);
 
 /** The green room: rest (heal 30%) or rehearse (upgrade a card). */
 export function rest(run: Run) {
   if (run.screen !== 'rest') return;
-  run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * REST_HEAL));
+  run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * restHeal(run)));
   run.screen = 'map';
 }
 

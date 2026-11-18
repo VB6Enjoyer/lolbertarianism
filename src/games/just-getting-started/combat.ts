@@ -27,6 +27,8 @@ export interface FightSetup {
   rng: Rng;
   nextUid: number;
   twist?: TwistId | null;
+  /** The Late Stage (1 if not given). */
+  stage?: number;
 }
 
 export function startCombat(s: FightSetup): Combat {
@@ -51,10 +53,11 @@ export function startCombat(s: FightSetup): Combat {
     nextUid: s.nextUid,
     flags: {},
     twist: s.twist ?? null,
+    stage: s.stage ?? 1,
   };
   c.enemies = s.enemies.map((id, i): Enemy => {
     const def = enemyDef(id);
-    const hp = Math.round(int(s.rng, def.hp[0], def.hp[1]) * (s.twist === 'prime-time' ? 1.2 : 1));
+    const hp = Math.round(int(s.rng, def.hp[0], def.hp[1]) * (s.twist === 'prime-time' ? 1.2 : 1) * ((s.stage ?? 1) >= 4 ? 1.15 : 1));
     return { uid: 1000 + i, id, hp, maxHp: hp, block: 0, status: {}, move: '', turn: 0, memo: {}, dead: false };
   });
   if (c.relics.includes('pipe')) gainBlock(c, c.player, 6, 'player');
@@ -68,6 +71,8 @@ export function startCombat(s: FightSetup): Combat {
   if (c.twist === 'stagflation' || c.twist === 'helicopter') addCard(c, 'inflation', 'draw');
   if (c.twist === 'stagflation') for (const e of c.enemies) addStatus(c, e, 'exposed', 2, e.uid);
   if (c.twist === 'prime-time') c.player.status.primeTime = 1;
+  // Late Stage 10: Inflation in every fight.
+  if (c.stage >= 10) addCard(c, 'inflation', 'draw');
   for (const e of c.enemies) {
     const def = enemyDef(e.id);
     def.start?.(c, e);
@@ -230,6 +235,17 @@ function settle(c: Combat) {
     if (def.onDeath?.(c, e)) {
       c.flags.revived = 1;
       e.move = def.next(e, c.rng, c);
+      continue;
+    }
+    // Late Stage 6: bosses get back up once more. It's not over.
+    if (c.kind === 'boss' && c.stage >= 6 && !e.memo.stageRevived) {
+      e.memo.stageRevived = 1;
+      e.dead = false;
+      e.hp = Math.round(e.maxHp * 0.4);
+      e.block = 0;
+      c.flags.revived = 1;
+      c.fx.push({ kind: 'say', target: e.uid, text: 'It’s not over. It’s never over.' });
+      c.fx.push({ kind: 'heal', target: e.uid, amount: e.hp, hp: e.hp });
       continue;
     }
     e.memo.gone = 1;
