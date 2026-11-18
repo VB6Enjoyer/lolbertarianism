@@ -801,3 +801,19 @@ Friedman vs. everyone who says capitalism is dying.
   first boss in most runs and rarely wins; people do better).
 - Next: achievements, a daily seeded run, the secret David Friedman boss and
   Machinery of Freedom cards, more cards and events, sound polish.
+
+### Austrian Economics Simulator: a new town every run ✅
+
+- Every run lays the district out fresh (`layoutDistrict()` in `map.ts`): the
+  buildings are shuffled onto the blocks, each door goes on a random side, the
+  pawn shop moves along the top or bottom edge, and the manholes scatter along
+  every street. The covers you start with are dealt round all four quarters of
+  town, so no corner is ever empty. The Fed's alarmed cover stays right
+  outside its door, and the daily cycle's dice give everyone the same town.
+- Doors are marked: a doorway in the wall, and on the street a dashed square
+  in the building's colour with its icon and an arrow bobbing towards the
+  door.
+- Cops patrol by neighbourhood (`patrolTarget()`): they head for whichever of
+  six parts of town no cop has visited for the longest. Random destinations
+  alone kept them in the middle (the busiest part got 32% of their time, the
+  bottom corners 9%); now every part gets 14–21%.

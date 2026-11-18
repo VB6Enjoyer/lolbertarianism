@@ -8,7 +8,7 @@
 // everything inflates, and the city's crews and covers come and go with it.
 
 import type { TwistId } from './daily.ts';
-import { COLS, DEPOT, DISTRICT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, placeById, ROAD_ROWS, ROAD_TILES, sameTile, setDistrict, STARTING_SLOTS, type DistrictId, type Tile } from './map.ts';
+import { COLS, DEPOT, DISTRICT, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, placeAtDoor, placeById, ROAD_ROWS, ROAD_TILES, ROWS, sameTile, setDistrict, STARTING_SLOTS, type DistrictId, type Tile } from './map.ts';
 
 export const CONFIG = {
   startCash: 98,
@@ -308,6 +308,8 @@ export interface GameState {
   nextContractAt: number;
   /** When you last shoved the rival. */
   lastShove: number;
+  /** When a cop was last in each part of town (see BEATS), so patrols cover the whole map. */
+  beats: number[];
   over: OverReason | null;
 }
 
@@ -369,12 +371,33 @@ function randomRoad(rng: () => number): Tile {
   return ROAD_TILES[Math.floor(rng() * ROAD_TILES.length)];
 }
 
+/** Cops' beats: the map cut into a 3 × 2 grid of neighbourhoods. */
+export const BEATS = { cols: 3, rows: 2 };
+export const beatOf = (t: Tile) =>
+  Math.min(BEATS.rows - 1, Math.floor((t.y / ROWS) * BEATS.rows)) * BEATS.cols + Math.min(BEATS.cols - 1, Math.floor((t.x / COLS) * BEATS.cols));
+
+/**
+ * Where a cop patrols next: a street in the neighbourhood no cop has been to for the longest (not
+ * the one it's in). Random destinations alone kept them in the middle of town, where every
+ * shortest path crosses; this way the corners get visited too.
+ */
+export function patrolTarget(state: GameState, from: Tile, rng: () => number): Tile {
+  const here = beatOf(from);
+  const order = state.beats
+    .map((t, i) => ({ i, t: t + rng() * 4 }))
+    .filter((b) => b.i !== here)
+    .sort((a, b) => a.t - b.t);
+  const tiles = ROAD_TILES.filter((t) => beatOf(t) === order[0]?.i);
+  return tiles.length ? tiles[Math.floor(rng() * tiles.length)] : randomRoad(rng);
+}
+
 function makeAgent(state: GameState, kind: AgentKind, at: Tile, variant = 0): Agent {
   return { id: state.nextId++, kind, mover: { x: at.x, y: at.y, path: [] }, down: 0, target: null, work: 0, leaving: false, variant, load: 0 };
 }
 
 export function newGame(rng: () => number = Math.random, district: DistrictId = 'downtown', daily: TwistId | null = null): GameState {
-  const d = setDistrict(district);
+  // A fresh layout every run (the daily cycle's dice make it the same for everyone that day).
+  const d = setDistrict(district, rng);
   const state: GameState = {
     time: 0,
     cash: CONFIG.startCash,
@@ -417,6 +440,7 @@ export function newGame(rng: () => number = Math.random, district: DistrictId = 
     contract: null,
     nextContractAt: CONFIG.contracts.first,
     lastShove: -99,
+    beats: Array.from({ length: BEATS.cols * BEATS.rows }, () => 0),
     district: d.id,
     event: null,
     nextEventAt: CONFIG.events.first,
@@ -862,7 +886,8 @@ function updateAgents(state: GameState, dt: number, rng: () => number, events: G
       updateRival(state, a, dt, rng, events);
       continue;
     }
-    if (!a.mover.path.length) a.mover.path = findPath(tileOf(a.mover), randomRoad(rng));
+    if (!a.mover.path.length) a.mover.path = findPath(tileOf(a.mover), a.kind === 'cop' ? patrolTarget(state, tileOf(a.mover), rng) : randomRoad(rng));
+    if (a.kind === 'cop') state.beats[beatOf(tileOf(a.mover))] = state.time;
     const reached = walk(a.mover, (a.kind === 'cop' ? CONFIG.copSpeed : CONFIG.pedSpeed) * dt);
     for (const t of reached) {
       if (!openManholeAt(state, t)) continue;
