@@ -1,6 +1,7 @@
 // The fight's state and the rules every card, enemy and relic shares: damage, Composure (block),
 // statuses, drawing cards. Plain data only, so a fight can be saved mid-turn.
 
+import type { TwistId } from './daily.ts';
 import { int, type Rng, shuffleInPlace } from './rng.ts';
 
 /**
@@ -48,10 +49,13 @@ export interface Enemy extends Fighter {
 }
 
 /** Something that happened, for the screen to show (a number flying off, a shake, a line). */
+/** Damage, Composure and healing carry what the bars show afterwards, so the screen can play a turn step by step. */
 export type Fx =
-  | { kind: 'damage'; target: 'player' | number; amount: number; blocked: number }
-  | { kind: 'block'; target: 'player' | number; amount: number }
-  | { kind: 'heal'; target: 'player' | number; amount: number }
+  | { kind: 'damage'; target: 'player' | number; amount: number; blocked: number; hp: number; block: number }
+  | { kind: 'block'; target: 'player' | number; amount: number; block: number }
+  | { kind: 'heal'; target: 'player' | number; amount: number; hp: number }
+  /** An enemy takes its turn: its move, before what the move does. */
+  | { kind: 'act'; target: number; text: string }
   | { kind: 'status'; target: 'player' | number; status: Status; amount: number }
   | { kind: 'say'; target: 'player' | number; text: string }
   | { kind: 'laser' }
@@ -84,6 +88,8 @@ export interface Combat {
   nextUid: number;
   /** Per-fight counters (cards played, the first Argument, damage dealt…). */
   flags: Record<string, number>;
+  /** The daily run's twist, if this is one. */
+  twist: TwistId | null;
 }
 
 export const HAND_LIMIT = 10;
@@ -105,27 +111,38 @@ export function hit(c: Combat, target: Fighter, amount: number, who: 'player' | 
   target.block -= blocked;
   const lost = Math.min(target.hp, amount - blocked);
   target.hp -= lost;
-  c.fx.push({ kind: 'damage', target: who, amount: lost, blocked });
+  if (who === 'player') c.flags.hurt = (c.flags.hurt ?? 0) + lost;
+  c.fx.push({ kind: 'damage', target: who, amount: lost, blocked, hp: target.hp, block: target.block });
   return lost;
+}
+
+/** Credibility lost straight off, past any Composure (Inflation and Regret in hand). */
+export function loseHp(c: Combat, amount: number) {
+  const lost = Math.min(c.player.hp, amount);
+  c.player.hp -= lost;
+  c.flags.hurt = (c.flags.hurt ?? 0) + lost;
+  c.fx.push({ kind: 'damage', target: 'player', amount: lost, blocked: 0, hp: c.player.hp, block: c.player.block });
 }
 
 export function gainBlock(c: Combat, target: Fighter, amount: number, who: 'player' | number) {
   if (amount <= 0) return;
   target.block += amount;
-  c.fx.push({ kind: 'block', target: who, amount });
+  if (who === 'player') c.flags.maxBlock = Math.max(c.flags.maxBlock ?? 0, target.block);
+  c.fx.push({ kind: 'block', target: who, amount, block: target.block });
 }
 
 export function heal(c: Combat, target: Fighter, amount: number, who: 'player' | number) {
   const healed = Math.min(amount, target.maxHp - target.hp);
   if (healed <= 0) return;
   target.hp += healed;
-  c.fx.push({ kind: 'heal', target: who, amount: healed });
+  c.fx.push({ kind: 'heal', target: who, amount: healed, hp: target.hp });
 }
 
 export function addStatus(c: Combat, target: Fighter, status: Status, amount: number, who: 'player' | number) {
   if (!amount) return;
   target.status[status] = (target.status[status] ?? 0) + amount;
   if ((target.status[status] ?? 0) <= 0) delete target.status[status];
+  if (who === 'player' && status === 'momentum') c.flags.maxMomentum = Math.max(c.flags.maxMomentum ?? 0, target.status.momentum ?? 0);
   c.fx.push({ kind: 'status', target: who, status, amount });
 }
 
@@ -148,6 +165,8 @@ export function newCard(c: Combat, id: string, up = false): FightCard {
 
 /** Puts a new card somewhere: shuffled into the draw pile, on the discard pile, or in hand. */
 export function addCard(c: Combat, id: string, where: 'draw' | 'discard' | 'hand', up = false) {
+  // On the gold standard there's no Inflation to be had.
+  if (id === 'inflation' && c.twist === 'gold-standard') return;
   const card = newCard(c, id, up);
   if (where === 'hand' && c.hand.length < HAND_LIMIT) c.hand.push(card);
   else if (where === 'draw') c.draw.splice(int(c.rng, 0, c.draw.length), 0, card);
@@ -156,7 +175,7 @@ export function addCard(c: Combat, id: string, where: 'draw' | 'discard' | 'hand
 
 /** Fills the Based meter by Credibility knocked off enemies. */
 export function addBased(c: Combat, amount: number) {
-  c.based = Math.min(BASED_MAX, c.based + amount * (c.relics.includes('tape') ? 1.5 : 1));
+  c.based = Math.min(BASED_MAX, c.based + amount * (c.relics.includes('tape') ? 1.5 : 1) * (c.twist === 'bull-market' ? 2 : 1));
 }
 
 /**
@@ -202,5 +221,6 @@ export function zap(c: Combat, i: number, amount: number) {
 
 /** An enemy hits Friedman. */
 export function enemyStrike(c: Combat, e: Enemy, base: number, hits = 1) {
-  for (let h = 0; h < hits && c.player.hp > 0; h++) hit(c, c.player, attackDamage(base, e, c.player), 'player');
+  const boost = c.twist === 'bull-market' ? 1.25 : 1;
+  for (let h = 0; h < hits && c.player.hp > 0; h++) hit(c, c.player, Math.floor(attackDamage(base, e, c.player) * boost), 'player');
 }

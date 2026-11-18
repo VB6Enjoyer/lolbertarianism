@@ -4,6 +4,7 @@
 
 import { cardCost, cardDef, cardExhausts, POOL } from './cards.ts';
 import { enemyDef, type Move } from './enemies.ts';
+import type { TwistId } from './daily.ts';
 import { int, type Rng, shuffleInPlace } from './rng.ts';
 import {
   addCard, addStatus, alive, attackDamage, BASED_MAX, type Card, type Combat, drawCards, type Enemy, type FightCard, type FightKind,
@@ -25,6 +26,7 @@ export interface FightSetup {
   based: number;
   rng: Rng;
   nextUid: number;
+  twist?: TwistId | null;
 }
 
 export function startCombat(s: FightSetup): Combat {
@@ -48,10 +50,11 @@ export function startCombat(s: FightSetup): Combat {
     gained: [],
     nextUid: s.nextUid,
     flags: {},
+    twist: s.twist ?? null,
   };
   c.enemies = s.enemies.map((id, i): Enemy => {
     const def = enemyDef(id);
-    const hp = int(s.rng, def.hp[0], def.hp[1]);
+    const hp = Math.round(int(s.rng, def.hp[0], def.hp[1]) * (s.twist === 'prime-time' ? 1.2 : 1));
     return { uid: 1000 + i, id, hp, maxHp: hp, block: 0, status: {}, move: '', turn: 0, memo: {}, dead: false };
   });
   if (c.relics.includes('pipe')) gainBlock(c, c.player, 6, 'player');
@@ -61,6 +64,10 @@ export function startCombat(s: FightSetup): Combat {
     addCard(c, 'inflation', 'draw');
   }
   if (c.relics.includes('surgery')) c.based = Math.max(c.based, BASED_MAX / 2);
+  // The daily run's twist.
+  if (c.twist === 'stagflation' || c.twist === 'helicopter') addCard(c, 'inflation', 'draw');
+  if (c.twist === 'stagflation') for (const e of c.enemies) addStatus(c, e, 'exposed', 2, e.uid);
+  if (c.twist === 'prime-time') c.player.status.primeTime = 1;
   for (const e of c.enemies) {
     const def = enemyDef(e.id);
     def.start?.(c, e);
@@ -80,6 +87,7 @@ function startTurn(c: Combat) {
     delete p.status.savings;
   }
   p.energy = p.maxEnergy + (c.relics.includes('press') ? 1 : 0);
+  c.flags.turnCards = 0;
   if (p.status.monetarism) addStatus(c, p, 'momentum', p.status.monetarism, 'player');
   const extra = (c.turn === 1 && c.relics.includes('glasses') ? 2 : 0) + (p.status.primeTime ?? 0) + (c.relics.includes('vhs') ? 1 : 0);
   drawCards(c, HAND_SIZE + extra);
@@ -110,12 +118,19 @@ export function playCard(c: Combat, i: number, target?: number): boolean {
   c.player.energy -= costOf(card)!;
   c.hand.splice(i, 1);
   c.flags.cards = (c.flags.cards ?? 0) + 1;
+  c.flags.turnCards = (c.flags.turnCards ?? 0) + 1;
+  c.flags.maxTurnCards = Math.max(c.flags.maxTurnCards ?? 0, c.flags.turnCards);
+  const dealtBefore = c.flags.damage ?? 0;
   if (def.type === 'argument' && c.relics.includes('helicopter') && !c.flags.firstArgument) {
     c.flags.firstArgument = 1;
     c.flags.mult = 2;
   }
   def.play?.(c, t, card.up);
   c.flags.mult = 1;
+  // The biggest single card of the fight (for the achievements).
+  c.flags.bigHit = Math.max(c.flags.bigHit ?? 0, (c.flags.damage ?? 0) - dealtBefore);
+  if (card.id === 'withholding') c.flags.withheld = 1;
+  if (card.id === 'choose') c.flags.chose = 1;
   if (def.type === 'rebuttal' && c.player.status.vouchers) {
     const standing = c.enemies.map((e, k) => (e.dead ? -1 : k)).filter((k) => k >= 0);
     if (standing.length) zap(c, standing[int(c.rng, 0, standing.length - 1)], c.player.status.vouchers);
@@ -130,6 +145,8 @@ export function playCard(c: Combat, i: number, target?: number): boolean {
     c.pending.options = ids.map((id) => ({ uid: c.nextUid++, id, up: false }));
   }
   settle(c);
+  if (c.result === 'won' && card.id === 'donahue') c.flags.donahueKill = 1;
+  c.flags.principles = c.powers.length;
   return true;
 }
 
@@ -178,6 +195,7 @@ export function endTurn(c: Combat) {
     if (e.dead) continue;
     e.block = 0;
     const def = enemyDef(e.id);
+    c.fx.push({ kind: 'act', target: e.uid, text: def.moves[e.move].name });
     def.moves[e.move].act(c, e);
     e.turn++;
     if (p.hp <= 0) break;
@@ -210,6 +228,7 @@ function settle(c: Combat) {
     if (!e.dead || e.memo.gone) continue;
     const def = enemyDef(e.id);
     if (def.onDeath?.(c, e)) {
+      c.flags.revived = 1;
       e.move = def.next(e, c.rng, c);
       continue;
     }

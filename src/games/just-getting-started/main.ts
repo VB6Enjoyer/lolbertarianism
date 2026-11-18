@@ -15,6 +15,10 @@ import {
   nextAct, nodeAt, reachable, rehearse, removeCard, rest, REST_HEAL, ROWS, type Run, takeRewardCard, takeRewardRelic,
 } from './run.ts';
 import { BASED_MAX, type Card, type Combat, type Fx, type Status } from './state.ts';
+import { ACHIEVEMENTS, achievementById, earnedNow, normalizeUnlocked } from './achievements.ts';
+import { dailyFor, normalizeDailyBests, twistById } from './daily.ts';
+import { CARD_H, CARD_W, drawShareCard, shareText, type RunSummary } from './share.ts';
+import { runScore } from './run.ts';
 
 // ---------------------------------------------------------------------------
 // Save
@@ -26,12 +30,18 @@ interface Meta {
   bestAct: number;
   bestFloor: number;
   lasers: number;
+  /** TV appearances ever seen (for Media Darling), and daily runs finished. */
+  events: string[];
+  dailies: number;
 }
 
 interface Save {
   muted: boolean;
   run: Run | null;
   meta: Meta;
+  achievements: string[];
+  /** The best daily-run score, per date. */
+  dailyBests: Record<string, number>;
 }
 
 const slot = createSaveSlot<Save>({ game: 'just-getting-started', version: 1 });
@@ -49,6 +59,8 @@ function runFrom(raw: unknown): Run | null {
     if (r.relics.some((id) => !RELICS[id])) return null;
     if (r.screen === 'lost' || r.screen === 'won') return null;
     r.visited ??= [];
+    r.daily ??= null;
+    if (r.combat) r.combat.twist ??= null;
     return r;
   } catch {
     return null;
@@ -64,7 +76,11 @@ const save: Save = {
     bestAct: count(saved?.meta?.bestAct),
     bestFloor: count(saved?.meta?.bestFloor),
     lasers: count(saved?.meta?.lasers),
+    events: Array.isArray(saved?.meta?.events) ? saved.meta.events.filter((id): id is string => typeof id === 'string' && !!eventById(id)) : [],
+    dailies: count(saved?.meta?.dailies),
   },
+  achievements: normalizeUnlocked(saved?.achievements),
+  dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
 const persist = () => slot.save(save);
 
@@ -152,6 +168,35 @@ function friedman(className = ''): HTMLElement {
 
 const TYPE_LABEL: Record<string, string> = { argument: 'Argument', rebuttal: 'Rebuttal', principle: 'Principle', status: 'Status', curse: 'Curse' };
 
+/** The game's words, explained wherever they turn up (hover, or long-press on a phone). */
+const KEYWORDS: Record<string, string> = {
+  Composure: 'Blocks damage. It’s gone at the start of your next turn.',
+  Credibility: 'Your health. Hit 0 and you’re ratio’d.',
+  Exposed: 'Takes 50% more damage. Goes down by 1 each turn.',
+  Rattled: 'Deals 25% less damage. Goes down by 1 each turn.',
+  Momentum: '+1 damage on every hit for each point, for the rest of the fight.',
+  Airtime: 'What cards cost. You get 3 every turn.',
+  Exhaust: 'Gone for the rest of the fight once played.',
+  Inflation: 'Can’t be played. Lose 2 Credibility if it’s in your hand when your turn ends. Laser Eyes burn it up.',
+  Shortage: 'Does nothing, and costs 1 Airtime to get rid of.',
+  Regret: 'A curse that stays in your deck for the whole run. Lose 1 Credibility if it’s in your hand when your turn ends.',
+};
+const KEYWORD_RE = new RegExp(`\\b(${Object.keys(KEYWORDS).join('|')})\\b`, 'g');
+const TYPE_TIP: Record<string, string> = {
+  argument: '<b>Argument</b>: hits an enemy.',
+  rebuttal: '<b>Rebuttal</b>: defends, or sets something up.',
+  principle: '<b>Principle</b>: stays in play for the rest of the fight.',
+  status: '<b>Status</b>: junk that clogs your hand for one fight.',
+  curse: '<b>Curse</b>: stays in your deck for the run.',
+};
+
+/** What a card's tooltip says: its type, and every keyword on it. */
+function cardTip(card: Card): string {
+  const def = cardDef(card.id);
+  const words = [...new Set([...def.text(card.up).matchAll(KEYWORD_RE)].map((m) => m[1]))];
+  return [TYPE_TIP[def.type], ...words.map((w) => `<b>${w}</b>: ${KEYWORDS[w]}`)].join('<br>');
+}
+
 function cardEl(card: Card, opts: { cost?: number | null; playable?: boolean; selected?: boolean; flavor?: boolean } = {}): HTMLElement {
   const def = cardDef(card.id);
   const cost = opts.cost !== undefined ? opts.cost : def.cost === null ? null : card.up && def.upCost !== undefined ? def.upCost : def.cost;
@@ -161,18 +206,20 @@ function cardEl(card: Card, opts: { cost?: number | null; playable?: boolean; se
     <span class="art">${def.emoji}</span>
     <b class="name"></b>
     <small class="kind">${TYPE_LABEL[def.type]}</small>
-    <span class="text">${def.text(card.up)}</span>
+    <span class="text">${def.text(card.up).replace(KEYWORD_RE, '<span class="kw">$1</span>')}</span>
     ${opts.flavor && def.flavor ? `<i class="flavor"></i>` : ''}`;
   el.querySelector('.name')!.textContent = cardName(card.id, card.up);
   if (opts.flavor && def.flavor) el.querySelector('.flavor')!.textContent = def.flavor;
+  el.dataset.tip = cardTip(card);
   return el;
 }
 
 function relicEl(id: string, extra = ''): HTMLElement {
   const r = relicDef(id);
   const el = h('span', `relic ${extra}`, r.emoji);
-  el.title = `${r.name}: ${r.text}`;
-  el.setAttribute('aria-label', el.title);
+  el.dataset.tip = `<b>${r.emoji} ${r.name}</b><br>${r.text}`;
+  el.setAttribute('aria-label', `${r.name}: ${r.text}`);
+  el.tabIndex = 0;
   return el;
 }
 
@@ -195,7 +242,9 @@ function statusRow(status: Partial<Record<Status, number>>): HTMLElement {
     if (!n) continue;
     const [emoji, text] = STATUS_INFO[id];
     const chip = h('span', 'status', `${emoji}<b>${n}</b>`);
-    chip.title = text;
+    const [name, rest] = text.split(': ');
+    chip.dataset.tip = `<b>${emoji} ${name} ${n}</b><br>${rest}`;
+    chip.setAttribute('aria-label', text);
     row.append(chip);
   }
   return row;
@@ -206,6 +255,82 @@ function bar(hp: number, max: number, block: number): HTMLElement {
   el.innerHTML = `<div class="bar"><i style="width:${Math.max(0, (hp / max) * 100)}%"></i><span>${hp} / ${max}</span></div>${block ? `<span class="block" title="Composure: blocks damage until your next turn">🛡️${block}</span>` : ''}`;
   return el;
 }
+
+// --- Tooltips: hover with a mouse; on a touchscreen, tap a chip or long-press a card ---
+
+const tipBox = h('div', 'tip-box');
+tipBox.hidden = true;
+tipBox.setAttribute('role', 'tooltip');
+document.body.append(tipBox);
+let tipFor: Element | null = null;
+let tipTimer = 0;
+
+function showTip(el: HTMLElement) {
+  const html = el.dataset.tip;
+  if (!html) return;
+  tipFor = el;
+  tipBox.innerHTML = html;
+  tipBox.hidden = false;
+  const r = el.getBoundingClientRect();
+  const w = tipBox.offsetWidth;
+  const hgt = tipBox.offsetHeight;
+  const left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+  const above = r.top - hgt - 10;
+  tipBox.style.left = `${left}px`;
+  tipBox.style.top = `${above > 8 ? above : Math.min(innerHeight - hgt - 8, r.bottom + 10)}px`;
+}
+
+function hideTip() {
+  tipBox.hidden = true;
+  tipFor = null;
+  window.clearTimeout(tipTimer);
+}
+
+const tipTarget = (e: Event) => (e.target as Element | null)?.closest?.<HTMLElement>('[data-tip]') ?? null;
+document.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const el = tipTarget(e);
+  if (el && el !== tipFor) showTip(el);
+});
+document.addEventListener('pointerout', (e) => {
+  if (e.pointerType !== 'mouse' || !tipFor) return;
+  const to = (e as PointerEvent).relatedTarget as Node | null;
+  if (!to || !tipFor.contains(to)) hideTip();
+});
+/** On a touchscreen, a long press on a card shows its tooltip (and doesn't play it). */
+let longPressed = false;
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  const el = tipTarget(e);
+  hideTip();
+  longPressed = false;
+  if (!el) return;
+  if (el.classList.contains('card')) {
+    tipTimer = window.setTimeout(() => {
+      longPressed = true;
+      showTip(el);
+    }, 450);
+  } else {
+    // Chips, relics, intents: a tap is enough.
+    showTip(el);
+    tipTimer = window.setTimeout(hideTip, 3500);
+  }
+});
+document.addEventListener('pointerup', (e) => {
+  if (e.pointerType !== 'mouse' && tipFor?.classList.contains('card')) window.setTimeout(hideTip, 1600);
+  if (e.pointerType !== 'mouse') window.clearTimeout(longPressed ? 0 : tipTimer);
+});
+/** Swallows the click that ends a long press, so the card isn't played. */
+document.addEventListener(
+  'click',
+  (e) => {
+    if (!longPressed) return;
+    longPressed = false;
+    e.stopPropagation();
+    e.preventDefault();
+  },
+  true,
+);
 
 function toast(text: string) {
   const t = h('div', 'toast');
@@ -225,7 +350,8 @@ function renderHud() {
     els.hud.innerHTML = save.meta.runs ? `<span>Runs <b>${save.meta.runs}</b></span><span>Wins <b>${save.meta.wins}</b></span>` : '';
     return;
   }
-  const hp = run.combat ? run.combat.player.hp : run.hp;
+  const fight = shownCombat ?? run.combat;
+  const hp = fight ? fight.player.hp : run.hp;
   const deck = button(`🃏 <b>${run.deck.length}</b>`, 'hud-button', () => showCards(run.deck, 'Your act (deck)'));
   deck.title = 'Your deck';
   const relics = h('span', 'relics');
@@ -237,6 +363,15 @@ function renderHud() {
     deck,
     relics,
   );
+  if (run.daily) {
+    const twist = twistById(run.daily.twist);
+    if (twist) {
+      const badge = h('span', 'stat daily-badge', `📅 ${twist.icon}`);
+      badge.dataset.tip = `<b>Daily run ${run.daily.key}: ${twist.name}</b><br>${twist.description}`;
+      badge.tabIndex = 0;
+      els.hud.append(badge);
+    }
+  }
 }
 
 /** How deep-fried the screen is: the Based meter, plus a bit more each act. */
@@ -259,6 +394,8 @@ let busy = false;
 let selected: number | null = null;
 
 function render() {
+  hideTip();
+  if (save.run && view === 'run' && !shownCombat) checkAchievements();
   setFry();
   renderHud();
   els.screen.replaceChildren();
@@ -268,7 +405,7 @@ function render() {
     case 'map':
       return renderMap(run);
     case 'combat':
-      return renderCombat(run.combat!);
+      return renderCombat(shownCombat ?? run.combat!);
     case 'reward':
       return renderReward(run);
     case 'shop':
@@ -295,6 +432,9 @@ function renderTitle() {
     buttons.append(button(`▶ Continue <small>Act ${run.act} · ${run.hp}/${run.maxHp} ❤️</small>`, 'big-button', () => go('run')));
     buttons.append(button('New run', 'big-button secondary', confirmNewRun));
   } else buttons.append(button('▶ Start a run', 'big-button', startRun));
+  const d = dailyFor(new Date());
+  buttons.append(button(`📅 Daily run <small>${d.twist.icon} ${d.twist.name}</small>`, 'big-button secondary', showDaily));
+  buttons.append(button(`🏅 Achievements <small>${save.achievements.length}/${ACHIEVEMENTS.length}</small>`, 'big-button secondary', showAchievements));
   buttons.append(button('📖 How to play', 'big-button secondary', showHowTo));
   buttons.append(button('💾 Save &amp; load', 'big-button secondary', () => openSaveTransfer('just-getting-started')));
   s.append(buttons);
@@ -326,6 +466,7 @@ function confirmNewRun() {
         if (save.run) recordEnd(save.run, false);
         closeOverlay();
         startRun();
+        checkAchievements();
       }),
       button('Keep playing', 'big-button secondary', closeOverlay),
     );
@@ -344,6 +485,8 @@ function showHowTo() {
         <li>👀 Enemies show their <b>intent</b>: what they’ll do next turn. ⚔️ attack, 🛡️ defend, 💪 buff, 🌀 debuff.</li>
         <li>🔴 Every point of damage fills the <b>Based meter</b>. Full meter: <b>LASER EYES</b> hit everyone and burn the Inflation out of your hand. The screen gets more deep-fried as it fills.</li>
         <li>🎈 <b>Inflation</b> clogs your hand and costs Credibility. 😔 <b>Regret</b> is forever. You know what you did.</li>
+        <li>❔ Not sure what a word means? <b>Hover</b> over it (on a phone, <b>long-press</b> a card, or tap a chip or an intent).</li>
+        <li>📅 A <b>daily run</b>: the same run for everyone each day, with a twist, and a best score to beat.</li>
         <li>⌨️ Keys: <kbd>1</kbd>–<kbd>9</kbd> play a card, <kbd>L</kbd> laser eyes, <kbd>E</kbd> end turn, <kbd>Esc</kbd> cancel.</li>`,
       ),
       button('Got it', 'big-button', closeOverlay),
@@ -397,6 +540,8 @@ function renderMap(run: Run) {
         persist();
         render();
         window.scrollTo(0, 0);
+        // A fight starts with the enemies saying hello (and relics kicking in): show it now.
+        if (run.combat) playFx(run.combat.fx.splice(0));
       }, !canGo);
       b.style.left = `${x(node.col)}%`;
       b.style.top = `${y(node.row)}px`;
@@ -421,6 +566,13 @@ function renderMap(run: Run) {
 // --- A fight ---
 
 const INTENT_ICON: Record<Intent, string> = { attack: '⚔️', defend: '🛡️', buff: '💪', debuff: '🌀', special: '✨' };
+const INTENT_TIP: Record<Intent, string> = {
+  attack: '⚔️ Attacks you.',
+  defend: '🛡️ Gains Composure.',
+  buff: '💪 Makes itself stronger.',
+  debuff: '🌀 Weakens you, or clogs your deck.',
+  special: '✨ Something unusual.',
+};
 
 function renderCombat(c: Combat) {
   const s = h('section', 'combat-screen');
@@ -437,7 +589,7 @@ function renderCombat(c: Combat) {
     const foe = h('div', `foe${def.boss ? ' boss' : ''}${selected !== null ? ' targetable' : ''}`);
     foe.dataset.target = String(e.uid);
     const intent = h('div', `intent intent-${move.intent}`, `${INTENT_ICON[move.intent]}${move.also ? INTENT_ICON[move.also] : ''}${damage ? `<b>${damage}</b>` : ''}`);
-    intent.title = `Next: ${move.name}`;
+    intent.dataset.tip = `<b>Next turn: ${move.name}</b><br>${INTENT_TIP[move.intent]}${move.also ? `<br>${INTENT_TIP[move.also]}` : ''}${damage ? `<br>Damage: ${damage} (after its Momentum, and your Exposed)` : ''}`;
     const name = h('b', 'foe-name');
     name.textContent = def.name;
     foe.append(intent, h('small', 'move-name', ''), h('div', 'foe-emoji', def.emoji), name, bar(e.hp, e.maxHp, e.block), statusRow(e.status));
@@ -455,11 +607,11 @@ function renderCombat(c: Combat) {
   const console_ = h('div', 'console');
   const top = h('div', 'console-top');
   const energy = h('div', 'energy', `<b>${c.player.energy}</b><small>/${c.player.maxEnergy + (c.relics.includes('press') ? 1 : 0)}</small>`);
-  energy.title = 'Airtime: spend it to play cards';
+  energy.dataset.tip = `<b>Airtime</b><br>${KEYWORDS.Airtime}`;
   const based = h('div', 'based');
   based.innerHTML = `<div class="based-bar"><i style="width:${(c.based / BASED_MAX) * 100}%"></i><span>BASED ${Math.floor(c.based)}%</span></div>`;
   const laser = button('🔴 LASER EYES', `laser-button${laserReady(c) ? ' ready' : ''}`, () => !busy && act(() => fireLaser(c)), !laserReady(c));
-  laser.title = 'Fill the Based meter, then fire: damage to every enemy, and the Inflation in your hand burns up.';
+  laser.dataset.tip = '<b>🔴 Laser Eyes</b><br>Every point of damage fills the Based meter. When it’s full, fire: 20 damage to every enemy, and the Inflation in your hand burns up.';
   based.append(laser);
   const piles = h('div', 'piles');
   piles.append(
@@ -467,12 +619,12 @@ function renderCombat(c: Combat) {
     button(`🗑️ <b>${c.discard.length}</b>`, 'pile', () => showCards(c.discard, 'Discard pile')),
   );
   if (c.exhausted.length) piles.append(button(`🔥 <b>${c.exhausted.length}</b>`, 'pile', () => showCards(c.exhausted, 'Exhausted (gone for this fight)')));
-  (piles.children[0] as HTMLElement).title = 'Draw pile';
-  (piles.children[1] as HTMLElement).title = 'Discard pile';
+  (piles.children[0] as HTMLElement).dataset.tip = '<b>Draw pile</b><br>You draw 5 a turn. When it runs out, the discard pile is shuffled back in.';
+  (piles.children[1] as HTMLElement).dataset.tip = '<b>Discard pile</b><br>Played cards, and your hand at the end of each turn.';
   const end = button('End turn ▶', 'end-turn', () => {
     if (busy) return;
     selected = null;
-    act(() => endTurn(c));
+    act(() => endTurn(c), { enemyTurn: true });
   }, !canAct(c));
   top.append(energy, based, piles, end);
 
@@ -489,6 +641,11 @@ function renderCombat(c: Combat) {
   console_.append(top, hand);
   if (selected !== null) console_.append(h('p', 'hint', 'Pick a target. (Esc to cancel)'));
   s.append(arena, console_);
+  // While the enemies' turn plays out: a banner, and nothing to press.
+  if (c === shownCombat) {
+    arena.append(h('div', 'turn-banner', 'THEIR TURN'));
+    for (const b of console_.querySelectorAll<HTMLButtonElement>('button')) b.disabled = true;
+  }
   els.screen.append(s);
 
   if (c.pending?.kind === 'choose') {
@@ -528,35 +685,86 @@ function clickCard(c: Combat, i: number) {
   act(() => playCard(c, i));
 }
 
-/** Runs a move, saves, redraws, and plays what happened. Ends the fight when it's over. */
-function act(move: () => unknown) {
+/** The fight as it was before the enemies' turn, shown while their turn plays out (null the rest of the time). */
+let shownCombat: Combat | null = null;
+
+/**
+ * Runs a move, saves, redraws, and plays what happened. Ending your turn plays the enemies' turn
+ * out one enemy at a time: the board as it was, then each move called out and its effects, in order.
+ */
+function act(move: () => unknown, opts: { enemyTurn?: boolean } = {}) {
   const run = save.run;
   if (!run) return;
+  const before = opts.enemyTurn && run.combat ? structuredClone(run.combat) : null;
   move();
   const c = run.combat;
   const fx = c ? c.fx.splice(0) : [];
   play('card');
   persist();
+  if (before && c && fx.some((e) => e.kind === 'act')) {
+    before.hand = [];
+    before.fx = [];
+    busy = true;
+    shownCombat = before;
+    render();
+    const maxHp = (t: 'player' | number) => (t === 'player' ? before.player.maxHp : (c.enemies.find((e) => e.uid === t)?.maxHp ?? 1));
+    const ms = playFx(fx, maxHp);
+    window.setTimeout(() => {
+      shownCombat = null;
+      busy = false;
+      render();
+      afterMove(run, c);
+    }, ms + 450);
+    return;
+  }
   render();
   playFx(fx);
-  if (c?.result && !busy) {
-    busy = true;
-    window.setTimeout(() => {
-      busy = false;
-      finishCombat(run);
-      if (run.screen === 'lost' || run.screen === 'won') {
-        recordEnd(run, run.screen === 'won');
-        play(run.screen === 'won' ? 'win' : 'lose');
-      } else play('win');
-      persist();
-      render();
-      window.scrollTo(0, 0);
-    }, c.result === 'won' ? 1000 : 1400);
+  afterMove(run, c);
+}
+
+/** Once a fight's over: a beat to see it, then the reward (or the end of the run). */
+function afterMove(run: Run, c: Combat | null) {
+  checkAchievements();
+  if (!c?.result || busy) return;
+  busy = true;
+  window.setTimeout(() => {
+    busy = false;
+    finishCombat(run);
+    if (run.screen === 'lost' || run.screen === 'won') {
+      endOfRun(run);
+      play(run.screen === 'won' ? 'win' : 'lose');
+    } else play('win');
+    persist();
+    render();
+    window.scrollTo(0, 0);
+  }, c.result === 'won' ? 1000 : 1400);
+}
+
+/** Sets a health bar (and the Composure badge) to new values. */
+function setBar(target: HTMLElement, hp: number, max: number, block?: number) {
+  const fill = target.querySelector<HTMLElement>('.bar i');
+  const label = target.querySelector<HTMLElement>('.bar span');
+  if (fill) fill.style.width = `${Math.max(0, (hp / max) * 100)}%`;
+  if (label) label.textContent = `${hp} / ${max}`;
+  if (block === undefined) return;
+  const hpRow = target.querySelector('.hp');
+  let badge = target.querySelector<HTMLElement>('.block');
+  if (!block) badge?.remove();
+  else {
+    if (!badge && hpRow) {
+      badge = h('span', 'block');
+      hpRow.append(badge);
+    }
+    if (badge) badge.textContent = `🛡️${block}`;
   }
 }
 
-/** Shows what happened: numbers flying off, shakes, speech, the laser. */
-function playFx(fx: Fx[]) {
+/**
+ * Shows what happened: numbers flying off, shakes, speech, the laser. With `maxHp` (the enemies'
+ * turn), it plays step by step and moves the bars as it goes. Returns how long it takes (ms).
+ */
+function playFx(fx: Fx[], maxHp?: (t: 'player' | number) => number): number {
+  const stepByStep = !!maxHp;
   const targetEl = (t: 'player' | number) => els.screen.querySelector<HTMLElement>(`[data-target="${t}"]`);
   const float = (t: 'player' | number, text: string, cls: string) => {
     const el = targetEl(t);
@@ -566,10 +774,33 @@ function playFx(fx: Fx[]) {
     el.append(f);
     window.setTimeout(() => f.remove(), 1100);
   };
-  fx.forEach((e, k) =>
+  let at = 0;
+  for (const e of fx) {
+    at += stepByStep ? (e.kind === 'act' ? 800 : 170) : 90;
     window.setTimeout(() => {
       switch (e.kind) {
+        case 'act': {
+          // An enemy takes its turn: it steps forward and its move is called out.
+          for (const el of els.screen.querySelectorAll('.foe.acting')) el.classList.remove('acting');
+          const el = targetEl(e.target);
+          if (!el) return;
+          el.classList.add('acting');
+          const call = h('div', 'move-call');
+          call.textContent = e.text;
+          el.append(call);
+          window.setTimeout(() => call.remove(), 1100);
+          play('card');
+          break;
+        }
         case 'damage': {
+          if (stepByStep) {
+            const el = targetEl(e.target);
+            if (el) setBar(el, e.hp, maxHp!(e.target), e.block);
+            if (e.target === 'player') {
+              const stat = els.hud.querySelector('.hp-stat b');
+              if (stat) stat.textContent = String(e.hp);
+            }
+          }
           if (!e.amount && !e.blocked) return;
           float(e.target, e.amount ? `−${e.amount}` : `🛡️${e.blocked}`, e.amount ? 'dmg' : 'blocked');
           const el = targetEl(e.target);
@@ -579,14 +810,24 @@ function playFx(fx: Fx[]) {
           play(e.target === 'player' ? 'hurt' : 'hit');
           break;
         }
-        case 'block':
+        case 'block': {
+          if (stepByStep) {
+            const el = targetEl(e.target);
+            if (el) setBar(el, Number(el.querySelector('.bar span')?.textContent?.split(' / ')[0] ?? 0), maxHp!(e.target), e.block);
+          }
           float(e.target, `+${e.amount}🛡️`, 'blk');
           play('block');
           break;
-        case 'heal':
+        }
+        case 'heal': {
+          if (stepByStep) {
+            const el = targetEl(e.target);
+            if (el) setBar(el, e.hp, maxHp!(e.target));
+          }
           float(e.target, `+${e.amount}❤️`, 'heal');
           play('heal');
           break;
+        }
         case 'status': {
           const [emoji] = STATUS_INFO[e.status];
           float(e.target, `${emoji}${e.amount > 0 ? '+' : ''}${e.amount}`, 'stat');
@@ -613,8 +854,9 @@ function playFx(fx: Fx[]) {
           targetEl(e.target)?.classList.add('dying');
           break;
       }
-    }, k * 90),
-  );
+    }, at);
+  }
+  return at;
 }
 
 function recordEnd(run: Run, won: boolean) {
@@ -626,6 +868,167 @@ function recordEnd(run: Run, won: boolean) {
     m.bestAct = run.act;
     m.bestFloor = floor;
   }
+}
+
+/** The run's over (won or lost): the records, the daily best, the achievements. */
+function endOfRun(run: Run) {
+  recordEnd(run, run.screen === 'won');
+  if (run.daily) {
+    save.meta.dailies++;
+    save.dailyBests[run.daily.key] = Math.max(save.dailyBests[run.daily.key] ?? 0, runScore(run));
+  }
+  checkAchievements();
+}
+
+/** Unlocks whatever the run (and the fight) has earned since the last look. */
+function checkAchievements() {
+  const run = save.run;
+  if (!run) return;
+  if (run.event && !save.meta.events.includes(run.event.id)) save.meta.events.push(run.event.id);
+  const fresh = earnedNow({ run, combat: run.combat, lasers: save.meta.lasers, eventsSeen: save.meta.events.length, dailies: save.meta.dailies }).filter((id) => !save.achievements.includes(id));
+  if (!fresh.length) return;
+  save.achievements.push(...fresh);
+  persist();
+  fresh.forEach((id, i) => window.setTimeout(() => achievementToast(id), i * 600));
+}
+
+function achievementToast(id: string) {
+  const a = achievementById(id);
+  if (!a) return;
+  const t = h('div', 'toast achievement', '<span class="icon"></span><small>ACHIEVEMENT UNLOCKED</small><b></b>');
+  t.querySelector('.icon')!.textContent = a.icon;
+  t.querySelector('b')!.textContent = a.name;
+  els.toasts.append(t);
+  window.setTimeout(() => t.remove(), 4200);
+  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
+}
+
+function showAchievements() {
+  openOverlay(`🏅 Achievements · ${save.achievements.length}/${ACHIEVEMENTS.length}`, (box) => {
+    const grid = h('div', 'achievement-grid');
+    for (const a of ACHIEVEMENTS) {
+      const got = save.achievements.includes(a.id);
+      const hidden = a.secret && !got;
+      const card = h('div', `achievement${got ? '' : ' locked'}`, '<span class="icon"></span><b></b><small></small>');
+      card.querySelector('.icon')!.textContent = hidden ? '❓' : a.icon;
+      card.querySelector('b')!.textContent = hidden ? 'Secret' : a.name;
+      card.querySelector('small')!.textContent = hidden ? 'Keep playing. You’ll know it when it happens.' : a.description;
+      grid.append(card);
+    }
+    box.append(grid);
+  });
+}
+
+// --- The daily run ---
+
+function showDaily() {
+  const d = dailyFor(new Date());
+  const best = save.dailyBests[d.key];
+  openOverlay('📅 Daily run', (box) => {
+    box.append(
+      h('p', 'daily-twist', `<span>${d.twist.icon}</span><b></b><small></small>`),
+      h('p', '', `The same run for everyone today (${d.key}): same map, same cards, same fights.${best !== undefined ? ` Your best today: <b>${best}</b> points.` : ''}`),
+    );
+    box.querySelector('.daily-twist b')!.textContent = d.twist.name;
+    box.querySelector('.daily-twist small')!.textContent = d.twist.description;
+    const playing = save.run?.daily?.key === d.key;
+    box.append(
+      button(playing ? '▶ Continue today’s run' : '▶ Play today’s run', 'big-button', () => {
+        if (playing) {
+          closeOverlay();
+          return go('run');
+        }
+        const start = () => {
+          save.run = newRun(d.seed, { key: d.key, twist: d.twist.id });
+          persist();
+          closeOverlay();
+          go('run');
+        };
+        if (!save.run) return start();
+        openOverlay('Start the daily run?', (b2) => {
+          b2.append(h('p', '', 'Your current run will be abandoned (it counts as a loss).'));
+          b2.append(
+            button('Yes, play the daily', 'big-button', () => {
+              if (save.run) recordEnd(save.run, false);
+              start();
+            }),
+            button('Keep my run', 'big-button secondary', closeOverlay),
+          );
+        });
+      }),
+    );
+  });
+}
+
+// --- Sharing ---
+
+function summaryOf(run: Run): RunSummary {
+  const twist = run.daily ? twistById(run.daily.twist) : undefined;
+  return {
+    won: run.screen === 'won',
+    score: runScore(run),
+    act: run.act,
+    floor: run.pos ? run.pos.row + 1 : 0,
+    fights: run.stats.fights,
+    damage: run.stats.damage,
+    lasers: run.stats.lasers,
+    deck: run.deck.length,
+    daily: run.daily && twist ? { key: run.daily.key, name: twist.name, icon: twist.icon } : null,
+    url: `${location.origin}${location.pathname}`,
+  };
+}
+
+async function shareResult(run: Run, status: HTMLElement) {
+  const text = shareText(summaryOf(run));
+  try {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      await navigator.share({ text });
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    status.textContent = '📋 Copied! Paste it anywhere.';
+  } catch {
+    status.textContent = 'Couldn’t copy it. Here it is:\n' + text;
+  }
+  award('shared');
+}
+
+async function shareImage(run: Run, status: HTMLElement) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CARD_W;
+  canvas.height = CARD_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const face = new Image();
+  face.src = IMG('mfriedman');
+  await Promise.all([face.decode().catch(() => {}), document.fonts?.load('40px Anton').catch(() => {}), document.fonts?.load('26px Oswald').catch(() => {})]);
+  drawShareCard(ctx, summaryOf(run), face.naturalWidth ? face : null);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return;
+  const file = new File([blob], 'just-getting-started.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare?.({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+  } catch {
+    // fall through to a download
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'just-getting-started.png';
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  status.textContent = '🖼️ Saved the card.';
+}
+
+/** For the one achievement that isn't about the run itself. */
+function award(id: string) {
+  if (save.achievements.includes(id) || !achievementById(id)) return;
+  save.achievements.push(id);
+  persist();
+  achievementToast(id);
 }
 
 // --- After a fight ---
@@ -662,8 +1065,9 @@ function renderReward(run: Run) {
   if (!r.cardTaken) {
     s.append(h('h3', '', 'Add a card to your act'));
     const row = h('div', 'card-row');
+    s.append(previewToggle(render));
     r.cards.forEach((card, i) => {
-      const el = cardEl(card, { flavor: true });
+      const el = cardEl(previewed(card), { flavor: true });
       el.setAttribute('role', 'button');
       el.tabIndex = 0;
       el.addEventListener('click', () => {
@@ -718,8 +1122,20 @@ function renderEnd(run: Run) {
         ? 'It announced its own death one more time, and once again it was wrong. Capitalism: still not dead. You: very based.'
         : `Act ${run.act}, floor ${run.pos ? run.pos.row + 1 : 0}. The studio audience boos. Somewhere, a thread gets 40,000 likes.`,
     ),
+    h('p', 'score-line', `🏆 <b>${runScore(run)}</b> points`),
     h('p', 'meta', `${st.fights} arguments won · ${st.damage} Credibility knocked off · ${st.lasers} laser blasts · ${st.cardsPlayed} cards played · ${run.deck.length} cards in your act`),
   );
+  if (run.daily) {
+    const twist = twistById(run.daily.twist);
+    s.append(h('p', 'meta', `📅 Daily run ${run.daily.key} · ${twist?.icon ?? ''} ${twist?.name ?? ''} · your best today: <b>${save.dailyBests[run.daily.key] ?? runScore(run)}</b>`));
+  }
+  const status = h('p', 'share-status');
+  const share = h('div', 'menu-buttons');
+  share.append(
+    button('📋 Share result', 'big-button secondary', () => void shareResult(run, status)),
+    button('🖼️ Save image', 'big-button secondary', () => void shareImage(run, status)),
+  );
+  s.append(share, status);
   const buttons = h('div', 'menu-buttons');
   buttons.append(
     button('▶ New run', 'big-button', () => {
@@ -742,10 +1158,11 @@ function renderShop(run: Run) {
   const shop = run.shop!;
   const s = h('section', 'panel-screen shop-screen');
   s.append(h('h2', 'screen-title', '🛒 The Bookstore'), h('p', 'screen-sub', 'Everything has a price. That’s how you know it’s worth something.'));
+  s.append(previewToggle(render));
   const row = h('div', 'card-row shop-row');
   shop.cards.forEach((item, i) => {
     const wrap = h('div', `shop-item${item.sold ? ' sold' : ''}`);
-    const el = cardEl(item.card, { flavor: true });
+    const el = cardEl(previewed(item.card), { flavor: true });
     const price = button(item.sold ? 'Sold' : `💵 ${item.price}`, 'price', () => {
       if (buyCard(run, i)) {
         play('buy');
@@ -884,9 +1301,27 @@ function showCards(cards: Card[], title: string) {
   openOverlay(title, (box) => {
     if (!cards.length) box.append(h('p', '', 'Empty.'));
     const row = h('div', 'card-grid');
-    for (const card of cards) row.append(cardEl(card, { flavor: true }));
+    const fill = () => row.replaceChildren(...cards.map((card) => cardEl(previewed(card), { flavor: true })));
+    if (cards.some((c) => canUpgrade(c.id, c.up))) box.append(previewToggle(fill));
+    fill();
     box.append(row);
   });
+}
+
+/** Whether card lists show what each card becomes upgraded (rewards, the bookstore, the deck). */
+let previewUp = false;
+const previewed = (card: Card): Card => (previewUp && canUpgrade(card.id, card.up) ? { ...card, up: true } : card);
+
+function previewToggle(redraw: () => void): HTMLButtonElement {
+  const b = button(`👁️ Preview upgrades: <b>${previewUp ? 'on' : 'off'}</b>`, 'preview-toggle', () => {
+    previewUp = !previewUp;
+    b.innerHTML = `👁️ Preview upgrades: <b>${previewUp ? 'on' : 'off'}</b>`;
+    b.setAttribute('aria-pressed', String(previewUp));
+    redraw();
+  });
+  b.setAttribute('aria-pressed', String(previewUp));
+  b.dataset.tip = 'Shows what each card does once upgraded (in the green room, or when you find a + card). You still get the card as it is.';
+  return b;
 }
 
 function pickCard(cards: Card[], title: string, onPick: (card: Card) => void, showUpgrade = false) {
@@ -936,7 +1371,7 @@ document.addEventListener('keydown', (e) => {
     if (c.hand[i]) clickCard(c, i);
   } else if (e.key === 'e' || e.key === 'E') {
     selected = null;
-    act(() => endTurn(c));
+    act(() => endTurn(c), { enemyTurn: true });
   } else if (e.key === 'l' || e.key === 'L') {
     if (laserReady(c)) act(() => fireLaser(c));
   }

@@ -2,7 +2,7 @@
 // the rest of the fight. Status cards (Inflation, Shortage) clog the deck for one fight; Regret is
 // a curse that stays for the whole run. Every card has an upgraded (+) version.
 
-import { addCard, addStatus, alive, type Combat, drawCards, gainBlock, heal, strike, strikeAll } from './state.ts';
+import { addCard, addStatus, alive, type Combat, drawCards, gainBlock, heal, loseHp, strike, strikeAll } from './state.ts';
 
 export type CardType = 'argument' | 'rebuttal' | 'principle' | 'status' | 'curse';
 export type Rarity = 'starter' | 'common' | 'uncommon' | 'rare' | 'special';
@@ -258,8 +258,7 @@ const CARD_LIST: CardDef[] = [
     id: 'inflation', name: 'Inflation', emoji: '🎈', type: 'status', rarity: 'special', cost: null,
     text: () => 'Can’t be played. If it’s in your hand at the end of your turn, lose 2 Credibility.',
     endOfTurn: (c) => {
-      c.player.hp = Math.max(0, c.player.hp - 2);
-      c.fx.push({ kind: 'damage', target: 'player', amount: 2, blocked: 0 });
+      loseHp(c, 2);
     },
     flavor: 'Always and everywhere.',
   },
@@ -273,8 +272,7 @@ const CARD_LIST: CardDef[] = [
     id: 'regret', name: 'Regret', emoji: '😔', type: 'curse', rarity: 'special', cost: null,
     text: () => 'Can’t be played. If it’s in your hand at the end of your turn, lose 1 Credibility.',
     endOfTurn: (c) => {
-      c.player.hp = Math.max(0, c.player.hp - 1);
-      c.fx.push({ kind: 'damage', target: 'player', amount: 1, blocked: 0 });
+      loseHp(c, 1);
     },
     flavor: 'Withholding was supposed to be temporary.',
   },

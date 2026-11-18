@@ -1498,3 +1498,203 @@ kbd {
 .lasering .player-side {
     z-index: 3;
 }
+
+/* --- Keywords and tooltips --- */
+.card .kw {
+    text-decoration: underline dotted rgb(255 255 255 / 0.55);
+    text-underline-offset: 2px;
+    font-weight: 600;
+}
+
+.tip-box {
+    position: fixed;
+    z-index: 60;
+    max-width: 280px;
+    padding: 8px 12px;
+    border: 2px solid var(--red-dark);
+    border-radius: 10px;
+    background: #120c0b;
+    color: var(--text);
+    font: 14px/1.35 var(--body);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.6);
+    pointer-events: none;
+}
+
+.tip-box[hidden] {
+    display: none;
+}
+
+.tip-box b {
+    color: var(--gold);
+}
+
+[data-tip]:not(.card) {
+    cursor: help;
+}
+
+/* --- The enemies' turn, one at a time --- */
+.turn-banner {
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    z-index: 4;
+    padding: 4px 16px;
+    border: 3px solid #000;
+    border-radius: 999px;
+    background: var(--red);
+    color: #fff;
+    font: 20px/1 var(--meme);
+    letter-spacing: 1.5px;
+    animation: pop 0.2s ease-out;
+}
+
+.foe.acting {
+    z-index: 3;
+    transform: translateY(-8px) scale(1.06);
+    transition: transform 0.15s;
+}
+
+.foe.acting .foe-emoji {
+    filter: drop-shadow(0 0 18px rgb(255 42 26 / 0.8)) saturate(1.6);
+}
+
+.move-call {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    z-index: 6;
+    width: max-content;
+    max-width: 220px;
+    padding: 4px 12px;
+    border: 3px solid #000;
+    border-radius: 8px;
+    background: var(--gold);
+    color: #000;
+    font: 18px/1.1 var(--meme);
+    letter-spacing: 0.5px;
+    text-align: center;
+    text-transform: uppercase;
+    transform: translate(-50%, -100%);
+    animation: pop 0.18s ease-out;
+    pointer-events: none;
+}
+
+/* --- Achievements, the daily run, sharing, previews --- */
+.toast.achievement {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
+    min-width: 230px;
+    border-color: var(--gold);
+    background: #2b2112;
+    color: var(--text);
+}
+
+.toast.achievement .icon {
+    grid-row: span 2;
+    font-size: 26px;
+}
+
+.toast.achievement small {
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+}
+
+.achievement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+    text-align: left;
+}
+
+.achievement {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: #2b2112;
+}
+
+.achievement .icon {
+    grid-row: span 2;
+    font-size: 28px;
+}
+
+.achievement small {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.achievement.locked {
+    border-style: dashed;
+    border-color: var(--line);
+    background: var(--panel-2);
+    opacity: 0.6;
+}
+
+.daily-twist {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 12px;
+    align-items: center;
+    max-width: 520px;
+    margin: 10px auto;
+    padding: 12px;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: #2b2112;
+    text-align: left;
+}
+
+.daily-twist span {
+    grid-row: span 2;
+    font-size: 36px;
+}
+
+.daily-twist b {
+    font: 22px/1.1 var(--meme);
+    letter-spacing: 0.5px;
+    color: var(--gold);
+}
+
+.score-line {
+    margin: 0;
+    font: 30px/1 var(--meme);
+    color: var(--gold);
+}
+
+.share-status {
+    min-height: 1.3em;
+    margin: 0;
+    color: var(--green);
+    white-space: pre-line;
+}
+
+.preview-toggle {
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.preview-toggle[aria-pressed='true'] {
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.daily-badge {
+    padding: 2px 8px;
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    color: var(--gold);
+}

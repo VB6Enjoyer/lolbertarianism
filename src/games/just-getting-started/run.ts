@@ -4,6 +4,7 @@
 
 import { canUpgrade, POOL, type Rarity, STARTER_DECK } from './cards.ts';
 import { startCombat } from './combat.ts';
+import type { TwistId } from './daily.ts';
 import { pickEncounter, ENCOUNTERS } from './enemies.ts';
 import { type Effect, EVENTS, eventById } from './events.ts';
 import { BOSS_RELICS, COMMON_RELICS } from './relics.ts';
@@ -80,6 +81,8 @@ export interface Run {
   seenEvents: string[];
   fightsThisAct: number;
   stats: RunStats;
+  /** A daily run: its date and twist (null for a normal run). */
+  daily: { key: string; twist: TwistId } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +134,7 @@ export function reachable(run: Run): MapNode[] {
 // A new run
 // ---------------------------------------------------------------------------
 
-export function newRun(seed: number): Run {
+export function newRun(seed: number, daily: { key: string; twist: TwistId } | null = null): Run {
   const rng = makeRng(seed);
   const run: Run = {
     seed,
@@ -156,13 +159,21 @@ export function newRun(seed: number): Run {
     seenEvents: [],
     fightsThisAct: 0,
     stats: { floors: 0, fights: 0, elites: 0, bosses: 0, damage: 0, lasers: 0, cardsPlayed: 0 },
+    daily,
   };
   run.deck = STARTER_DECK.map((id) => newCard(run, id));
+  if (daily?.twist === 'helicopter') {
+    run.deck.push(newCard(run, 'helicopter'), newCard(run, 'helicopter'));
+    run.royalties += 100;
+  }
   run.map = generateMap(rng);
   return run;
 }
 
 export const newCard = (run: Run, id: string, up = false): Card => ({ uid: run.nextUid++, id, up });
+
+/** A run's score (for the daily best and the share card): floors climbed, elites and bosses beaten, and a bonus for winning. */
+export const runScore = (run: Run) => run.stats.floors * 10 + run.stats.elites * 25 + run.stats.bosses * 100 + (run.screen === 'won' ? 500 : 0);
 
 // ---------------------------------------------------------------------------
 // Moving on the map
@@ -216,6 +227,7 @@ function startFight(run: Run, kind: FightKind, enemies: string[]) {
     // The fight gets its own copy of the dice, handed back when it's over.
     rng: { s: run.rng.s },
     nextUid: run.nextUid,
+    twist: run.daily?.twist ?? null,
   });
   run.screen = 'combat';
 }
@@ -245,7 +257,7 @@ export function finishCombat(run: Run) {
   if (run.relics.includes('freelunch')) run.hp = Math.min(run.maxHp, run.hp + 6);
 
   const base = c.kind === 'boss' ? int(run.rng, 70, 90) : c.kind === 'elite' ? int(run.rng, 28, 38) : int(run.rng, 12, 20);
-  const royalties = base + (run.relics.includes('newsweek') ? 15 : 0);
+  const royalties = Math.round((base + (run.relics.includes('newsweek') ? 15 : 0)) * (run.daily?.twist === 'gold-standard' ? 0.5 : 1));
   run.royalties += royalties;
   if (c.kind === 'boss' && run.act === ACTS) {
     run.screen = 'won';

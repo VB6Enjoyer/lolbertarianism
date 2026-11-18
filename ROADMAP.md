@@ -799,8 +799,29 @@ Friedman vs. everyone who says capitalism is dying.
   STARTED 😈".
 - `bot.ts` plays whole runs for the tests and balancing (it gets past the
   first boss in most runs and rarely wins; people do better).
-- Next: achievements, a daily seeded run, the secret David Friedman boss and
-  Machinery of Freedom cards, more cards and events, sound polish.
+- Next: "Late Stages" (difficulty levels unlocked by winning), the secret
+  David Friedman boss and Machinery of Freedom cards, more cards and events,
+  sound polish.
+
+#### Readability, achievements, the daily run and sharing ✅
+
+- Keyword tooltips: the game's words (Composure, Exposed, Rattled, Momentum,
+  Airtime, Exhaust, Inflation…) are underlined on cards and explained on
+  hover, or with a long press on a phone (a tap still plays the card).
+  Statuses, intents, relics, the piles and the Laser Eyes button explain
+  themselves the same way.
+- The enemies' turn plays out one enemy at a time: a "THEIR TURN" banner,
+  each move called out over the enemy, and the bars moving as each hit lands
+  (each damage, Composure and heal effect carries the new values).
+- A "Preview upgrades" toggle on the reward screen, the bookstore and the deck.
+- 29 achievements (`achievements.ts`), 4 of them secret, checked after every
+  move.
+- The daily run (`daily.ts`): the same seed for everyone each day, with one
+  of five twists (Stagflation, Gold Standard, Helicopter, Prime Time, Bull
+  Market), and a best score per day. A run's score: 10 a floor, 25 an elite,
+  100 a boss, 500 for winning.
+- Sharing (`share.ts`): the result as text, or a 1200×630 card with
+  deep-fried, laser-eyed Friedman.
 
 ### Austrian Economics Simulator: a new town every run ✅
 
