@@ -24,8 +24,9 @@ export type FightTrait = 'coward' | 'glass-shell' | 'comeback' | 'lazy' | 'debat
 export type FightEvent =
   | { type: 'weigh-in'; side: Side; trait: 'hungry' | 'molting' | 'pre-cooked' }
   | { type: 'round'; round: number }
-  | { type: 'argue'; side: Side; move: Move; effect: number; crit: boolean; damage: number; hp: [number, number] }
-  | { type: 'miss'; side: Side; move: Move }
+  // `streak`: how many exchanges in a row this side has had the floor this round.
+  | { type: 'argue'; side: Side; move: Move; effect: number; crit: boolean; damage: number; hp: [number, number]; streak?: number }
+  | { type: 'miss'; side: Side; move: Move; streak?: number }
   | { type: 'trait'; side: Side; trait: FightTrait }
   | { type: 'flee'; side: Side }
   | { type: 'ko'; side: Side }
@@ -55,6 +56,16 @@ const MISS = 0.12;
 
 /** How much of each matchup the bookmaker accounts for (0 = none, 1 = all). */
 export const HOUSE_MATCHUP_SENSE = 0.5;
+
+/** Each point of Wits over the other lobster's: this much more chance of getting the floor. */
+export const FLOOR_PER_WIT = 0.03;
+
+/**
+ * There are no turns: each of a round's exchanges goes to one lobster, picked at random, leaning
+ * towards the sharper debater. This is the red corner's chance of getting the floor (the blue
+ * corner's is 1 minus it). Even at 50% the same lobster often gets three or four in a row.
+ */
+export const floorChance = (a: { wits: number }, b: { wits: number }) => 0.5 + (a.wits - b.wits) * FLOOR_PER_WIT;
 
 export function critChance(f: Fighter): number {
   return 0.04 + f.wits * 0.015 + (f.lobster.trait === 'debater' ? 0.08 : 0);
@@ -97,10 +108,13 @@ export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random
 
   for (let round = from?.round ?? 1; round <= ROUNDS; round++) {
     events.push({ type: 'round', round });
+    let last: Side | null = null;
+    let streak = 0;
     for (let x = 0; x < EXCHANGES_PER_ROUND; x++) {
       // The sharper debater gets the floor more often.
-      const lean = 0.5 + (fighters[0].wits - fighters[1].wits) * 0.03;
-      const side: Side = rng() < lean ? 0 : 1;
+      const side: Side = rng() < floorChance(fighters[0], fighters[1]) ? 0 : 1;
+      streak = side === last ? streak + 1 : 1;
+      last = side;
       const other: Side = side === 0 ? 1 : 0;
       const me = fighters[side];
       const them = fighters[other];
@@ -117,7 +131,7 @@ export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random
       const moves = movesOf(me.lobster);
       const move = moves[Math.floor(rng() * moves.length)];
       if (rng() < MISS) {
-        events.push({ type: 'miss', side, move });
+        events.push({ type: 'miss', side, move, streak });
         continue;
       }
       // The house only half-reads the matchup chart.
@@ -140,7 +154,7 @@ export function simulate(a: Lobster, b: Lobster, rng: () => number = Math.random
       damage = Math.max(1, Math.round(damage));
       hp[other] = Math.max(0, hp[other] - damage);
       dealt[side] += damage;
-      events.push({ type: 'argue', side, move, effect, crit, damage, hp: [hp[0], hp[1]] });
+      events.push({ type: 'argue', side, move, effect, crit, damage, hp: [hp[0], hp[1]], streak });
       if (hp[other] === 0) {
         events.push({ type: 'ko', side: other });
         return { winner: side, ending: 'ko', events, dealt };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { effectiveness, FACTIONS, factionById, makeRoster, normalizeRoster, TRAITS, type Lobster } from './lobsters.ts';
-import { argTypesOf, pickBout, publicChance, revealedSides, simulate, stateAfterRound, weighIn } from './fight.ts';
+import { argTypesOf, EXCHANGES_PER_ROUND, floorChance, pickBout, publicChance, revealedSides, seededRng, simulate, stateAfterRound, weighIn } from './fight.ts';
 import { cashOutValue, crowdBets, lateBet, liveOdds, poolOdds, popularity, projectedPayout, TAKEOUT, totals } from './pool.ts';
 
 function rng(seed: number) {
@@ -627,5 +627,40 @@ describe('fight club: the stable', () => {
     const vet = normalizeStable({ ...raw, lobster: { ...raw.lobster, claw: 8, shell: 7, wits: 7, stamina: 120, wins: 12 } })!;
     expect(saleValue(vet)).toBeGreaterThan(saleValue(rookie) + 500);
     expect(normalizeHall([{ name: 'Old Pinchy', faction: 'ancap', wins: '11', losses: 2, purses: 900 }, { name: 'x', faction: 'nope' }])).toEqual([{ name: 'Old Pinchy', faction: 'ancap', wins: 11, losses: 2, purses: 900 }]);
+  });
+});
+
+describe('fight club: the floor (why some lobsters argue several times in a row)', () => {
+  it('leans 3% per point of Wits towards the sharper lobster, and the two chances add up', () => {
+    expect(floorChance(lobster({ wits: 6 }), lobster({ wits: 6 }))).toBe(0.5);
+    expect(floorChance(lobster({ wits: 9 }), lobster({ wits: 4 }))).toBeCloseTo(0.65);
+    const a = lobster({ wits: 3 });
+    const b = lobster({ wits: 8 });
+    expect(floorChance(a, b) + floorChance(b, a)).toBeCloseTo(1);
+  });
+
+  it('tags each exchange with how many in a row that lobster has had this round', () => {
+    for (let seed = 1; seed < 60; seed++) {
+      const res = simulate(lobster({ id: 1 }), lobster({ id: 2, faction: 'georgist' }), seededRng(seed));
+      let last: number | null = null;
+      let run = 0;
+      for (const e of res.events) {
+        if (e.type === 'round') last = null;
+        if (e.type !== 'argue' && e.type !== 'miss') continue;
+        run = e.side === last ? run + 1 : 1;
+        last = e.side;
+        expect(e.streak, `seed ${seed}`).toBe(run);
+      }
+    }
+  });
+
+  it('gives even lobsters streaks of three or more in most fights (it’s the luck of the floor)', () => {
+    let withStreak = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const res = simulate(lobster({ id: 1, stamina: 400 }), lobster({ id: 2, stamina: 400 }), seededRng(seed));
+      if (res.events.some((e) => (e.type === 'argue' || e.type === 'miss') && (e.streak ?? 0) >= 3)) withStreak++;
+    }
+    expect(withStreak / 200).toBeGreaterThan(0.5);
+    expect(EXCHANGES_PER_ROUND).toBe(6);
   });
 });

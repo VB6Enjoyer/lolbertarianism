@@ -5,7 +5,7 @@ import { createSaveSlot } from '../../shared/storage.ts';
 import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { installTapTips } from './taptips.ts';
 import { ARG_TYPES, FACTIONS, factionById, makeRoster, movesOf, normalizeRoster, TEACHABLE, traitById, type ArgType, type Faction, type Lobster } from './lobsters.ts';
-import { argTypesOf, pickBout, publicChance, revealedSides, ROUNDS, seededRng, simulate, stateAfterRound, weighIn, type FightEvent, type FightResult, type Side } from './fight.ts';
+import { argTypesOf, EXCHANGES_PER_ROUND, FLOOR_PER_WIT, floorChance, pickBout, publicChance, revealedSides, ROUNDS, seededRng, simulate, stateAfterRound, weighIn, type FightEvent, type FightResult, type Side } from './fight.ts';
 import { BETTORS, bettorById, cashOutValue, crowdBets, lateBet, liveOdds, poolOdds, projectedPayout, TAKEOUT, totals, type PoolBet } from './pool.ts';
 import { buyTip, normalizeRecords, SCOUT_PRICE, TELLS, TIPSTERS, tipsterById, type Tip, type TipsterId, type TrackRecords } from './intel.ts';
 import { afterLoss, bailout, BAD_TRAITS, endNight, MARKET_VENUE, marketOffers, freeId, isMine, MAX_STABLE, NIGHT_BOUTS, normalizeCareer, normalizeHall, normalizeStables, pickOpponent, purseFor, saleValue, slotsAt, startNight, suggestName, teachCost, THERAPY_PRICE, TIERS, train, trainingCost, VENUES, upkeepFor, type Career, type HallEntry, type NightOutcome, type Offer, type Stable, type Tier, type TrainStat } from './career.ts';
@@ -330,7 +330,7 @@ const firstName = (l: Lobster) => SHORT_NAMES[l.name] ?? l.name.split(' ')[0];
 const STATS = [
   { key: 'claw', icon: '🦀', name: 'Claw', max: 10, help: 'How hard its arguments hit' },
   { key: 'shell', icon: '🛡️', name: 'Shell', max: 10, help: 'How much damage it blocks' },
-  { key: 'wits', icon: '🧠', name: 'Wits', max: 10, help: 'Critical hits, and who strikes first' },
+  { key: 'wits', icon: '🧠', name: 'Wits', max: 10, help: 'Gets the floor more often (+3% for each point over the other lobster), and lands more critical hits' },
   { key: 'stamina', icon: '❤️', name: 'Stamina', max: 160, help: 'How much it can take' },
 ] as const;
 
@@ -357,7 +357,15 @@ function edgeHtml(me: Lobster, them: Lobster) {
   if (hits) chips.push(`<span class="edge good" title="${hits} of its ${moves.length} arguments are ${ARG_TYPES[tf.weak].name}: ×1.5 damage against a ${tf.name}">🎯 ${hits} of ${moves.length} args hit ${who}’s weak spot</span>`);
   if (blocked) chips.push(`<span class="edge bad" title="${blocked} of its ${moves.length} arguments are ${ARG_TYPES[tf.resists].name}: ×0.65 damage against a ${tf.name}">🧱 ${blocked} of ${moves.length} bounce off ${who}</span>`);
   if (!chips.length) chips.push('<span class="edge even" title="None of its arguments hit the other’s weak spot, and none bounce off">➖ No matchup edge</span>');
+  chips.push(floorChip(me, them));
   return `<div class="matchup">${chips.join('')}</div>`;
+}
+
+/** How often it gets to argue: there are no turns, so this is why one lobster can go three or four times in a row. */
+function floorChip(me: Lobster, them: Lobster) {
+  const pct = Math.round(floorChance(me, them) * 100);
+  const title = `There are no turns. Each round has ${EXCHANGES_PER_ROUND} exchanges, and each one goes to a lobster picked at random, leaning towards the sharper one: ${firstName(me)} gets the floor ${pct}% of the time (Wits ${me.wits} vs ${me.wits === them.wits ? 'the same' : them.wits}, ${Math.round(FLOOR_PER_WIT * 100)}% for each point). Streaks of three or four in a row are normal.`;
+  return `<span class="edge floor${pct > 50 ? ' ahead' : pct < 50 ? ' behind' : ''}" title="${escapeHtml(title)}">🎤 Gets the floor ${pct}%</span>`;
 }
 
 function renderCard(side: Side) {
@@ -1486,6 +1494,25 @@ function pulse(el: HTMLElement, cls: string) {
   el.classList.add(cls);
 }
 
+/** Exchanges each lobster has argued this round (for the recap), and whether the floor's been explained this fight. */
+const floorCount: [number, number] = [0, 0];
+let floorExplained = false;
+
+/** At the end of a round: who had the floor, and how often. */
+function floorRecap() {
+  const [a, b] = floorCount;
+  if (a + b) log(`🎤 That round: ${firstName(bout.lobsters[0])} had the floor ${a} time${a === 1 ? '' : 's'}, ${firstName(bout.lobsters[1])} ${b}.`, 'floor');
+  floorCount[0] = floorCount[1] = 0;
+}
+
+/** Three or more exchanges in a row: say so, and why. */
+function streakNote(side: Side, streak = 1) {
+  if (streak < 3) return '';
+  const p = Math.round(floorChance(bout.lobsters[side], bout.lobsters[side === 0 ? 1 : 0]) * 100);
+  if (streak === 3) floatText(side, '🎤 KEEPS THE FLOOR', '#ffd54f', false);
+  return ` 🎤 ${streak} in a row (gets the floor ${p}% of the time).`;
+}
+
 async function showEvent(e: FightEvent) {
   const name = (side: Side) => bout.lobsters[side].name;
   switch (e.type) {
@@ -1498,16 +1525,29 @@ async function showEvent(e: FightEvent) {
       await sleep(600);
       break;
     }
-    case 'round':
+    case 'round': {
       play('bell');
       els.round.textContent = `ROUND ${e.round}`;
       pulse(els.round, 'show');
+      floorRecap();
       log(`— Round ${e.round} —`, 'round');
+      // The first time, say how the floor works (it's what makes the streaks).
+      if (e.round === 1 || !floorExplained) {
+        floorExplained = true;
+        const p = Math.round(floorChance(bout.lobsters[0], bout.lobsters[1]) * 100);
+        const [a, b] = bout.lobsters;
+        log(
+          `🎤 ${EXCHANGES_PER_ROUND} exchanges a round, no turns: each goes to a random lobster. ${firstName(a)} gets the floor ${p}% of the time, ${firstName(b)} ${100 - p}%${a.wits === b.wits ? ' (same Wits)' : ` (Wits ${a.wits} vs ${b.wits})`}.`,
+          'floor',
+        );
+      }
       shout();
       await sleep(900);
       break;
+    }
     case 'argue': {
       const other: Side = e.side === 0 ? 1 : 0;
+      floorCount[e.side]++;
       say(e.side, `${ARG_TYPES[e.move.type].icon} “${e.move.name}”`);
       pulse(els.fighters[e.side], 'lunge');
       await sleep(260);
@@ -1517,17 +1557,18 @@ async function showEvent(e: FightEvent) {
       setHp(other, e.hp[other], weighIn(bout.lobsters[other]).stamina);
       floatText(other, `-${e.damage}${e.crit ? '!' : ''}`, e.effect > 1 ? '#ff5252' : e.effect < 1 ? '#b0bec5' : '#ffeb3b', e.crit || e.effect > 1);
       const flavor = [EFFECT_TEXT(e.effect), e.crit ? 'CRITICAL MARKET CORRECTION!' : ''].filter(Boolean).join(' ');
-      log(`${name(e.side)}: “${e.move.name}” ${ARG_TYPES[e.move.type].icon} → ${name(other)} −${e.damage}. ${flavor}`, e.effect > 1 || e.crit ? 'big' : '');
+      log(`${name(e.side)}: “${e.move.name}” ${ARG_TYPES[e.move.type].icon} → ${name(other)} −${e.damage}. ${flavor}${streakNote(e.side, e.streak)}`, e.effect > 1 || e.crit ? 'big' : '');
       if (e.crit || e.effect > 1) shout();
       await sleep(700);
       break;
     }
     case 'miss':
+      floorCount[e.side]++;
       say(e.side, `${ARG_TYPES[e.move.type].icon} “${e.move.name}”`);
       pulse(els.fighters[e.side], 'lunge');
       play('miss');
       floatText(e.side === 0 ? 1 : 0, 'STRAWMANNED!', '#90caf9');
-      log(`${name(e.side)} tries “${e.move.name}”, but it’s a strawman. Missed!`, 'miss');
+      log(`${name(e.side)} tries “${e.move.name}”, but it’s a strawman. Missed!${streakNote(e.side, e.streak)}`, 'miss');
       await sleep(650);
       break;
     case 'trait': {
@@ -1554,6 +1595,7 @@ async function showEvent(e: FightEvent) {
       await sleep(900);
       break;
     case 'decision':
+      floorRecap();
       log(`📋 Still standing after ${ROUNDS} rounds. The judges score it ${e.scores[0]}–${e.scores[1]}.`, 'round');
       await sleep(700);
       break;
@@ -1574,6 +1616,8 @@ function revealTrait(side: Side) {
 async function fight() {
   setPhase('fighting');
   skipping = false;
+  floorCount[0] = floorCount[1] = 0;
+  floorExplained = false;
   els.betRow.hidden = true;
   els.stakeRow.hidden = true;
   els.after.hidden = false;
