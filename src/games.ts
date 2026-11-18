@@ -68,7 +68,7 @@ export const games: Game[] = [
     slug: 'basic-economics-trainer',
     title: 'Basic Economics Trainer',
     blurb: 'Here, take this. Maybe it’ll help you stop being dumb.',
-    status: 'prototype',
+    status: 'released', // v1.0
     legacyPaths: ['Basic Economics Trainer.html'],
   },
   {
