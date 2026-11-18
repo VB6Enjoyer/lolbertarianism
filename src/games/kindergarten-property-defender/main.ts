@@ -5,8 +5,8 @@ import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { GRADUATION_WEEK, honours, perkById, PERKS, type PerkId } from './perks.ts';
 import { Playground, type MoodId } from './music.ts';
-import { build, comboCap, CONFIG, edgeAt, gpa, meterMax, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type Hand, type ItemId } from './logic.ts';
-import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
+import { build, comboCap, CONFIG, edgeAt, gpa, meterMax, permitWeek, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type Hand, type ItemId } from './logic.ts';
+import { attraction, buildingById, BUILDINGS, nextCost, nextWeek, type BuildId } from './capital.ts';
 import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
 import { specialById, SPECIAL_DAYS } from './days.ts';
@@ -84,6 +84,8 @@ interface Save {
   music: boolean;
   /** Whether the guided first morning has been played (or skipped). */
   tutorialDone: boolean;
+  /** The regulars who've introduced themselves (the first time each one came by). */
+  metRegulars: ClassmateId[];
   /** The ten best runs, and the best daily-challenge score per date. */
   history: ReturnType<typeof normalizeHistory>;
   dailyBests: Record<string, number>;
@@ -105,6 +107,7 @@ const save: Save = {
   music: saved?.music !== false,
   // Anyone who's already played (a best score, or achievements) has seen the classroom before.
   tutorialDone: saved?.tutorialDone === true || Number((saved as { best?: unknown } | null)?.best) > 0 || (Array.isArray(saved?.achievements) && saved.achievements.length > 0),
+  metRegulars: Array.isArray(saved?.metRegulars) ? saved.metRegulars.filter((id): id is ClassmateId => CLASSMATES.some((c) => c.id === id)) : [],
   history: normalizeHistory(saved?.history),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
 };
@@ -232,10 +235,36 @@ function fit() {
 window.addEventListener('resize', fit);
 fit();
 
-function say(who: 'teacher' | 'jack' | 'kid', text: string, at?: { x: number; y: number }) {
-  // One bubble per speaker at a time (a classmate's replaces the last classmate's).
+function say(who: 'teacher' | 'jack' | 'kid', text: string, at?: { x: number; y: number }, opts: { seconds?: number; hand?: Hand } = {}) {
+  // One bubble per speaker at a time (a classmate's replaces the last classmate's)…
+  const keep = scene.bubbles.find((b) => b.who === who && b.hand && b.until > scene.time);
+  // …except a regular saying hello, which isn't cut off by small talk.
+  if (keep && !opts.hand) return;
   scene.bubbles = scene.bubbles.filter((b) => b.who !== who && b.until > scene.time);
-  scene.bubbles.push({ who, text, until: scene.time + 1.8, x: at?.x, y: at?.y });
+  scene.bubbles.push({ who, text, until: scene.time + (opts.seconds ?? 1.8), x: at?.x, y: at?.y, hand: opts.hand });
+}
+
+/** What each regular says the first time they come by. */
+const HELLO: Record<ClassmateId, string> = {
+  timmy: 'Hi, I’m Timmy! Fair trades, every time. Pinky promise.',
+  becky: 'I’m Becky. Everything’s negotiable. Mostly in my favour.',
+  dave: 'Name’s Dave. I don’t sell. I buy. What’ve you got?',
+};
+
+/** A regular's first visit: they say hello, and a card says who they are and what friendship gets you. */
+function introduce(id: ClassmateId, hand: Hand) {
+  save.metRegulars.push(id);
+  persist();
+  const c = classmateById(id);
+  say('kid', HELLO[id], undefined, { seconds: 4.5, hand });
+  const el = document.createElement('div');
+  el.className = 'toast regular';
+  el.innerHTML = '<span class="icon"></span><small>NEW REGULAR</small><b></b><span class="desc"></span>';
+  el.querySelector('.icon')!.textContent = c.icon;
+  el.querySelector('b')!.textContent = c.name;
+  el.querySelector('.desc')!.textContent = `${c.blurb} Trade with ${id === 'becky' ? 'her' : 'him'} ${FRIEND_AT} times to be best friends: ${c.friendPerk.charAt(0).toLowerCase()}${c.friendPerk.slice(1)} Slap ${id === 'becky' ? 'her' : 'him'} and ${id === 'becky' ? 'she' : 'he'} stays away for a while.`;
+  els.toasts.append(el);
+  setTimeout(() => el.remove(), 7600);
 }
 
 function float(x: number, y: number, text: string, color: string, big = false) {
@@ -434,6 +463,8 @@ function handle(e: GameEvent) {
       setTimeout(showOver, 700);
       break;
     case 'spawn':
+      // The first time a regular comes by, they introduce themselves.
+      if (e.hand.classmate && !lesson && !save.metRegulars.includes(e.hand.classmate)) introduce(e.hand.classmate, e.hand);
       break;
     case 'produce':
       play('homestead');
@@ -1211,19 +1242,22 @@ function renderShop() {
     const b = buildingById(id);
     const level = state.built[id];
     const cost = nextCost(b, level);
+    // Bigger builds need a permit, and permits come through week by week.
+    const week = nextWeek(b, level);
+    const locked = week !== null && week > permitWeek(state);
     const pips = b.costs.map((_, i) => (i < level ? '●' : '○')).join('');
     const now = level ? b.effect(level) : 'not built yet';
     const next = cost !== null ? b.effect(level + 1) : '';
-    return `<button type="button" class="build ${b.kind}" data-id="${id}" ${cost === null || state.blocks - cost < 1 ? 'disabled' : ''}>
+    return `<button type="button" class="build ${b.kind}${locked ? ' locked' : ''}" data-id="${id}" ${cost === null || locked || state.blocks - cost < 1 ? 'disabled' : ''}>
       <span class="icon">${b.icon}</span>
-      <span class="what"><b>${b.name}</b> <i>${pips}</i><small>${level ? `Now: ${now}` : 'Not built yet'}</small>${cost !== null ? `<small class="next">${level ? 'Next' : 'Build'}: ${next}</small>` : '<small class="next">Fully built</small>'}</span>
-      <span class="cost">${cost === null ? 'MAX' : `${cost}🧱`}</span>
+      <span class="what"><b>${b.name}</b> <i>${pips}</i><small>${level ? `Now: ${now}` : 'Not built yet'}</small>${cost !== null ? `<small class="next">${level ? 'Next' : 'Build'}: ${next}${locked ? ` · permit in week ${week}` : ''}</small>` : '<small class="next">Fully built</small>'}</span>
+      <span class="cost">${cost === null ? 'MAX' : locked ? `🔒 Wk ${week}<em>${cost}🧱</em>` : `${cost}🧱`}</span>
     </button>`;
   };
   const pull = attraction(state.blocks);
   els.shop.innerHTML = `
     <h2>${isFriday(state.wave) ? '🏖️ The weekend: spend your blocks' : '🏗️ After school: spend your blocks'} <span>${state.blocks}🧱</span></h2>
-    <p class="shop-note">Blocks you spend can't be stolen, but they're not growing either. Keep at least one.${pull > 1.05 ? ` A pile this big draws ${Math.round((pull - 1) * 100)}% more hands.` : ''}</p>
+    <p class="shop-note">Blocks you spend can't be stolen, but they're not growing either. Keep at least one. Bigger builds need a permit: new ones come through every weekend.${pull > 1.05 ? ` A pile this big draws ${Math.round((pull - 1) * 100)}% more hands.` : ''}</p>
     <h3>Makes blocks</h3><div class="builds">${BUILDINGS.filter((b) => b.kind === 'income').map((b) => card(b.id)).join('')}</div>
     <h3>Keeps them</h3><div class="builds">${BUILDINGS.filter((b) => b.kind === 'defence').map((b) => card(b.id)).join('')}</div>`;
   for (const b of els.shop.querySelectorAll<HTMLButtonElement>('.build')) {

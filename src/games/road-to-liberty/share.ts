@@ -4,6 +4,8 @@ export interface RunSummary {
   score: number;
   commies: number;
   meters: number;
+  /** How long you lasted, in seconds. */
+  seconds: number;
   /** The landscape you reached ("the Beach") and where you were ("Zug"). */
   landscape: string;
   territory: string;
@@ -17,13 +19,22 @@ export interface RunSummary {
 const money = (n: number) => `$${Math.floor(n).toLocaleString('en-US')}`;
 const km = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
 
+/** A run's length as a clock: "4:07", or "1:02:09" past an hour. */
+export function clock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
 /** A few lines for social media. */
 export function shareText(s: RunSummary): string {
   const title = s.daily ? `🚗 The Road to Liberty · ${s.daily.icon} Daily ${s.daily.key} (${s.daily.name})` : '🚗 The Road to Liberty';
   return [
     title,
     `💰 ${money(s.score)} before the State caught me`,
-    `☭ ${s.commies} ${s.commies === 1 ? 'commie' : 'commies'} flattened · 🛣️ ${km(s.meters)}`,
+    `☭ ${s.commies} ${s.commies === 1 ? 'commie' : 'commies'} flattened · 🛣️ ${km(s.meters)} · ⏱️ ${clock(s.seconds)}`,
     `🏞️ Reached ${s.landscape} (${s.territory}) in the ${s.carIcon} ${s.car}`,
     s.url,
   ].join('\n');
@@ -90,6 +101,7 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, s: RunSummary, phot
   const rows: [string, string][] = [
     ['☭ Commies', String(s.commies)],
     ['🛣️ Distance', km(s.meters)],
+    ['⏱️ Survived', clock(s.seconds)],
     ['🏞️ Reached', s.landscape],
     ['📍 Last seen', s.territory],
     [`${s.carIcon} Car`, s.car],

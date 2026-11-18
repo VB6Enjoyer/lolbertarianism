@@ -1,7 +1,7 @@
 // Draws the city from above: streets, the six places, manholes, the cops,
 // passers-by and City Works trucks, and you (Rothbard, with a manhole cover).
 
-import { COLS, isIntersection, isRoad, PLACES, ROWS, type Place } from './map.ts';
+import { COLS, doorSide, isIntersection, isRoad, PLACES, ROWS, type Place } from './map.ts';
 import { capacity, CONFIG, drugPrice, goldPrice, scrapPrice, type Agent, type CoverKind, type GameState } from './logic.ts';
 
 export interface View {
@@ -40,6 +40,7 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
   }
   drawStreets(ctx, v);
   for (const p of PLACES) drawPlace(ctx, v, p, state);
+  for (const p of PLACES) drawDoor(ctx, v, p, state.time);
 
   // The door you're standing at
   if (highlight) {
@@ -71,6 +72,84 @@ export function render(ctx: CanvasRenderingContext2D, width: number, height: num
     ctx.fillStyle = 'rgba(40, 50, 70, 0.22)';
     ctx.fillRect(0, 0, width, height);
   }
+}
+
+/** Each building's colour, for its doorway and the spot in the street where you use it. */
+const DOOR_COLOR: Record<Place['id'], string> = {
+  fed: '#fff3c4',
+  pawn: '#ffd54f',
+  'yard-near': '#5fff8f',
+  'yard-far': '#5fff8f',
+  hardware: '#ffab91',
+  squat: '#ffe082',
+  dealer: '#ff4dd2',
+};
+
+/**
+ * Where to stand to use a building: a doorway in its wall, and on the street outside a marked spot
+ * with the building's icon and an arrow bobbing towards the door. (Layouts change every run.)
+ */
+function drawDoor(ctx: CanvasRenderingContext2D, v: View, p: Place, time: number) {
+  const T = v.tile;
+  const side = doorSide(p);
+  const color = DOOR_COLOR[p.id];
+  const [cx, cy] = at(v, p.door.x, p.door.y);
+  // Which way the building is, from the street.
+  const dir = { top: [0, 1], bottom: [0, -1], left: [1, 0], right: [-1, 0] }[side];
+  ctx.save();
+  // The doorway, cut into the wall that faces the street.
+  const wall = [cx + dir[0] * T * 0.5, cy + dir[1] * T * 0.5];
+  const along = dir[0] === 0;
+  const dw = along ? T * 0.46 : T * 0.2;
+  const dh = along ? T * 0.2 : T * 0.46;
+  const dx = wall[0] - dw / 2 + dir[0] * dw * 0.5;
+  const dy = wall[1] - dh / 2 + dir[1] * dh * 0.5;
+  ctx.fillStyle = '#120f0c';
+  ctx.fillRect(dx, dy, dw, dh);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, T * 0.05);
+  ctx.strokeRect(dx, dy, dw, dh);
+  // The spot to stand on: a dashed square in the building's colour, with its icon.
+  const r = T * 0.4;
+  ctx.fillStyle = `${color}40`;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.setLineDash([T * 0.1, T * 0.07]);
+  ctx.lineDashOffset = -time * T * 0.3;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1.5, T * 0.045);
+  ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.setLineDash([]);
+  // The building's icon on a dark badge, a little away from the door so the arrow fits.
+  const ix = cx - dir[0] * T * 0.1;
+  const iy = cy - dir[1] * T * 0.1;
+  ctx.fillStyle = 'rgba(10, 10, 12, 0.8)';
+  ctx.beginPath();
+  ctx.arc(ix, iy, T * 0.23, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1, T * 0.03);
+  ctx.stroke();
+  ctx.font = `${Math.round(T * 0.3)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(p.icon, ix, iy + T * 0.01);
+  // An arrow pointing in, bobbing gently.
+  const bob = Math.sin(time * 4) * T * 0.05;
+  const tip = [cx + dir[0] * (T * 0.5 + bob), cy + dir[1] * (T * 0.5 + bob)];
+  const back = [tip[0] - dir[0] * T * 0.22, tip[1] - dir[1] * T * 0.22];
+  const perp = [-dir[1] * T * 0.17, dir[0] * T * 0.17];
+  ctx.beginPath();
+  ctx.moveTo(tip[0], tip[1]);
+  ctx.lineTo(back[0] + perp[0], back[1] + perp[1]);
+  ctx.lineTo(back[0] - perp[0], back[1] - perp[1]);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = Math.max(1, T * 0.025);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawLot(ctx: CanvasRenderingContext2D, v: View, x: number, y: number) {
@@ -199,12 +278,13 @@ function drawPlace(ctx: CanvasRenderingContext2D, v: View, p: Place, state: Game
     case 'pawn': {
       ctx.fillStyle = '#3e2723';
       ctx.fillRect(left, top, W, H);
-      // Striped awning over the door (on the street side)
+      // Striped awning over the door (on the street side, top or bottom)
+      const awningTop = doorSide(p) === 'top';
       for (let i = 0; i < 8; i++) {
         ctx.fillStyle = i % 2 ? '#ffd54f' : '#8d6e63';
-        ctx.fillRect(left + (W / 8) * i, top + H * 0.72, W / 8 + 0.5, H * 0.28);
+        ctx.fillRect(left + (W / 8) * i, top + H * (awningTop ? 0 : 0.72), W / 8 + 0.5, H * 0.28);
       }
-      sign(ctx, cx, top + H * 0.34, `PAWN · GOLD ${money(goldPrice(state, 'buy'))}`, T * 0.8, '#1a1200', '#ffd54f', W);
+      sign(ctx, cx, top + H * (awningTop ? 0.66 : 0.34), `PAWN · GOLD ${money(goldPrice(state, 'buy'))}`, T * 0.8, '#1a1200', '#ffd54f', W);
       break;
     }
     case 'yard-near':

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COLS, DISTRICTS, FED_COVER, findPath, isRoad, MANHOLE_SLOTS, PLACES, placeAtDoor, placeById, ROAD_TILES, ROWS, setDistrict, STARTING_SLOTS } from './map.ts';
-import { act, sell, CITY_EVENTS, inflation, newContract, phaseEnd, rateFor, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
+import { act, BEATS, beatOf, sell, CITY_EVENTS, inflation, newContract, phaseEnd, rateFor, borrow, buyDrug, buyGear, buyGold, COVER_VALUE, CONFIG, context, deposit, drugPrice, goldPrice, newGame, repay, sellGold, withdraw, phaseAt, scrapMultiplier, scrapPrice, SCHEDULE, update, walkTo, type GameEvent, type GameState, type Input } from './logic.ts';
 import { ACHIEVEMENTS, normalizeUnlocked, Tracker } from './achievements.ts';
 import { dailyFor, normalizeDailyBests, seededRng, TWISTS } from './daily.ts';
 import { LINES, pickLine } from './rothbard.ts';
@@ -178,11 +178,12 @@ describe('austrian economics: the loop', () => {
 
   it('the keys walk you along the street and stop at the next tile', () => {
     const s = quiet();
-    // Can't walk into a building (below the squat's door)
+    // On the middle street, with a block below: you can't walk into a building.
+    teleport(s, 3, 5);
     run(s, 0.5, { dir: { x: 0, y: 1 } });
     expect(s.player.mover.y).toBe(5);
     run(s, 0.5, { dir: { x: 1, y: 0 } });
-    expect(s.player.mover.x).toBeGreaterThan(5);
+    expect(s.player.mover.x).toBeGreaterThan(3);
     run(s, 1);
     expect(Number.isInteger(s.player.mover.x)).toBe(true);
   });
@@ -347,12 +348,70 @@ describe('austrian economics: the city', () => {
     setDistrict('downtown');
   });
 
+  it('every run lays the town out fresh: buildings, doors, manholes, all on the streets and connected', () => {
+    const squats = new Set<string>();
+    for (const d of DISTRICTS)
+      for (let seed = 1; seed <= 40; seed++) {
+        const s = newGame(rng(seed), d.id);
+        const where = `${d.id} seed ${seed}`;
+        expect(PLACES, where).toHaveLength(7);
+        for (const p of PLACES) {
+          expect(isRoad(p.door.x, p.door.y), `${where} ${p.id} door`).toBe(true);
+          // The door is right against its own building.
+          const { x, y, w, h } = p.block;
+          const dx = Math.max(x - p.door.x, 0, p.door.x - (x + w - 1));
+          const dy = Math.max(y - p.door.y, 0, p.door.y - (y + h - 1));
+          expect(dx + dy, `${where} ${p.id}`).toBe(1);
+          for (const o of PLACES) if (o !== p) expect(Math.abs(o.door.x - p.door.x) + Math.abs(o.door.y - p.door.y), `${where} ${p.id}/${o.id}`).toBeGreaterThanOrEqual(2);
+        }
+        const fed = placeById('fed').door;
+        expect(Math.abs(FED_COVER.x - fed.x) + Math.abs(FED_COVER.y - fed.y), where).toBe(1);
+        expect(MANHOLE_SLOTS.length, where).toBe(d.slots.length);
+        for (const h of [...MANHOLE_SLOTS, FED_COVER]) {
+          expect(isRoad(h.x, h.y), `${where} ${h.x},${h.y}`).toBe(true);
+          expect(placeAtDoor(h), `${where} ${h.x},${h.y}`).toBeNull();
+        }
+        expect(s.player.mover, where).toMatchObject(placeById('squat').door);
+        for (const t of ROAD_TILES) expect(findPath(placeById('squat').door, t).length > 0 || (t.x === s.player.mover.x && t.y === s.player.mover.y)).toBe(true);
+        // The covers you start with are spread over all four quarters of town.
+        const covered = s.manholes.filter((m) => m.state === 'covered' && m.kind !== 'fed');
+        const quarters = new Set(covered.map((m) => (m.x < COLS / 2 ? 0 : 1) + (m.y < ROWS / 2 ? 0 : 2)));
+        expect(quarters.size, where).toBe(4);
+        if (d.id === 'downtown') squats.add(JSON.stringify(placeById('squat').block));
+      }
+    // Not the same town every time.
+    expect(squats.size).toBeGreaterThan(3);
+    // The daily cycle's dice give everyone the same town.
+    newGame(rng(77), 'downtown', 'helicopter');
+    const first = JSON.stringify(PLACES);
+    newGame(rng(77), 'downtown', 'helicopter');
+    expect(JSON.stringify(PLACES)).toBe(first);
+  });
+
+  it('cops patrol every part of town, not just the middle', () => {
+    const s = newGame(rng(5));
+    s.agents = s.agents.filter((a) => a.kind === 'cop');
+    s.nextCrewAt = Infinity;
+    s.nextDeaAt = Infinity;
+    s.nextEventAt = Infinity;
+    s.rivals = 99;
+    s.nextContractAt = Infinity;
+    const visited = new Set<number>();
+    const r = rng(9);
+    for (let t = 0; t < 240; t += 1 / 30) {
+      s.fix = 1;
+      update(s, { dir: null }, 1 / 30, r);
+      for (const a of s.agents) if (a.kind === 'cop') visited.add(beatOf({ x: Math.round(a.mover.x), y: Math.round(a.mover.y) }));
+    }
+    expect(visited.size).toBe(BEATS.cols * BEATS.rows);
+  });
+
   it('the suburbs: a bigger map, no cops at first, more brass', () => {
     const s = newGame(rng(3), 'suburbs');
     expect([COLS, ROWS]).toEqual([21, 13]);
     expect(s.district).toBe('suburbs');
     expect(s.agents.filter((a) => a.kind === 'cop')).toHaveLength(0);
-    expect(s.player.mover).toMatchObject({ x: 3, y: 6 });
+    expect(s.player.mover).toMatchObject(placeById('squat').door);
     expect(context(s)).toEqual({ kind: 'stash' });
     newGame(rng(1));
     expect([COLS, ROWS]).toEqual([18, 11]);

@@ -775,5 +775,130 @@ into a handicapping game. Steps 1 and 2 of the plan:
 - Where: Basic Economics Trainer (📊 Stats & settings), The Road to Liberty
   (⚙️ Options), Libertarian Fight Club (the title screen and ⚙️ Settings),
   Kindergarten Property Defender (title and pause) and Austrian Economics
-  Simulator (title). Ancapistan Tycoon keeps its own save codes; Eminem's
-  Human Action and JUST GETTING STARTED save nothing.
+  Simulator (title), and JUST GETTING STARTED (title). Ancapistan Tycoon
+  keeps its own save codes; Eminem's Human Action saves nothing.
+
+### JUST GETTING STARTED: rebuilt as a deckbuilder (prototype)
+
+The clicker overlapped Ancapistan Tycoon, so it's now a roguelike deckbuilder
+(`src/games/just-getting-started/`), built on the meme: laser-eyed Milton
+Friedman vs. everyone who says capitalism is dying.
+
+- Engine, plain data so a run (even mid-fight) saves as JSON: `rng.ts`
+  (seeded, one-number state), `state.ts` (damage, Composure, statuses),
+  `cards.ts` (30 cards: Arguments, Rebuttals, Principles; Inflation, Shortage
+  and the Regret curse), `enemies.ts` (16 opponents with intents; bosses: the
+  Doomposter, the Fed Chair, Late Stage Capitalism, which gets back up once),
+  `relics.ts` (11), `combat.ts` (turns, Airtime, the Based meter and Laser
+  Eyes), `run.ts` (three acts of branching maps, rewards, the bookstore, the
+  green room), `events.ts` (TV appearances: Donahue, the 1942 Treasury and
+  withholding, David asking why not abolish the state, Stockholm…).
+- The meme as a mechanic: damage fills the Based meter; the screen gets more
+  deep-fried as it fills; at 100%, LASER EYES hit every enemy and burn the
+  Inflation out of your hand. Each boss ends with "NAH, WE'RE JUST GETTING
+  STARTED 😈".
+- `bot.ts` plays whole runs for the tests and balancing (it gets past the
+  first boss in most runs and rarely wins; people do better).
+- Next: more cards and events, sound polish, balance from real players.
+
+#### Readability, achievements, the daily run and sharing ✅
+
+- Keyword tooltips: the game's words (Composure, Exposed, Rattled, Momentum,
+  Airtime, Exhaust, Inflation…) are underlined on cards and explained on
+  hover, or with a long press on a phone (a tap still plays the card).
+  Statuses, intents, relics, the piles and the Laser Eyes button explain
+  themselves the same way.
+- The enemies' turn plays out one enemy at a time: a "THEIR TURN" banner,
+  each move called out over the enemy, and the bars moving as each hit lands
+  (each damage, Composure and heal effect carries the new values).
+- A "Preview upgrades" toggle on the reward screen, the bookstore and the deck.
+- 29 achievements (`achievements.ts`), 4 of them secret, checked after every
+  move.
+- The daily run (`daily.ts`): the same seed for everyone each day, with one
+  of five twists (Stagflation, Gold Standard, Helicopter, Prime Time, Bull
+  Market), and a best score per day. A run's score: 10 a floor, 25 an elite,
+  100 a boss, 500 for winning.
+- Sharing (`share.ts`): the result as text, or a 1200×630 card with
+  deep-fried, laser-eyed Friedman.
+
+### Austrian Economics Simulator: a new town every run ✅
+
+- Every run lays the district out fresh (`layoutDistrict()` in `map.ts`): the
+  buildings are shuffled onto the blocks, each door goes on a random side, the
+  pawn shop moves along the top or bottom edge, and the manholes scatter along
+  every street. The covers you start with are dealt round all four quarters of
+  town, so no corner is ever empty. The Fed's alarmed cover stays right
+  outside its door, and the daily cycle's dice give everyone the same town.
+- Doors are marked: a doorway in the wall, and on the street a dashed square
+  in the building's colour with its icon and an arrow bobbing towards the
+  door.
+- Cops patrol by neighbourhood (`patrolTarget()`): they head for whichever of
+  six parts of town no cop has visited for the longest. Random destinations
+  alone kept them in the middle (the busiest part got 32% of their time, the
+  bottom corners 9%); now every part gets 14–21%.
+
+### Kindergarten Property Defender: progression balance ✅
+
+A player complained they had every upgrade within a few days. A simulated
+player (real rules, about 3 actions a second, 85% accurate) confirmed it:
+every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
+2, and almost nothing stolen until week 4.
+
+- Permits: bigger builds open week by week (`weeks` in `capital.ts`, new
+  permits every weekend). 20 levels instead of 16, costing about twice as
+  much in all; the first levels work as before, the top ones are stronger.
+- Trading income snowballed with the ever-busier days, so the share of hands
+  that come to trade shrinks to 60% by the fourth week (`termTraders()`):
+  more trouble later in the term, and less income than before.
+- Now the same player owns 8 levels after week 1, then 13, 17, 19 and all 20
+  in week 5, and theft rises week by week instead of jumping in week 4. A
+  sloppier player can lose in weeks 4–5 on Normal (Easy stays comfortable).
+- Fixes: a trader could take your last block (an empty pile ends the run on
+  the next grab); trades now always leave one. The toll sign showed the
+  level, not the toll.
+
+### The Road to Liberty: a more natural arm, and time survived ✅
+
+- A player found the arm holding the phone off-putting (four floating
+  fingertips, a blob of a palm, a veiny wedge for a forearm). The new arm is
+  one hand: fingers wrapped round the phone's edge as a group, a thumb on the
+  front, a tapered forearm out of a rolled-up shirt sleeve. Still golden, as
+  in the meme. The old one is kept: ⚙️ Options → Classic arm.
+- The busted screen, the share text and the share card show how long you
+  lasted (⏱️ m:ss).
+
+#### Late Stages, and laser eyes on his actual eyes ✅
+
+- Late Stages (`stages.ts`): ten difficulty levels. Winning on your highest
+  stage opens the next; each keeps every twist before it: panels hit 25%
+  harder, a Regret to start, enemies +15% Credibility, the green room heals
+  20%, bosses get back up once, 60 max Credibility, bookstore prices +25%,
+  30% fewer Royalties, and Inflation in every fight. A run scores 15% more per
+  stage. The title screen picks the stage; the top bar shows it (LS4).
+  Daily runs are always stage 1. Two achievements: win on stage 5, and on 10.
+- The laser eyes were drawn under his eyes (a guess at 53% down the photo).
+  They're now on his pupils, measured from the photo (27.3%, 45.4% and 61.3%,
+  42.9%; his head tilts, so the streak tilts 5° with it), in the game and on
+  the share card. The full Laser Eyes blast aims at the enemies.
+
+#### The other Friedman: a secret boss and a second character ✅
+
+- Beat Late Stage Capitalism with no Regret in your deck (from Late Stage 3,
+  that means cutting the one you start with) and David drops by: "Dad, you
+  didn't go far enough." Debate him (secret boss, 240 Credibility: Private
+  Courts, Competing Police Agencies, Polycentric Law, Medieval Iceland) or
+  take the win. Losing to him still wins the run; beating him is a boss plus
+  300 points, and unlocks him.
+- David is playable (`characters.ts`): his own starting deck and 16 cards,
+  sharing 6 with Milton, built on Protection Agencies (each hits a random
+  enemy for 1 at the end of the turn, up to 6 of them; tuned with the bot so
+  he goes about as far as Milton): Medieval Iceland, Tort Law, Law's
+  Order, Hidden Order, Polycentric Law, The Machinery of Freedom, A Market for
+  Law, Future Imperfect, and a Medieval Cookbook (his re-enactor persona,
+  Cariadoc). Starting relic: The Machinery of Freedom (1973), 1 Agency a fight.
+  His own TV appearances (his dad calls, a tourney, the sagas, the physics
+  department), and his secret boss is Milton ("Son, the state is a necessary
+  evil"), who hands you Regrets mid-fight. The title screen picks who to
+  play; the daily run stays Milton's.
+- The secret bosses are photos (deep-fried, with laser eyes on their pupils,
+  measured like Milton's). Five achievements.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { build, CONFIG, handPosition, pileAt, multiplier, newGame, nextWave, slap, spawnHand, step, traderShare, type GameState, type Hand } from './logic.ts';
-import { attraction, GLUE_SECONDS, GUARD_WAGES, LEMONADE_EVERY } from './capital.ts';
+import { build, CONFIG, handPosition, permitWeek, pileAt, multiplier, newGame, nextWave, slap, spawnHand, step, TERM_TRADERS_MIN, termTraders, traderShare, type GameState, type Hand } from './logic.ts';
+import { attraction, BUILDINGS, GLUE_SECONDS, GUARD_WAGES, LEMONADE_EVERY } from './capital.ts';
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -163,12 +163,54 @@ describe('kindergarten: waves', () => {
 });
 
 describe('kindergarten: capital', () => {
-  const atRecess = () => {
+  /** Recess with 50 blocks, the evening before a day in `week` (late in the term by default, so every permit's in). */
+  const atRecess = (week = 5) => {
     const s = quiet(newGame(1000, 600));
     s.phase = 'break';
     s.blocks = 50;
+    s.wave = (week - 1) * 5;
     return s;
   };
+
+  it('bigger builds wait for their permits, week by week', () => {
+    const s = atRecess(1);
+    expect(permitWeek(s)).toBe(1);
+    expect(build(s, 'lemonade')).toBe(true);
+    expect(build(s, 'lemonade')).toBe(false); // level 2: week 2
+    expect(build(s, 'piggy')).toBe(false); // week 2
+    expect(build(s, 'guard')).toBe(false); // week 2
+    // Friday's recess: the weekend brings next week's permits.
+    s.wave = 5;
+    expect(permitWeek(s)).toBe(2);
+    expect(build(s, 'lemonade')).toBe(true);
+    expect(build(s, 'guard')).toBe(true);
+    expect(build(s, 'lemonade')).toBe(false); // level 3: week 3
+    // Every level of everything is open by the last week, and it all costs more than a few days' blocks.
+    for (const b of BUILDINGS) {
+      expect(b.weeks).toHaveLength(b.costs.length);
+      expect(Math.max(...b.weeks)).toBeLessThanOrEqual(5);
+      expect([...b.weeks].sort((x, y) => x - y)).toEqual(b.weeks);
+    }
+    expect(BUILDINGS.reduce((t, b) => t + b.costs.reduce((x, y) => x + y, 0), 0)).toBeGreaterThan(300);
+  });
+
+  it('a trade never takes the last block', () => {
+    const s = quiet(newGame(1000, 600));
+    s.blocks = 2;
+    const hand = spawnHand(s, rng(1), 'trader');
+    hand.offer = { wants: 'blocks', item: 'dino', price: 2, value: 3 };
+    hand.progress = 0.999;
+    for (let i = 0; i < 20 && hand.state === 'reaching'; i++) step(s, 0.05, rng(2));
+    expect(s.blocks).toBe(2);
+    expect(s.phase).toBe('playing');
+  });
+
+  it('more of the hands are trouble as the term goes on', () => {
+    expect(termTraders(1)).toBe(1);
+    expect(termTraders(16)).toBeCloseTo(TERM_TRADERS_MIN);
+    expect(termTraders(25)).toBe(TERM_TRADERS_MIN);
+    expect(termTraders(8)).toBeLessThan(termTraders(3));
+  });
 
   it('builds at recess, keeps a block back, and stops at the top level', () => {
     const s = atRecess();
@@ -211,13 +253,14 @@ describe('kindergarten: capital', () => {
       if (hand.glued > 0) stuck += 0.02;
     }
     expect(stuck).toBeGreaterThan(GLUE_SECONDS[0] * 0.8);
-    // The flag: with the top level, about a third turn back.
+    // The flag: with the top level, well over a quarter turn back.
     const flagged = atRecess();
     build(flagged, 'flag');
     build(flagged, 'flag');
     build(flagged, 'flag');
     nextWave(flagged);
     quiet(flagged);
+    flagged.wave = 1; // plain grabby hands
     const r = rng(5);
     for (let i = 0; i < 300; i++) spawnHand(flagged, r, 'thief');
     for (let t = 0; t < 3; t += 0.05) step(flagged, 0.05, r);
@@ -231,6 +274,7 @@ describe('kindergarten: capital', () => {
     build(s, 'guard');
     nextWave(s);
     quiet(s);
+    s.wave = 1; // a plain grabby hand
     s.guardIn = 0;
     const hand = spawnHand(s, rng(6), 'thief');
     hand.progress = 0.6;

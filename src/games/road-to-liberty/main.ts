@@ -9,7 +9,7 @@ import { broadcastLabel, broadcastSeconds, buildProgram } from './radio.ts';
 import { defaultOptions, display, normalizeOptions, type DisplayOptions } from './settings.ts';
 import { firstPad, PadReader } from './gamepad.ts';
 import { develop, Film, momentFor, type Moment } from './photo.ts';
-import { CARD_HEIGHT, CARD_WIDTH, drawShareCard, shareText, type RunSummary } from './share.ts';
+import { CARD_HEIGHT, CARD_WIDTH, clock, drawShareCard, shareText, type RunSummary } from './share.ts';
 import { biomeAt } from './biomes.ts';
 import { carById, carUnlocked, CARS, type Car, type CarId } from './cars.ts';
 import { dailyFor, normalizeDailyBests, seededRng, type Daily } from './daily.ts';
@@ -88,12 +88,14 @@ const els = {
   scoresList: byId('scores-list'),
   finalTally: byId('final-tally'),
   finalDistance: byId('final-distance'),
+  finalTime: byId('final-time'),
   finalBest: byId('final-best'),
   newBest: byId('new-best'),
   options: byId('options'),
   optFlashing: byId<HTMLInputElement>('opt-flashing'),
   optColorblind: byId<HTMLInputElement>('opt-colorblind'),
   optShake: byId<HTMLInputElement>('opt-shake'),
+  optClassicArm: byId<HTMLInputElement>('opt-classic-arm'),
   padStatus: byId('pad-status'),
   photoFinish: byId('photo-finish'),
   photo: byId<HTMLCanvasElement>('photo-canvas'),
@@ -631,6 +633,7 @@ function bust() {
     }),
   );
   els.finalDistance.textContent = `${Math.floor(state.stats.meters).toLocaleString('en-US')} m`;
+  els.finalTime.textContent = clock(state.time);
   els.finalBest.textContent = save.best.toLocaleString('en-US');
   els.newBest.hidden = !isBest;
   // Daily runs have their own best per day, and stay off the main table.
@@ -687,6 +690,7 @@ function summarize(): RunSummary {
     score: Math.floor(state.score),
     commies: totalCommies(state.stats.commies),
     meters: Math.floor(state.stats.meters),
+    seconds: Math.floor(state.time),
     landscape: biomeAt(state.position + PLAYER_Z).biome.name,
     territory: currentTerritory(state.bordersCrossed),
     car: car.name,
@@ -749,12 +753,14 @@ function applyOptions() {
   Object.assign(display, save.options);
   els.game.classList.toggle('reduce-flashing', display.reducedFlashing);
   els.game.classList.toggle('colorblind', display.colorblind);
+  els.game.classList.toggle('classic-arm', display.classicArm);
   els.optFlashing.checked = display.reducedFlashing;
   els.optColorblind.checked = display.colorblind;
   els.optShake.checked = display.shake;
+  els.optClassicArm.checked = display.classicArm;
 }
 
-for (const [input, key] of [[els.optFlashing, 'reducedFlashing'], [els.optColorblind, 'colorblind'], [els.optShake, 'shake']] as const) {
+for (const [input, key] of [[els.optFlashing, 'reducedFlashing'], [els.optColorblind, 'colorblind'], [els.optShake, 'shake'], [els.optClassicArm, 'classicArm']] as const) {
   input.addEventListener('change', () => {
     save.options[key] = input.checked;
     slot.save(save);

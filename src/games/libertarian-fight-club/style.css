@@ -465,6 +465,23 @@ kbd {
     color: var(--muted);
 }
 
+/* How often it gets to argue (Wits): gold when it's ahead, plain when it's even or behind. */
+.edge.floor {
+    background: var(--panel-2);
+    border-color: rgba(255, 213, 79, 0.35);
+    color: #f0e2b6;
+}
+
+.edge.floor.ahead {
+    background: rgba(255, 213, 79, 0.14);
+    color: #ffd54f;
+}
+
+.log-floor {
+    color: #e8d79a;
+    font-style: italic;
+}
+
 .tag {
     padding: 3px 7px;
     border-radius: 6px;

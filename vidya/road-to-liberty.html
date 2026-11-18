@@ -90,7 +90,7 @@
             <div id="arm">
                 <div id="hand">
                     <!-- One piece: the forearm runs out of the wrist, behind the palm -->
-                    <div id="forearm">
+                    <div id="forearm" class="classic">
                         <svg viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
                             <defs>
                                 <linearGradient id="arm-gold" x1="0" y1="0" x2="0" y2="1">
@@ -107,7 +107,37 @@
                             <path d="M 220 84 Q 290 112 390 104" class="vein" />
                         </svg>
                     </div>
-                    <div id="palm"></div>
+                    <!-- The natural arm (the default): out of a rolled-up shirt sleeve, into a hand that holds the phone from behind -->
+                    <svg class="natural arm-back" viewBox="-40 -20 640 460" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="arm2-skin" gradientUnits="userSpaceOnUse" x1="194" y1="167" x2="161" y2="225">
+                                <stop offset="0" stop-color="var(--gold-light)" />
+                                <stop offset="0.45" stop-color="var(--gold)" />
+                                <stop offset="1" stop-color="var(--gold-dark)" />
+                            </linearGradient>
+                            <linearGradient id="arm2-heel" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="var(--gold-light)" />
+                                <stop offset="0.6" stop-color="var(--gold)" />
+                                <stop offset="1" stop-color="var(--gold-dark)" />
+                            </linearGradient>
+                            <linearGradient id="arm2-shirt" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#c7dcf0" />
+                                <stop offset="1" stop-color="#6f93ba" />
+                            </linearGradient>
+                        </defs>
+                        <!-- Forearm: slim at the wrist, fuller toward the elbow -->
+                        <path d="M 110 133 C 140 148 170 160 194 167 C 225 180 250 192 276 204 L 232 284 C 205 264 180 242 161 225 C 130 205 105 185 88 171 Q 92 148 110 133 Z" fill="url(#arm2-skin)" />
+                        <ellipse cx="188" cy="190" rx="72" ry="13" transform="rotate(29 188 190)" fill="#fff6c4" opacity="0.3" />
+                        <path d="M 140 192 Q 190 220 236 246" fill="none" stroke="rgba(110, 75, 10, 0.22)" stroke-width="3.5" stroke-linecap="round" />
+                        <!-- The sleeve, and its rolled-up cuff -->
+                        <path d="M 294 208 L 500 300 L 460 480 L 248 304 Z" fill="url(#arm2-shirt)" />
+                        <path d="M 330 226 Q 340 270 312 330 M 380 252 Q 392 300 360 372" fill="none" stroke="rgba(60, 90, 130, 0.35)" stroke-width="3" stroke-linecap="round" />
+                        <path d="M 262 190 Q 286 194 300 212 L 254 308 Q 232 302 214 284 Z" fill="#dce8f4" stroke="#6f93ba" stroke-width="3" stroke-linejoin="round" />
+                        <path d="M 274 196 L 230 292 M 288 204 L 243 300" stroke="#9fbad6" stroke-width="2.5" />
+                        <!-- The heel of the hand and the wrist, behind the phone -->
+                        <path d="M 66 58 C 100 46 126 78 128 112 C 130 142 120 162 106 172 L 86 174 C 70 162 60 140 58 118 Z" fill="url(#arm2-heel)" />
+                    </svg>
+                    <div id="palm" class="classic"></div>
                     <div id="phone">
                         <div class="phone-notch"></div>
                         <div id="phone-screen">
@@ -116,11 +146,38 @@
                         </div>
                     </div>
                     <!-- Held from behind: fingertips curl over the left edge, the thumb up the right -->
-                    <div class="tip" style="top: 30px;"></div>
-                    <div class="tip" style="top: 55px;"></div>
-                    <div class="tip" style="top: 80px;"></div>
-                    <div class="tip pinky" style="top: 104px;"></div>
-                    <div class="thumb"></div>
+                    <div class="tip classic" style="top: 30px;"></div>
+                    <div class="tip classic" style="top: 55px;"></div>
+                    <div class="tip classic" style="top: 80px;"></div>
+                    <div class="tip pinky classic" style="top: 104px;"></div>
+                    <div class="thumb classic"></div>
+                    <svg class="natural arm-front" viewBox="-40 -20 640 460" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="arm2-finger" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0" stop-color="var(--gold-dark)" />
+                                <stop offset="0.45" stop-color="var(--gold)" />
+                                <stop offset="1" stop-color="var(--gold-light)" />
+                            </linearGradient>
+                            <linearGradient id="arm2-thumb" x1="1" y1="1" x2="0" y2="0">
+                                <stop offset="0" stop-color="var(--gold-dark)" />
+                                <stop offset="0.5" stop-color="var(--gold)" />
+                                <stop offset="1" stop-color="var(--gold-light)" />
+                            </linearGradient>
+                        </defs>
+                        <!-- The side of the hand, along the phone's left edge, so the fingers are one hand and not four pills -->
+                        <path d="M -6 22 C -22 34 -26 70 -22 96 C -20 110 -12 118 -2 116 L 2 22 Z" fill="var(--gold-dark)" />
+                        <!-- Four fingers curling round the edge, nails toward you -->
+                        <g class="fingers">
+                            <g transform="rotate(7 -14 37)"><rect x="-20" y="26" width="35" height="22" rx="11" fill="url(#arm2-finger)" /><ellipse cx="7" cy="37" rx="6" ry="7.5" class="nail" /><path d="M -6 29 Q -9 37 -6 45" class="crease" /></g>
+                            <g transform="rotate(5 -14 59)"><rect x="-21" y="47" width="37" height="23" rx="11.5" fill="url(#arm2-finger)" /><ellipse cx="8" cy="58.5" rx="6.2" ry="7.8" class="nail" /><path d="M -6 50 Q -9 58.5 -6 67" class="crease" /></g>
+                            <g transform="rotate(4 -14 80)"><rect x="-20" y="69" width="35" height="22" rx="11" fill="url(#arm2-finger)" /><ellipse cx="7" cy="80" rx="6" ry="7.5" class="nail" /><path d="M -6 72 Q -9 80 -6 88" class="crease" /></g>
+                            <g transform="rotate(2 -14 99)"><rect x="-17" y="90" width="29" height="18" rx="9" fill="url(#arm2-finger)" /><ellipse cx="5" cy="99" rx="5" ry="6" class="nail" /><path d="M -5 93 Q -7 99 -5 105" class="crease" /></g>
+                        </g>
+                        <!-- The thumb, up the right edge, its tip on the front of the phone -->
+                        <path d="M 106 146 C 96 116 86 96 75 77 C 68 64 76 50 89 54 C 101 58 113 82 123 104 C 129 120 127 136 119 146 Z" fill="url(#arm2-thumb)" />
+                        <ellipse cx="82" cy="63" rx="7" ry="9" transform="rotate(-28 82 63)" class="nail" />
+                        <path d="M 96 102 Q 104 98 110 101" class="crease" />
+                    </svg>
                 </div>
             </div>
             <button id="brake" type="button" aria-label="Brake">BRAKE</button>
@@ -163,6 +220,7 @@
                     <label class="option"><input type="checkbox" id="opt-flashing"> <span><b>Reduced flashing</b><small>No screen flashes or blinking lights; police lights hold steady.</small></span></label>
                     <label class="option"><input type="checkbox" id="opt-colorblind"> <span><b>Colorblind-friendly colors</b><small>Blue and orange instead of green and red, with outlines on the warning lights.</small></span></label>
                     <label class="option"><input type="checkbox" id="opt-shake"> <span><b>Screen shake</b><small>Shake the road when you crash.</small></span></label>
+                    <label class="option"><input type="checkbox" id="opt-classic-arm"> <span><b>Classic arm</b><small>The original veiny golden arm holding the phone, instead of the newer one.</small></span></label>
                 </div>
                 <p id="pad-status" class="pad-status">🎮 No gamepad found. Plug one in and press a button.</p>
                 <button id="save-transfer" type="button" class="big-button secondary">💾 Save &amp; load</button>
@@ -246,6 +304,7 @@
                     <dt>Net worth</dt><dd>$<span id="final-score">0</span></dd>
                     <dt>Commies flattened</dt><dd id="final-commies">0</dd>
                     <dt>Distance</dt><dd id="final-distance">0 m</dd>
+                    <dt>Time survived</dt><dd id="final-time">0:00</dd>
                     <dt>Best</dt><dd>$<span id="final-best">0</span></dd>
                 </dl>
                 <ul id="final-tally" class="tally"></ul>

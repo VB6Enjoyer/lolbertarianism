@@ -874,6 +874,44 @@ body {
     background: repeating-linear-gradient(#0a0a0a 0 3px, #2a2a2a 3px 5px);
 }
 
+/* The golden arm from the meme, holding the phone. Two models: the natural one (default) and the
+   classic veiny one (an option). */
+#game:not(.classic-arm) #hand .classic,
+#game.classic-arm #hand .natural {
+    display: none;
+}
+
+#hand .natural {
+    position: absolute;
+    left: -40px;
+    top: -20px;
+    width: 640px;
+    height: 460px;
+    overflow: visible;
+    pointer-events: none;
+}
+
+#hand .arm-back {
+    filter: drop-shadow(4px 6px 10px rgba(0, 0, 0, 0.5));
+}
+
+#hand .arm-front {
+    filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.4));
+}
+
+#hand .nail {
+    fill: rgba(255, 248, 214, 0.6);
+    stroke: rgba(140, 100, 20, 0.45);
+    stroke-width: 1.2;
+}
+
+#hand .crease {
+    fill: none;
+    stroke: rgba(110, 75, 10, 0.45);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+}
+
 /* The golden, veiny arm from the meme. */
 #arm {
     position: absolute;
