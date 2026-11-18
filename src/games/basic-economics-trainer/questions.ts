@@ -13,6 +13,8 @@ export interface Question {
   correct: number;
   /** Anya's explanation, after you answer. */
   comment: string;
+  /** The chapter the explanation comes from, cited after it (none for showdowns, which quote two books). */
+  source?: string;
   /** What “Ask Sowell” says: a nudge, not the answer. */
   hint: string;
 }

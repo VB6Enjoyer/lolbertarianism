@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { anyaSvg, coverMarkup, faceMarkup, SHOTS, type Face } from './anya.ts';
-import { BOOK, BOOKS, bookById, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
+import { BOOK, BOOKS, bookById, chapterTitle, citation, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict } from './quiz.ts';
 
 const run = () => questionsFor({ kind: 'part', part: 1 }, seededRng(1));
@@ -90,6 +90,15 @@ describe(`basic economics trainer: the question bank of ${book.title}`, () => {
     expect(longest / book.questions.length).toBeLessThan(0.45);
   });
 
+  it('cites the chapter of every explanation, from the question’s own part', () => {
+    for (const bq of book.questions) {
+      const q = toQuestion(bq, seededRng(1), book);
+      const title = book.parts.find((p) => p.n === bq.part)!.chapters.find((c) => c.n === bq.chapter)!.title;
+      expect(q.chapter.endsWith(title), bq.q).toBe(true);
+      expect(q.source, bq.q).toContain(`hapter ${bq.chapter}, “${title}”`);
+    }
+  });
+
   it('shuffles the answers but keeps track of the right one', () => {
     const bq = book.questions[0];
     const positions = new Set<number>();
@@ -173,6 +182,108 @@ describe('basic economics trainer: the books', () => {
     for (const a of ACHIEVEMENTS.filter((a) => a.id.startsWith('kap-'))) expect(a.secret, a.id).toBe(true);
   });
 
+  it('puts Sowell and Hazlitt first, then the books in unlock order, with the mystery book last', async () => {
+    const { UNLOCK_AT, bookUnlocked } = await import('./bank.ts');
+    expect(BOOKS.map((b) => b.id)).toEqual(['be', 'eol', 'ha', 'fc', 'tmb', 'mes', 'dmf', 'jhs', 'kap']);
+    const locked = BOOKS.filter((b) => b.id in UNLOCK_AT).map((b) => UNLOCK_AT[b.id]);
+    expect(locked).toEqual([...locked].sort((a, b) => a - b));
+    const ha = bookById('ha');
+    expect(bookUnlocked(bookById('be'), 0, [])).toBe(true);
+    expect(bookUnlocked(ha, UNLOCK_AT.ha - 1, [])).toBe(false);
+    expect(bookUnlocked(ha, UNLOCK_AT.ha, [])).toBe(true);
+    // Saves from before the locks keep the books they already took.
+    expect(bookUnlocked(ha, 0, ['ha'])).toBe(true);
+  });
+
+  it('builds a mistakes review from missed questions, and clears them after two right answers', async () => {
+    const { noteAnswer, REVIEW_CLEARS } = await import('./bank.ts');
+    const missed: Record<string, number> = {};
+    noteAnswer(missed, 'a', false);
+    noteAnswer(missed, 'b', false);
+    expect(missed).toEqual({ a: REVIEW_CLEARS, b: REVIEW_CLEARS });
+    expect(noteAnswer(missed, 'a', true)).toBe(false);
+    expect(noteAnswer(missed, 'a', true)).toBe(true);
+    expect(missed).toEqual({ b: REVIEW_CLEARS });
+    // Missing it again resets the count; a right answer to something never missed changes nothing.
+    noteAnswer(missed, 'b', true);
+    noteAnswer(missed, 'b', false);
+    expect(missed.b).toBe(REVIEW_CLEARS);
+    expect(noteAnswer(missed, 'z', true)).toBe(false);
+    const ids = BOOK.questions.slice(0, 14).map((q) => q.id);
+    const review = questionsFor({ kind: 'review', ids }, seededRng(3), BOOK);
+    expect(review).toHaveLength(RUN_LENGTH);
+    expect(review.every((q) => ids.includes(q.id))).toBe(true);
+    expect(questionsFor({ kind: 'review', ids: ids.slice(0, 3) }, seededRng(3), BOOK)).toHaveLength(3);
+  });
+
+  it('sets a 20-question final exam from the whole book, with a stricter verdict', async () => {
+    const { EXAM_LENGTH, EXAM_PASS } = await import('./bank.ts');
+    const { examVerdict } = await import('./quiz.ts');
+    for (const book of BOOKS) {
+      const exam = questionsFor({ kind: 'exam' }, seededRng(9), book);
+      expect(exam, book.id).toHaveLength(EXAM_LENGTH);
+      expect(new Set(exam.map((q) => q.id)).size).toBe(EXAM_LENGTH);
+    }
+    expect(examVerdict(EXAM_LENGTH, EXAM_LENGTH, EXAM_PASS).stamp).toBe('SUMMA CUM LAUDE');
+    expect(examVerdict(EXAM_PASS, EXAM_LENGTH, EXAM_PASS).tone).toBe('good');
+    expect(examVerdict(EXAM_PASS - 1, EXAM_LENGTH, EXAM_PASS).tone).not.toBe('good');
+  });
+
+  it('has a glossary for every book, with unique terms tied to real parts', async () => {
+    const { glossaryFor } = await import('./books/glossary.ts');
+    for (const book of BOOKS) {
+      const terms = glossaryFor(book.id);
+      expect(terms.length, book.id).toBeGreaterThanOrEqual(15);
+      expect(new Set(terms.map((t) => t.term)).size, book.id).toBe(terms.length);
+      for (const t of terms) {
+        expect(book.parts.some((p) => p.n === t.part), `${book.id} ${t.term}`).toBe(true);
+        expect(t.def.length, t.term).toBeGreaterThan(20);
+        expect(t.def, t.term).not.toMatch(/'/);
+      }
+    }
+  });
+
+  it('stages showdowns between real books, with both sides and the right answer in place', async () => {
+    const { SHOWDOWNS, showdownQuestions } = await import('./showdowns.ts');
+    expect(new Set(SHOWDOWNS.map((s) => s.id)).size).toBe(SHOWDOWNS.length);
+    for (const sd of SHOWDOWNS) {
+      expect(bookById(sd.a).id, sd.id).toBe(sd.a);
+      expect(bookById(sd.b).id, sd.id).toBe(sd.b);
+      expect(sd.a).not.toBe(sd.b);
+      expect(sd.rounds.length, sd.id).toBeGreaterThanOrEqual(RUN_LENGTH);
+      for (const who of ['a', 'b'] as const) expect(sd.rounds.some((r) => r.who === who), `${sd.id} ${who}`).toBe(true);
+      const qs = showdownQuestions(sd, seededRng(5));
+      expect(qs).toHaveLength(sd.rounds.length);
+      for (const q of qs) {
+        expect(q.options).toEqual([sd.aName, sd.bName, 'Both of them']);
+        const round = sd.rounds.find((r) => q.q.includes(r.says))!;
+        expect(q.correct).toBe(round.who === 'a' ? 0 : round.who === 'b' ? 1 : 2);
+        expect(q.comment).toBe(round.why);
+      }
+    }
+  });
+
+  it('counts daily streaks, notices absences, and greets by the time of day', async () => {
+    const { daysBetween, emptyStreak, greeting, liveStreak, partOfDay, recordDaily, shareText } = await import('./days.ts');
+    expect(daysBetween('2026-02-28', '2026-03-01')).toBe(1);
+    expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1);
+    let s = recordDaily(emptyStreak(), '2026-11-16');
+    s = recordDaily(s, '2026-11-17');
+    s = recordDaily(s, '2026-11-17');
+    expect(s).toEqual({ last: '2026-11-17', current: 2, best: 2 });
+    expect(liveStreak(s, '2026-11-18')).toBe(2);
+    expect(liveStreak(s, '2026-11-19')).toBe(0);
+    s = recordDaily(s, '2026-11-20');
+    expect(s).toEqual({ last: '2026-11-20', current: 1, best: 2 });
+    expect([3, 8, 15, 21].map(partOfDay)).toEqual(['night', 'morning', 'afternoon', 'evening']);
+    expect(greeting({ hour: 9, daysAway: null, brokenStreak: 0 }).line).toContain('Take the book');
+    expect(greeting({ hour: 9, daysAway: 0, brokenStreak: 5 }).line).toContain('5-day streak');
+    expect(greeting({ hour: 9, daysAway: 40, brokenStreak: 0 }, () => 0).line).toContain('40 days');
+    expect(greeting({ hour: 9, daysAway: 1, brokenStreak: 0 }, () => 0).line).toMatch(/morning/i);
+    const text = shareText({ bookTitle: 'Basic Economics', icon: '📕', date: '2026-11-18', score: 2, total: 3, results: [true, false, true], streak: 4, url: 'https://example.com/' });
+    expect(text.split('\n')).toEqual(['Basic Economics Trainer · Daily quiz 2026-11-18', '📕 Basic Economics: 2/3', '🟩🟥🟩', '🔥 4-day streak', 'https://example.com/']);
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);
@@ -215,5 +326,16 @@ describe('basic economics trainer: Anya', () => {
     expect(v1.faceMarkup('shock')).toContain('<ellipse');
     expect(v1.overMarkup('pout')).toBe('');
     expect(v1.SHOTS).toEqual(SHOTS);
+  });
+});
+
+describe('basic economics trainer: chapter citations', () => {
+  it('tells Capital’s volumes apart, since each starts again at chapter 1', () => {
+    const kap = bookById('kap');
+    expect(chapterTitle(kap, 1, 1)).toBe('Commodities');
+    expect(chapterTitle(kap, 4, 1)).toBe('The Circuit of Money Capital');
+    expect(citation(kap, 4, 1)).toBe('Volume II, chapter 1, “The Circuit of Money Capital”');
+    expect(citation(bookById('be'), 1, 1)).toMatch(/^Chapter 1, “.+”$/);
+    expect(citation(bookById('be'), 99, 1)).toBe('');
   });
 });

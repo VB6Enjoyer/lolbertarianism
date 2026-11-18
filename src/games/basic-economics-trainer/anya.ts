@@ -3,7 +3,8 @@
 // ends, rounded cat-ear clips with bands, and the ribbon at her collar (the colour of the book she’s holding).
 // The face is a separate layer, so expressions swap without redrawing her. Hair and eyes carry
 // classes so the unlockable looks (pink hair, green eyes) can recolor them from CSS. Invisible
-// hit zones (nose, eyes, head) are on top, for the easter eggs. Version 1 is kept in anya-v1.ts.
+// hit zones (nose, eyes, head) are on top, for the easter eggs. Hats and glasses go in #anya-wear
+// (see looks.ts). Version 1 is kept in anya-v1.ts.
 
 export type Face = 'neutral' | 'talk' | 'shock' | 'smug' | 'happy' | 'deadpan' | 'pout' | 'blink';
 
@@ -351,10 +352,28 @@ const COVERS: Record<string, () => string> = {
     <text x="116" y="404" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="5.2" fill="${GOLD}" letter-spacing="0.8">VOLUMES I · II · III</text>
     <rect x="90" y="409" width="52" height="0.7" fill="${GOLD}"/>`;
   },
+  // The mystery book: wrapped in brown paper and tied with string, a big question mark on the front.
+  mystery: () => `${PAGES}
+    <path d="M 64 302 L 168 300 L 168 428 L 64 430 Z" fill="#a9845a" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 70 312 L 92 340 M 150 306 L 128 330 M 72 418 L 96 392 M 160 420 L 138 396" stroke="#8e6b44" stroke-width="1.2"/>
+    <path d="M 64 366 L 168 364" stroke="#d8c3a0" stroke-width="5"/>
+    <path d="M 116 301 L 116 429" stroke="#d8c3a0" stroke-width="5"/>
+    <path d="M 116 365 C 104 352 98 360 108 366 C 98 372 104 380 116 365 C 128 352 134 360 124 366 C 134 372 128 380 116 365 Z" fill="#e8d7b8" stroke="${INK}" stroke-width="1.2"/>
+    <text x="90" y="356" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="34" font-weight="bold" fill="#3d2a55" opacity="0.85">?</text>
+    <text x="142" y="412" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="22" font-weight="bold" fill="#3d2a55" opacity="0.6">?</text>`,
 };
 
 /** A book's cover, for the plate (the inside of #anya-book). */
 export const coverMarkup = (book: string) => (COVERS[book] ?? COVERS.be)();
+
+/** A padlock hung over the cover of a book that isn’t unlocked yet. */
+export const lockMarkup = () => `<g class="book-lock" aria-hidden="true">
+    <path d="M 104 368 L 104 358 C 104 348 128 348 128 358 L 128 368" fill="none" stroke="${INK}" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 104 368 L 104 358 C 104 348 128 348 128 358 L 128 368" fill="none" stroke="#c9ccd2" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="97" y="366" width="38" height="30" rx="4" fill="#e3b341" stroke="${INK}" stroke-width="3"/>
+    <circle cx="116" cy="378" r="3.5" fill="${INK}"/>
+    <path d="M 116 380 L 116 388" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>
+  </g>`;
 
 /** The book standing on the plate. */
 export const bookMarkup = (book = 'be') => `<g id="anya-book">${coverMarkup(book)}</g>`;
@@ -393,6 +412,15 @@ export function anyaSvg(): string {
       <stop offset="0.5" stop-color="#4fa55f"/>
       <stop offset="1" stop-color="#1d5530"/>
     </radialGradient>
+    <radialGradient id="anya-iris-gold" cx="50%" cy="68%" r="62%">
+      <stop offset="0" stop-color="#ffe9a3"/>
+      <stop offset="0.5" stop-color="#d9a21e"/>
+      <stop offset="1" stop-color="#6b4a08"/>
+    </radialGradient>
+    <linearGradient id="anya-hair-ancap" gradientUnits="userSpaceOnUse" x1="120" y1="60" x2="280" y2="300">
+      <stop offset="0.5" stop-color="#f6d24a"/>
+      <stop offset="0.5" stop-color="#262626"/>
+    </linearGradient>
     <pattern id="anya-tone" width="6" height="6" patternUnits="userSpaceOnUse">
       <circle cx="3" cy="3" r="1.1" fill="${INK}" opacity="0.35"/>
     </pattern>
@@ -426,7 +454,9 @@ export function anyaSvg(): string {
   <!-- The ahoge (that one strand) -->
   ${hair('M 196 74 C 184 46 216 30 230 48 C 216 42 202 52 207 74')}
   <!-- Cat-ear clips -->
-  ${clip(-1)}${clip(1)}
+  <g class="anya-clips">${clip(-1)}${clip(1)}</g>
+  <!-- Whatever she's wearing (hats, glasses): see looks.ts -->
+  <g id="anya-wear"></g>
   <g id="anya-over"></g>
   <!-- Arms, the plate and the book -->
   <g id="anya-arms">

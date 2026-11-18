@@ -8,7 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Montserrat:wght@500;700;800;900&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Cinzel:wght@600;800&family=Great+Vibes&family=Montserrat:wght@500;700;800;900&family=Playfair+Display:ital,wght@0,600;1,500;1,700&display=swap">
     <script type="module" src="/src/shared/arcade-button.ts"></script>
 </head>
 
@@ -22,7 +22,7 @@
             <ol id="pips" class="pips" aria-label="Progress"></ol>
             <div class="top-right">
                 <span id="score" class="score" aria-live="polite"></span>
-                <span id="peanuts" class="peanuts" title="Peanuts: earn one for every right answer, spend them on lifelines">🥜 0</span>
+                <span id="peanuts" class="peanuts" title="Peanuts: your score. Earn one for every right answer; they unlock books and Anya’s looks">🥜 0</span>
                 <button id="show-settings" class="icon-button" type="button" aria-label="Stats and settings" title="Stats and settings">📊</button>
                 <button id="show-achievements" class="icon-button" type="button" aria-label="Achievements" title="Achievements">🏅</button>
                 <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
@@ -64,7 +64,12 @@
                 <div class="specials">
                     <button id="daily" type="button" class="special-card"><span class="icon">📅</span><b>Daily quiz</b><small id="daily-note">Same 10 questions for everyone today</small></button>
                     <button id="lightning" type="button" class="special-card"><span class="icon">⚡</span><b>Lightning round</b><small id="lightning-note">60 seconds. As many as you can.</small></button>
+                    <button id="review-mistakes" type="button" class="special-card"><span class="icon">🩹</span><b>Mistakes review</b><small id="review-note">Questions you got wrong come back here</small></button>
+                    <button id="flashcards-open" type="button" class="special-card"><span class="icon">🗂️</span><b>Flashcards</b><small id="flashcards-note">The book’s key terms</small></button>
+                    <button id="showdown-open" type="button" class="special-card"><span class="icon">⚔️</span><b>Showdown</b><small id="showdown-note">Two books, one topic. Who said it?</small></button>
+                    <button id="exam" type="button" class="special-card exam-card"><span class="icon">🎓</span><b>Final exam</b><small id="exam-note">Pass every part to sit the exam</small></button>
                 </div>
+                <button id="open-certificate" type="button" class="plain-button certificate-button" hidden>📜 Your certificate</button>
             </section>
 
             <!-- The question -->
@@ -76,9 +81,9 @@
                 <div id="options" class="options"></div>
                 <div class="quiz-footer">
                     <div class="lifelines">
-                        <button id="ask-sowell" type="button" class="lifeline" title="A hint from the book (not the answer)">👓 Ask Sowell <span>1🥜</span></button>
-                        <button id="mind-read" type="button" class="lifeline" title="Anya reads the examiner’s mind: two wrong answers disappear">🔮 Mind-read <span>3🥜</span></button>
-                        <button id="swap" type="button" class="lifeline" title="Swap this question for another of the same difficulty">🔄 Swap <span>2🥜</span></button>
+                        <button id="ask-sowell" type="button" class="lifeline" title="A hint from the book (not the answer). Three per quiz">👓 Ask Sowell <span>×3</span></button>
+                        <button id="mind-read" type="button" class="lifeline" title="Anya reads the examiner’s mind: two wrong answers disappear. Once per quiz">🔮 Mind-read <span>×1</span></button>
+                        <button id="swap" type="button" class="lifeline" title="Swap this question for another of the same difficulty. Once per quiz">🔄 Swap <span>×1</span></button>
                     </div>
                     <p id="hint" class="hint">Tap an answer, or press 1–4</p>
                     <button id="next" type="button" class="next-button" hidden>Next ▶</button>
@@ -93,6 +98,8 @@
                 <ol id="review" class="review"></ol>
                 <p id="best" class="best"></p>
                 <div class="end-buttons">
+                    <button id="end-certificate" type="button" class="next-button" hidden>📜 Get your certificate</button>
+                    <button id="share-daily" type="button" class="next-button share-button" hidden>📋 Share result</button>
                     <button id="again" type="button" class="next-button">Again ▶</button>
                     <button id="to-menu" type="button" class="plain-button">Back to the menu</button>
                 </div>
@@ -105,9 +112,63 @@
                 <h2 class="menu-title">🏅 Achievements</h2>
                 <p class="end-kicker"><span id="achievements-count">0</span> unlocked · saved in this browser</p>
                 <div id="achievements-grid" class="achievements-grid"></div>
-                <h3 class="menu-heading wardrobe-heading">🎀 Anya’s look <small>Looks you’ve found can be switched on and off</small></h3>
+                <h3 class="menu-heading wardrobe-heading">🎀 Anya’s wardrobe <small>Peanuts and achievements unlock new looks. One from each row at a time.</small></h3>
                 <div id="wardrobe" class="wardrobe"></div>
                 <button id="hide-achievements" type="button" class="next-button">Back ▶</button>
+            </div>
+        </div>
+
+        <!-- Showdowns: pick a matchup -->
+        <div id="showdowns" class="overlay" hidden>
+            <div class="overlay-panel" role="dialog" aria-labelledby="showdowns-title">
+                <h2 id="showdowns-title" class="menu-title">⚔️ Showdown</h2>
+                <p class="end-kicker">Two books, one topic. For each claim: who would say it?</p>
+                <ul id="showdown-list" class="showdown-list"></ul>
+                <button id="hide-showdowns" type="button" class="plain-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Glossary flashcards -->
+        <div id="flashcards" class="overlay" hidden>
+            <div class="overlay-panel flash-panel" role="dialog" aria-labelledby="flashcards-title">
+                <h2 id="flashcards-title" class="menu-title">🗂️ Flashcards</h2>
+                <p id="flash-kicker" class="end-kicker"></p>
+                <button id="flash-card" type="button" class="flash-card" aria-describedby="flash-help">
+                    <span class="flash-inner">
+                        <span class="flash-face flash-front"><small id="flash-part"></small><b id="flash-term"></b><em>Tap to flip</em></span>
+                        <span class="flash-face flash-back"><small id="flash-back-term"></small><span id="flash-def"></span></span>
+                    </span>
+                </button>
+                <p id="flash-help" class="flash-help">Space to flip · ← study again · → I knew it</p>
+                <div class="flash-buttons">
+                    <button id="flash-again" type="button" class="plain-button flash-again">✗ Study again</button>
+                    <button id="flash-know" type="button" class="next-button flash-know">✓ I knew it</button>
+                </div>
+                <p id="flash-progress" class="flash-progress" aria-live="polite"></p>
+                <div class="end-buttons">
+                    <button id="flash-restart" type="button" class="plain-button">🔀 Shuffle all cards</button>
+                    <button id="hide-flashcards" type="button" class="plain-button">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- The certificate for passing a final exam -->
+        <div id="certificate" class="overlay" hidden>
+            <div class="overlay-panel certificate-panel" role="dialog" aria-labelledby="certificate-title">
+                <h2 id="certificate-title" class="menu-title">📜 Your certificate</h2>
+                <canvas id="certificate-canvas" class="certificate-canvas" width="1400" height="1000" role="img" aria-label="Your certificate"></canvas>
+                <div class="certificate-form">
+                    <label class="certificate-field" for="certificate-name"><span>Name on the certificate</span>
+                        <input id="certificate-name" type="text" maxlength="40" placeholder="Your name" autocomplete="name" spellcheck="false">
+                    </label>
+                    <div class="certificate-field"><span>Lettering</span>
+                        <div id="certificate-fonts" class="certificate-fonts" role="group" aria-label="Lettering"></div>
+                    </div>
+                </div>
+                <div class="end-buttons">
+                    <button id="certificate-save" type="button" class="next-button">💾 Save as image</button>
+                    <button id="hide-certificate" type="button" class="plain-button">Back</button>
+                </div>
             </div>
         </div>
 

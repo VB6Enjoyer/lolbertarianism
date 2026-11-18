@@ -65,6 +65,14 @@ export function verdict(score: number, total: number): Verdict {
   return { stamp: 'STILL DUMB', tone: 'bad', face: 'deadpan', line: 'Take the book home. Read it. Twice.' };
 }
 
+/** The final exam’s verdict: stricter than a part’s, since passing it earns a certificate. */
+export function examVerdict(score: number, total: number, passMark: number): Verdict {
+  if (score >= total) return { stamp: 'SUMMA CUM LAUDE', tone: 'good', face: 'happy', line: 'Every single one?! Anya is… impressed. Don’t tell anyone. Waku waku!' };
+  if (score >= passMark) return { stamp: 'GRADUATED', tone: 'good', face: 'smug', line: 'You passed the final exam. Anya will sign your certificate. Reluctantly.' };
+  if (score >= passMark - 4) return { stamp: 'NOT YET', tone: 'okay', face: 'smug', line: `Close. You need ${passMark}. Anya doesn’t round up.` };
+  return { stamp: 'STILL DUMB', tone: 'bad', face: 'deadpan', line: 'A final exam, not a guessing game. Back to the parts with you.' };
+}
+
 /** The lightning round's verdict: how many you got right in the time. */
 export function lightningVerdict(score: number): Verdict {
   if (score >= 15) return { stamp: 'NOT DUMB', tone: 'good', face: 'happy', line: `${score} in a minute? Waku waku!` };

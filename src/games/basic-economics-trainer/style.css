@@ -764,6 +764,11 @@ button {
     color: var(--muted);
 }
 
+/* The verdict panel scrolls rather than squashing its contents: the best line can run to two lines. */
+.end-panel > * {
+    flex-shrink: 0;
+}
+
 .best {
     min-height: 1em;
     margin: 0 0 14px;
@@ -771,8 +776,320 @@ button {
     font-size: 14px;
 }
 
+/* --- Mistakes review and the final exam --- */
+.special-card:disabled {
+    cursor: not-allowed;
+    border-style: dashed;
+    box-shadow: none;
+    opacity: 0.6;
+}
+
+.special-card:disabled:hover {
+    transform: none;
+    background: var(--paper);
+    background-image: var(--tone);
+    background-size: 6px 6px;
+}
+
+.special-card.exam-card.passed {
+    background: #fff4c7;
+}
+
+.certificate-button {
+    margin-top: 12px;
+}
+
+/* Twenty questions in the final exam: smaller pips so they fit */
+.pips.many {
+    gap: 4px;
+}
+
+.pips.many li {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+    font-size: 9px;
+}
+
+/* --- Showdowns --- */
+.showdown-list {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: 6px 0 16px;
+    padding: 0;
+    list-style: none;
+}
+
+.showdown-card .vs {
+    flex: none;
+    min-width: 92px;
+    font-size: 22px;
+    letter-spacing: 1px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .showdown-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .showdown-card {
+        gap: 8px;
+        padding: 10px;
+    }
+
+    .showdown-card .vs {
+        min-width: 0;
+        font-size: 15px;
+        letter-spacing: 0;
+    }
+
+    .showdown-card b {
+        font-size: 15px;
+        overflow-wrap: anywhere;
+    }
+}
+
+/* --- Glossary flashcards --- */
+.flash-panel {
+    width: min(620px, 100%);
+    gap: 12px;
+}
+
+.flash-card {
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: 5 / 3;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    perspective: 1200px;
+    color: var(--ink);
+    font: inherit;
+}
+
+.flash-card:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 6px;
+}
+
+.flash-inner {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.45s cubic-bezier(0.3, 0.7, 0.3, 1.2);
+}
+
+.flash-card.flipped .flash-inner {
+    transform: rotateY(180deg);
+}
+
+.flash-face {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 18px 22px;
+    border: 4px solid var(--ink);
+    background: #fff;
+    box-shadow: 6px 6px 0 var(--ink);
+    backface-visibility: hidden;
+    text-align: center;
+}
+
+.flash-front {
+    background: var(--paper-light);
+    background-image: var(--tone);
+    background-size: 7px 7px;
+}
+
+.flash-front small,
+.flash-back small {
+    color: var(--accent-ink);
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.flash-front b {
+    font-weight: 900;
+    font-size: clamp(22px, 5vw, 34px);
+    line-height: 1.15;
+}
+
+.flash-front em {
+    color: var(--muted);
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.flash-back {
+    transform: rotateY(180deg);
+    background: #fffdf6;
+}
+
+.flash-back span {
+    font-size: clamp(15px, 3.4vw, 19px);
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.flash-card.done .flash-front b {
+    color: var(--accent-ink);
+}
+
+.flash-help {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.flash-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.flash-buttons button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    box-shadow: none;
+    transform: none;
+}
+
+.flash-progress {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+@media (hover: none) {
+    .flash-help {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .flash-card {
+        aspect-ratio: 1 / 1;
+    }
+
+    .flash-face {
+        padding: 14px 16px;
+    }
+
+    .flash-back span {
+        font-size: 15px;
+    }
+
+    .flash-buttons button {
+        padding: 10px 14px;
+        font-size: 15px;
+        white-space: nowrap;
+    }
+}
+
+/* --- The certificate --- */
+.certificate-panel {
+    width: min(980px, 100%);
+    gap: 14px;
+}
+
+.certificate-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 3px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+    background: #fbf6ea;
+}
+
+.certificate-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 14px;
+    width: 100%;
+}
+
+.certificate-field {
+    display: grid;
+    gap: 6px;
+    align-content: start;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.certificate-field input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 3px solid var(--ink);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: normal;
+    box-shadow: 3px 3px 0 var(--ink);
+}
+
+.certificate-field input:focus {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.certificate-fonts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.certificate-font {
+    padding: 6px 12px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+@media (max-width: 640px) {
+    .certificate-form {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* --- Phones: Anya on top, the question below --- */
 @media (max-width: 760px) {
+    /* Twenty exam pips: small dots without ticks, wrapping if they must */
+    .pips.many {
+        flex-wrap: wrap;
+        gap: 3px;
+    }
+
+    .pips.many li {
+        width: 11px;
+        height: 11px;
+        border-width: 2px;
+        font-size: 0;
+    }
+
+    .pips.many li.now {
+        transform: scale(1.25);
+        box-shadow: none;
+    }
+
     .topbar {
         gap: 10px;
         padding: 8px 12px;
@@ -1460,6 +1777,10 @@ button {
     animation: toast 4.2s ease-in-out forwards;
 }
 
+.toast.look {
+    background: #fde3e2;
+}
+
 .toast .icon {
     grid-row: span 2;
     font-size: 28px;
@@ -1554,12 +1875,28 @@ button {
 }
 
 /* --- Easter eggs: Anya's looks, and where she's touched --- */
-.anya.pink-hair .anya-hair {
+.anya.look-pink-hair .anya-hair {
     fill: #eda09e;
 }
 
-.anya.green-eyes .anya-iris {
+.anya.look-gold-hair .anya-hair {
+    fill: #f3d27a;
+}
+
+.anya.look-ancap-hair .anya-hair {
+    fill: url(#anya-hair-ancap);
+}
+
+.anya.look-green-eyes .anya-iris {
     fill: url(#anya-iris-green);
+}
+
+.anya.look-gold-eyes .anya-iris {
+    fill: url(#anya-iris-gold);
+}
+
+.anya.no-clips .anya-clips {
+    display: none;
 }
 
 .anya-hit {
@@ -1606,6 +1943,49 @@ button {
     justify-content: center;
     gap: 10px;
     margin: 4px 0 18px;
+}
+
+.wardrobe-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.wardrobe-slot {
+    flex: 0 0 64px;
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    text-align: right;
+}
+
+.wardrobe-row .look-toggle {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.locked-short {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .wardrobe-slot {
+        flex-basis: 100%;
+        text-align: center;
+    }
+
+    .locked-full {
+        display: none;
+    }
+
+    .locked-short {
+        display: inline;
+    }
 }
 
 .look-toggle {
@@ -2195,6 +2575,56 @@ button {
 
 .stat-bar .track i.book-kap {
     background: #a8161c;
+}
+
+/* Locked books: the cover greyed out under a padlock, a quieter take button, hollow dots */
+#anya-book.locked > :not(.book-lock) {
+    filter: grayscale(0.85) brightness(0.92);
+}
+
+.take-button.locked {
+    background: #8b8680;
+    font-size: 16px;
+    animation: none;
+    cursor: not-allowed;
+}
+
+.take-button.locked:hover {
+    transform: none;
+    box-shadow: 5px 5px 0 var(--ink);
+}
+
+.book-dots i.locked {
+    border-style: dashed;
+    opacity: 0.55;
+}
+
+.book-dots i.locked.on {
+    opacity: 1;
+}
+
+/* The mystery book (Capital, before Anya gives up on you): a dusky purple page with faint question marks */
+:root[data-book='mystery'] {
+    --page: #2c2238;
+    --paper: #f2eef5;
+    --paper-light: #faf8fb;
+    --muted: #5d5168;
+    --accent: #5e4482;
+    --accent-ink: #45305f;
+}
+
+:root[data-book='mystery'] body {
+    background-image: radial-gradient(rgba(190, 170, 220, 0.18) 1.2px, transparent 1.6px);
+    background-size: 22px 22px;
+}
+
+:root[data-book='mystery'] .brand-cover {
+    background: #a9845a;
+    box-shadow: inset 0 0 0 2px #d8c3a0;
+}
+
+:root[data-book='mystery'] .anya-ribbon {
+    fill: #5e4482;
 }
 
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */

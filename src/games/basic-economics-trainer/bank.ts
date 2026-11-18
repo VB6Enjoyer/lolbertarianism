@@ -13,8 +13,18 @@ import { THE_MYSTERY_OF_BANKING } from './books/the-mystery-of-banking.ts';
 import type { BankQuestion, Book, Level } from './books/types.ts';
 import type { Question } from './questions.ts';
 
-/** The books Anya can hand you, in the order her arrows go through them. Each has its own questions and progress. */
-export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, HUMAN_ACTION, ECONOMICS_IN_ONE_LESSON, THE_MYSTERY_OF_BANKING, MAN_ECONOMY_AND_STATE, MONEY_BANK_CREDIT, THE_MACHINERY_OF_FREEDOM, FORTY_CENTURIES, CAPITAL];
+/**
+ * The books Anya can hand you, in the order her arrows go through them: the two open from the start,
+ * then the rest in the order peanuts unlock them, and the mystery book last. Each has its own questions and progress.
+ */
+export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, ECONOMICS_IN_ONE_LESSON, HUMAN_ACTION, FORTY_CENTURIES, THE_MYSTERY_OF_BANKING, MAN_ECONOMY_AND_STATE, THE_MACHINERY_OF_FREEDOM, MONEY_BANK_CREDIT, CAPITAL];
+
+/** Peanuts earned (in all, ever; spending them on lifelines doesn’t count against you) that unlock each book. Books not listed are open from the start. */
+export const UNLOCK_AT: Readonly<Record<string, number>> = { ha: 50, fc: 100, tmb: 175, mes: 250, dmf: 350, jhs: 450 };
+
+/** Whether a (non-secret) book is open: no threshold, enough peanuts earned, or taken before (saves from before the locks keep their books). */
+export const bookUnlocked = (book: Book, earned: number, opened: readonly string[]): boolean =>
+  !(book.id in UNLOCK_AT) || earned >= UNLOCK_AT[book.id] || opened.includes(book.id);
 /** The first book, and the default wherever a book isn't given. */
 export const BOOK = BASIC_ECONOMICS;
 export const bookById = (id: unknown): Book => BOOKS.find((b) => b.id === id) ?? BOOK;
@@ -25,6 +35,11 @@ export const RUN_LENGTH = 10;
 export const PASS_MARK = 7;
 const MIX: Record<Level, number> = { easy: 3, medium: 4, hard: 3 };
 export const LIGHTNING_SECONDS = 60;
+/** The final exam: questions from the whole book, how many you need right, open once every part is passed. */
+export const EXAM_LENGTH = 20;
+export const EXAM_PASS = 16;
+/** Right answers needed (in later runs) before a question you missed leaves your mistakes review. */
+export const REVIEW_CLEARS = 2;
 
 /** A small, fast seeded random-number generator (mulberry32): numbers in [0, 1). */
 export function seededRng(seed: number): () => number {
@@ -50,9 +65,17 @@ export function shuffle<T>(list: readonly T[], rng: () => number): T[] {
 const romans = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 export const roman = (n: number) => romans[n] ?? String(n);
 
-export function chapterTitle(book: Book, n: number): string {
-  for (const part of book.parts) for (const c of part.chapters) if (c.n === n) return c.title;
-  return '';
+/** A chapter's title, looked up in its own part (Capital's volumes each start again at chapter 1). */
+export function chapterTitle(book: Book, part: number, n: number): string {
+  return book.parts.find((p) => p.n === part)?.chapters.find((c) => c.n === n)?.title ?? '';
+}
+
+/** Where an explanation comes from: “Chapter 3, “Price Controls””, with the volume for books that have them. */
+export function citation(book: Book, part: number, n: number): string {
+  const title = chapterTitle(book, part, n);
+  if (!title) return '';
+  const volume = book.parts.find((p) => p.n === part)?.label?.match(/^Volume [IVX]+/)?.[0];
+  return `${volume ? `${volume}, chapter` : 'Chapter'} ${n}, “${title}”`;
 }
 
 /** Turns a bank question into one to show: the answers shuffled, the right one's position noted. */
@@ -61,7 +84,8 @@ export function toQuestion(bq: BankQuestion, rng: () => number, book: Book = BOO
   return {
     id: bq.id,
     level: bq.level,
-    chapter: `Part ${roman(bq.part)} · ${chapterTitle(book, bq.chapter)}`,
+    chapter: `Part ${roman(bq.part)} · ${chapterTitle(book, bq.part, bq.chapter)}`,
+    source: citation(book, bq.part, bq.chapter),
     q: bq.q,
     options,
     correct: options.indexOf(bq.answer),
@@ -82,7 +106,15 @@ function mixed(pool: readonly BankQuestion[], rng: () => number, length = RUN_LE
   return picked.slice(0, length).sort((a, b) => order[a.level] - order[b.level]);
 }
 
-export type Mode = { kind: 'part'; part: number } | { kind: 'drill'; level: Level } | { kind: 'daily'; key: string } | { kind: 'lightning' };
+export type Mode =
+  | { kind: 'part'; part: number }
+  | { kind: 'drill'; level: Level }
+  | { kind: 'daily'; key: string }
+  | { kind: 'lightning' }
+  | { kind: 'review'; ids: readonly string[] }
+  | { kind: 'exam' }
+  /** Two books head to head; its questions come from showdowns.ts, not from one book’s bank. */
+  | { kind: 'showdown'; id: string };
 
 /** The questions for a run of a mode. The daily one depends only on the date. */
 export function questionsFor(mode: Mode, rng: () => number = Math.random, book: Book = BOOK): Question[] {
@@ -95,7 +127,11 @@ export function questionsFor(mode: Mode, rng: () => number = Math.random, book: 
         ? shuffle(byLevel(all, mode.level), rng).slice(0, RUN_LENGTH)
         : mode.kind === 'daily'
           ? mixed(all, rng)
-          : shuffle(all, rng);
+          : mode.kind === 'review'
+            ? shuffle(all.filter((q) => mode.ids.includes(q.id)), rng).slice(0, RUN_LENGTH)
+            : mode.kind === 'exam'
+              ? mixed(all, rng, EXAM_LENGTH)
+              : shuffle(all, rng);
   return picked.map((bq) => toQuestion(bq, rng, book));
 }
 
@@ -112,7 +148,20 @@ const dailySeed = (key: string) => Number(key.replace(/-/g, '')) ^ 0xb00c;
 /** Which parts are open: the first, and each one after a part you've passed. */
 export const unlockedParts = (passed: readonly number[], book: Book = BOOK) => book.parts.filter((p) => p.n === 1 || passed.includes(p.n - 1)).map((p) => p.n);
 
-/** Lifeline prices, in peanuts. */
-export const MIND_READ_COST = 3;
-export const SWAP_COST = 2;
-export const HINT_COST = 1;
+/**
+ * Keeps the mistakes review up to date after an answer: a miss puts the question in (needing REVIEW_CLEARS right
+ * answers to leave), a right answer to a question in it counts one towards clearing it. Returns whether it was cleared.
+ */
+export function noteAnswer(missed: Record<string, number>, id: string, right: boolean): boolean {
+  if (!right) {
+    missed[id] = REVIEW_CLEARS;
+    return false;
+  }
+  if (!(id in missed)) return false;
+  if (--missed[id] > 0) return false;
+  delete missed[id];
+  return true;
+}
+
+/** Free uses of each lifeline per quiz. (Peanuts are a score, not money: lifelines don’t cost any.) */
+export const LIFELINES = { hint: 3, mindRead: 1, swap: 1 } as const;

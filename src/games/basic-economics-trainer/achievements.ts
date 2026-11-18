@@ -103,13 +103,23 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   // The daily quiz and the lightning round
   { id: 'daily', icon: '📅', name: 'Daily Reader', description: 'Finish a daily quiz.' },
   { id: 'daily-5', icon: '🗓️', name: 'Book Club', description: 'Play the daily quiz on five different days.' },
+  { id: 'streak-days-3', icon: '🔥', name: 'Habit Forming', description: 'Play the daily quiz three days in a row.' },
+  { id: 'streak-days-7', icon: '📆', name: 'Week Streak', description: 'Play the daily quiz seven days in a row.' },
+  { id: 'streak-days-30', icon: '🎇', name: 'Thirty Days of Anya', description: 'Play the daily quiz thirty days in a row.' },
+  { id: 'shared', icon: '📣', name: 'Bragging Rights', description: 'Share a daily quiz result.' },
   { id: 'lightning-10', icon: '⚡', name: 'Speed Reader', description: 'Get 10 right in a lightning round.' },
   { id: 'lightning-20', icon: '🌩️', name: 'Faster Than Inflation', description: 'Get 20 right in a lightning round.' },
-  // Peanuts and lifelines
+  // Peanuts (your score) and lifelines
   { id: 'mind-read', icon: '🔮', name: 'Telepath', description: 'Use Mind-read.' },
   { id: 'swap', icon: '🔄', name: 'Second Opinion', description: 'Use Swap.' },
   { id: 'ask-sowell', icon: '👓', name: 'Ask the Author', description: 'Ask the author for a hint.' },
   { id: 'peanuts-100', icon: '🥜', name: 'Peanut Gallery', description: 'Earn 100 peanuts in all.' },
+  { id: 'peanuts-500', icon: '🐿️', name: 'Time Preference: Low', description: 'Earn 500 peanuts in all.' },
+  { id: 'peanuts-1000', icon: '🐘', name: 'Peanut Tycoon', description: 'Earn 1,000 peanuts in all.' },
+  // Anya's wardrobe
+  { id: 'looks-6', icon: '👗', name: 'Fashionista', description: 'Unlock six of Anya’s looks.' },
+  { id: 'looks-all', icon: '🪞', name: 'Anya’s Whole Closet', description: 'Unlock every one of Anya’s looks.' },
+  { id: 'festive', icon: '🎄', name: 'Ho Ho Hayek', description: 'Visit Anya in December. She has a hat for it.' },
   { id: 'no-lifelines', icon: '🦾', name: 'No Help Needed', description: 'Pass a part without using any lifelines.' },
   // Secret
   { id: 'still-dumb', icon: '🤦', name: 'Still Dumb', description: 'Score 0 out of 10.', secret: true },
@@ -117,12 +127,25 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'lucky', icon: '🍀', name: 'Lucky Guess', description: 'Get a hard question right within two seconds.', secret: true },
   { id: 'cant-help', icon: '🤯', name: 'Even Anya Can’t Help', description: 'Get it wrong after Mind-read left only two answers.', secret: true },
   { id: 'sowell-said', icon: '🙉', name: 'Didn’t Listen', description: 'Get it wrong right after asking the author.', secret: true },
+  // Mistakes review and final exams
+  { id: 'review', icon: '🩹', name: 'Second Chance', description: 'Finish a mistakes review.' },
+  { id: 'review-empty', icon: '🧽', name: 'Clean Slate', description: 'Clear every question from a book’s mistakes review.' },
+  { id: 'showdown', icon: '🤺', name: 'Ringside Seat', description: 'Finish a showdown between two books.' },
+  { id: 'showdown-perfect', icon: '🥊', name: 'Referee', description: 'Get every claim right in a showdown.' },
+  { id: 'showdown-all', icon: '🏟️', name: 'Undisputed', description: 'Finish every showdown.' },
+  { id: 'flashcards', icon: '🗂️', name: 'Flash Learner', description: 'Go through a whole deck of flashcards.' },
+  { id: 'flashcards-all', icon: '📇', name: 'Walking Dictionary', description: 'Know every key term in a book.' },
+  { id: 'exam', icon: '🧑‍🎓', name: 'Graduate', description: 'Pass a book’s final exam (16 out of 20, no lifelines).' },
+  { id: 'exam-perfect', icon: '🏆', name: 'Summa Cum Laude', description: 'Get 20 out of 20 in a final exam.' },
+  { id: 'exam-3', icon: '🎖️', name: 'Triple Major', description: 'Pass the final exams of three books.' },
   // Easter eggs (secret): touch Anya, or keep her waiting
+  { id: 'night-owl', icon: '🌙', name: 'Night Owl', description: 'Start a quiz between midnight and 4 a.m.', secret: true },
+  { id: 'early-bird', icon: '🐦', name: 'Early Bird', description: 'Start a quiz between 5 and 7 a.m.', secret: true },
   { id: 'boop', icon: '👃', name: 'Boop!', description: 'Boop Anya’s nose.', secret: true },
   { id: 'impatient', icon: '⏰', name: 'Tick Tock', description: 'Keep Anya waiting until she gets impatient.', secret: true },
   { id: 'pink-hair', icon: '🌸', name: 'Pretty in Pink', description: 'Pat Anya’s head ten times.', secret: true },
   { id: 'green-eyes', icon: '💚', name: 'Green-Eyed', description: 'Poke Anya’s eyes ten times.', secret: true },
-  { id: 'makeover', icon: '🎀', name: 'Full Makeover', description: 'Unlock both of Anya’s new looks.', secret: true },
+  { id: 'makeover', icon: '🎀', name: 'Full Makeover', description: 'Give Anya pink hair and green eyes.', secret: true },
   // The secret book: Anya hands you Capital after too many wrong answers. Every one of these is a secret.
   { id: 'red-pill', icon: '🚩', name: 'Reading List', description: 'Get ten answers wrong in a row, or a hundred wrong in all. Anya has a book for you.', secret: true },
   { id: 'kap-part-1', icon: '🧥', name: '20 Yards of Linen', description: 'Pass Part I of Capital: Commodities, Money and Capital.', secret: true },
