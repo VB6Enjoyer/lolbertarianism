@@ -775,5 +775,29 @@ into a handicapping game. Steps 1 and 2 of the plan:
 - Where: Basic Economics Trainer (📊 Stats & settings), The Road to Liberty
   (⚙️ Options), Libertarian Fight Club (the title screen and ⚙️ Settings),
   Kindergarten Property Defender (title and pause) and Austrian Economics
-  Simulator (title). Ancapistan Tycoon keeps its own save codes; Eminem's
-  Human Action and JUST GETTING STARTED save nothing.
+  Simulator (title), and JUST GETTING STARTED (title). Ancapistan Tycoon
+  keeps its own save codes; Eminem's Human Action saves nothing.
+
+### JUST GETTING STARTED: rebuilt as a deckbuilder (prototype)
+
+The clicker overlapped Ancapistan Tycoon, so it's now a roguelike deckbuilder
+(`src/games/just-getting-started/`), built on the meme: laser-eyed Milton
+Friedman vs. everyone who says capitalism is dying.
+
+- Engine, plain data so a run (even mid-fight) saves as JSON: `rng.ts`
+  (seeded, one-number state), `state.ts` (damage, Composure, statuses),
+  `cards.ts` (30 cards: Arguments, Rebuttals, Principles; Inflation, Shortage
+  and the Regret curse), `enemies.ts` (16 opponents with intents; bosses: the
+  Doomposter, the Fed Chair, Late Stage Capitalism, which gets back up once),
+  `relics.ts` (11), `combat.ts` (turns, Airtime, the Based meter and Laser
+  Eyes), `run.ts` (three acts of branching maps, rewards, the bookstore, the
+  green room), `events.ts` (TV appearances: Donahue, the 1942 Treasury and
+  withholding, David asking why not abolish the state, Stockholm…).
+- The meme as a mechanic: damage fills the Based meter; the screen gets more
+  deep-fried as it fills; at 100%, LASER EYES hit every enemy and burn the
+  Inflation out of your hand. Each boss ends with "NAH, WE'RE JUST GETTING
+  STARTED 😈".
+- `bot.ts` plays whole runs for the tests and balancing (it gets past the
+  first boss in most runs and rarely wins; people do better).
+- Next: achievements, a daily seeded run, the secret David Friedman boss and
+  Machinery of Freedom cards, more cards and events, sound polish.
