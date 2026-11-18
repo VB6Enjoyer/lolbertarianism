@@ -1969,10 +1969,22 @@ button {
     font-size: 13px;
 }
 
+.locked-short {
+    display: none;
+}
+
 @media (max-width: 640px) {
     .wardrobe-slot {
         flex-basis: 100%;
         text-align: center;
+    }
+
+    .locked-full {
+        display: none;
+    }
+
+    .locked-short {
+        display: inline;
     }
 }
 

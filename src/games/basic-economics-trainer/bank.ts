@@ -65,9 +65,17 @@ export function shuffle<T>(list: readonly T[], rng: () => number): T[] {
 const romans = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 export const roman = (n: number) => romans[n] ?? String(n);
 
-export function chapterTitle(book: Book, n: number): string {
-  for (const part of book.parts) for (const c of part.chapters) if (c.n === n) return c.title;
-  return '';
+/** A chapter's title, looked up in its own part (Capital's volumes each start again at chapter 1). */
+export function chapterTitle(book: Book, part: number, n: number): string {
+  return book.parts.find((p) => p.n === part)?.chapters.find((c) => c.n === n)?.title ?? '';
+}
+
+/** Where an explanation comes from: “Chapter 3, “Price Controls””, with the volume for books that have them. */
+export function citation(book: Book, part: number, n: number): string {
+  const title = chapterTitle(book, part, n);
+  if (!title) return '';
+  const volume = book.parts.find((p) => p.n === part)?.label?.match(/^Volume [IVX]+/)?.[0];
+  return `${volume ? `${volume}, chapter` : 'Chapter'} ${n}, “${title}”`;
 }
 
 /** Turns a bank question into one to show: the answers shuffled, the right one's position noted. */
@@ -76,7 +84,8 @@ export function toQuestion(bq: BankQuestion, rng: () => number, book: Book = BOO
   return {
     id: bq.id,
     level: bq.level,
-    chapter: `Part ${roman(bq.part)} · ${chapterTitle(book, bq.chapter)}`,
+    chapter: `Part ${roman(bq.part)} · ${chapterTitle(book, bq.part, bq.chapter)}`,
+    source: citation(book, bq.part, bq.chapter),
     q: bq.q,
     options,
     correct: options.indexOf(bq.answer),

@@ -130,6 +130,12 @@ export function lockedLabel(look: Look, earned: number): string {
   return look.unlock.secret ? '🔒 A secret look' : `🔒 ${look.label.replace(/^\S+\s/, '')}: ${look.unlock.hint}`;
 }
 
+/** The same, short enough for a phone: just what it takes (the row says what kind of look it is). */
+export function lockedShort(look: Look, earned: number): string {
+  if ('peanuts' in look.unlock) return `🔒 ${look.unlock.peanuts - earned} more 🥜`;
+  return look.unlock.secret ? '🔒 Secret' : `🔒 ${look.unlock.hint}`;
+}
+
 /** What she's wearing: a look id per slot ('' for none). */
 export type Outfit = Record<Slot, string>;
 export const emptyOutfit = (): Outfit => ({ hair: '', eyes: '', face: '', head: '' });

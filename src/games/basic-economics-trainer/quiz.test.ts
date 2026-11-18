@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { anyaSvg, coverMarkup, faceMarkup, SHOTS, type Face } from './anya.ts';
-import { BOOK, BOOKS, bookById, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
+import { BOOK, BOOKS, bookById, chapterTitle, citation, LEVELS, PASS_MARK, questionsFor, RUN_LENGTH, seededRng, swapFor, toQuestion, unlockedParts } from './bank.ts';
 import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict } from './quiz.ts';
 
 const run = () => questionsFor({ kind: 'part', part: 1 }, seededRng(1));
@@ -88,6 +88,15 @@ describe(`basic economics trainer: the question bank of ${book.title}`, () => {
     expect(clearlyLongest.map((q) => q.q)).toHaveLength(clearlyLongest.length > 3 ? 0 : clearlyLongest.length);
     const longest = book.questions.filter((q) => q.wrong.every((w) => q.answer.length > w.length)).length;
     expect(longest / book.questions.length).toBeLessThan(0.45);
+  });
+
+  it('cites the chapter of every explanation, from the question’s own part', () => {
+    for (const bq of book.questions) {
+      const q = toQuestion(bq, seededRng(1), book);
+      const title = book.parts.find((p) => p.n === bq.part)!.chapters.find((c) => c.n === bq.chapter)!.title;
+      expect(q.chapter.endsWith(title), bq.q).toBe(true);
+      expect(q.source, bq.q).toContain(`hapter ${bq.chapter}, “${title}”`);
+    }
   });
 
   it('shuffles the answers but keeps track of the right one', () => {
@@ -317,5 +326,16 @@ describe('basic economics trainer: Anya', () => {
     expect(v1.faceMarkup('shock')).toContain('<ellipse');
     expect(v1.overMarkup('pout')).toBe('');
     expect(v1.SHOTS).toEqual(SHOTS);
+  });
+});
+
+describe('basic economics trainer: chapter citations', () => {
+  it('tells Capital’s volumes apart, since each starts again at chapter 1', () => {
+    const kap = bookById('kap');
+    expect(chapterTitle(kap, 1, 1)).toBe('Commodities');
+    expect(chapterTitle(kap, 4, 1)).toBe('The Circuit of Money Capital');
+    expect(citation(kap, 4, 1)).toBe('Volume II, chapter 1, “The Circuit of Money Capital”');
+    expect(citation(bookById('be'), 1, 1)).toMatch(/^Chapter 1, “.+”$/);
+    expect(citation(bookById('be'), 99, 1)).toBe('');
   });
 });

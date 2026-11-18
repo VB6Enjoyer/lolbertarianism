@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENTS } from './achievements.ts';
 import { anyaSvg } from './anya.ts';
 import { LIFELINES } from './bank.ts';
-import { emptyOutfit, LOOKS, lockedLabel, lookById, lookUnlocked, outfitFrom, SLOTS, wearMarkup, wornLooks } from './looks.ts';
+import { emptyOutfit, LOOKS, lockedLabel, lockedShort, lookById, lookUnlocked, outfitFrom, SLOTS, wearMarkup, wornLooks } from './looks.ts';
 
 describe('Anya’s looks', () => {
   it('has unique ids and labels, each with an emoji and something to say', () => {
@@ -37,6 +37,10 @@ describe('Anya’s looks', () => {
     expect(lockedLabel(lookById('glasses')!, 20)).toBe('🔒 Reading glasses: 30 more 🥜');
     expect(lockedLabel(lookById('mortarboard')!, 0)).toBe('🔒 Graduation cap: Pass a final exam');
     expect(lockedLabel(lookById('ushanka')!, 0)).toBe('🔒 A secret look');
+    // Phones get just what it takes.
+    expect(lockedShort(lookById('glasses')!, 20)).toBe('🔒 30 more 🥜');
+    expect(lockedShort(lookById('mortarboard')!, 0)).toBe('🔒 Pass a final exam');
+    expect(lockedShort(lookById('ushanka')!, 0)).toBe('🔒 Secret');
   });
 
   it('reads saved outfits, and the two switches older saves had', () => {

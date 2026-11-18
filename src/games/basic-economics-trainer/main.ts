@@ -11,7 +11,7 @@ import type { Book, Level } from './books/types.ts';
 import { daysBetween, emptyStreak, greeting, liveStreak, partOfDay, recordDaily, shareText, streakLine, TIME_ASIDES, type DailyStreak } from './days.ts';
 import { SHOWDOWNS, showdownById, showdownQuestions } from './showdowns.ts';
 import { glossaryFor, type GlossaryEntry } from './books/glossary.ts';
-import { LOOKS, SLOTS, lockedLabel, lookUnlocked, outfitFrom, wearMarkup, wornLooks, type Look, type Outfit } from './looks.ts';
+import { LOOKS, SLOTS, lockedLabel, lockedShort, lookUnlocked, outfitFrom, wearMarkup, wornLooks, type Look, type Outfit } from './looks.ts';
 import { CERTIFICATE_FONTS, certificateFont, coverImage, drawCertificate, loadCertificateFonts, longDate } from './certificate.ts';
 import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
@@ -798,7 +798,8 @@ function choose(i: number) {
     return;
   }
   const streak = right && quiz.streak === 3 ? ' Three in a row. Suspicious.' : '';
-  say(right ? `${pick(RIGHT_OPENERS)} ${q.comment}${streak}` : `${pick(WRONG_OPENERS)} ${q.comment}`, { queueSpeech: save.tts.questions });
+  const cite = q.source ? ` (${q.source})` : '';
+  say(right ? `${pick(RIGHT_OPENERS)} ${q.comment}${cite}${streak}` : `${pick(WRONG_OPENERS)} ${q.comment}${cite}`, { queueSpeech: save.tts.questions });
   showNext();
 }
 
@@ -1675,7 +1676,19 @@ function renderWardrobe() {
           const on = got && save.outfit[slot] === look.id;
           b.disabled = !got;
           b.setAttribute('aria-pressed', String(on));
-          b.textContent = got ? look.label : lockedLabel(look, have);
+          if (got) b.textContent = look.label;
+          else {
+            // The full label, and a shorter one that phones show instead.
+            const full = lockedLabel(look, have);
+            b.title = full;
+            b.setAttribute('aria-label', full);
+            for (const [cls, text] of [['locked-full', full], ['locked-short', lockedShort(look, have)]]) {
+              const span = document.createElement('span');
+              span.className = cls;
+              span.textContent = text;
+              b.append(span);
+            }
+          }
           b.addEventListener('click', () => {
             save.outfit[slot] = on ? '' : look.id;
             persist();
