@@ -1773,3 +1773,79 @@ kbd {
     font: 500 15px/1 var(--body);
     color: var(--muted);
 }
+
+/* --- The Friedmans: the character picker, the secret bosses --- */
+.friedman.david {
+    aspect-ratio: 270 / 311;
+}
+
+.foe .friedman.foe-photo {
+    width: 128px;
+    margin: 0;
+}
+
+.foe.boss .friedman.foe-photo {
+    width: 150px;
+}
+
+.character-picker {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+.character {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    width: 140px;
+    padding: 10px;
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    background: rgb(22 18 18 / 0.9);
+    cursor: pointer;
+}
+
+.character.picked {
+    border-color: var(--red);
+    box-shadow: 0 0 18px rgb(255 42 26 / 0.45);
+}
+
+.character b {
+    font: 20px/1 var(--meme);
+    letter-spacing: 0.5px;
+}
+
+.character small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.friedman.mini {
+    width: 76px;
+}
+
+.secret-line {
+    max-width: 640px;
+    margin: 0;
+    padding: 8px 14px;
+    border: 2px solid var(--green);
+    border-radius: 12px;
+    background: rgb(70 209 122 / 0.08);
+}
+
+@media (max-width: 720px) {
+    .foe .friedman.foe-photo,
+    .foe.boss .friedman.foe-photo {
+        width: 84px;
+    }
+}
+
+/* Speech can rise above the stage (long lines from the secret bosses); only the laser blast is clipped to it. */
+.arena {
+    overflow: visible;
+}
+
+.lasering .arena {
+    overflow: hidden;
+}

@@ -29,6 +29,8 @@ export interface TvEvent {
   emoji: string;
   /** A picture from public/vidya/img (without .webp), if there is one. */
   image?: string;
+  /** Whose run it turns up in (Milton's if not given). */
+  who?: 'milton' | 'david';
   text: string;
   choices: EventChoice[];
 }
@@ -179,5 +181,96 @@ export const EVENTS: TvEvent[] = [
     ],
   },
 ];
+
+// --- David's appearances ---
+EVENTS.push(
+  {
+    id: 'dad-calls',
+    who: 'david',
+    title: 'Your Dad Calls',
+    emoji: '☎️',
+    image: 'mfriedman',
+    text: 'It’s your father, after your lecture. “Good talk, son. Really. But you can’t have courts without a state. Somebody has to enforce the contracts.”',
+    choices: [
+      {
+        label: 'Argue it out, again',
+        detail: 'Lose 8 Credibility. Upgrade 2 random cards.',
+        effects: [{ kind: 'hp', amount: -8 }, { kind: 'upgradeRandom', count: 2 }],
+        result: 'Two hours. Neither of you gives an inch. You both hang up sharper than you were.',
+        needs: { hp: 9 },
+      },
+      {
+        label: '“How’s Mom?”',
+        detail: 'Heal 12 Credibility',
+        effects: [{ kind: 'hp', amount: 12 }],
+        result: 'Rose is fine. She says you’re both right, and both impossible.',
+      },
+    ],
+  },
+  {
+    id: 'tourney',
+    who: 'david',
+    title: 'The Tourney',
+    emoji: '⚔️',
+    text: 'The Society for Creative Anachronism is holding a tourney this weekend. Cariadoc of the Bow is expected, in armour, or at the feast.',
+    choices: [
+      {
+        label: 'Fight in the lists',
+        detail: 'Lose 10 Credibility. Gain a random rare card.',
+        effects: [{ kind: 'hp', amount: -10 }, { kind: 'randomCard', rarity: 'rare' }],
+        result: 'Rattan swords, real bruises. You come home with a story and a better argument.',
+        needs: { hp: 11 },
+      },
+      {
+        label: 'Cook the feast',
+        detail: 'Heal 15. Gain Medieval Cookbook.',
+        effects: [{ kind: 'hp', amount: 15 }, { kind: 'card', id: 'cookbook' }],
+        result: 'A fourteenth-century recipe, forty guests, no leftovers. Spontaneous order, with gravy.',
+      },
+    ],
+  },
+  {
+    id: 'sagas',
+    who: 'david',
+    title: 'Iceland, 930 AD (in the Sagas)',
+    emoji: '📚',
+    text: 'You’re deep in the sagas: feuds settled by courts and payments, a legal code recited from memory, and no king anywhere. There’s a paper in this.',
+    choices: [
+      {
+        label: 'Write the paper',
+        detail: 'Gain Medieval Iceland+',
+        effects: [{ kind: 'card', id: 'iceland', up: true }],
+        result: '“Private Creation and Enforcement of Law: A Historical Case.” Economists cite it for decades.',
+      },
+      {
+        label: 'Turn it into a talk',
+        detail: 'Gain 50 Royalties',
+        effects: [{ kind: 'royalties', amount: 50 }],
+        result: 'Standing room only. Someone in the back asks about the Vikings. There’s always one.',
+      },
+    ],
+  },
+  {
+    id: 'physics',
+    who: 'david',
+    title: 'Physics Department, 1971',
+    emoji: '🔭',
+    text: 'Your physics thesis is done. Down the hall, the economists are arguing about everything. They look like they’re having more fun.',
+    choices: [
+      {
+        label: 'Walk down the hall',
+        detail: 'Upgrade a random card. Gain 30 Based.',
+        effects: [{ kind: 'upgradeRandom', count: 1 }, { kind: 'based', amount: 30 }],
+        result: 'You never take an economics course for credit. You teach them instead.',
+      },
+      {
+        label: 'Take the physics postdoc',
+        detail: 'Gain 40 Royalties',
+        effects: [{ kind: 'royalties', amount: 40 }],
+        result: 'A steady job, for a while. The economists keep calling.',
+      },
+    ],
+  },
+);
 
 export const eventById = (id: string) => EVENTS.find((e) => e.id === id);

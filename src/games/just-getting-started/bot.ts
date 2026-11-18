@@ -5,7 +5,7 @@ import { cardCost, cardDef, canUpgrade } from './cards.ts';
 import { canPlay, endTurn, fireLaser, intentOf, laserReady, playCard, resolveChoice } from './combat.ts';
 import { next } from './rng.ts';
 import {
-  buyCard, chooseEvent, choiceOpen, enterNode, finishCombat, leaveEvent, leaveReward, leaveShop, nextAct, reachable, rehearse, removeCard,
+  buyCard, chooseEvent, choiceOpen, enterNode, fightSecret, finishCombat, leaveEvent, leaveReward, leaveShop, nextAct, reachable, rehearse, removeCard,
   rest, type Run, takeRewardCard, takeRewardRelic,
 } from './run.ts';
 import { eventById } from './events.ts';
@@ -96,6 +96,9 @@ export function botRun(run: Run, maxSteps = 5000): number {
       }
       case 'act-clear':
         nextAct(run);
+        break;
+      case 'secret':
+        fightSecret(run);
         break;
       case 'lost':
       case 'won':

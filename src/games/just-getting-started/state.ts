@@ -13,7 +13,22 @@ import { int, type Rng, shuffleInPlace } from './rng.ts';
  * - Powers (Friedman's, for the rest of the fight): monetarism, flatTax, vouchers, primeTime.
  * - Enemy specials: spiral (gains that much momentum every turn), decay (loses that much HP every turn).
  */
-export type Status = 'momentum' | 'exposed' | 'rattled' | 'savings' | 'monetarism' | 'flatTax' | 'vouchers' | 'primeTime' | 'spiral' | 'decay';
+export type Status =
+  | 'momentum'
+  | 'exposed'
+  | 'rattled'
+  | 'savings'
+  | 'monetarism'
+  | 'flatTax'
+  | 'vouchers'
+  | 'primeTime'
+  | 'spiral'
+  | 'decay'
+  // David's: Protection Agencies (each hits a random enemy for 1 at the end of the turn, up to 6), and his powers.
+  | 'agency'
+  | 'machinery'
+  | 'marketLaw'
+  | 'polycentric';
 
 /** Statuses that count down at the end of their owner's turn. */
 export const TIMED: readonly Status[] = ['exposed', 'rattled'];
@@ -92,6 +107,8 @@ export interface Combat {
   twist: TwistId | null;
   /** The Late Stage (1 to 10; see stages.ts). */
   stage: number;
+  /** Who's playing (whose cards Free to Choose offers). */
+  character: 'milton' | 'david';
 }
 
 export const HAND_LIMIT = 10;

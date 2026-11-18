@@ -7,8 +7,12 @@ import { addCard, addStatus, alive, type Combat, drawCards, gainBlock, heal, los
 export type CardType = 'argument' | 'rebuttal' | 'principle' | 'status' | 'curse';
 export type Rarity = 'starter' | 'common' | 'uncommon' | 'rare' | 'special';
 
+/** Whose card it is: Milton's (the default), David's, or both of theirs. */
+export type CardOwner = 'milton' | 'david' | 'both';
+
 export interface CardDef {
   id: string;
+  who?: CardOwner;
   name: string;
   emoji: string;
   type: CardType;
@@ -55,7 +59,7 @@ const CARD_LIST: CardDef[] = [
 
   // --- Common Arguments ---
   {
-    id: 'pencil', name: 'I, Pencil', emoji: '✏️', type: 'argument', rarity: 'common', cost: 1, target: true,
+    id: 'pencil', who: 'both', name: 'I, Pencil', emoji: '✏️', type: 'argument', rarity: 'common', cost: 1, target: true,
     text: (up) => `Deal ${p(up, 4, 6)} damage. Draw 2 cards.`,
     play: (c, t, up) => {
       strike(c, t, v(up, 4, 6));
@@ -79,12 +83,12 @@ const CARD_LIST: CardDef[] = [
     flavor: 'Steady growth. Every time.',
   },
   {
-    id: 'chalkboard', name: 'Chalkboard Lecture', emoji: '🧑‍🏫', type: 'argument', rarity: 'common', cost: 1,
+    id: 'chalkboard', who: 'both', name: 'Chalkboard Lecture', emoji: '🧑‍🏫', type: 'argument', rarity: 'common', cost: 1,
     text: (up) => `Deal ${p(up, 5, 8)} damage to ALL enemies.`,
     play: (c, _t, up) => strikeAll(c, v(up, 5, 8)),
   },
   {
-    id: 'signal', name: 'Price Signal', emoji: '🚦', type: 'argument', rarity: 'common', cost: 1, target: true,
+    id: 'signal', who: 'both', name: 'Price Signal', emoji: '🚦', type: 'argument', rarity: 'common', cost: 1, target: true,
     text: (up) => `Deal ${p(up, 7, 9)} damage. Apply ${p(up, 1, 2)} Rattled.`,
     play: (c, t, up) => {
       strike(c, t, v(up, 7, 9));
@@ -112,7 +116,7 @@ const CARD_LIST: CardDef[] = [
     },
   },
   {
-    id: 'finish', name: 'Let Me Finish', emoji: '✋', type: 'rebuttal', rarity: 'common', cost: 1, target: true,
+    id: 'finish', who: 'both', name: 'Let Me Finish', emoji: '✋', type: 'rebuttal', rarity: 'common', cost: 1, target: true,
     text: (up) => `Gain ${p(up, 7, 10)} Composure. Apply 1 Rattled.`,
     play: (c, t, up) => {
       gainBlock(c, c.player, v(up, 7, 10), 'player');
@@ -121,7 +125,7 @@ const CARD_LIST: CardDef[] = [
     flavor: '“Let me finish. Let me finish.”',
   },
   {
-    id: 'sources', name: 'Cite Your Sources', emoji: '📚', type: 'rebuttal', rarity: 'common', cost: 1,
+    id: 'sources', who: 'both', name: 'Cite Your Sources', emoji: '📚', type: 'rebuttal', rarity: 'common', cost: 1,
     text: (up) => `Draw ${p(up, 3, 4)} cards.`,
     play: (c, _t, up) => drawCards(c, v(up, 3, 4)),
   },
@@ -165,7 +169,7 @@ const CARD_LIST: CardDef[] = [
     play: (c, t) => void strike(c, t, c.player.block),
   },
   {
-    id: 'shoeleather', name: 'Shoe-Leather Costs', emoji: '👞', type: 'rebuttal', rarity: 'uncommon', cost: 1, target: true,
+    id: 'shoeleather', who: 'both', name: 'Shoe-Leather Costs', emoji: '👞', type: 'rebuttal', rarity: 'uncommon', cost: 1, target: true,
     text: (up) => `Apply ${p(up, 2, 3)} Rattled and ${p(up, 2, 3)} Exposed.`,
     play: (c, t, up) => {
       const e = c.enemies[t];
@@ -253,6 +257,144 @@ const CARD_LIST: CardDef[] = [
     flavor: 'Free to Choose, ten episodes on PBS.',
   },
 
+  // --- David's cards: Protection Agencies, private law, and a little medieval cooking ---
+  {
+    id: 'theory', who: 'david', name: 'Price Theory', emoji: '📈', type: 'argument', rarity: 'starter', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 6, 9)} damage.`,
+    play: (c, t, up) => void strike(c, t, v(up, 6, 9)),
+    flavor: 'His textbook. Chapter one: you can’t repeal supply and demand.',
+  },
+  {
+    id: 'insure', who: 'david', name: 'Insurance Policy', emoji: '📑', type: 'rebuttal', rarity: 'starter', cost: 1,
+    text: (up) => `Gain ${p(up, 5, 8)} Composure.`,
+    play: (c, _t, up) => gainBlock(c, c.player, v(up, 5, 8), 'player'),
+  },
+  {
+    id: 'agency', who: 'david', name: 'Hire a Protection Agency', emoji: '🏢', type: 'rebuttal', rarity: 'starter', cost: 1,
+    text: (up) => `Gain ${p(up, 1, 2)} Agency.`,
+    play: (c, _t, up) => addStatus(c, c.player, 'agency', v(up, 1, 2), 'player'),
+    flavor: 'Your rights, defended on a subscription basis.',
+  },
+  {
+    id: 'iceland', who: 'david', name: 'Medieval Iceland', emoji: '🧊', type: 'argument', rarity: 'starter', cost: 2, target: true,
+    text: (up) => `Deal ${p(up, 9, 12)} damage. Gain 1 Agency.`,
+    play: (c, t, up) => {
+      strike(c, t, v(up, 9, 12));
+      addStatus(c, c.player, 'agency', 1, 'player');
+    },
+    flavor: 'Three centuries of law with no king and no police. He wrote the paper.',
+  },
+  {
+    id: 'competing', who: 'david', name: 'Competing Agencies', emoji: '🚓', type: 'argument', rarity: 'common', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 4, 6)} damage. Gain 1 Agency.`,
+    play: (c, t, up) => {
+      strike(c, t, v(up, 4, 6));
+      addStatus(c, c.player, 'agency', 1, 'player');
+    },
+  },
+  {
+    id: 'arbitration', who: 'david', name: 'Private Arbitration', emoji: '⚖️', type: 'rebuttal', rarity: 'common', cost: 1,
+    text: (up) => `Apply ${p(up, 1, 2)} Rattled to ALL enemies. Gain 3 Composure.`,
+    play: (c, _t, up) => {
+      for (const e of alive(c)) addStatus(c, e, 'rattled', v(up, 1, 2), e.uid);
+      gainBlock(c, c.player, 3, 'player');
+    },
+  },
+  {
+    id: 'tort', who: 'david', name: 'Tort Law', emoji: '📜', type: 'argument', rarity: 'common', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 4, 6)} damage, plus ${p(up, 2, 3)} for each Agency.`,
+    play: (c, t, up) => void strike(c, t, v(up, 4, 6) + v(up, 2, 3) * (c.player.status.agency ?? 0)),
+  },
+  {
+    id: 'bounty', who: 'david', name: 'Bounty Hunter', emoji: '🤠', type: 'argument', rarity: 'common', cost: 1,
+    text: (up) => `Deal ${p(up, 8, 11)} damage to the enemy with the least Credibility.`,
+    play: (c, _t, up) => {
+      const weakest = c.enemies.map((e, i) => ({ e, i })).filter(({ e }) => !e.dead).sort((a, b) => a.e.hp - b.e.hp)[0];
+      if (weakest) strike(c, weakest.i, v(up, 8, 11));
+    },
+  },
+  {
+    id: 'contract', who: 'david', name: 'Signed Contract', emoji: '✍️', type: 'rebuttal', rarity: 'common', cost: 1,
+    text: (up) => `Gain ${p(up, 6, 9)} Composure and 1 Momentum.`,
+    play: (c, _t, up) => {
+      gainBlock(c, c.player, v(up, 6, 9), 'player');
+      addStatus(c, c.player, 'momentum', 1, 'player');
+    },
+  },
+  {
+    id: 'hidden', who: 'david', name: 'Hidden Order', emoji: '🔍', type: 'rebuttal', rarity: 'common', cost: 0,
+    text: (up) => `Draw ${p(up, 1, 2)} card${up ? 's' : ''}. Gain 1 Composure for each Agency.`,
+    play: (c, _t, up) => {
+      drawCards(c, v(up, 1, 2));
+      gainBlock(c, c.player, c.player.status.agency ?? 0, 'player');
+    },
+    flavor: 'The economics of everyday life. His other book.',
+  },
+  {
+    id: 'lawsorder', who: 'david', name: 'Law’s Order', emoji: '🏛️', type: 'argument', rarity: 'uncommon', cost: 2, target: true,
+    text: (up) => `Deal ${p(up, 4, 5)} damage for each Agency (at least ${p(up, 4, 5)}).`,
+    play: (c, t, up) => void strike(c, t, v(up, 4, 5) * Math.max(1, c.player.status.agency ?? 0)),
+  },
+  {
+    id: 'takeover', who: 'david', name: 'Hostile Takeover', emoji: '🦈', type: 'argument', rarity: 'uncommon', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 7, 10)} damage. If it knocks them out, gain 2 Agencies.`,
+    play: (c, t, up) => {
+      const e = c.enemies[t];
+      strike(c, t, v(up, 7, 10));
+      if (e?.dead) addStatus(c, c.player, 'agency', 2, 'player');
+    },
+  },
+  {
+    id: 'defense', who: 'david', name: 'Defense Agency', emoji: '🛡️', type: 'rebuttal', rarity: 'uncommon', cost: 2,
+    text: (up) => `Gain ${p(up, 12, 16)} Composure. Gain 1 Agency.`,
+    play: (c, _t, up) => {
+      gainBlock(c, c.player, v(up, 12, 16), 'player');
+      addStatus(c, c.player, 'agency', 1, 'player');
+    },
+  },
+  {
+    id: 'cookbook', who: 'david', name: 'Medieval Cookbook', emoji: '🍗', type: 'rebuttal', rarity: 'uncommon', cost: 1, exhaust: true,
+    text: (up) => `Heal ${p(up, 6, 9)} Credibility. Gain 1 Momentum. Exhaust.`,
+    play: (c, _t, up) => {
+      heal(c, c.player, v(up, 6, 9), 'player');
+      addStatus(c, c.player, 'momentum', 1, 'player');
+    },
+    flavor: 'Cariadoc’s recipes, cooked at medieval re-enactments for decades.',
+  },
+  {
+    id: 'thought', who: 'david', name: 'Thought Experiment', emoji: '🧪', type: 'rebuttal', rarity: 'uncommon', cost: 1, exhaust: true, upExhaust: false,
+    text: (up) => `Choose 1 of 3 cards to add to your hand. It costs 0 this turn.${up ? '' : ' Exhaust.'}`,
+    play: (c) => {
+      c.pending = { kind: 'choose', options: [] };
+    },
+    flavor: 'He has a physics PhD. The universe is a frictionless market.',
+  },
+  {
+    id: 'polycentric', who: 'david', name: 'Polycentric Law', emoji: '🕸️', type: 'principle', rarity: 'uncommon', cost: 1, upCost: 0,
+    text: () => 'Whenever you play a Rebuttal, gain 1 Agency.',
+    play: (c) => addStatus(c, c.player, 'polycentric', 1, 'player'),
+  },
+  {
+    id: 'machinery', who: 'david', name: 'The Machinery of Freedom', emoji: '⚙️', type: 'principle', rarity: 'rare', cost: 2, upCost: 1,
+    text: () => 'At the end of your turn, gain 1 Composure for each Agency.',
+    play: (c) => addStatus(c, c.player, 'machinery', 1, 'player'),
+    flavor: 'Guide to a radical capitalism. 1973.',
+  },
+  {
+    id: 'marketlaw', who: 'david', name: 'A Market for Law', emoji: '🏪', type: 'principle', rarity: 'rare', cost: 2, upCost: 1,
+    text: () => 'At the start of each turn, gain 1 Agency.',
+    play: (c) => addStatus(c, c.player, 'marketLaw', 1, 'player'),
+  },
+  {
+    id: 'future', who: 'david', name: 'Future Imperfect', emoji: '🔮', type: 'argument', rarity: 'rare', cost: 3, target: true,
+    text: (up) => `Deal ${p(up, 24, 32)} damage. Gain 2 Agencies.`,
+    play: (c, t, up) => {
+      strike(c, t, v(up, 24, 32));
+      addStatus(c, c.player, 'agency', 2, 'player');
+    },
+    flavor: 'Technology will change the law. He wrote that one in 2008.',
+  },
+
   // --- Status and curse ---
   {
     id: 'inflation', name: 'Inflation', emoji: '🎈', type: 'status', rarity: 'special', cost: null,
@@ -281,8 +423,11 @@ const CARD_LIST: CardDef[] = [
 export const CARDS: Record<string, CardDef> = Object.fromEntries(CARD_LIST.map((c) => [c.id, c]));
 export const cardDef = (id: string) => CARDS[id];
 
-/** Cards that turn up in rewards and shops. */
+/** Cards that turn up in rewards and shops (everyone's). */
 export const POOL = CARD_LIST.filter((c) => c.rarity === 'common' || c.rarity === 'uncommon' || c.rarity === 'rare');
+
+/** The reward pool for one character: his own cards, and the ones they share. */
+export const poolFor = (who: 'milton' | 'david') => POOL.filter((c) => (c.who ?? 'milton') === who || c.who === 'both');
 
 export const cardCost = (id: string, up: boolean) => {
   const d = CARDS[id];
@@ -295,6 +440,7 @@ export const cardExhausts = (id: string, up: boolean) => {
 export const cardName = (id: string, up: boolean) => `${CARDS[id].name}${up ? '+' : ''}`;
 export const canUpgrade = (id: string, up: boolean) => !up && CARDS[id].type !== 'status' && CARDS[id].type !== 'curse';
 
+/** Milton's starting deck (CHARACTERS has both). */
 export const STARTER_DECK = ['data', 'data', 'data', 'data', 'data', 'calm', 'calm', 'calm', 'calm', 'lunch'];
 
 /** Whether a card needs a target picked now (only if more than one enemy is up). */

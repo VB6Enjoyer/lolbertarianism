@@ -59,6 +59,12 @@ const LIST: Def[] = [
   { id: 'donahue', icon: '🎤', name: 'Is There Some Society…', description: 'Win a fight with The Donahue Comeback as the final word.', done: (x) => flag(x, 'donahueKill') >= 1 },
   { id: 'choose', icon: '🗳️', name: 'Free to Choose', description: 'Play Free to Choose.', done: (x) => flag(x, 'chose') >= 1 },
   { id: 'withholding', icon: '🧾', name: 'Temporary Measure', description: 'Play Payroll Withholding.', done: (x) => flag(x, 'withheld') >= 1 },
+  // The other Friedman
+  { id: 'beat-david', icon: '👨‍👦', name: 'Necessary Evil', description: 'As Milton, out-argue David, the secret boss.', done: (x) => x.run.secret === 'won' && x.run.character === 'milton' },
+  { id: 'beat-milton', icon: '🧓', name: 'Going Further', description: 'As David, out-argue Milton, the secret boss.', done: (x) => x.run.secret === 'won' && x.run.character === 'david' },
+  { id: 'david-win', icon: '⚙️', name: 'The Machinery of Freedom', description: 'Win a run as David.', done: (x) => x.run.screen === 'won' && x.run.character === 'david' },
+  { id: 'agencies', icon: '🏢', name: 'Private Defence Industry', description: 'Have 8 Agencies at once.', done: (x) => (x.combat?.player.status.agency ?? 0) >= 8 },
+  { id: 'family-dinner', icon: '🍽️', name: 'Family Dinner', description: 'Lose the argument to the other Friedman (and win the run anyway).', secret: true, done: (x) => x.run.secret === 'lost' },
   // The daily run
   { id: 'daily', icon: '📅', name: 'The Daily Show', description: 'Finish a daily run.', done: (x) => x.dailies >= 1 || (!!x.run.daily && over(x)) },
   { id: 'daily-win', icon: '🗞️', name: 'Front Page', description: 'Win a daily run.', done: (x) => !!x.run.daily && x.run.screen === 'won' },

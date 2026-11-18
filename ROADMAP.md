@@ -799,8 +799,7 @@ Friedman vs. everyone who says capitalism is dying.
   STARTED 😈".
 - `bot.ts` plays whole runs for the tests and balancing (it gets past the
   first boss in most runs and rarely wins; people do better).
-- Next: the secret David Friedman boss and Machinery of Freedom cards, more
-  cards and events, sound polish.
+- Next: more cards and events, sound polish, balance from real players.
 
 #### Readability, achievements, the daily run and sharing ✅
 
@@ -881,3 +880,25 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
   They're now on his pupils, measured from the photo (27.3%, 45.4% and 61.3%,
   42.9%; his head tilts, so the streak tilts 5° with it), in the game and on
   the share card. The full Laser Eyes blast aims at the enemies.
+
+#### The other Friedman: a secret boss and a second character ✅
+
+- Beat Late Stage Capitalism with no Regret in your deck (from Late Stage 3,
+  that means cutting the one you start with) and David drops by: "Dad, you
+  didn't go far enough." Debate him (secret boss, 240 Credibility: Private
+  Courts, Competing Police Agencies, Polycentric Law, Medieval Iceland) or
+  take the win. Losing to him still wins the run; beating him is a boss plus
+  300 points, and unlocks him.
+- David is playable (`characters.ts`): his own starting deck and 16 cards,
+  sharing 6 with Milton, built on Protection Agencies (each hits a random
+  enemy for 1 at the end of the turn, up to 6 of them; tuned with the bot so
+  he goes about as far as Milton): Medieval Iceland, Tort Law, Law's
+  Order, Hidden Order, Polycentric Law, The Machinery of Freedom, A Market for
+  Law, Future Imperfect, and a Medieval Cookbook (his re-enactor persona,
+  Cariadoc). Starting relic: The Machinery of Freedom (1973), 1 Agency a fight.
+  His own TV appearances (his dad calls, a tourney, the sagas, the physics
+  department), and his secret boss is Milton ("Son, the state is a necessary
+  evil"), who hands you Regrets mid-fight. The title screen picks who to
+  play; the daily run stays Milton's.
+- The secret bosses are photos (deep-fried, with laser eyes on their pupils,
+  measured like Milton's). Five achievements.

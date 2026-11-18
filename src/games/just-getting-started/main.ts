@@ -20,6 +20,8 @@ import { dailyFor, normalizeDailyBests, twistById } from './daily.ts';
 import { CARD_H, CARD_W, drawShareCard, shareText, type RunSummary } from './share.ts';
 import { runScore } from './run.ts';
 import { clampStage, MAX_STAGE, STAGES, stageInfo } from './stages.ts';
+import { characterById, CHARACTERS, isCharacter, type CharacterId } from './characters.ts';
+import { fightSecret, skipSecret } from './run.ts';
 
 // ---------------------------------------------------------------------------
 // Save
@@ -46,6 +48,9 @@ interface Save {
   /** The highest Late Stage open (win on it to open the next), and the one picked for new runs. */
   stageUnlocked: number;
   stage: number;
+  /** Who can be played (David once he's beaten), and who new runs are played as. */
+  characters: CharacterId[];
+  character: CharacterId;
 }
 
 const slot = createSaveSlot<Save>({ game: 'just-getting-started', version: 1 });
@@ -65,9 +70,12 @@ function runFrom(raw: unknown): Run | null {
     r.visited ??= [];
     r.daily ??= null;
     r.stage = clampStage(r.stage);
+    r.character = isCharacter(r.character) ? r.character : 'milton';
+    r.secret ??= null;
     if (r.combat) {
       r.combat.twist ??= null;
       r.combat.stage = clampStage(r.combat.stage);
+      r.combat.character = r.character;
     }
     return r;
   } catch {
@@ -91,8 +99,12 @@ const save: Save = {
   dailyBests: normalizeDailyBests(saved?.dailyBests),
   stageUnlocked: clampStage(saved?.stageUnlocked),
   stage: 1,
+  characters: ['milton'],
+  character: 'milton',
 };
 save.stage = Math.min(clampStage(saved?.stage), save.stageUnlocked);
+save.characters = ['milton', ...(Array.isArray(saved?.characters) && saved.characters.includes('david') ? (['david'] as CharacterId[]) : [])];
+save.character = isCharacter(saved?.character) && save.characters.includes(saved.character) ? saved.character : 'milton';
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -167,11 +179,19 @@ renderMute();
 const ACT_NAMES: Record<number, string> = { 1: 'The Doomscroll', 2: 'The Money Printer', 3: 'Late Stage' };
 
 /** Friedman, deep-fried, with laser eyes that glow brighter as the Based meter fills. */
-function friedman(className = ''): HTMLElement {
-  const el = h('div', `friedman ${className}`);
+/** A Friedman (Milton unless told otherwise), deep-fried, with laser eyes on his actual pupils. */
+function friedman(className = '', who: CharacterId = 'milton'): HTMLElement {
+  const ch = characterById(who);
+  const el = h('div', `friedman ${who} ${className}`);
+  const [[lx, ly], [rx, ry]] = ch.eyes;
+  el.style.setProperty('--eye-lx', `${lx * 100}%`);
+  el.style.setProperty('--eye-ly', `${ly * 100}%`);
+  el.style.setProperty('--eye-rx', `${rx * 100}%`);
+  el.style.setProperty('--eye-ry', `${ry * 100}%`);
+  el.style.setProperty('--eye-tilt', `${ch.tilt}deg`);
   const img = h('img');
-  img.src = IMG('mfriedman');
-  img.alt = 'Milton Friedman, with glowing red laser eyes';
+  img.src = IMG(ch.image);
+  img.alt = `${ch.name}, with glowing red laser eyes`;
   img.draggable = false;
   el.append(img, h('span', 'eye l'), h('span', 'eye r'), h('span', 'beam l'), h('span', 'beam r'));
   return el;
@@ -190,6 +210,8 @@ const KEYWORDS: Record<string, string> = {
   Exhaust: 'Gone for the rest of the fight once played.',
   Inflation: 'Can’t be played. Lose 2 Credibility if it’s in your hand when your turn ends. Laser Eyes burn it up.',
   Shortage: 'Does nothing, and costs 1 Airtime to get rid of.',
+  Agency: 'A Protection Agency: at the end of your turn, each one hits a random enemy for 1 (up to 6 of them). They last the fight.',
+  Agencies: 'Protection Agencies: at the end of your turn, each one hits a random enemy for 1 (up to 6 of them). They last the fight.',
   Regret: 'A curse that stays in your deck for the whole run. Lose 1 Credibility if it’s in your hand when your turn ends.',
 };
 const KEYWORD_RE = new RegExp(`\\b(${Object.keys(KEYWORDS).join('|')})\\b`, 'g');
@@ -245,6 +267,10 @@ const STATUS_INFO: Record<Status, [string, string]> = {
   primeTime: ['📺', 'Prime Time: draw this many extra cards each turn.'],
   spiral: ['🌀', 'Spiral: gains this much Momentum every turn.'],
   decay: ['🏚️', 'Decay: loses this much Credibility every turn.'],
+  agency: ['🏢', 'Agencies: at the end of your turn, each one hits a random enemy for 1 (up to 6 of them).'],
+  machinery: ['⚙️', 'The Machinery of Freedom: at the end of your turn, gain 1 Composure for each Agency.'],
+  marketLaw: ['🏪', 'A Market for Law: gain this many Agencies at the start of each turn.'],
+  polycentric: ['🕸️', 'Polycentric Law: gain this many Agencies whenever you play a Rebuttal.'],
 };
 
 function statusRow(status: Partial<Record<Status, number>>): HTMLElement {
@@ -396,9 +422,11 @@ function renderHud() {
 function setFry() {
   const run = save.run;
   const based = run?.combat?.based ?? run?.based ?? 0;
-  const stage = view === 'title' ? 2 : Math.min(4, Math.floor(based / 25));
+  // The meme screens (the title, the end of an act, the secret boss, a win) always have full laser eyes.
+  const meme = view === 'title' || (!!run && (run.screen === 'act-clear' || run.screen === 'secret' || run.screen === 'won'));
+  const stage = meme ? 2 : Math.min(4, Math.floor(based / 25));
   els.app.className = `fry-${stage} act-${run && view !== 'title' ? run.act : 0}`;
-  els.app.style.setProperty('--based', String(view === 'title' ? 1 : based / BASED_MAX));
+  els.app.style.setProperty('--based', String(meme ? 1 : based / BASED_MAX));
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +462,8 @@ function render() {
       return renderEvent(run);
     case 'act-clear':
       return renderActClear(run);
+    case 'secret':
+      return renderSecret(run);
     case 'lost':
     case 'won':
       return renderEnd(run);
@@ -450,7 +480,8 @@ function renderTitle() {
     buttons.append(button(`▶ Continue <small>Act ${run.act} · ${run.hp}/${run.maxHp} ❤️</small>`, 'big-button', () => go('run')));
     buttons.append(button('New run', 'big-button secondary', confirmNewRun));
   } else buttons.append(button('▶ Start a run', 'big-button', startRun));
-  // The stage picker sits above the buttons (the buttons go in after it).
+  // The character and stage pickers sit above the buttons (the buttons go in after them).
+  if (save.characters.length > 1 && !run) s.append(characterPicker());
   if (save.stageUnlocked > 1 && !run) s.append(stagePicker());
   const d = dailyFor(new Date());
   buttons.append(button(`📅 Daily run <small>${d.twist.icon} ${d.twist.name}</small>`, 'big-button secondary', showDaily));
@@ -462,6 +493,57 @@ function renderTitle() {
     const best = save.meta.wins ? `${save.meta.wins} win${save.meta.wins === 1 ? '' : 's'}` : `best: Act ${save.meta.bestAct}, floor ${save.meta.bestFloor}`;
     s.append(h('p', 'meta', `${save.meta.runs} run${save.meta.runs === 1 ? '' : 's'} · ${best} · ${save.meta.lasers} laser blasts`));
   }
+  els.screen.append(s);
+}
+
+/** Who new runs are played as (once David's unlocked). */
+function characterPicker(): HTMLElement {
+  const box = h('div', 'character-picker');
+  for (const id of save.characters) {
+    const ch = CHARACTERS[id];
+    const b = button('', `character${save.character === id ? ' picked' : ''}`, () => {
+      save.character = id;
+      persist();
+      render();
+    });
+    b.append(friedman('mini', id), h('b', '', ch.short), h('small', '', id === 'milton' ? 'Data &amp; Composure' : 'Protection Agencies'));
+    b.dataset.tip = `<b>${ch.name}</b><br>${ch.blurb}`;
+    b.setAttribute('aria-pressed', String(save.character === id));
+    box.append(b);
+  }
+  return box;
+}
+
+/** The other Friedman drops by: take him on, or take the win. */
+function renderSecret(run: Run) {
+  const boss = characterById(characterById(run.character).secretBoss === 'david' ? 'david' : 'milton');
+  const s = h('section', 'title-screen secret-screen');
+  s.append(
+    h('h1', 'meme top', 'LATE STAGE CAPITALISM: CANCELLED'),
+    h('p', 'pitch', run.character === 'milton'
+      ? 'The studio empties. You’re packing up your notes when someone knocks on the green room door. Your son. He’s been watching. He has notes.'
+      : 'The studio empties. Your phone rings. It’s your father. He watched the whole thing. He has notes.'),
+    friedman('big lasers-on', boss.id),
+    h('h1', 'meme bottom', run.character === 'milton' ? '“DAD, YOU DIDN’T <span>GO FAR ENOUGH.”</span>' : '“SON, THE STATE IS A <span>NECESSARY EVIL.”</span>'),
+  );
+  const buttons = h('div', 'menu-buttons');
+  buttons.append(
+    button(`⚔️ Debate ${boss.short} <small>Secret boss · you get most of your Credibility back</small>`, 'big-button', () => {
+      fightSecret(run);
+      persist();
+      render();
+      window.scrollTo(0, 0);
+      if (run.combat) playFx(run.combat.fx.splice(0));
+    }),
+    button('🏆 Take the win', 'big-button secondary', () => {
+      skipSecret(run);
+      endOfRun(run);
+      play('win');
+      persist();
+      render();
+    }),
+  );
+  s.append(buttons, h('p', 'meta', run.character === 'milton' ? 'Win and you can play as David.' : 'It’s only a family argument. Mostly.'));
   els.screen.append(s);
 }
 
@@ -500,7 +582,7 @@ function go(to: 'title' | 'run') {
 }
 
 function startRun() {
-  save.run = newRun((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, null, save.stage);
+  save.run = newRun((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, null, save.stage, save.character);
   persist();
   go('run');
 }
@@ -534,6 +616,7 @@ function showHowTo() {
         <li>🎈 <b>Inflation</b> clogs your hand and costs Credibility. 😔 <b>Regret</b> is forever. You know what you did.</li>
         <li>❔ Not sure what a word means? <b>Hover</b> over it (on a phone, <b>long-press</b> a card, or tap a chip or an intent).</li>
         <li>📅 A <b>daily run</b>: the same run for everyone each day, with a twist, and a best score to beat.</li>
+        <li>🤫 Beat the last boss with <b>no Regret</b> in your deck, and someone drops by. Win that argument and you can play as him.</li>
         <li>🪜 Win a run and <b>Late Stage 2</b> opens: harder, and worth more points. Up to Late Stage 10. Each stage keeps every twist before it. It’s never over.</li>
         <li>⌨️ Keys: <kbd>1</kbd>–<kbd>9</kbd> play a card, <kbd>L</kbd> laser eyes, <kbd>E</kbd> end turn, <kbd>Esc</kbd> cancel.</li>`,
       ),
@@ -627,7 +710,7 @@ function renderCombat(c: Combat) {
   const arena = h('div', 'arena');
   const me = h('div', 'player-side');
   me.dataset.target = 'player';
-  const portrait = friedman(c.based >= BASED_MAX ? 'ready' : '');
+  const portrait = friedman(c.based >= BASED_MAX ? 'ready' : '', c.character ?? 'milton');
   me.append(portrait, bar(c.player.hp, c.player.maxHp, c.player.block), statusRow(c.player.status));
   const foes = h('div', 'foes');
   c.enemies.forEach((e, i) => {
@@ -640,7 +723,9 @@ function renderCombat(c: Combat) {
     intent.dataset.tip = `<b>Next turn: ${move.name}</b><br>${INTENT_TIP[move.intent]}${move.also ? `<br>${INTENT_TIP[move.also]}` : ''}${damage ? `<br>Damage: ${damage} (after its Momentum, and your Exposed)` : ''}`;
     const name = h('b', 'foe-name');
     name.textContent = def.name;
-    foe.append(intent, h('small', 'move-name', ''), h('div', 'foe-emoji', def.emoji), name, bar(e.hp, e.maxHp, e.block), statusRow(e.status));
+    // The secret bosses have a photo; everyone else is an emoji.
+    const look = def.image ? friedman('foe-photo', def.image === 'dfriedman' ? 'david' : 'milton') : h('div', 'foe-emoji', def.emoji);
+    foe.append(intent, h('small', 'move-name', ''), look, name, bar(e.hp, e.maxHp, e.block), statusRow(e.status));
     foe.querySelector('.move-name')!.textContent = move.name;
     foe.addEventListener('click', () => {
       if (selected === null || busy) return;
@@ -923,6 +1008,12 @@ function endOfRun(run: Run) {
   recordEnd(run, run.screen === 'won');
   // Win on your highest stage, and the next one opens (and becomes the one you'll play).
   unlockedNow = null;
+  unlockedChar = null;
+  // Out-argue David as Milton, and David's yours to play.
+  if (run.secret === 'won' && run.character === 'milton' && !save.characters.includes('david')) {
+    save.characters.push('david');
+    unlockedChar = 'david';
+  }
   if (run.screen === 'won' && !run.daily && run.stage >= save.stageUnlocked && save.stageUnlocked < MAX_STAGE) {
     save.stageUnlocked = run.stage + 1;
     save.stage = save.stageUnlocked;
@@ -935,8 +1026,9 @@ function endOfRun(run: Run) {
   checkAchievements();
 }
 
-/** The stage that the run just ended opened (for the end screen). */
+/** The stage (and the character) that the run just ended opened (for the end screen). */
 let unlockedNow: number | null = null;
+let unlockedChar: CharacterId | null = null;
 
 /** Unlocks whatever the run (and the fight) has earned since the last look. */
 function checkAchievements() {
@@ -1032,6 +1124,8 @@ function summaryOf(run: Run): RunSummary {
     lasers: run.stats.lasers,
     deck: run.deck.length,
     stage: run.stage,
+    character: characterById(run.character).short,
+    beatSecret: run.secret === 'won' ? characterById(characterById(run.character).secretBoss === 'david' ? 'david' : 'milton').name : null,
     daily: run.daily && twist ? { key: run.daily.key, name: twist.name, icon: twist.icon } : null,
     url: `${location.origin}${location.pathname}`,
   };
@@ -1169,9 +1263,13 @@ function renderEnd(run: Run) {
   const s = h('section', `title-screen end-screen ${won ? 'won' : 'lost'}`);
   s.append(
     h('h1', 'meme top', won ? 'LATE STAGE CAPITALISM 😔' : 'RATIO’D 😔'),
-    friedman(won ? 'big lasers-on' : 'big defeated'),
+    friedman(won ? 'big lasers-on' : 'big defeated', run.character),
     h('h1', 'meme bottom', won ? 'CANCELLED. <span>AGAIN. 😈😤</span>' : '<span>THE DOOMERS WIN THIS ROUND</span>'),
   );
+  const other = characterById(characterById(run.character).secretBoss === 'david' ? 'david' : 'milton');
+  if (run.secret === 'won') s.append(h('p', 'secret-line', `🤝 And you out-argued <b>${other.name}</b>. ${run.character === 'milton' ? 'He still thinks you didn’t go far enough.' : 'He’s proud of you. He’d never say so on air.'}`));
+  if (run.secret === 'lost') s.append(h('p', 'secret-line', `🤝 ${other.name} won the argument. You still won the run. Family dinners will be interesting.`));
+  if (unlockedChar) s.append(h('p', 'stage-unlocked', `🔓 <b>${characterById(unlockedChar).name}</b> is now playable: pick him on the title screen. ${characterById(unlockedChar).blurb}`));
   const st = run.stats;
   s.append(
     h(

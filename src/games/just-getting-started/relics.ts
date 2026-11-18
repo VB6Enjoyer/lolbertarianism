@@ -11,6 +11,7 @@ export interface RelicDef {
 
 const LIST: RelicDef[] = [
   { id: 'glasses', name: 'Thick Glasses', emoji: '👓', tier: 'starter', text: 'On the first turn of each fight, draw 2 more cards.' },
+  { id: 'machinery-book', name: 'The Machinery of Freedom (1973)', emoji: '📕', tier: 'starter', text: 'Start each fight with 1 Agency.' },
   { id: 'pipe', name: 'The Pipe', emoji: '🚬', tier: 'common', text: 'Start each fight with 6 Composure.' },
   { id: 'medal', name: 'Nobel Medal', emoji: '🏅', tier: 'common', text: '+12 max Credibility.' },
   { id: 'chalk', name: 'Chalk Dust', emoji: '🧂', tier: 'common', text: 'Start each fight with 1 Momentum.' },

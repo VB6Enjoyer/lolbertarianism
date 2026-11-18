@@ -37,6 +37,8 @@ export interface EnemyDef {
   /** Runs when it drops to 0; return true if it gets back up. */
   onDeath?: (c: Combat, e: Enemy) => boolean;
   boss?: boolean;
+  /** A photo to show instead of the emoji (public/vidya/img, without .webp): the secret bosses. */
+  image?: string;
   /** What it says when the fight starts. */
   intro: string;
 }
@@ -350,6 +352,58 @@ const LIST: EnemyDef[] = [
     },
   },
 ];
+
+// --- The secret bosses: the other Friedman, after you beat Late Stage Capitalism with no Regrets ---
+LIST.push(
+  {
+    id: 'david', name: 'David Friedman', emoji: '🧔', image: 'dfriedman', hp: [240, 240], boss: true,
+    intro: 'Dad, great show. But if markets do everything better… why stop at schools? Why keep the state at all?',
+    moves: {
+      courts: { name: 'Private Courts', intent: 'defend', also: 'debuff', act: (c, e) => {
+        gainBlock(c, e, 16, e.uid);
+        addStatus(c, c.player, 'rattled', 2, 'player');
+        say(c, e, 'Courts compete too, Dad. Why should law be a monopoly?');
+      } },
+      police: attack('Competing Police Agencies', 6, 3),
+      polycentric: { name: 'Polycentric Law', intent: 'debuff', also: 'buff', act: (c, e) => {
+        addStatus(c, c.player, 'exposed', 2, 'player');
+        addStatus(c, e, 'momentum', 2, e.uid);
+        say(c, e, 'Different rules for different customers. It worked in Iceland for three centuries.');
+      } },
+      iceland: attack('Medieval Iceland', 22, 1, (c, e) => say(c, e, 'No king. No police. Read the paper.')),
+      farenough: { name: 'You Didn’t Go Far Enough', intent: 'buff', act: (c, e) => {
+        heal(c, e, 14, e.uid);
+        addStatus(c, e, 'momentum', 3, e.uid);
+        say(c, e, 'Vouchers, Dad? Why not take the state out of schooling altogether?');
+      } },
+    },
+    first: 'courts',
+    next: cycle(['police', 'polycentric', 'iceland', 'farenough', 'courts']),
+  },
+  {
+    id: 'milton', name: 'Milton Friedman', emoji: '👴', image: 'mfriedman', hp: [240, 240], boss: true,
+    intro: 'Son, I love you. But the state is a necessary evil. Somebody has to print the money. Steadily.',
+    moves: {
+      rule: attack('Monetary Rule', 5, 3, (c, e) => say(c, e, 'A steady few percent a year. Every year. No exceptions.')),
+      nit: { name: 'Negative Income Tax', intent: 'defend', also: 'buff', act: (c, e) => {
+        gainBlock(c, e, 12, e.uid);
+        heal(c, e, 12, e.uid);
+      } },
+      withholding: { name: 'Payroll Withholding', intent: 'debuff', act: (c, e) => {
+        addCard(c, 'regret', 'draw');
+        addCard(c, 'regret', 'draw');
+        say(c, e, 'It was wartime. It was temporary. I regret it. Here, have some.');
+      } },
+      free: attack('Free to Choose', 20),
+      pencil: { name: 'I, Pencil', intent: 'buff', act: (c, e) => {
+        addStatus(c, e, 'momentum', 3, e.uid);
+        say(c, e, 'Nobody knows how to make a pencil. Not even your protection agencies.');
+      } },
+    },
+    first: 'pencil',
+    next: cycle(['rule', 'withholding', 'free', 'nit', 'pencil']),
+  },
+);
 
 export const ENEMIES: Record<string, EnemyDef> = Object.fromEntries(LIST.map((e) => [e.id, e]));
 export const enemyDef = (id: string) => ENEMIES[id];

@@ -104,7 +104,7 @@ describe('achievements', () => {
 
 describe('sharing', () => {
   it('sums up the run in a few lines', () => {
-    const text = shareText({ won: false, score: 230, act: 2, floor: 4, fights: 9, damage: 600, lasers: 5, deck: 18, stage: 1, daily: { key: '2026-11-18', name: 'Bull Market Day', icon: '🐂' }, url: 'https://example.com/jgs' });
+    const text = shareText({ won: false, score: 230, act: 2, floor: 4, fights: 9, damage: 600, lasers: 5, deck: 18, stage: 1, character: 'Milton', beatSecret: null, daily: { key: '2026-11-18', name: 'Bull Market Day', icon: '🐂' }, url: 'https://example.com/jgs' });
     expect(text.split('\n')).toEqual([
       '😈 JUST GETTING STARTED · 🐂 Daily 2026-11-18 (Bull Market Day)',
       'Ratio’d in Act 2, floor 4 😔',

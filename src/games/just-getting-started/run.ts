@@ -2,7 +2,8 @@
 // fights: rewards, the shop, the green room (rest or rehearse) and TV appearances (events).
 // Plain data again, so the whole run saves and loads as JSON.
 
-import { canUpgrade, POOL, type Rarity, STARTER_DECK } from './cards.ts';
+import { canUpgrade, POOL, poolFor, type Rarity } from './cards.ts';
+import { characterById, type CharacterId } from './characters.ts';
 import { startCombat } from './combat.ts';
 import type { TwistId } from './daily.ts';
 import { clampStage, stageMultiplier } from './stages.ts';
@@ -29,7 +30,7 @@ export interface MapNode {
   next: number[];
 }
 
-export type Screen = 'map' | 'combat' | 'reward' | 'shop' | 'rest' | 'event' | 'act-clear' | 'lost' | 'won';
+export type Screen = 'map' | 'combat' | 'reward' | 'shop' | 'rest' | 'event' | 'act-clear' | 'secret' | 'lost' | 'won';
 
 export interface Reward {
   kind: FightKind;
@@ -86,6 +87,13 @@ export interface Run {
   daily: { key: string; twist: TwistId } | null;
   /** The Late Stage it's played on (1 to 10). */
   stage: number;
+  /** Who's playing. */
+  character: CharacterId;
+  /**
+   * The secret boss (the other Friedman), after beating Late Stage Capitalism with no Regret in the
+   * deck: offered, being fought, won, lost (still a winning run), or skipped. Null until then.
+   */
+  secret: null | 'offered' | 'fighting' | 'won' | 'lost' | 'skipped';
 }
 
 // ---------------------------------------------------------------------------
@@ -137,8 +145,10 @@ export function reachable(run: Run): MapNode[] {
 // A new run
 // ---------------------------------------------------------------------------
 
-export function newRun(seed: number, daily: { key: string; twist: TwistId } | null = null, stage = 1): Run {
+export function newRun(seed: number, daily: { key: string; twist: TwistId } | null = null, stage = 1, character: CharacterId = 'milton'): Run {
   stage = daily ? 1 : clampStage(stage);
+  // The daily run is the same for everyone: Milton, on stage 1.
+  const who = characterById(daily ? 'milton' : character);
   const hp = stage >= 7 ? START_HP - 10 : START_HP;
   const rng = makeRng(seed);
   const run: Run = {
@@ -149,7 +159,7 @@ export function newRun(seed: number, daily: { key: string; twist: TwistId } | nu
     maxHp: hp,
     royalties: START_ROYALTIES,
     deck: [],
-    relics: ['glasses'],
+    relics: [who.relic],
     based: 0,
     map: [],
     pos: null,
@@ -166,8 +176,10 @@ export function newRun(seed: number, daily: { key: string; twist: TwistId } | nu
     stats: { floors: 0, fights: 0, elites: 0, bosses: 0, damage: 0, lasers: 0, cardsPlayed: 0 },
     daily,
     stage,
+    character: who.id,
+    secret: null,
   };
-  run.deck = STARTER_DECK.map((id) => newCard(run, id));
+  run.deck = who.starter.map((id) => newCard(run, id));
   if (stage >= 3) run.deck.push(newCard(run, 'regret'));
   if (daily?.twist === 'helicopter') {
     run.deck.push(newCard(run, 'helicopter'), newCard(run, 'helicopter'));
@@ -181,7 +193,7 @@ export const newCard = (run: Run, id: string, up = false): Card => ({ uid: run.n
 
 /** A run's score (for the daily best and the share card): floors climbed, elites and bosses beaten, and a bonus for winning. */
 export const runScore = (run: Run) =>
-  Math.round((run.stats.floors * 10 + run.stats.elites * 25 + run.stats.bosses * 100 + (run.screen === 'won' ? 500 : 0)) * stageMultiplier(run.stage ?? 1));
+  Math.round((run.stats.floors * 10 + run.stats.elites * 25 + run.stats.bosses * 100 + (run.screen === 'won' ? 500 : 0) + (run.secret === 'won' ? 300 : 0)) * stageMultiplier(run.stage ?? 1));
 
 // ---------------------------------------------------------------------------
 // Moving on the map
@@ -204,8 +216,9 @@ export function enterNode(run: Run, row: number, col: number): boolean {
       startFight(run, 'boss', ENCOUNTERS[run.act].boss);
       break;
     case 'event': {
-      const fresh = EVENTS.filter((e) => !run.seenEvents.includes(e.id));
-      const event = pickOne(run.rng, fresh.length ? fresh : EVENTS);
+      const mine = EVENTS.filter((e) => (e.who ?? 'milton') === run.character);
+      const fresh = mine.filter((e) => !run.seenEvents.includes(e.id));
+      const event = pickOne(run.rng, fresh.length ? fresh : mine);
       run.seenEvents.push(event.id);
       run.event = { id: event.id, result: null };
       run.screen = 'event';
@@ -237,6 +250,7 @@ function startFight(run: Run, kind: FightKind, enemies: string[]) {
     nextUid: run.nextUid,
     twist: run.daily?.twist ?? null,
     stage: run.stage,
+    character: run.character,
   });
   run.screen = 'combat';
 }
@@ -252,6 +266,12 @@ export function finishCombat(run: Run) {
   run.stats.cardsPlayed += c.flags.cards ?? 0;
   if (c.result === 'lost') {
     run.hp = 0;
+    // Losing to the secret boss: the run was already won. He just won the argument.
+    if (run.secret === 'fighting') {
+      run.secret = 'lost';
+      run.screen = 'won';
+      return;
+    }
     run.screen = 'lost';
     return;
   }
@@ -269,6 +289,13 @@ export function finishCombat(run: Run) {
   const royalties = Math.round((base + (run.relics.includes('newsweek') ? 15 : 0)) * (run.daily?.twist === 'gold-standard' ? 0.5 : 1) * (run.stage >= 9 ? 0.7 : 1));
   run.royalties += royalties;
   if (c.kind === 'boss' && run.act === ACTS) {
+    if (run.secret === 'fighting') run.secret = 'won';
+    // No Regrets? The other Friedman drops by.
+    else if (!run.deck.some((card) => card.id === 'regret')) {
+      run.secret = 'offered';
+      run.screen = 'secret';
+      return;
+    }
     run.screen = 'won';
     return;
   }
@@ -293,8 +320,9 @@ export function rollCards(run: Run, n: number, kind: FightKind, exclude: readonl
   const taken = (id: string) => picked.includes(id) || exclude.includes(id);
   for (let i = 0; i < n; i++) {
     const rarity = weighted(run.rng, weights);
-    const options = POOL.filter((d) => d.rarity === rarity && !taken(d.id));
-    const fallback = POOL.filter((d) => !taken(d.id));
+    const pool = poolFor(run.character);
+    const options = pool.filter((d) => d.rarity === rarity && !taken(d.id));
+    const fallback = pool.filter((d) => !taken(d.id));
     picked.push(pickOne(run.rng, options.length ? options : fallback).id);
   }
   // Later acts sometimes hand out upgraded cards.
@@ -322,6 +350,21 @@ export function leaveReward(run: Run) {
   if (!r) return;
   run.reward = null;
   run.screen = r.kind === 'boss' ? 'act-clear' : 'map';
+}
+
+/** Takes on the secret boss (with most of your Credibility back first). */
+export function fightSecret(run: Run) {
+  if (run.screen !== 'secret' || run.secret !== 'offered') return;
+  run.hp += Math.round((run.maxHp - run.hp) * 0.75);
+  run.secret = 'fighting';
+  startFight(run, 'boss', [characterById(run.character).secretBoss]);
+}
+
+/** Takes the win instead. */
+export function skipSecret(run: Run) {
+  if (run.screen !== 'secret') return;
+  run.secret = 'skipped';
+  run.screen = 'won';
 }
 
 /** On to the next act: a new map, and most of your Credibility back. */
@@ -454,7 +497,7 @@ function applyEffect(run: Run, e: Effect) {
       run.deck.push(newCard(run, e.id, e.up));
       break;
     case 'randomCard': {
-      const options = POOL.filter((d) => d.rarity === e.rarity);
+      const options = poolFor(run.character).filter((d) => d.rarity === e.rarity);
       run.deck.push(newCard(run, pickOne(run.rng, options).id));
       break;
     }

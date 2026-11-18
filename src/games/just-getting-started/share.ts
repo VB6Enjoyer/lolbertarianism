@@ -11,6 +11,9 @@ export interface RunSummary {
   deck: number;
   /** The Late Stage (1 = the plain run). */
   stage: number;
+  /** Who played, and how the secret boss went (the other Friedman's name if beaten). */
+  character: string;
+  beatSecret: string | null;
   daily: { key: string; name: string; icon: string } | null;
   url: string;
 }
@@ -20,10 +23,13 @@ const headline = (s: RunSummary) => (s.won ? 'Late Stage Capitalism: cancelled. 
 export function shareText(s: RunSummary): string {
   return [
     s.daily ? `😈 JUST GETTING STARTED · ${s.daily.icon} Daily ${s.daily.key} (${s.daily.name})` : `😈 JUST GETTING STARTED${s.stage > 1 ? ` · Late Stage ${s.stage}` : ''}`,
-    headline(s),
+    headline(s) + (s.beatSecret ? ` And out-argued ${s.beatSecret}. 🤝` : ''),
+    s.character !== 'Milton' ? `Played as ${s.character} Friedman` : '',
     `🏆 ${s.score} points · 🎙️ ${s.fights} arguments won · 🔴 ${s.lasers} laser blasts`,
     s.url,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** Friedman's pupils on mfriedman.webp (fractions of its width and height), and the tilt of the line between them. */
@@ -101,6 +107,7 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, s: RunSummary, face
   const tagged = !!s.daily || s.stage > 1;
   meme(s.won ? 'LATE STAGE CAPITALISM: CANCELLED' : `RATIO’D IN ACT ${s.act}, FLOOR ${s.floor}`, x, tagged ? 230 : 200, 40, s.won ? '#46d17a' : '#ff2a1a');
   meme(`${s.score} POINTS`, x, tagged ? 310 : 285, 64, '#f6c94a');
+  if (s.beatSecret) meme(`🤝 + OUT-ARGUED ${s.beatSecret.toUpperCase()}`, x + 380, tagged ? 310 : 285, 24, '#46d17a', 300);
   const rows: [string, string][] = [
     ['🎙️ Arguments won', String(s.fights)],
     ['💥 Credibility knocked off', String(s.damage)],

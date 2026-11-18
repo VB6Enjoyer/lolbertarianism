@@ -2,7 +2,7 @@
 // then the other side does what its intents said. Everything here works on plain data (see
 // state.ts), so the screen just calls these and redraws.
 
-import { cardCost, cardDef, cardExhausts, POOL } from './cards.ts';
+import { cardCost, cardDef, cardExhausts, poolFor } from './cards.ts';
 import { enemyDef, type Move } from './enemies.ts';
 import type { TwistId } from './daily.ts';
 import { int, type Rng, shuffleInPlace } from './rng.ts';
@@ -14,6 +14,12 @@ import {
 export const HAND_SIZE = 5;
 export const ENERGY = 3;
 export const LASER_DAMAGE = 20;
+/**
+ * What each of David's Protection Agencies does at the end of his turn, and how many act (you can
+ * have more; only this many hit). Tuned with the bot so David goes about as far as Milton.
+ */
+export const AGENCY_DAMAGE = 1;
+export const AGENCY_CAP = 6;
 
 export interface FightSetup {
   act: number;
@@ -29,6 +35,8 @@ export interface FightSetup {
   twist?: TwistId | null;
   /** The Late Stage (1 if not given). */
   stage?: number;
+  /** Who's playing (Milton if not given). */
+  character?: 'milton' | 'david';
 }
 
 export function startCombat(s: FightSetup): Combat {
@@ -54,6 +62,7 @@ export function startCombat(s: FightSetup): Combat {
     flags: {},
     twist: s.twist ?? null,
     stage: s.stage ?? 1,
+    character: s.character ?? 'milton',
   };
   c.enemies = s.enemies.map((id, i): Enemy => {
     const def = enemyDef(id);
@@ -62,6 +71,7 @@ export function startCombat(s: FightSetup): Combat {
   });
   if (c.relics.includes('pipe')) gainBlock(c, c.player, 6, 'player');
   if (c.relics.includes('chalk')) addStatus(c, c.player, 'momentum', 1, 'player');
+  if (c.relics.includes('machinery-book')) addStatus(c, c.player, 'agency', 1, 'player');
   if (c.relics.includes('press')) {
     addCard(c, 'inflation', 'draw');
     addCard(c, 'inflation', 'draw');
@@ -94,6 +104,7 @@ function startTurn(c: Combat) {
   p.energy = p.maxEnergy + (c.relics.includes('press') ? 1 : 0);
   c.flags.turnCards = 0;
   if (p.status.monetarism) addStatus(c, p, 'momentum', p.status.monetarism, 'player');
+  if (p.status.marketLaw) addStatus(c, p, 'agency', p.status.marketLaw, 'player');
   const extra = (c.turn === 1 && c.relics.includes('glasses') ? 2 : 0) + (p.status.primeTime ?? 0) + (c.relics.includes('vhs') ? 1 : 0);
   drawCards(c, HAND_SIZE + extra);
 }
@@ -136,6 +147,7 @@ export function playCard(c: Combat, i: number, target?: number): boolean {
   c.flags.bigHit = Math.max(c.flags.bigHit ?? 0, (c.flags.damage ?? 0) - dealtBefore);
   if (card.id === 'withholding') c.flags.withheld = 1;
   if (card.id === 'choose') c.flags.chose = 1;
+  if (def.type === 'rebuttal' && c.player.status.polycentric) addStatus(c, c.player, 'agency', c.player.status.polycentric, 'player');
   if (def.type === 'rebuttal' && c.player.status.vouchers) {
     const standing = c.enemies.map((e, k) => (e.dead ? -1 : k)).filter((k) => k >= 0);
     if (standing.length) zap(c, standing[int(c.rng, 0, standing.length - 1)], c.player.status.vouchers);
@@ -146,7 +158,7 @@ export function playCard(c: Combat, i: number, target?: number): boolean {
   else c.discard.push(card);
   // Free to Choose: three different cards to pick from.
   if (c.pending?.kind === 'choose' && !c.pending.options.length) {
-    const ids = shuffleInPlace(c.rng, POOL.map((d) => d.id).filter((id) => id !== 'choose')).slice(0, 3);
+    const ids = shuffleInPlace(c.rng, poolFor(c.character).map((d) => d.id).filter((id) => id !== 'choose' && id !== 'thought')).slice(0, 3);
     c.pending.options = ids.map((id) => ({ uid: c.nextUid++, id, up: false }));
   }
   settle(c);
@@ -189,6 +201,13 @@ export function endTurn(c: Combat) {
   const p = c.player;
   for (const card of c.hand) cardDef(card.id).endOfTurn?.(c);
   if (p.status.flatTax) c.enemies.forEach((e, i) => !e.dead && zap(c, i, p.status.flatTax!));
+  // David's Protection Agencies: each one hits a random enemy still standing.
+  for (let k = 0; k < Math.min(AGENCY_CAP, p.status.agency ?? 0); k++) {
+    const standing = c.enemies.map((e, i) => (e.dead ? -1 : i)).filter((i) => i >= 0);
+    if (!standing.length) break;
+    zap(c, standing[int(c.rng, 0, standing.length - 1)], AGENCY_DAMAGE);
+  }
+  if (p.status.machinery && p.status.agency) gainBlock(c, p, p.status.agency * p.status.machinery, 'player');
   settle(c);
   if (c.result) return;
   for (const card of c.hand) delete card.free;
