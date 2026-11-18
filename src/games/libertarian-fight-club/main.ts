@@ -2,6 +2,7 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
+import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { installTapTips } from './taptips.ts';
 import { ARG_TYPES, FACTIONS, factionById, makeRoster, movesOf, normalizeRoster, TEACHABLE, traitById, type ArgType, type Faction, type Lobster } from './lobsters.ts';
 import { argTypesOf, pickBout, publicChance, revealedSides, ROUNDS, seededRng, simulate, stateAfterRound, weighIn, type FightEvent, type FightResult, type Side } from './fight.ts';
@@ -2554,6 +2555,8 @@ els.liveOff.addEventListener('click', () => {
   log('⚙️ No more live markets. Turn them back on in ⚙️ Settings.', 'bell');
   continueLive?.();
 });
+// Copy your progress to another device, or load it from one.
+for (const id of ['save-transfer', 'title-save-transfer']) byId(id).addEventListener('click', () => openSaveTransfer('libertarian-fight-club'));
 byId('show-settings').addEventListener('click', () => {
   renderSettings();
   els.settings.hidden = false;

@@ -761,3 +761,19 @@ into a handicapping game. Steps 1 and 2 of the plan:
   🦈 button in the header shows what you owe (and pulses when he's about to
   lose patience). Going broke is now a choice: Vinny's money, or your uncle's
   $500 and a trip down a venue.
+
+### Save & load in every game ✅
+
+- Saves only live in localStorage, so every game that saves now has a 💾 Save
+  & load dialog (`src/shared/save-transfer.ts`): copy the save as a code or
+  download it as a file, then paste the code or open the file on another
+  device (or after clearing browsing data). Codes look like
+  `LOLB1:<slug>:<base64>`; a code from another game is refused by name.
+  Loading asks before replacing a save, writes it, stops the page from saving
+  over it (`freezeSaves()` in `storage.ts`) and reloads, so the game reads it
+  through its own checks.
+- Where: Basic Economics Trainer (📊 Stats & settings), The Road to Liberty
+  (⚙️ Options), Libertarian Fight Club (the title screen and ⚙️ Settings),
+  Kindergarten Property Defender (title and pause) and Austrian Economics
+  Simulator (title). Ancapistan Tycoon keeps its own save codes; Eminem's
+  Human Action and JUST GETTING STARTED save nothing.

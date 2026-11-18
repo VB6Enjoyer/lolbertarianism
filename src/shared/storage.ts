@@ -30,6 +30,29 @@ export interface SaveSlot<T> {
   clear(): void;
 }
 
+/** Set once a save is loaded from a code: the page is about to reload, and nothing may overwrite it. */
+let frozen = false;
+
+/** Stops every save slot on this page from saving (until the page reloads). */
+export function freezeSaves() {
+  frozen = true;
+}
+
+/** A game's save exactly as stored (for save codes), or null if there is none. */
+export function readSave(game: string): string | null {
+  return read(PREFIX + game);
+}
+
+/** Stores a save exactly as given (from a save code). False if storage is blocked or full. */
+export function writeSave(game: string, stored: string): boolean {
+  try {
+    localStorage.setItem(PREFIX + game, stored);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function read(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -72,6 +95,7 @@ export function createSaveSlot<T>({
     },
 
     save(data) {
+      if (frozen) return;
       try {
         localStorage.setItem(key, JSON.stringify({ v: version, data } satisfies Envelope));
       } catch {
@@ -80,6 +104,7 @@ export function createSaveSlot<T>({
     },
 
     clear() {
+      if (frozen) return;
       try {
         localStorage.removeItem(key);
         for (const legacyKey of legacyKeys) localStorage.removeItem(legacyKey);

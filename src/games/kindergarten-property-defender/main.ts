@@ -1,6 +1,7 @@
 import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
+import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { GRADUATION_WEEK, honours, perkById, PERKS, type PerkId } from './perks.ts';
 import { Playground, type MoodId } from './music.ts';
@@ -696,6 +697,8 @@ function renderMusicToggle() {
     b.setAttribute('aria-pressed', String(save.music));
   }
 }
+// Copy your progress to another device, or load it from one.
+for (const b of document.querySelectorAll<HTMLButtonElement>('.save-transfer')) b.addEventListener('click', () => openSaveTransfer('kindergarten-property-defender'));
 for (const b of document.querySelectorAll<HTMLButtonElement>('.music-toggle')) {
   b.addEventListener('click', () => {
     save.music = !save.music;
