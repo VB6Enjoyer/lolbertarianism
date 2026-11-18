@@ -8,6 +8,7 @@ import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
 import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, shuffle, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
+import { daysBetween, emptyStreak, greeting, liveStreak, partOfDay, recordDaily, shareText, streakLine, TIME_ASIDES, type DailyStreak } from './days.ts';
 import { SHOWDOWNS, showdownById, showdownQuestions } from './showdowns.ts';
 import { glossaryFor, type GlossaryEntry } from './books/glossary.ts';
 import { CERTIFICATE_FONTS, certificateFont, coverImage, drawCertificate, loadCertificateFonts, longDate } from './certificate.ts';
@@ -58,6 +59,7 @@ const els = {
   flashRestart: byId<HTMLButtonElement>('flash-restart'),
   hideFlashcards: byId<HTMLButtonElement>('hide-flashcards'),
   endCertificate: byId<HTMLButtonElement>('end-certificate'),
+  shareDaily: byId<HTMLButtonElement>('share-daily'),
   certificate: byId('certificate'),
   certificateCanvas: byId<HTMLCanvasElement>('certificate-canvas'),
   certificateName: byId<HTMLInputElement>('certificate-name'),
@@ -149,6 +151,10 @@ interface Save {
   certificate: { name: string; font: string };
   /** Best score in each showdown, by id. */
   showdownBest: Record<string, number>;
+  /** Days in a row with a daily quiz (any book). */
+  dailyStreak: DailyStreak;
+  /** The last day you opened the game (YYYY-MM-DD), for Anya to notice when you’ve been away. */
+  lastVisit: string;
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -188,6 +194,12 @@ const save: Save = {
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
   wrongStreak: count(saved?.wrongStreak),
   showdownBest: counts(saved?.showdownBest),
+  dailyStreak: (() => {
+    const r = saved?.dailyStreak;
+    const key = (x: unknown) => (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : '');
+    return r && typeof r === 'object' ? { last: key(r.last), current: count(r.current), best: count(r.best) } : emptyStreak();
+  })(),
+  lastVisit: typeof saved?.lastVisit === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(saved.lastVisit) ? saved.lastVisit : '',
   certificate: {
     name: typeof saved?.certificate?.name === 'string' ? saved.certificate.name.slice(0, 40) : '',
     font: typeof saved?.certificate?.font === 'string' ? saved.certificate.font : 'classic',
@@ -480,7 +492,14 @@ function renderMenu() {
     }),
   );
   const today = prog().dailyBests[dateKey(new Date())];
-  els.dailyNote.textContent = today !== undefined ? `Today’s best: ${today}/${RUN_LENGTH}` : 'Same 10 questions for everyone today';
+  const streak = liveStreak(save.dailyStreak, dateKey(new Date()));
+  const doneToday = save.dailyStreak.last === dateKey(new Date());
+  els.dailyNote.textContent =
+    today !== undefined
+      ? `${streak > 1 ? `🔥 ${streak}-day streak · ` : ''}Today’s best: ${today}/${RUN_LENGTH}`
+      : streak && !doneToday
+        ? `🔥 ${streak}-day streak. Play to keep it going!`
+        : 'Same 10 questions for everyone today';
   els.lightningNote.textContent = prog().lightningBest ? `Best: ${prog().lightningBest} in a minute` : `${LIGHTNING_SECONDS} seconds. As many as you can.`;
   const waiting = missedIds().length;
   els.reviewMistakes.disabled = !waiting;
@@ -509,7 +528,7 @@ function toMenu() {
   els.pips.replaceChildren();
   els.score.textContent = '';
   setFace('neutral');
-  say(prog().passed.length === 0 && Object.keys(prog().partBest).length === 0 ? MENU_LINES[0] : pick([...MENU_LINES.slice(1), ...bookLines().menu]), { talk: true });
+  say(prog().passed.length === 0 && Object.keys(prog().partBest).length === 0 ? MENU_LINES[0] : pick([...MENU_LINES.slice(1), ...bookLines().menu, ...TIME_ASIDES[partOfDay(new Date().getHours())]]), { talk: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -575,6 +594,9 @@ function start(m: Mode) {
   if (mode.kind === 'showdown' && (!sd || !showdownOpen(sd))) return toMenu();
   quiz = newQuiz(sd ? showdownQuestions(sd) : questionsFor(mode, Math.random, book));
   clearedThisRun = 0;
+  const hour = new Date().getHours();
+  if (hour < 4) award('night-owl');
+  else if (hour >= 5 && hour < 7) award('early-bird');
   play('page');
   screen('quiz');
   els.pips.classList.toggle('many', quiz.questions.length > RUN_LENGTH);
@@ -906,7 +928,13 @@ function end() {
   } else if (mode.kind === 'daily') {
     const was = prog().dailyBests[mode.key];
     prog().dailyBests[mode.key] = Math.max(was ?? 0, quiz.score);
-    bestLine = `📅 Daily quiz, ${mode.key}: ${was === undefined ? 'your first score today.' : quiz.score > was ? `new best today (was ${was}).` : `today’s best is ${was}.`} New questions tomorrow.`;
+    // The streak counts your first daily quiz of the day, in any book.
+    const firstToday = save.dailyStreak.last !== mode.key;
+    save.dailyStreak = recordDaily(save.dailyStreak, mode.key);
+    bestLine = `📅 Daily quiz, ${mode.key}: ${was === undefined ? 'your first score today.' : quiz.score > was ? `new best today (was ${was}).` : `today’s best is ${was}.`} New questions tomorrow.${firstToday ? ` ${streakLine(save.dailyStreak.current)}` : ''}`;
+    if (save.dailyStreak.current >= 3) award('streak-days-3');
+    if (save.dailyStreak.current >= 7) award('streak-days-7');
+    if (save.dailyStreak.current >= 30) award('streak-days-30');
   } else if (mode.kind === 'showdown') {
     const was = save.showdownBest[mode.id];
     save.showdownBest[mode.id] = Math.max(was ?? 0, quiz.score);
@@ -930,6 +958,7 @@ function end() {
   }
   // Achievements for the run
   els.endCertificate.hidden = !passedExam;
+  els.shareDaily.hidden = mode.kind !== 'daily';
   if (!isLightning()) {
     if (quiz.score === total && total === RUN_LENGTH) award('perfect');
     if (quiz.score === 0 && total === RUN_LENGTH) award('still-dumb');
@@ -1778,6 +1807,68 @@ els.take.addEventListener('click', take);
 bookEl.addEventListener('click', take);
 els.next.addEventListener('click', advance);
 els.again.addEventListener('click', () => start(mode));
+
+/** A small toast (not an achievement): a copied result, say. */
+function noticeToast(icon: string, small: string, text: string) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = '<span class="icon"></span><small></small><b></b>';
+  el.querySelector('.icon')!.textContent = icon;
+  el.querySelector('small')!.textContent = small;
+  el.querySelector('b')!.textContent = text;
+  els.toasts.append(el);
+  window.setTimeout(() => el.remove(), 3500);
+}
+
+/** Copies text the old way, for browsers without the clipboard API (or without permission). */
+function copyFallback(text: string): boolean {
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.append(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  area.remove();
+  return ok;
+}
+
+/** Shares the daily quiz’s result: the phone’s share sheet if there is one, otherwise the clipboard. */
+els.shareDaily.addEventListener('click', async () => {
+  if (mode.kind !== 'daily') return;
+  const text = shareText({
+    bookTitle: book.title,
+    icon: bookIcon(book.id),
+    date: mode.key,
+    score: quiz.score,
+    total: quiz.questions.length,
+    results: quiz.questions.map((q, i) => quiz.answers[i] === q.correct),
+    streak: liveStreak(save.dailyStreak, dateKey(new Date())),
+    url: `${location.origin}${location.pathname}`,
+  });
+  award('shared');
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    noticeToast('📋', 'COPIED', 'Paste it anywhere to brag');
+  } catch {
+    const ok = copyFallback(text);
+    noticeToast('📋', ok ? 'COPIED' : 'COULDN’T COPY', ok ? 'Paste it anywhere to brag' : 'Your browser said no');
+  }
+});
 els.reviewMistakes.addEventListener('click', () => start({ kind: 'review', ids: [] }));
 els.exam.addEventListener('click', () => start({ kind: 'exam' }));
 els.toMenu.addEventListener('click', () => {
@@ -1866,7 +1957,19 @@ applyBook();
 screen('intro');
 setFace('shock');
 renderPeanuts();
-window.setTimeout(() => say('Take the book. I don’t have all day.'), 500);
+// Anya’s greeting: whether you’ve been away, broke your streak, or just came back at some hour of the day.
+{
+  const today = dateKey(new Date());
+  const s = save.dailyStreak;
+  const lapsed = s.current >= 2 && s.last && daysBetween(s.last, today) > 1 ? s.current : 0;
+  // Noticed once: the lapsed streak resets, so she only sulks about it the first time.
+  if (lapsed) save.dailyStreak = { ...s, current: 0 };
+  const hello = greeting({ hour: new Date().getHours(), daysAway: save.lastVisit ? daysBetween(save.lastVisit, today) : null, brokenStreak: lapsed });
+  save.lastVisit = today;
+  persist();
+  setFace(hello.face);
+  window.setTimeout(() => say(hello.line), 500);
+}
 
 // ?debug: the state, for testing from the console
 if (new URLSearchParams(location.search).has('debug')) {

@@ -254,6 +254,27 @@ describe('basic economics trainer: the books', () => {
     }
   });
 
+  it('counts daily streaks, notices absences, and greets by the time of day', async () => {
+    const { daysBetween, emptyStreak, greeting, liveStreak, partOfDay, recordDaily, shareText } = await import('./days.ts');
+    expect(daysBetween('2026-02-28', '2026-03-01')).toBe(1);
+    expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1);
+    let s = recordDaily(emptyStreak(), '2026-11-16');
+    s = recordDaily(s, '2026-11-17');
+    s = recordDaily(s, '2026-11-17');
+    expect(s).toEqual({ last: '2026-11-17', current: 2, best: 2 });
+    expect(liveStreak(s, '2026-11-18')).toBe(2);
+    expect(liveStreak(s, '2026-11-19')).toBe(0);
+    s = recordDaily(s, '2026-11-20');
+    expect(s).toEqual({ last: '2026-11-20', current: 1, best: 2 });
+    expect([3, 8, 15, 21].map(partOfDay)).toEqual(['night', 'morning', 'afternoon', 'evening']);
+    expect(greeting({ hour: 9, daysAway: null, brokenStreak: 0 }).line).toContain('Take the book');
+    expect(greeting({ hour: 9, daysAway: 0, brokenStreak: 5 }).line).toContain('5-day streak');
+    expect(greeting({ hour: 9, daysAway: 40, brokenStreak: 0 }, () => 0).line).toContain('40 days');
+    expect(greeting({ hour: 9, daysAway: 1, brokenStreak: 0 }, () => 0).line).toMatch(/morning/i);
+    const text = shareText({ bookTitle: 'Basic Economics', icon: '📕', date: '2026-11-18', score: 2, total: 3, results: [true, false, true], streak: 4, url: 'https://example.com/' });
+    expect(text.split('\n')).toEqual(['Basic Economics Trainer · Daily quiz 2026-11-18', '📕 Basic Economics: 2/3', '🟩🟥🟩', '🔥 4-day streak', 'https://example.com/']);
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);

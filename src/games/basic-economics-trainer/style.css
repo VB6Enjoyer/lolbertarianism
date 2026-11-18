@@ -764,6 +764,11 @@ button {
     color: var(--muted);
 }
 
+/* The verdict panel scrolls rather than squashing its contents: the best line can run to two lines. */
+.end-panel > * {
+    flex-shrink: 0;
+}
+
 .best {
     min-height: 1em;
     margin: 0 0 14px;

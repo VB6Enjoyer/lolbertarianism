@@ -103,6 +103,10 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   // The daily quiz and the lightning round
   { id: 'daily', icon: '📅', name: 'Daily Reader', description: 'Finish a daily quiz.' },
   { id: 'daily-5', icon: '🗓️', name: 'Book Club', description: 'Play the daily quiz on five different days.' },
+  { id: 'streak-days-3', icon: '🔥', name: 'Habit Forming', description: 'Play the daily quiz three days in a row.' },
+  { id: 'streak-days-7', icon: '📆', name: 'Week Streak', description: 'Play the daily quiz seven days in a row.' },
+  { id: 'streak-days-30', icon: '🎇', name: 'Thirty Days of Anya', description: 'Play the daily quiz thirty days in a row.' },
+  { id: 'shared', icon: '📣', name: 'Bragging Rights', description: 'Share a daily quiz result.' },
   { id: 'lightning-10', icon: '⚡', name: 'Speed Reader', description: 'Get 10 right in a lightning round.' },
   { id: 'lightning-20', icon: '🌩️', name: 'Faster Than Inflation', description: 'Get 20 right in a lightning round.' },
   // Peanuts and lifelines
@@ -129,6 +133,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'exam-perfect', icon: '🏆', name: 'Summa Cum Laude', description: 'Get 20 out of 20 in a final exam.' },
   { id: 'exam-3', icon: '🎖️', name: 'Triple Major', description: 'Pass the final exams of three books.' },
   // Easter eggs (secret): touch Anya, or keep her waiting
+  { id: 'night-owl', icon: '🌙', name: 'Night Owl', description: 'Start a quiz between midnight and 4 a.m.', secret: true },
+  { id: 'early-bird', icon: '🐦', name: 'Early Bird', description: 'Start a quiz between 5 and 7 a.m.', secret: true },
   { id: 'boop', icon: '👃', name: 'Boop!', description: 'Boop Anya’s nose.', secret: true },
   { id: 'impatient', icon: '⏰', name: 'Tick Tock', description: 'Keep Anya waiting until she gets impatient.', secret: true },
   { id: 'pink-hair', icon: '🌸', name: 'Pretty in Pink', description: 'Pat Anya’s head ten times.', secret: true },
