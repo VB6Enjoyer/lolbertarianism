@@ -2197,6 +2197,56 @@ button {
     background: #a8161c;
 }
 
+/* Locked books: the cover greyed out under a padlock, a quieter take button, hollow dots */
+#anya-book.locked > :not(.book-lock) {
+    filter: grayscale(0.85) brightness(0.92);
+}
+
+.take-button.locked {
+    background: #8b8680;
+    font-size: 16px;
+    animation: none;
+    cursor: not-allowed;
+}
+
+.take-button.locked:hover {
+    transform: none;
+    box-shadow: 5px 5px 0 var(--ink);
+}
+
+.book-dots i.locked {
+    border-style: dashed;
+    opacity: 0.55;
+}
+
+.book-dots i.locked.on {
+    opacity: 1;
+}
+
+/* The mystery book (Capital, before Anya gives up on you): a dusky purple page with faint question marks */
+:root[data-book='mystery'] {
+    --page: #2c2238;
+    --paper: #f2eef5;
+    --paper-light: #faf8fb;
+    --muted: #5d5168;
+    --accent: #5e4482;
+    --accent-ink: #45305f;
+}
+
+:root[data-book='mystery'] body {
+    background-image: radial-gradient(rgba(190, 170, 220, 0.18) 1.2px, transparent 1.6px);
+    background-size: 22px 22px;
+}
+
+:root[data-book='mystery'] .brand-cover {
+    background: #a9845a;
+    box-shadow: inset 0 0 0 2px #d8c3a0;
+}
+
+:root[data-book='mystery'] .anya-ribbon {
+    fill: #5e4482;
+}
+
 /* Long titles (Economics in One Lesson) wrap in the top bar instead of pushing the buttons off a phone */
 @media (max-width: 760px) {
     .brand {

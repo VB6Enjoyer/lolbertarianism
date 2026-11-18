@@ -13,8 +13,18 @@ import { THE_MYSTERY_OF_BANKING } from './books/the-mystery-of-banking.ts';
 import type { BankQuestion, Book, Level } from './books/types.ts';
 import type { Question } from './questions.ts';
 
-/** The books Anya can hand you, in the order her arrows go through them. Each has its own questions and progress. */
-export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, HUMAN_ACTION, ECONOMICS_IN_ONE_LESSON, THE_MYSTERY_OF_BANKING, MAN_ECONOMY_AND_STATE, MONEY_BANK_CREDIT, THE_MACHINERY_OF_FREEDOM, FORTY_CENTURIES, CAPITAL];
+/**
+ * The books Anya can hand you, in the order her arrows go through them: the two open from the start,
+ * then the rest in the order peanuts unlock them, and the mystery book last. Each has its own questions and progress.
+ */
+export const BOOKS: readonly Book[] = [BASIC_ECONOMICS, ECONOMICS_IN_ONE_LESSON, HUMAN_ACTION, FORTY_CENTURIES, THE_MYSTERY_OF_BANKING, MAN_ECONOMY_AND_STATE, THE_MACHINERY_OF_FREEDOM, MONEY_BANK_CREDIT, CAPITAL];
+
+/** Peanuts earned (in all, ever; spending them on lifelines doesn’t count against you) that unlock each book. Books not listed are open from the start. */
+export const UNLOCK_AT: Readonly<Record<string, number>> = { ha: 50, fc: 100, tmb: 175, mes: 250, dmf: 350, jhs: 450 };
+
+/** Whether a (non-secret) book is open: no threshold, enough peanuts earned, or taken before (saves from before the locks keep their books). */
+export const bookUnlocked = (book: Book, earned: number, opened: readonly string[]): boolean =>
+  !(book.id in UNLOCK_AT) || earned >= UNLOCK_AT[book.id] || opened.includes(book.id);
 /** The first book, and the default wherever a book isn't given. */
 export const BOOK = BASIC_ECONOMICS;
 export const bookById = (id: unknown): Book => BOOKS.find((b) => b.id === id) ?? BOOK;

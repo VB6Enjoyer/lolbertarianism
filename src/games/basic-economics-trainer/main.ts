@@ -2,11 +2,11 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import * as anyaV2 from './anya.ts';
-import { coverMarkup } from './anya.ts';
+import { coverMarkup, lockMarkup } from './anya.ts';
 import type { Face, Mouth } from './anya.ts';
 import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
-import { BOOKS, bookById, dateKey, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
 import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
@@ -143,10 +143,17 @@ const persist = () => slot.save(save);
 
 /** The secret book (Capital) is unlocked by this achievement; until then it stays off Anya’s shelf. */
 const SECRET_UNLOCK = 'red-pill';
-/** The books Anya can hold out: every book, except secret ones you haven’t unlocked. */
-const shelf = () => BOOKS.filter((b) => !b.secret || save.achievements.includes(SECRET_UNLOCK));
+const secretUnlocked = () => save.achievements.includes(SECRET_UNLOCK);
+/** Peanuts earned in all, ever (the all-books count also covers saves from before it was kept). Spending them doesn’t lower it. */
+const earned = () => Math.max(save.peanutsEarned, BOOKS.reduce((t, b) => t + save.stats[b.id].right, 0));
+/** Whether you can take a book: peanut-locked books open with enough peanuts earned; the secret book with Anya’s blessing. */
+const isOpen = (b: Book) => (b.secret ? secretUnlocked() : bookUnlocked(b, earned(), save.opened));
+/** The books Anya can hold out: all of them, locked ones too (the secret one as a mystery book). */
+const shelf = () => BOOKS;
+/** The books whose stats are shown: every book, except the secret one until it’s unlocked. */
+const statsShelf = () => BOOKS.filter((b) => !b.secret || secretUnlocked());
 /** The book in hand, and its scores. */
-let book: Book = shelf().includes(bookById(save.book)) ? bookById(save.book) : BOOKS[0];
+let book: Book = isOpen(bookById(save.book)) ? bookById(save.book) : BOOKS[0];
 const prog = () => save.progress[book.id];
 const bookStats = () => save.stats[book.id];
 
@@ -581,6 +588,7 @@ const WRONG_OPENERS = ['Wrong.', 'No.', '…No.', 'Ugh.'];
 function choose(i: number) {
   const q = current(quiz);
   if (!q || (isLightning() && timeLeft() <= 0)) return;
+  const earnedBefore = earned();
   const right = answer(quiz, i);
   if (right === null) return;
   recordAnswer(bookStats(), q.level, right, performance.now() - askedAt, quiz.streak);
@@ -616,6 +624,7 @@ function choose(i: number) {
     if (book.questions.every((x) => save.mastered.includes(x.id))) award(wholeBookAchievement(book.id));
     if (save.hardRight >= 50) award('empiricist');
     if (save.peanutsEarned >= 100) award('peanuts-100');
+    for (const b of BOOKS) if (b.id in UNLOCK_AT && earnedBefore < UNLOCK_AT[b.id] && earned() >= UNLOCK_AT[b.id] && !save.opened.includes(b.id)) bookUnlockedToast(b);
     if (q.level === 'hard' && performance.now() - askedAt < 2000) award('lucky');
     persist();
     renderPeanuts(true);
@@ -997,7 +1006,7 @@ function renderSettings() {
   const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
   if (all) {
     // Every book, and all of them together
-    const shown = shelf();
+    const shown = statsShelf();
     const books = shown.map((b) => summarize(save.stats[b.id], save.mastered, b));
     const mastered = books.reduce((t, x) => t + x.mastered, 0);
     const total = books.reduce((t, x) => t + x.total, 0);
@@ -1239,6 +1248,10 @@ let taken = false;
 /** Takes the book from her: it flies at you, and the menu opens. */
 function take() {
   if (taken || switching) return;
+  if (!isOpen(book)) {
+    refuseLocked();
+    return;
+  }
   taken = true;
   award('took-book');
   if (!save.opened.includes(book.id)) save.opened.push(book.id);
@@ -1275,27 +1288,76 @@ const OFFER_LINES: Record<string, { face: Face; lines: string[] }> = {
 
 /** Dresses the page for the book in hand: the cover on the plate, the colours, the names. */
 function applyBook() {
-  document.documentElement.dataset.book = book.id;
-  bookEl.innerHTML = coverMarkup(book.id);
-  els.brandTitle.textContent = book.title;
-  document.title = `${book.title} Trainer`;
-  els.anya.setAttribute('aria-label', `Anya, holding out a copy of ${book.title} on a plate`);
+  const open = isOpen(book);
+  // The secret book, still locked, is a mystery: no title, no author, a wrapped cover.
+  const mystery = book.secret && !open;
+  const name = mystery ? 'Mystery Book' : book.title;
+  document.documentElement.dataset.book = mystery ? 'mystery' : book.id;
+  bookEl.innerHTML = coverMarkup(mystery ? 'mystery' : book.id) + (open ? '' : lockMarkup());
+  bookEl.classList.toggle('locked', !open && !mystery);
+  els.brandTitle.textContent = name;
+  document.title = `${name} Trainer`;
+  els.anya.setAttribute('aria-label', mystery ? 'Anya, holding out a wrapped mystery book on a plate' : `Anya, holding out a copy of ${book.title} on a plate${open ? '' : ', with a padlock on it'}`);
   els.menuKicker.textContent = `${book.title} · ${book.author}`;
   els.askSowell.innerHTML = `👓 Ask ${book.short} <span>${HINT_COST}🥜</span>`;
+  els.take.classList.toggle('locked', !open);
+  els.take.setAttribute('aria-disabled', String(!open));
+  els.take.textContent = open ? 'Take the book' : mystery ? '🔒 ???' : `🔒 ${UNLOCK_AT[book.id]} 🥜 to unlock`;
   const title = document.createElement('span');
-  title.textContent = book.title;
+  title.textContent = name;
   const author = document.createElement('span');
   author.className = 'by';
-  author.textContent = `· ${book.author}`;
+  author.textContent = `· ${mystery ? '???' : book.author}`;
   els.bookDots.replaceChildren(
     title,
     author,
     ...shelf().map((b) => {
       const dot = document.createElement('i');
-      if (b === book) dot.className = 'on';
+      dot.className = [b === book ? 'on' : '', isOpen(b) ? '' : 'locked'].filter(Boolean).join(' ');
       return dot;
     }),
   );
+}
+
+/** What she says about a book you haven’t earned yet. */
+function lockedLine(b: Book): string {
+  const need = UNLOCK_AT[b.id];
+  const have = earned();
+  return pick([
+    `${b.title}? Not yet. Gather ${need} peanuts to unlock it. You’ve earned ${have} so far.`,
+    `Locked. Earn ${need} peanuts, and Anya hands it over. You’ve earned ${have}. Get answering.`,
+    `This one takes ${need} peanuts earned. You’ve earned ${have}. Anya doesn’t do credit.`,
+  ]);
+}
+
+/** Her hints about the mystery book: loose ones. */
+const MYSTERY_LINES = [
+  'This one? It isn’t for you. Not yet. Anya only hands it to people who really, truly struggle.',
+  'Shh. This book chooses its reader. It likes people who get a lot of answers wrong. A lot.',
+  'A mystery book. Some say you have to be wrong ten times running to see it. Anya says nothing.',
+  'Get enough wrong, and maybe Anya will lose her patience and give it to you. Not a threat. A promise.',
+];
+
+/** Trying to take a book that’s still locked: she pulls the plate back. */
+function refuseLocked() {
+  const mystery = book.secret;
+  setFace(mystery ? 'deadpan' : 'smug');
+  boom(mystery ? '…' : 'NOPE.', '');
+  els.anya.classList.add('shake');
+  window.setTimeout(() => els.anya.classList.remove('shake'), 450);
+  say(mystery ? pick(MYSTERY_LINES) : lockedLine(book), { talk: true });
+}
+
+/** A toast when enough peanuts open a new book. */
+function bookUnlockedToast(b: Book) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = '<span class="icon"></span><small>NEW BOOK UNLOCKED</small><b></b>';
+  el.querySelector('.icon')!.textContent = bookIcon(b.id);
+  el.querySelector('b')!.textContent = b.title;
+  els.toasts.append(el);
+  window.setTimeout(() => el.remove(), 4300);
+  if (!save.muted) [523, 784, 1047, 1568].forEach((hz, i) => playTone(note(hz, 0.12, 0.05, 'triangle'), i * 0.08));
 }
 
 let switching = false;
@@ -1316,10 +1378,17 @@ function switchBook(dir: 1 | -1) {
     applyBook();
     bookEl.classList.remove('out-left', 'out-right');
     bookEl.classList.add(dir > 0 ? 'in-right' : 'in-left');
-    const offer = OFFER_LINES[book.id] ?? OFFER_LINES.be;
-    setFace(offer.face);
-    boom(({ ha: 'THUD!', eol: 'PLOP!', tmb: 'KA-CHING!', mes: 'CHECK!', jhs: 'OLÉ!', dmf: 'CLANK!', fc: 'FREEZE!', kap: 'COMRADE.' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
-    say(pick(offer.lines), { talk: true });
+    if (!isOpen(book)) {
+      const mystery = book.secret;
+      setFace(mystery ? 'deadpan' : 'smug');
+      boom(mystery ? '???' : 'LOCKED.', '');
+      say(mystery ? pick(MYSTERY_LINES) : lockedLine(book), { talk: true });
+    } else {
+      const offer = OFFER_LINES[book.id] ?? OFFER_LINES.be;
+      setFace(offer.face);
+      boom(({ ha: 'THUD!', eol: 'PLOP!', tmb: 'KA-CHING!', mes: 'CHECK!', jhs: 'OLÉ!', dmf: 'CLANK!', fc: 'FREEZE!', kap: 'COMRADE.' } as Record<string, string>)[book.id] ?? 'SWISH!', '');
+      say(pick(offer.lines), { talk: true });
+    }
     window.setTimeout(() => {
       bookEl.classList.remove('in-right', 'in-left');
       switching = false;

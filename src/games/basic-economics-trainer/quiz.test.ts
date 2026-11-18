@@ -173,6 +173,19 @@ describe('basic economics trainer: the books', () => {
     for (const a of ACHIEVEMENTS.filter((a) => a.id.startsWith('kap-'))) expect(a.secret, a.id).toBe(true);
   });
 
+  it('puts Sowell and Hazlitt first, then the books in unlock order, with the mystery book last', async () => {
+    const { UNLOCK_AT, bookUnlocked } = await import('./bank.ts');
+    expect(BOOKS.map((b) => b.id)).toEqual(['be', 'eol', 'ha', 'fc', 'tmb', 'mes', 'dmf', 'jhs', 'kap']);
+    const locked = BOOKS.filter((b) => b.id in UNLOCK_AT).map((b) => UNLOCK_AT[b.id]);
+    expect(locked).toEqual([...locked].sort((a, b) => a - b));
+    const ha = bookById('ha');
+    expect(bookUnlocked(bookById('be'), 0, [])).toBe(true);
+    expect(bookUnlocked(ha, UNLOCK_AT.ha - 1, [])).toBe(false);
+    expect(bookUnlocked(ha, UNLOCK_AT.ha, [])).toBe(true);
+    // Saves from before the locks keep the books they already took.
+    expect(bookUnlocked(ha, 0, ['ha'])).toBe(true);
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);
