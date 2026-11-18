@@ -2,6 +2,7 @@ import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
+import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { currentTerritory, COMMIES, CONFIG, stateEnvironment, speedFactor, totalCommies, curveAt, kmh, metersToBorder, newGame, PLAYER_Z, segmentIndex, UNITS_PER_METER, update, type GameEvent, type GameState, type Input } from './logic.ts';
 import { pickLine, URGENT, type Cue } from './rothbard.ts';
 import { broadcastLabel, broadcastSeconds, buildProgram } from './radio.ts';
@@ -771,6 +772,8 @@ function openOptions(from: HTMLElement) {
 }
 
 byId('show-options').addEventListener('click', () => openOptions(els.title));
+// Copy your progress to another device, or load it from one.
+byId('save-transfer').addEventListener('click', () => openSaveTransfer('road-to-liberty'));
 byId('paused-options').addEventListener('click', () => openOptions(els.paused));
 byId('hide-options').addEventListener('click', () => {
   els.options.hidden = true;

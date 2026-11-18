@@ -2,6 +2,7 @@ import './style.css';
 import { note, playTone, getAudioContext } from '../../shared/audio.ts';
 import { spawnText } from '../../shared/effects.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
+import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { COLS, DISTRICTS, isRoad, nearestRoad, placeAtBlock, ROWS, type DistrictId, type Tile } from './map.ts';
 import { act, sell, cityEvent, COVER_VALUE, borrow, buyDrug, buyGear, buyGold, capacity, cargoValue, context, creditLimit, deposit, drugPrice, GEAR, gearPrice, goldPrice, loanRate, loanSize, newGame, phaseAt, repay, savingsRate, scrapPrice, sellGold, tileOf, update, walkTo, withdraw, type GameEvent, type GameState } from './logic.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked, Tracker } from './achievements.ts';
@@ -723,6 +724,8 @@ function showAchievements(from: HTMLElement) {
   byId('hide-achievements').focus();
 }
 byId('show-achievements').addEventListener('click', () => showAchievements(els.title));
+// Copy your progress to another device, or load it from one.
+byId('save-transfer').addEventListener('click', () => openSaveTransfer('austrian-economics-simulator'));
 byId('over-achievements').addEventListener('click', () => showAchievements(els.over));
 byId('hide-achievements').addEventListener('click', () => {
   els.achievements.hidden = true;

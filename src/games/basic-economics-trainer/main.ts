@@ -1,6 +1,7 @@
 import './style.css';
 import { getAudioContext, note, playTone } from '../../shared/audio.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
+import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import * as anyaV2 from './anya.ts';
 import { coverMarkup, lockMarkup } from './anya.ts';
 import type { Face, Mouth } from './anya.ts';
@@ -1359,6 +1360,7 @@ const settingsEls = {
   eraseConfirm: byId('erase-confirm'),
   eraseYes: byId<HTMLButtonElement>('erase-yes'),
   eraseNo: byId<HTMLButtonElement>('erase-no'),
+  saveTransfer: byId<HTMLButtonElement>('save-transfer'),
   hide: byId<HTMLButtonElement>('hide-settings'),
   show: byId<HTMLButtonElement>('show-settings'),
 };
@@ -1483,6 +1485,8 @@ settingsEls.erase.addEventListener('click', () => {
   settingsEls.eraseConfirm.hidden = false;
   settingsEls.eraseNo.focus();
 });
+// Copy your progress to another device, or load it from one.
+settingsEls.saveTransfer.addEventListener('click', () => openSaveTransfer('basic-economics-trainer'));
 settingsEls.eraseNo.addEventListener('click', () => {
   settingsEls.eraseConfirm.hidden = true;
   settingsEls.erase.hidden = false;
