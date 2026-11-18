@@ -120,6 +120,9 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   // Mistakes review and final exams
   { id: 'review', icon: '🩹', name: 'Second Chance', description: 'Finish a mistakes review.' },
   { id: 'review-empty', icon: '🧽', name: 'Clean Slate', description: 'Clear every question from a book’s mistakes review.' },
+  { id: 'showdown', icon: '🤺', name: 'Ringside Seat', description: 'Finish a showdown between two books.' },
+  { id: 'showdown-perfect', icon: '🥊', name: 'Referee', description: 'Get every claim right in a showdown.' },
+  { id: 'showdown-all', icon: '🏟️', name: 'Undisputed', description: 'Finish every showdown.' },
   { id: 'flashcards', icon: '🗂️', name: 'Flash Learner', description: 'Go through a whole deck of flashcards.' },
   { id: 'flashcards-all', icon: '📇', name: 'Walking Dictionary', description: 'Know every key term in a book.' },
   { id: 'exam', icon: '🧑‍🎓', name: 'Graduate', description: 'Pass a book’s final exam (16 out of 20, no lifelines).' },

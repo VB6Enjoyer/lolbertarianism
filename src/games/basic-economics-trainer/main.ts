@@ -8,6 +8,7 @@ import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
 import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, shuffle, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
+import { SHOWDOWNS, showdownById, showdownQuestions } from './showdowns.ts';
 import { glossaryFor, type GlossaryEntry } from './books/glossary.ts';
 import { CERTIFICATE_FONTS, certificateFont, coverImage, drawCertificate, loadCertificateFonts, longDate } from './certificate.ts';
 import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
@@ -37,6 +38,11 @@ const els = {
   exam: byId<HTMLButtonElement>('exam'),
   examNote: byId('exam-note'),
   openCertificate: byId<HTMLButtonElement>('open-certificate'),
+  showdownOpen: byId<HTMLButtonElement>('showdown-open'),
+  showdownNote: byId('showdown-note'),
+  showdowns: byId('showdowns'),
+  showdownList: byId('showdown-list'),
+  hideShowdowns: byId<HTMLButtonElement>('hide-showdowns'),
   flashcardsOpen: byId<HTMLButtonElement>('flashcards-open'),
   flashcardsNote: byId('flashcards-note'),
   flashcards: byId('flashcards'),
@@ -141,6 +147,8 @@ interface Save {
   wrongStreak: number;
   /** What goes on your certificates: the name you typed and the lettering you picked. */
   certificate: { name: string; font: string };
+  /** Best score in each showdown, by id. */
+  showdownBest: Record<string, number>;
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -179,6 +187,7 @@ const save: Save = {
   stats: normalizeBookStats(saved?.stats, BOOKS.map((b) => b.id)),
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
   wrongStreak: count(saved?.wrongStreak),
+  showdownBest: counts(saved?.showdownBest),
   certificate: {
     name: typeof saved?.certificate?.name === 'string' ? saved.certificate.name.slice(0, 40) : '',
     font: typeof saved?.certificate?.font === 'string' ? saved.certificate.font : 'classic',
@@ -486,6 +495,8 @@ function renderMenu() {
       ? `Passed · best ${examBest}/${EXAM_LENGTH}`
       : `${EXAM_LENGTH} questions, ${EXAM_PASS} to pass, no lifelines${examBest !== null ? ` · best ${examBest}/${EXAM_LENGTH}` : ''}`;
   els.openCertificate.hidden = !prog().examPassed;
+  const playable = SHOWDOWNS.filter(showdownOpen).length;
+  els.showdownNote.textContent = `${playable} of ${SHOWDOWNS.length} matchups open. Who said it?`;
   const terms = glossaryFor(book.id);
   const knownTerms = terms.filter((t) => prog().known.includes(t.term)).length;
   els.flashcardsNote.textContent = knownTerms ? `${knownTerms} of ${terms.length} terms known` : `${terms.length} key terms from the book`;
@@ -516,7 +527,7 @@ let askedAt = 0;
 
 const isLightning = () => mode.kind === 'lightning';
 /** No lifelines in the lightning round (no time) or the final exam (no help). */
-const noLifelines = () => isLightning() || mode.kind === 'exam';
+const noLifelines = () => isLightning() || mode.kind === 'exam' || mode.kind === 'showdown';
 /** Questions that left the mistakes review during this run. */
 let clearedThisRun = 0;
 /** The questions waiting in the mistakes review, for the book in hand. */
@@ -551,6 +562,7 @@ function modeLabel(m: Mode): string {
   if (m.kind === 'daily') return 'Daily quiz';
   if (m.kind === 'review') return 'Mistakes review';
   if (m.kind === 'exam') return 'Final exam';
+  if (m.kind === 'showdown') return `Showdown: ${showdownById(m.id)?.title ?? ''}`;
   return 'Lightning round';
 }
 
@@ -559,7 +571,9 @@ function start(m: Mode) {
   mode = m.kind === 'daily' ? { kind: 'daily', key: dateKey(new Date()) } : m.kind === 'review' ? { kind: 'review', ids: missedIds() } : m;
   if (mode.kind === 'review' && !mode.ids.length) return toMenu();
   if (mode.kind === 'exam' && !examOpen()) return toMenu();
-  quiz = newQuiz(questionsFor(mode, Math.random, book));
+  const sd = mode.kind === 'showdown' ? showdownById(mode.id) : undefined;
+  if (mode.kind === 'showdown' && (!sd || !showdownOpen(sd))) return toMenu();
+  quiz = newQuiz(sd ? showdownQuestions(sd) : questionsFor(mode, Math.random, book));
   clearedThisRun = 0;
   play('page');
   screen('quiz');
@@ -616,6 +630,8 @@ function ask() {
       ? `The final exam. ${EXAM_LENGTH} questions, ${EXAM_PASS} to pass. No lifelines, no mercy. Begin.`
       : mode.kind === 'review'
         ? 'Your mistakes, back for revenge. Get each one right twice and it goes away.'
+        : mode.kind === 'showdown'
+          ? (showdownById(mode.id)?.intro ?? 'Showdown!')
         : `${modeLabel(mode)}. Question one: try not to embarrass yourself.`;
   say(n === 1 ? first : n === quiz.questions.length ? 'Last one. Don’t choke.' : pick(ASK_LINES), { talk: true });
   readQuestion(save.tts.anya);
@@ -672,8 +688,12 @@ function choose(i: number) {
   const earnedBefore = earned();
   const right = answer(quiz, i);
   if (right === null) return;
-  recordAnswer(bookStats(), q.level, right, performance.now() - askedAt, quiz.streak);
-  if (noteAnswer(prog().missed, q.id, right)) clearedThisRun++;
+  // A showdown spans two books, so its answers stay out of the book’s stats, mastery and mistakes.
+  const inBook = mode.kind !== 'showdown';
+  if (inBook) {
+    recordAnswer(bookStats(), q.level, right, performance.now() - askedAt, quiz.streak);
+    if (noteAnswer(prog().missed, q.id, right)) clearedThisRun++;
+  }
   persist();
   if (save.tts.questions) speak(right ? 'Right.' : `Wrong. The answer was ${'ABCD'[q.correct]}: ${q.options[q.correct]}.`, 'reader');
   const buttons = [...els.options.querySelectorAll<HTMLButtonElement>('.option')];
@@ -697,7 +717,7 @@ function choose(i: number) {
     play('right');
     save.peanuts++;
     save.peanutsEarned++;
-    if (!save.mastered.includes(q.id)) save.mastered.push(q.id);
+    if (inBook && !save.mastered.includes(q.id)) save.mastered.push(q.id);
     if (q.level === 'hard') save.hardRight++;
     award('first-right');
     if (quiz.streak >= 5) award('streak-5');
@@ -887,6 +907,10 @@ function end() {
     const was = prog().dailyBests[mode.key];
     prog().dailyBests[mode.key] = Math.max(was ?? 0, quiz.score);
     bestLine = `📅 Daily quiz, ${mode.key}: ${was === undefined ? 'your first score today.' : quiz.score > was ? `new best today (was ${was}).` : `today’s best is ${was}.`} New questions tomorrow.`;
+  } else if (mode.kind === 'showdown') {
+    const was = save.showdownBest[mode.id];
+    save.showdownBest[mode.id] = Math.max(was ?? 0, quiz.score);
+    bestLine = was === undefined || quiz.score > was ? `⚔️ Your best in this showdown yet!` : `Your best in this showdown: ${was}/${total}`;
   } else if (mode.kind === 'review') {
     const left = missedIds().length;
     bestLine = `🩹 ${clearedThisRun ? `${clearedThisRun} cleared from your mistakes.` : 'Nothing cleared this time.'} ${left ? `${left} still to review (each needs two right answers).` : 'Your mistakes review is empty. Suspicious.'}`;
@@ -917,6 +941,11 @@ function end() {
     if (book.parts.every((p) => prog().passed.includes(p.n))) award(allPartsAchievement(book.id));
   }
   if (mode.kind === 'drill' && mode.level === 'hard' && quiz.score >= 8) award('drill-hard');
+  if (mode.kind === 'showdown') {
+    award('showdown');
+    if (quiz.score === total) award('showdown-perfect');
+    if (SHOWDOWNS.every((x) => save.showdownBest[x.id] !== undefined)) award('showdown-all');
+  }
   if (mode.kind === 'review') {
     award('review');
     if (!missedIds().length) award('review-empty');
@@ -1032,6 +1061,58 @@ function closeAchievements() {
 }
 
 els.showAchievements.addEventListener('click', () => (els.achievements.hidden ? openAchievements() : closeAchievements()));
+
+// ---------------------------------------------------------------------------
+// Showdowns: two books, one topic
+// ---------------------------------------------------------------------------
+
+/** A showdown is open once both of its books are. */
+const showdownOpen = (sd: (typeof SHOWDOWNS)[number]) => isOpen(bookById(sd.a)) && isOpen(bookById(sd.b));
+
+function renderShowdowns() {
+  els.showdownList.replaceChildren(
+    ...SHOWDOWNS.map((sd) => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      const open = showdownOpen(sd);
+      // A matchup with the mystery book stays a mystery until it’s unlocked.
+      const secret = [sd.a, sd.b].some((id) => bookById(id).secret) && !secretUnlocked();
+      const best = save.showdownBest[sd.id];
+      b.className = 'part-card showdown-card';
+      b.disabled = !open;
+      b.innerHTML = '<span class="vs"></span><span class="what"><b></b><small></small></span><span class="status"></span>';
+      b.querySelector('.vs')!.textContent = secret ? `${bookIcon(sd.a === 'kap' ? sd.b : sd.a)} ⚔️ ❓` : `${bookIcon(sd.a)} ⚔️ ${bookIcon(sd.b)}`;
+      b.querySelector('b')!.textContent = secret ? 'A mystery matchup' : `${sd.title}: ${sd.aName} vs ${sd.bName}`;
+      const locks = [sd.a, sd.b].map(bookById).filter((x) => !isOpen(x));
+      b.querySelector('small')!.textContent = open
+        ? `${sd.rounds.length} claims${best !== undefined ? ` · best ${best}/${sd.rounds.length}` : ''}`
+        : secret
+          ? 'Some books only come to those who struggle'
+          : `Unlock ${locks.map((x) => x.title).join(' and ')} to play`;
+      b.querySelector('.status')!.textContent = open ? '▶' : '🔒';
+      b.addEventListener('click', () => {
+        closeShowdowns();
+        start({ kind: 'showdown', id: sd.id });
+      });
+      li.append(b);
+      return li;
+    }),
+  );
+}
+
+function openShowdowns() {
+  renderShowdowns();
+  els.showdowns.hidden = false;
+  els.hideShowdowns.focus({ preventScroll: true });
+}
+
+function closeShowdowns() {
+  els.showdowns.hidden = true;
+}
+
+els.showdownOpen.addEventListener('click', openShowdowns);
+els.hideShowdowns.addEventListener('click', closeShowdowns);
 
 // ---------------------------------------------------------------------------
 // Glossary flashcards: the term on the front, its meaning on the back
@@ -1708,6 +1789,13 @@ els.lightning.addEventListener('click', () => start({ kind: 'lightning' }));
 
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!els.showdowns.hidden) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeShowdowns();
+    }
+    return;
+  }
   if (!els.flashcards.hidden) {
     if (e.key === 'Escape') closeFlashcards();
     else if (e.key === ' ' || (e.key === 'Enter' && document.activeElement === els.flashCard)) flipFlashcard();

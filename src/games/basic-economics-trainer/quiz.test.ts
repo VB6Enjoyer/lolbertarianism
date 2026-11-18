@@ -234,6 +234,26 @@ describe('basic economics trainer: the books', () => {
     }
   });
 
+  it('stages showdowns between real books, with both sides and the right answer in place', async () => {
+    const { SHOWDOWNS, showdownQuestions } = await import('./showdowns.ts');
+    expect(new Set(SHOWDOWNS.map((s) => s.id)).size).toBe(SHOWDOWNS.length);
+    for (const sd of SHOWDOWNS) {
+      expect(bookById(sd.a).id, sd.id).toBe(sd.a);
+      expect(bookById(sd.b).id, sd.id).toBe(sd.b);
+      expect(sd.a).not.toBe(sd.b);
+      expect(sd.rounds.length, sd.id).toBeGreaterThanOrEqual(RUN_LENGTH);
+      for (const who of ['a', 'b'] as const) expect(sd.rounds.some((r) => r.who === who), `${sd.id} ${who}`).toBe(true);
+      const qs = showdownQuestions(sd, seededRng(5));
+      expect(qs).toHaveLength(sd.rounds.length);
+      for (const q of qs) {
+        expect(q.options).toEqual([sd.aName, sd.bName, 'Both of them']);
+        const round = sd.rounds.find((r) => q.q.includes(r.says))!;
+        expect(q.correct).toBe(round.who === 'a' ? 0 : round.who === 'b' ? 1 : 2);
+        expect(q.comment).toBe(round.why);
+      }
+    }
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);

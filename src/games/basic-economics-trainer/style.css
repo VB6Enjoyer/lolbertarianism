@@ -806,6 +806,47 @@ button {
     font-size: 9px;
 }
 
+/* --- Showdowns --- */
+.showdown-list {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: 6px 0 16px;
+    padding: 0;
+    list-style: none;
+}
+
+.showdown-card .vs {
+    flex: none;
+    min-width: 92px;
+    font-size: 22px;
+    letter-spacing: 1px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .showdown-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .showdown-card {
+        gap: 8px;
+        padding: 10px;
+    }
+
+    .showdown-card .vs {
+        min-width: 0;
+        font-size: 15px;
+        letter-spacing: 0;
+    }
+
+    .showdown-card b {
+        font-size: 15px;
+        overflow-wrap: anywhere;
+    }
+}
+
 /* --- Glossary flashcards --- */
 .flash-panel {
     width: min(620px, 100%);

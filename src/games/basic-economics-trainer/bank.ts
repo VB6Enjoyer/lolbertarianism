@@ -103,7 +103,9 @@ export type Mode =
   | { kind: 'daily'; key: string }
   | { kind: 'lightning' }
   | { kind: 'review'; ids: readonly string[] }
-  | { kind: 'exam' };
+  | { kind: 'exam' }
+  /** Two books head to head; its questions come from showdowns.ts, not from one book’s bank. */
+  | { kind: 'showdown'; id: string };
 
 /** The questions for a run of a mode. The daily one depends only on the date. */
 export function questionsFor(mode: Mode, rng: () => number = Math.random, book: Book = BOOK): Question[] {
