@@ -8,7 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Montserrat:wght@500;700;800;900&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Cinzel:wght@600;800&family=Great+Vibes&family=Montserrat:wght@500;700;800;900&family=Playfair+Display:ital,wght@0,600;1,500;1,700&display=swap">
     <script type="module" src="/src/shared/arcade-button.ts"></script>
 </head>
 
@@ -64,7 +64,10 @@
                 <div class="specials">
                     <button id="daily" type="button" class="special-card"><span class="icon">📅</span><b>Daily quiz</b><small id="daily-note">Same 10 questions for everyone today</small></button>
                     <button id="lightning" type="button" class="special-card"><span class="icon">⚡</span><b>Lightning round</b><small id="lightning-note">60 seconds. As many as you can.</small></button>
+                    <button id="review-mistakes" type="button" class="special-card"><span class="icon">🩹</span><b>Mistakes review</b><small id="review-note">Questions you got wrong come back here</small></button>
+                    <button id="exam" type="button" class="special-card exam-card"><span class="icon">🎓</span><b>Final exam</b><small id="exam-note">Pass every part to sit the exam</small></button>
                 </div>
+                <button id="open-certificate" type="button" class="plain-button certificate-button" hidden>📜 Your certificate</button>
             </section>
 
             <!-- The question -->
@@ -93,6 +96,7 @@
                 <ol id="review" class="review"></ol>
                 <p id="best" class="best"></p>
                 <div class="end-buttons">
+                    <button id="end-certificate" type="button" class="next-button" hidden>📜 Get your certificate</button>
                     <button id="again" type="button" class="next-button">Again ▶</button>
                     <button id="to-menu" type="button" class="plain-button">Back to the menu</button>
                 </div>
@@ -108,6 +112,26 @@
                 <h3 class="menu-heading wardrobe-heading">🎀 Anya’s look <small>Looks you’ve found can be switched on and off</small></h3>
                 <div id="wardrobe" class="wardrobe"></div>
                 <button id="hide-achievements" type="button" class="next-button">Back ▶</button>
+            </div>
+        </div>
+
+        <!-- The certificate for passing a final exam -->
+        <div id="certificate" class="overlay" hidden>
+            <div class="overlay-panel certificate-panel" role="dialog" aria-labelledby="certificate-title">
+                <h2 id="certificate-title" class="menu-title">📜 Your certificate</h2>
+                <canvas id="certificate-canvas" class="certificate-canvas" width="1400" height="1000" role="img" aria-label="Your certificate"></canvas>
+                <div class="certificate-form">
+                    <label class="certificate-field" for="certificate-name"><span>Name on the certificate</span>
+                        <input id="certificate-name" type="text" maxlength="40" placeholder="Your name" autocomplete="name" spellcheck="false">
+                    </label>
+                    <div class="certificate-field"><span>Lettering</span>
+                        <div id="certificate-fonts" class="certificate-fonts" role="group" aria-label="Lettering"></div>
+                    </div>
+                </div>
+                <div class="end-buttons">
+                    <button id="certificate-save" type="button" class="next-button">💾 Save as image</button>
+                    <button id="hide-certificate" type="button" class="plain-button">Back</button>
+                </div>
             </div>
         </div>
 

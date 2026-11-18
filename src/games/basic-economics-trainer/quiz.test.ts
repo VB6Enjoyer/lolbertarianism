@@ -186,6 +186,40 @@ describe('basic economics trainer: the books', () => {
     expect(bookUnlocked(ha, 0, ['ha'])).toBe(true);
   });
 
+  it('builds a mistakes review from missed questions, and clears them after two right answers', async () => {
+    const { noteAnswer, REVIEW_CLEARS } = await import('./bank.ts');
+    const missed: Record<string, number> = {};
+    noteAnswer(missed, 'a', false);
+    noteAnswer(missed, 'b', false);
+    expect(missed).toEqual({ a: REVIEW_CLEARS, b: REVIEW_CLEARS });
+    expect(noteAnswer(missed, 'a', true)).toBe(false);
+    expect(noteAnswer(missed, 'a', true)).toBe(true);
+    expect(missed).toEqual({ b: REVIEW_CLEARS });
+    // Missing it again resets the count; a right answer to something never missed changes nothing.
+    noteAnswer(missed, 'b', true);
+    noteAnswer(missed, 'b', false);
+    expect(missed.b).toBe(REVIEW_CLEARS);
+    expect(noteAnswer(missed, 'z', true)).toBe(false);
+    const ids = BOOK.questions.slice(0, 14).map((q) => q.id);
+    const review = questionsFor({ kind: 'review', ids }, seededRng(3), BOOK);
+    expect(review).toHaveLength(RUN_LENGTH);
+    expect(review.every((q) => ids.includes(q.id))).toBe(true);
+    expect(questionsFor({ kind: 'review', ids: ids.slice(0, 3) }, seededRng(3), BOOK)).toHaveLength(3);
+  });
+
+  it('sets a 20-question final exam from the whole book, with a stricter verdict', async () => {
+    const { EXAM_LENGTH, EXAM_PASS } = await import('./bank.ts');
+    const { examVerdict } = await import('./quiz.ts');
+    for (const book of BOOKS) {
+      const exam = questionsFor({ kind: 'exam' }, seededRng(9), book);
+      expect(exam, book.id).toHaveLength(EXAM_LENGTH);
+      expect(new Set(exam.map((q) => q.id)).size).toBe(EXAM_LENGTH);
+    }
+    expect(examVerdict(EXAM_LENGTH, EXAM_LENGTH, EXAM_PASS).stamp).toBe('SUMMA CUM LAUDE');
+    expect(examVerdict(EXAM_PASS, EXAM_LENGTH, EXAM_PASS).tone).toBe('good');
+    expect(examVerdict(EXAM_PASS - 1, EXAM_LENGTH, EXAM_PASS).tone).not.toBe('good');
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);

@@ -35,6 +35,11 @@ export const RUN_LENGTH = 10;
 export const PASS_MARK = 7;
 const MIX: Record<Level, number> = { easy: 3, medium: 4, hard: 3 };
 export const LIGHTNING_SECONDS = 60;
+/** The final exam: questions from the whole book, how many you need right, open once every part is passed. */
+export const EXAM_LENGTH = 20;
+export const EXAM_PASS = 16;
+/** Right answers needed (in later runs) before a question you missed leaves your mistakes review. */
+export const REVIEW_CLEARS = 2;
 
 /** A small, fast seeded random-number generator (mulberry32): numbers in [0, 1). */
 export function seededRng(seed: number): () => number {
@@ -92,7 +97,13 @@ function mixed(pool: readonly BankQuestion[], rng: () => number, length = RUN_LE
   return picked.slice(0, length).sort((a, b) => order[a.level] - order[b.level]);
 }
 
-export type Mode = { kind: 'part'; part: number } | { kind: 'drill'; level: Level } | { kind: 'daily'; key: string } | { kind: 'lightning' };
+export type Mode =
+  | { kind: 'part'; part: number }
+  | { kind: 'drill'; level: Level }
+  | { kind: 'daily'; key: string }
+  | { kind: 'lightning' }
+  | { kind: 'review'; ids: readonly string[] }
+  | { kind: 'exam' };
 
 /** The questions for a run of a mode. The daily one depends only on the date. */
 export function questionsFor(mode: Mode, rng: () => number = Math.random, book: Book = BOOK): Question[] {
@@ -105,7 +116,11 @@ export function questionsFor(mode: Mode, rng: () => number = Math.random, book: 
         ? shuffle(byLevel(all, mode.level), rng).slice(0, RUN_LENGTH)
         : mode.kind === 'daily'
           ? mixed(all, rng)
-          : shuffle(all, rng);
+          : mode.kind === 'review'
+            ? shuffle(all.filter((q) => mode.ids.includes(q.id)), rng).slice(0, RUN_LENGTH)
+            : mode.kind === 'exam'
+              ? mixed(all, rng, EXAM_LENGTH)
+              : shuffle(all, rng);
   return picked.map((bq) => toQuestion(bq, rng, book));
 }
 
@@ -121,6 +136,21 @@ const dailySeed = (key: string) => Number(key.replace(/-/g, '')) ^ 0xb00c;
 
 /** Which parts are open: the first, and each one after a part you've passed. */
 export const unlockedParts = (passed: readonly number[], book: Book = BOOK) => book.parts.filter((p) => p.n === 1 || passed.includes(p.n - 1)).map((p) => p.n);
+
+/**
+ * Keeps the mistakes review up to date after an answer: a miss puts the question in (needing REVIEW_CLEARS right
+ * answers to leave), a right answer to a question in it counts one towards clearing it. Returns whether it was cleared.
+ */
+export function noteAnswer(missed: Record<string, number>, id: string, right: boolean): boolean {
+  if (!right) {
+    missed[id] = REVIEW_CLEARS;
+    return false;
+  }
+  if (!(id in missed)) return false;
+  if (--missed[id] > 0) return false;
+  delete missed[id];
+  return true;
+}
 
 /** Lifeline prices, in peanuts. */
 export const MIND_READ_COST = 3;

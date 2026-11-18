@@ -6,11 +6,12 @@ import { coverMarkup, lockMarkup } from './anya.ts';
 import type { Face, Mouth } from './anya.ts';
 import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
-import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
+import { CERTIFICATE_FONTS, certificateFont, coverImage, drawCertificate, loadCertificateFonts, longDate } from './certificate.ts';
 import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
-import { answer, answered, asked, current, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
+import { answer, answered, asked, current, examVerdict, finished, lightningVerdict, newQuiz, next, replaceCurrent, verdict, type Quiz } from './quiz.ts';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -30,6 +31,18 @@ const els = {
   drills: byId('drills'),
   daily: byId<HTMLButtonElement>('daily'),
   dailyNote: byId('daily-note'),
+  reviewMistakes: byId<HTMLButtonElement>('review-mistakes'),
+  reviewNote: byId('review-note'),
+  exam: byId<HTMLButtonElement>('exam'),
+  examNote: byId('exam-note'),
+  openCertificate: byId<HTMLButtonElement>('open-certificate'),
+  endCertificate: byId<HTMLButtonElement>('end-certificate'),
+  certificate: byId('certificate'),
+  certificateCanvas: byId<HTMLCanvasElement>('certificate-canvas'),
+  certificateName: byId<HTMLInputElement>('certificate-name'),
+  certificateFonts: byId('certificate-fonts'),
+  certificateSave: byId<HTMLButtonElement>('certificate-save'),
+  hideCertificate: byId<HTMLButtonElement>('hide-certificate'),
   lightning: byId<HTMLButtonElement>('lightning'),
   lightningNote: byId('lightning-note'),
   quizPanel: byId('quiz-panel'),
@@ -80,6 +93,11 @@ interface Progress {
   drillBest: Record<string, number>;
   dailyBests: Record<string, number>;
   lightningBest: number;
+  /** Questions you got wrong, by id, with how many right answers each still needs to leave the mistakes review. */
+  missed: Record<string, number>;
+  /** Best final exam score (null before the first try), and the date you first passed it ('' if not yet). */
+  examBest: number | null;
+  examPassed: string;
 }
 
 interface Save {
@@ -104,6 +122,8 @@ interface Save {
   tts: { questions: boolean; anya: boolean };
   /** Wrong answers in a row, across quizzes (ten of them earn you the secret book). */
   wrongStreak: number;
+  /** What goes on your certificates: the name you typed and the lettering you picked. */
+  certificate: { name: string; font: string };
 }
 const slot = createSaveSlot<Save>({ game: 'basic-economics-trainer', version: 1 });
 const saved = slot.load();
@@ -119,6 +139,9 @@ function progressFrom(raw: unknown): Progress {
     // Keep the last two months of daily scores.
     dailyBests: Object.fromEntries(Object.entries(counts(r.dailyBests)).filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 60)),
     lightningBest: count(r.lightningBest),
+    missed: Object.fromEntries(Object.entries(counts(r.missed)).filter(([, n]) => n > 0)),
+    examBest: r.examBest === undefined || r.examBest === null ? null : count(r.examBest),
+    examPassed: typeof r.examPassed === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.examPassed) ? r.examPassed : '',
   };
 }
 // Saves from before there was a second book kept Basic Economics' scores at the top level.
@@ -138,6 +161,10 @@ const save: Save = {
   stats: normalizeBookStats(saved?.stats, BOOKS.map((b) => b.id)),
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
   wrongStreak: count(saved?.wrongStreak),
+  certificate: {
+    name: typeof saved?.certificate?.name === 'string' ? saved.certificate.name.slice(0, 40) : '',
+    font: typeof saved?.certificate?.font === 'string' ? saved.certificate.font : 'classic',
+  },
 };
 const persist = () => slot.save(save);
 
@@ -428,6 +455,19 @@ function renderMenu() {
   const today = prog().dailyBests[dateKey(new Date())];
   els.dailyNote.textContent = today !== undefined ? `Today’s best: ${today}/${RUN_LENGTH}` : 'Same 10 questions for everyone today';
   els.lightningNote.textContent = prog().lightningBest ? `Best: ${prog().lightningBest} in a minute` : `${LIGHTNING_SECONDS} seconds. As many as you can.`;
+  const waiting = missedIds().length;
+  els.reviewMistakes.disabled = !waiting;
+  els.reviewNote.textContent = waiting ? `${waiting} question${waiting === 1 ? '' : 's'} to review` : 'Nothing to review yet. Get something wrong first';
+  const canSit = examOpen();
+  const examBest = prog().examBest;
+  els.exam.disabled = !canSit;
+  els.exam.classList.toggle('passed', !!prog().examPassed);
+  els.examNote.textContent = !canSit
+    ? 'Pass every part to sit the exam'
+    : prog().examPassed
+      ? `Passed · best ${examBest}/${EXAM_LENGTH}`
+      : `${EXAM_LENGTH} questions, ${EXAM_PASS} to pass, no lifelines${examBest !== null ? ` · best ${examBest}/${EXAM_LENGTH}` : ''}`;
+  els.openCertificate.hidden = !prog().examPassed;
 }
 
 function toMenu() {
@@ -454,6 +494,13 @@ let usedLifeline = false;
 let askedAt = 0;
 
 const isLightning = () => mode.kind === 'lightning';
+/** No lifelines in the lightning round (no time) or the final exam (no help). */
+const noLifelines = () => isLightning() || mode.kind === 'exam';
+/** Questions that left the mistakes review during this run. */
+let clearedThisRun = 0;
+/** The questions waiting in the mistakes review, for the book in hand. */
+const missedIds = () => Object.keys(prog().missed).filter((id) => book.questions.some((q) => q.id === id));
+const examOpen = () => book.parts.every((p) => prog().passed.includes(p.n));
 
 function renderPips() {
   if (isLightning()) {
@@ -481,16 +528,23 @@ function modeLabel(m: Mode): string {
   if (m.kind === 'part') return `Part ${roman(m.part)}: ${book.parts.find((p) => p.n === m.part)!.title}`;
   if (m.kind === 'drill') return `${LEVEL_NAMES[m.level]} drill`;
   if (m.kind === 'daily') return 'Daily quiz';
+  if (m.kind === 'review') return 'Mistakes review';
+  if (m.kind === 'exam') return 'Final exam';
   return 'Lightning round';
 }
 
 function start(m: Mode) {
-  mode = m.kind === 'daily' ? { kind: 'daily', key: dateKey(new Date()) } : m;
+  // The daily quiz is always today’s; the mistakes review always takes what’s waiting now.
+  mode = m.kind === 'daily' ? { kind: 'daily', key: dateKey(new Date()) } : m.kind === 'review' ? { kind: 'review', ids: missedIds() } : m;
+  if (mode.kind === 'review' && !mode.ids.length) return toMenu();
+  if (mode.kind === 'exam' && !examOpen()) return toMenu();
   quiz = newQuiz(questionsFor(mode, Math.random, book));
+  clearedThisRun = 0;
   play('page');
   screen('quiz');
+  els.pips.classList.toggle('many', quiz.questions.length > RUN_LENGTH);
   els.timer.hidden = !isLightning();
-  els.mindRead.hidden = els.swap.hidden = els.askSowell.hidden = isLightning();
+  els.mindRead.hidden = els.swap.hidden = els.askSowell.hidden = noLifelines();
   usedLifeline = false;
   els.hint.hidden = isLightning();
   if (isLightning()) startTimer();
@@ -536,7 +590,13 @@ function ask() {
     readQuestion(false);
     return;
   }
-  say(n === 1 ? `${modeLabel(mode)}. Question one: try not to embarrass yourself.` : n === quiz.questions.length ? 'Last one. Don’t choke.' : pick(ASK_LINES), { talk: true });
+  const first =
+    mode.kind === 'exam'
+      ? `The final exam. ${EXAM_LENGTH} questions, ${EXAM_PASS} to pass. No lifelines, no mercy. Begin.`
+      : mode.kind === 'review'
+        ? 'Your mistakes, back for revenge. Get each one right twice and it goes away.'
+        : `${modeLabel(mode)}. Question one: try not to embarrass yourself.`;
+  say(n === 1 ? first : n === quiz.questions.length ? 'Last one. Don’t choke.' : pick(ASK_LINES), { talk: true });
   readQuestion(save.tts.anya);
 }
 
@@ -592,6 +652,7 @@ function choose(i: number) {
   const right = answer(quiz, i);
   if (right === null) return;
   recordAnswer(bookStats(), q.level, right, performance.now() - askedAt, quiz.streak);
+  if (noteAnswer(prog().missed, q.id, right)) clearedThisRun++;
   persist();
   if (save.tts.questions) speak(right ? 'Right.' : `Wrong. The answer was ${'ABCD'[q.correct]}: ${q.options[q.correct]}.`, 'reader');
   const buttons = [...els.options.querySelectorAll<HTMLButtonElement>('.option')];
@@ -785,7 +846,8 @@ function end() {
   renderPips();
   const done = asked(quiz);
   const total = isLightning() ? done.length : quiz.questions.length;
-  const v = isLightning() ? lightningVerdict(quiz.score) : verdict(quiz.score, total);
+  const v = isLightning() ? lightningVerdict(quiz.score) : mode.kind === 'exam' ? examVerdict(quiz.score, total, EXAM_PASS) : verdict(quiz.score, total);
+  let passedExam = false;
   let bestLine = '';
   if (mode.kind === 'part') {
     const part = mode.part;
@@ -804,12 +866,25 @@ function end() {
     const was = prog().dailyBests[mode.key];
     prog().dailyBests[mode.key] = Math.max(was ?? 0, quiz.score);
     bestLine = `📅 Daily quiz, ${mode.key}: ${was === undefined ? 'your first score today.' : quiz.score > was ? `new best today (was ${was}).` : `today’s best is ${was}.`} New questions tomorrow.`;
+  } else if (mode.kind === 'review') {
+    const left = missedIds().length;
+    bestLine = `🩹 ${clearedThisRun ? `${clearedThisRun} cleared from your mistakes.` : 'Nothing cleared this time.'} ${left ? `${left} still to review (each needs two right answers).` : 'Your mistakes review is empty. Suspicious.'}`;
+  } else if (mode.kind === 'exam') {
+    const was = prog().examBest;
+    prog().examBest = Math.max(was ?? 0, quiz.score);
+    passedExam = quiz.score >= EXAM_PASS;
+    if (passedExam && !prog().examPassed) {
+      prog().examPassed = dateKey(new Date());
+      bestLine = `🎓 You passed the final exam of ${book.title}! Your certificate is ready.`;
+    } else if (passedExam) bestLine = `🎓 Passed again${was === null || quiz.score > was ? ', with your best score yet' : ''}. Your certificate is ready.`;
+    else bestLine = `You need ${EXAM_PASS} out of ${EXAM_LENGTH} to pass.${was !== null ? ` Your best: ${was}/${EXAM_LENGTH}.` : ''}`;
   } else {
     const was = prog().lightningBest;
     prog().lightningBest = Math.max(was, quiz.score);
     bestLine = quiz.score > was ? '🏆 Your best lightning round yet!' : `Your best: ${was} in a minute`;
   }
   // Achievements for the run
+  els.endCertificate.hidden = !passedExam;
   if (!isLightning()) {
     if (quiz.score === total && total === RUN_LENGTH) award('perfect');
     if (quiz.score === 0 && total === RUN_LENGTH) award('still-dumb');
@@ -821,6 +896,15 @@ function end() {
     if (book.parts.every((p) => prog().passed.includes(p.n))) award(allPartsAchievement(book.id));
   }
   if (mode.kind === 'drill' && mode.level === 'hard' && quiz.score >= 8) award('drill-hard');
+  if (mode.kind === 'review') {
+    award('review');
+    if (!missedIds().length) award('review-empty');
+  }
+  if (passedExam) {
+    award('exam');
+    if (quiz.score === total) award('exam-perfect');
+    if (BOOKS.filter((b) => save.progress[b.id].examPassed).length >= 3) award('exam-3');
+  }
   if (mode.kind === 'daily') {
     award('daily');
     if (new Set(Object.values(save.progress).flatMap((p) => Object.keys(p.dailyBests))).size >= 5) award('daily-5');
@@ -927,6 +1011,91 @@ function closeAchievements() {
 }
 
 els.showAchievements.addEventListener('click', () => (els.achievements.hidden ? openAchievements() : closeAchievements()));
+
+// ---------------------------------------------------------------------------
+// The certificate, for passing a book's final exam
+// ---------------------------------------------------------------------------
+
+/** The book whose certificate is open, and its cover once loaded. */
+let certificateBook: Book = book;
+let certificateCover: HTMLImageElement | null = null;
+
+function drawTheCertificate() {
+  const best = save.progress[certificateBook.id].examBest ?? 0;
+  drawCertificate(els.certificateCanvas, {
+    name: save.certificate.name,
+    font: save.certificate.font,
+    bookTitle: certificateBook.title,
+    author: certificateBook.author,
+    score: best,
+    total: EXAM_LENGTH,
+    date: new Date(),
+    accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c0392b',
+    cover: certificateCover,
+  });
+  els.certificateCanvas.setAttribute(
+    'aria-label',
+    `Certificate: Anya certifies that ${save.certificate.name.trim() || '(your name)'} passed the final exam of ${certificateBook.title} by ${certificateBook.author}, scoring ${best} out of ${EXAM_LENGTH}, on ${longDate(new Date())}.`,
+  );
+}
+
+function renderCertificateFonts() {
+  els.certificateFonts.replaceChildren(
+    ...CERTIFICATE_FONTS.map((f) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'look-toggle certificate-font';
+      b.textContent = f.label;
+      b.style.font = f.font(20);
+      b.setAttribute('aria-pressed', String(certificateFont(save.certificate.font).id === f.id));
+      b.addEventListener('click', () => {
+        save.certificate.font = f.id;
+        persist();
+        renderCertificateFonts();
+        drawTheCertificate();
+      });
+      return b;
+    }),
+  );
+}
+
+async function openCertificate() {
+  certificateBook = book;
+  certificateCover = null;
+  els.certificateName.value = save.certificate.name;
+  renderCertificateFonts();
+  els.certificate.hidden = false;
+  drawTheCertificate();
+  els.certificateName.focus({ preventScroll: true });
+  // Draw again once the fonts and the cover have loaded.
+  const [cover] = await Promise.all([coverImage(coverMarkup(certificateBook.id)), loadCertificateFonts()]);
+  certificateCover = cover;
+  if (!els.certificate.hidden) drawTheCertificate();
+}
+
+function closeCertificate() {
+  els.certificate.hidden = true;
+}
+
+els.openCertificate.addEventListener('click', () => void openCertificate());
+els.endCertificate.addEventListener('click', () => void openCertificate());
+els.hideCertificate.addEventListener('click', closeCertificate);
+els.certificateName.addEventListener('input', () => {
+  save.certificate.name = els.certificateName.value.slice(0, 40);
+  persist();
+  drawTheCertificate();
+});
+els.certificateSave.addEventListener('click', () => {
+  els.certificateCanvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `certificate-${certificateBook.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.png`;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
+});
 els.hideAchievements.addEventListener('click', closeAchievements);
 
 // ---------------------------------------------------------------------------
@@ -1419,6 +1588,8 @@ els.take.addEventListener('click', take);
 bookEl.addEventListener('click', take);
 els.next.addEventListener('click', advance);
 els.again.addEventListener('click', () => start(mode));
+els.reviewMistakes.addEventListener('click', () => start({ kind: 'review', ids: [] }));
+els.exam.addEventListener('click', () => start({ kind: 'exam' }));
 els.toMenu.addEventListener('click', () => {
   play('page');
   toMenu();
@@ -1428,6 +1599,14 @@ els.lightning.addEventListener('click', () => start({ kind: 'lightning' }));
 
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  // The certificate has a text box: leave its keys alone, except Escape to close it.
+  if (!els.certificate.hidden) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCertificate();
+    }
+    return;
+  }
   const at = els.app.dataset.screen;
   if (!els.settings.hidden) {
     if (e.key === 'Escape') {
