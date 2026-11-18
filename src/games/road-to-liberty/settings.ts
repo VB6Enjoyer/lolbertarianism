@@ -7,21 +7,23 @@ export interface DisplayOptions {
   colorblind: boolean;
   /** Shake the screen on crashes. */
   shake: boolean;
+  /** The original veiny arm holding the phone, instead of the newer, more natural one. */
+  classicArm: boolean;
 }
 
 /** The options in effect (main.ts loads them from the save). */
-export const display: DisplayOptions = { reducedFlashing: false, colorblind: false, shake: true };
+export const display: DisplayOptions = { reducedFlashing: false, colorblind: false, shake: true, classicArm: false };
 
 /** Defaults: reduced flashing if the system asks for reduced motion. */
 export function defaultOptions(reducedMotion: boolean): DisplayOptions {
-  return { reducedFlashing: reducedMotion, colorblind: false, shake: !reducedMotion };
+  return { reducedFlashing: reducedMotion, colorblind: false, shake: !reducedMotion, classicArm: false };
 }
 
 /** Cleans up options from a save, filling in anything missing from the defaults. */
 export function normalizeOptions(raw: unknown, defaults: DisplayOptions): DisplayOptions {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const pick = (key: keyof DisplayOptions) => (typeof o[key] === 'boolean' ? (o[key] as boolean) : defaults[key]);
-  return { reducedFlashing: pick('reducedFlashing'), colorblind: pick('colorblind'), shake: pick('shake') };
+  return { reducedFlashing: pick('reducedFlashing'), colorblind: pick('colorblind'), shake: pick('shake'), classicArm: pick('classicArm') };
 }
 
 /**

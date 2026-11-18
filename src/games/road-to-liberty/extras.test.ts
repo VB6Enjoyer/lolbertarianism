@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ADS, broadcastLabel, broadcastSeconds, buildProgram, PLAYLIST, SEGMENT_SECONDS, SONG_SECONDS, TALK } from './radio.ts';
 import { BUTTON, PadReader, stickAxis, type PadLike } from './gamepad.ts';
 import { bestMoment, momentFor } from './photo.ts';
-import { shareText, type RunSummary } from './share.ts';
+import { clock, shareText, type RunSummary } from './share.ts';
 import { blink, defaultOptions, display, normalizeOptions } from './settings.ts';
 
 function rng(seed: number) {
@@ -116,6 +116,7 @@ describe('road to liberty: share card', () => {
     score: 123456.7,
     commies: 42,
     meters: 7340,
+    seconds: 247,
     landscape: 'the Beach',
     territory: 'Zug',
     car: 'Seized Trabant',
@@ -128,7 +129,7 @@ describe('road to liberty: share card', () => {
     expect(shareText(run)).toBe([
       '🚗 The Road to Liberty',
       '💰 $123,456 before the State caught me',
-      '☭ 42 commies flattened · 🛣️ 7.3 km',
+      '☭ 42 commies flattened · 🛣️ 7.3 km · ⏱️ 4:07',
       '🏞️ Reached the Beach (Zug) in the 🚙 Seized Trabant',
       run.url,
     ].join('\n'));
@@ -139,16 +140,25 @@ describe('road to liberty: share card', () => {
     expect(text.split('\n')[0]).toBe('🚗 The Road to Liberty · 🎖️ Daily 2026-11-08 (Stalin Day)');
     expect(text).toContain('☭ 1 commie flattened');
   });
+
+  it('shows how long you lasted as a clock', () => {
+    expect(clock(0)).toBe('0:00');
+    expect(clock(59.9)).toBe('0:59');
+    expect(clock(247)).toBe('4:07');
+    expect(clock(3729)).toBe('1:02:09');
+  });
 });
 
 describe('road to liberty: accessibility options', () => {
   it('reduced motion on the system turns reduced flashing on and shake off', () => {
-    expect(defaultOptions(true)).toEqual({ reducedFlashing: true, colorblind: false, shake: false });
-    expect(defaultOptions(false)).toEqual({ reducedFlashing: false, colorblind: false, shake: true });
+    expect(defaultOptions(true)).toEqual({ reducedFlashing: true, colorblind: false, shake: false, classicArm: false });
+    expect(defaultOptions(false)).toEqual({ reducedFlashing: false, colorblind: false, shake: true, classicArm: false });
   });
 
   it('saves are cleaned up, falling back to the defaults', () => {
-    expect(normalizeOptions({ colorblind: true, shake: 'yes' }, defaultOptions(false))).toEqual({ reducedFlashing: false, colorblind: true, shake: true });
+    expect(normalizeOptions({ colorblind: true, shake: 'yes' }, defaultOptions(false))).toEqual({ reducedFlashing: false, colorblind: true, shake: true, classicArm: false });
+    // The classic arm stays chosen; saves from before the new arm get the new one.
+    expect(normalizeOptions({ classicArm: true }, defaultOptions(false)).classicArm).toBe(true);
     expect(normalizeOptions(null, defaultOptions(true))).toEqual(defaultOptions(true));
   });
 

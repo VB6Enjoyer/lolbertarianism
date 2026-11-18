@@ -837,3 +837,13 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
 - Fixes: a trader could take your last block (an empty pile ends the run on
   the next grab); trades now always leave one. The toll sign showed the
   level, not the toll.
+
+### The Road to Liberty: a more natural arm, and time survived ✅
+
+- A player found the arm holding the phone off-putting (four floating
+  fingertips, a blob of a palm, a veiny wedge for a forearm). The new arm is
+  one hand: fingers wrapped round the phone's edge as a group, a thumb on the
+  front, a tapered forearm out of a rolled-up shirt sleeve. Still golden, as
+  in the meme. The old one is kept: ⚙️ Options → Classic arm.
+- The busted screen, the share text and the share card show how long you
+  lasted (⏱️ m:ss).
