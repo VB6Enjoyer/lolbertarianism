@@ -154,7 +154,5 @@ export function noteAnswer(missed: Record<string, number>, id: string, right: bo
   return true;
 }
 
-/** Lifeline prices, in peanuts. */
-export const MIND_READ_COST = 3;
-export const SWAP_COST = 2;
-export const HINT_COST = 1;
+/** Free uses of each lifeline per quiz. (Peanuts are a score, not money: lifelines don’t cost any.) */
+export const LIFELINES = { hint: 3, mindRead: 1, swap: 1 } as const;

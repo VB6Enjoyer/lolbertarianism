@@ -6,11 +6,12 @@ import { coverMarkup, lockMarkup } from './anya.ts';
 import type { Face, Mouth } from './anya.ts';
 import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
-import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, shuffle, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, LEVELS, LIFELINES, LIGHTNING_SECONDS, PASS_MARK, questionsFor, roman, RUN_LENGTH, shuffle, swapFor, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
 import { daysBetween, emptyStreak, greeting, liveStreak, partOfDay, recordDaily, shareText, streakLine, TIME_ASIDES, type DailyStreak } from './days.ts';
 import { SHOWDOWNS, showdownById, showdownQuestions } from './showdowns.ts';
 import { glossaryFor, type GlossaryEntry } from './books/glossary.ts';
+import { LOOKS, SLOTS, lockedLabel, lookUnlocked, outfitFrom, wearMarkup, wornLooks, type Look, type Outfit } from './looks.ts';
 import { CERTIFICATE_FONTS, certificateFont, coverImage, drawCertificate, loadCertificateFonts, longDate } from './certificate.ts';
 import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
@@ -127,7 +128,6 @@ interface Progress {
 
 interface Save {
   muted: boolean;
-  peanuts: number;
   /** The book Anya is holding out, and the books you've taken from her. */
   book: string;
   opened: string[];
@@ -139,8 +139,9 @@ interface Save {
   peanutsEarned: number;
   hardRight: number;
   stillDumbs: number;
-  /** Anya's unlockable looks, and whether each is switched on. */
-  looks: { pink: boolean; green: boolean };
+  /** What Anya is wearing (a look per slot), and the looks already announced. */
+  outfit: Outfit;
+  seenLooks: string[];
   /** Each book's stats, by book id. */
   stats: Record<string, Stats>;
   /** Read aloud: questions and answers, and Anya's lines. */
@@ -180,7 +181,6 @@ function progressFrom(raw: unknown): Progress {
 const savedProgress = (saved?.progress && typeof saved.progress === 'object' ? saved.progress : { be: saved }) as Record<string, unknown>;
 const save: Save = {
   muted: saved?.muted === true,
-  peanuts: count(saved?.peanuts ?? 5),
   book: bookById(saved?.book).id,
   opened: Array.isArray(saved?.opened) ? saved.opened.filter((id): id is string => BOOKS.some((b) => b.id === id)) : saved?.achievements?.includes('took-book') ? ['be'] : [],
   progress: Object.fromEntries(BOOKS.map((b) => [b.id, progressFrom(savedProgress[b.id])])),
@@ -189,7 +189,9 @@ const save: Save = {
   peanutsEarned: count(saved?.peanutsEarned),
   hardRight: count(saved?.hardRight),
   stillDumbs: count(saved?.stillDumbs),
-  looks: { pink: saved?.looks?.pink === true, green: saved?.looks?.green === true },
+  // Saves from before the wardrobe kept pink hair and green eyes as two switches.
+  outfit: outfitFrom(saved?.outfit, (saved as { looks?: { pink?: unknown; green?: unknown } } | null)?.looks),
+  seenLooks: Array.isArray(saved?.seenLooks) ? saved.seenLooks.filter((id): id is string => typeof id === 'string') : [],
   stats: normalizeBookStats(saved?.stats, BOOKS.map((b) => b.id)),
   tts: { questions: saved?.tts?.questions === true, anya: saved?.tts?.anya === true },
   wrongStreak: count(saved?.wrongStreak),
@@ -210,8 +212,10 @@ const persist = () => slot.save(save);
 /** The secret book (Capital) is unlocked by this achievement; until then it stays off Anya’s shelf. */
 const SECRET_UNLOCK = 'red-pill';
 const secretUnlocked = () => save.achievements.includes(SECRET_UNLOCK);
-/** Peanuts earned in all, ever (the all-books count also covers saves from before it was kept). Spending them doesn’t lower it. */
+/** Peanuts earned in all, ever: the score (the all-books count also covers saves from before it was kept). It never goes down. */
 const earned = () => Math.max(save.peanutsEarned, BOOKS.reduce((t, b) => t + save.stats[b.id].right, 0));
+// A save from before the wardrobe: the looks it already has count as announced.
+if (!Array.isArray(saved?.seenLooks)) save.seenLooks = LOOKS.filter((l) => lookUnlocked(l, earned(), new Set(save.achievements))).map((l) => l.id);
 /** Whether you can take a book: peanut-locked books open with enough peanuts earned; the secret book with Anya’s blessing. */
 const isOpen = (b: Book) => (b.secret ? secretUnlocked() : bookUnlocked(b, earned(), save.opened));
 /** The books Anya can hold out: all of them, locked ones too (the secret one as a mystery book). */
@@ -264,7 +268,7 @@ els.mute.addEventListener('click', () => {
 renderMute();
 
 function renderPeanuts(bump = false) {
-  els.peanuts.textContent = `🥜 ${save.peanuts}`;
+  els.peanuts.textContent = `🥜 ${earned()}`;
   if (bump) {
     els.peanuts.classList.remove('bump');
     void els.peanuts.offsetWidth;
@@ -451,7 +455,7 @@ const bookLines = () => BOOK_LINES[book.id] ?? BOOK_LINES.be;
 /** Each book's icon, in its cover's colour. */
 const bookIcon = (id: string) => ({ be: '📕', ha: '📘', eol: '📓', tmb: '📗', mes: '♟️', jhs: '📙', dmf: '⚙️', fc: '🏺', kap: '🚩' })[id] ?? '📗';
 
-const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts buy lifelines. Anya likes peanuts. Just saying.'];
+const MENU_LINES = ['Pick a part. Start at the beginning, like a normal person.', 'Well? The book won’t read itself.', 'More questions. Anya is very patient. Mostly.', 'Peanuts are your score. They unlock books, and outfits for Anya. Just saying.'];
 
 function renderMenu() {
   const open = unlockedParts(prog().passed, book);
@@ -543,6 +547,8 @@ let readMind = false;
 let askedSowell = false;
 let usedLifeline = false;
 let askedAt = 0;
+/** Lifeline uses left in this quiz. */
+const left = { hint: 0, mindRead: 0, swap: 0 };
 
 const isLightning = () => mode.kind === 'lightning';
 /** No lifelines in the lightning round (no time) or the final exam (no help). */
@@ -603,6 +609,7 @@ function start(m: Mode) {
   els.timer.hidden = !isLightning();
   els.mindRead.hidden = els.swap.hidden = els.askSowell.hidden = noLifelines();
   usedLifeline = false;
+  Object.assign(left, LIFELINES);
   els.hint.hidden = isLightning();
   if (isLightning()) startTimer();
   ask();
@@ -661,9 +668,17 @@ function ask() {
 
 function renderLifelines() {
   const open = !answered(quiz);
-  els.mindRead.disabled = !open || readMind || save.peanuts < MIND_READ_COST;
-  els.swap.disabled = !open || save.peanuts < SWAP_COST;
-  els.askSowell.disabled = !open || askedSowell || save.peanuts < HINT_COST;
+  els.mindRead.disabled = !open || readMind || left.mindRead < 1;
+  els.swap.disabled = !open || left.swap < 1;
+  els.askSowell.disabled = !open || askedSowell || left.hint < 1;
+  lifelineLabels();
+}
+
+/** The lifeline buttons, with the uses left in this quiz. */
+function lifelineLabels() {
+  els.askSowell.innerHTML = `👓 Ask ${book.short} <span>×${left.hint}</span>`;
+  els.mindRead.innerHTML = `🔮 Mind-read <span>×${left.mindRead}</span>`;
+  els.swap.innerHTML = `🔄 Swap <span>×${left.swap}</span>`;
 }
 
 // --- The secret book ---
@@ -737,7 +752,6 @@ function choose(i: number) {
   const redPill = !right && earnedSecretBook();
   if (right) {
     play('right');
-    save.peanuts++;
     save.peanutsEarned++;
     if (inBook && !save.mastered.includes(q.id)) save.mastered.push(q.id);
     if (q.level === 'hard') save.hardRight++;
@@ -747,7 +761,10 @@ function choose(i: number) {
     if (save.mastered.length >= 100) award('well-read');
     if (book.questions.every((x) => save.mastered.includes(x.id))) award(wholeBookAchievement(book.id));
     if (save.hardRight >= 50) award('empiricist');
-    if (save.peanutsEarned >= 100) award('peanuts-100');
+    if (earned() >= 100) award('peanuts-100');
+    if (earned() >= 500) award('peanuts-500');
+    if (earned() >= 1000) award('peanuts-1000');
+    checkLooks();
     for (const b of BOOKS) if (b.id in UNLOCK_AT && earnedBefore < UNLOCK_AT[b.id] && earned() >= UNLOCK_AT[b.id] && !save.opened.includes(b.id)) bookUnlockedToast(b);
     if (q.level === 'hard' && performance.now() - askedAt < 2000) award('lucky');
     persist();
@@ -807,10 +824,8 @@ function advance() {
 /** Anya reads the examiner's mind: two wrong answers vanish. */
 els.mindRead.addEventListener('click', () => {
   const q = current(quiz);
-  if (!q || answered(quiz) || readMind || save.peanuts < MIND_READ_COST) return;
-  save.peanuts -= MIND_READ_COST;
-  persist();
-  renderPeanuts(true);
+  if (!q || answered(quiz) || readMind || left.mindRead < 1) return;
+  left.mindRead--;
   readMind = true;
   usedLifeline = true;
   award('mind-read');
@@ -825,22 +840,21 @@ els.mindRead.addEventListener('click', () => {
   play('magic');
   setFace('smug');
   boom('MIND READ!', 'good', true);
-  say(pick(['Anya can read minds. The examiner is thinking about lunch. And this.', 'Heh. Anya peeked. Two of those are wrong.', 'Waku waku. Telepathy is cheating, but peanuts are peanuts.']));
+  say(pick(['Anya can read minds. The examiner is thinking about lunch. And this.', 'Heh. Anya peeked. Two of those are wrong.', 'Waku waku. Telepathy is cheating. Anya doesn’t care.']));
   renderLifelines();
 });
 
 /** A different question of the same difficulty. */
 els.swap.addEventListener('click', () => {
   const q = current(quiz);
-  if (!q || answered(quiz) || save.peanuts < SWAP_COST) return;
+  if (!q || answered(quiz) || left.swap < 1) return;
   const replacement = swapFor(q, quiz.questions.map((x) => x.id), Math.random, book);
   if (!replacement || !replaceCurrent(quiz, replacement)) return;
-  save.peanuts -= SWAP_COST;
+  left.swap--;
   usedLifeline = true;
   award('swap');
   bookStats().swaps++;
   persist();
-  renderPeanuts(true);
   play('page');
   ask();
   say(pick(['Fine. Try this one instead.', 'Scared of that one? Here.', 'Different question. Same Anya.']), { talk: true });
@@ -849,10 +863,8 @@ els.swap.addEventListener('click', () => {
 /** Ask the author (Sowell, Mises): a hint from the book, not the answer. */
 els.askSowell.addEventListener('click', () => {
   const q = current(quiz);
-  if (!q || answered(quiz) || askedSowell || save.peanuts < HINT_COST) return;
-  save.peanuts -= HINT_COST;
-  persist();
-  renderPeanuts(true);
+  if (!q || answered(quiz) || askedSowell || left.hint < 1) return;
+  left.hint--;
   askedSowell = true;
   usedLifeline = true;
   award('ask-sowell');
@@ -1033,6 +1045,7 @@ function award(id: string) {
   unlocked.add(id);
   save.achievements = [...unlocked];
   persist();
+  checkLooks();
   const el = document.createElement('div');
   el.className = 'toast';
   el.innerHTML = '<span class="icon"></span><small>ACHIEVEMENT UNLOCKED</small><b></b>';
@@ -1485,11 +1498,52 @@ settingsEls.eraseYes.addEventListener('click', () => {
 // Easter eggs: boop her nose, pat her head, poke her eyes, keep her waiting
 // ---------------------------------------------------------------------------
 
-function applyLooks() {
-  els.anya.classList.toggle('pink-hair', save.looks.pink && unlocked.has('pink-hair'));
-  els.anya.classList.toggle('green-eyes', save.looks.green && unlocked.has('green-eyes'));
+// Function declarations, as award() (which can unlock a look) may run before this point.
+function hasLook(look: Look) {
+  return lookUnlocked(look, earned(), unlocked);
 }
+
+/** Dresses her: colour looks are classes, hats and glasses are drawn over her hair. */
+function applyLooks() {
+  const worn = wornLooks(save.outfit, hasLook);
+  for (const look of LOOKS) els.anya.classList.toggle(`look-${look.id}`, worn.includes(look));
+  els.anya.classList.toggle('no-clips', worn.some((l) => l.hidesClips));
+  const wear = els.anya.querySelector('#anya-wear');
+  if (wear) wear.innerHTML = wearMarkup(worn);
+}
+
+/** Announces looks you've just unlocked, and has her put them on. */
+function checkLooks() {
+  const fresh = LOOKS.filter((l) => hasLook(l) && !save.seenLooks.includes(l.id));
+  if (!fresh.length) return;
+  for (const look of fresh) {
+    save.seenLooks.push(look.id);
+    save.outfit[look.slot] = look.id;
+    lookToast(look);
+  }
+  persist();
+  applyLooks();
+  // Mid-quiz she's busy reacting to your answer; the toast says it.
+  if (els.app.dataset.screen !== 'quiz') quip(fresh[fresh.length - 1].line, 'happy', 3200);
+  const owned = LOOKS.filter(hasLook).length;
+  if (owned >= 6) award('looks-6');
+  if (owned === LOOKS.length) award('looks-all');
+}
+
+function lookToast(look: Look) {
+  const el = document.createElement('div');
+  el.className = 'toast look';
+  el.innerHTML = '<span class="icon"></span><small>NEW LOOK FOR ANYA</small><b></b>';
+  const [icon, ...name] = look.label.split(' ');
+  el.querySelector('.icon')!.textContent = icon;
+  el.querySelector('b')!.textContent = name.join(' ');
+  els.toasts.append(el);
+  window.setTimeout(() => el.remove(), 4300);
+}
+
 applyLooks();
+// The Santa hat comes with December.
+if (new Date().getMonth() === 11) award('festive');
 
 /** A little effect where she was touched: a heart for pats, a star for pokes, a "boop". */
 function touchFx(e: PointerEvent, text: string) {
@@ -1529,7 +1583,7 @@ function pat(e: PointerEvent) {
   if (pats % 10 === 0) {
     const first = !unlocked.has('pink-hair');
     award('pink-hair');
-    save.looks.pink = true;
+    save.outfit.hair = 'pink-hair';
     persist();
     applyLooks();
     makeoverCheck();
@@ -1547,7 +1601,7 @@ function poke(e: PointerEvent) {
   if (pokes % 10 === 0) {
     const first = !unlocked.has('green-eyes');
     award('green-eyes');
-    save.looks.green = true;
+    save.outfit.eyes = 'green-eyes';
     persist();
     applyLooks();
     makeoverCheck();
@@ -1600,29 +1654,38 @@ window.setInterval(() => {
   if (impatience >= 2) boom(impatience >= 3 ? 'TAP TAP TAP' : 'TAP TAP', 'bad');
 }, 1000);
 
-/** The wardrobe, in the achievements panel: switch the looks you've found on and off. */
+/** The wardrobe, in the achievements panel: a row per slot; she wears one look from each, or none. */
 function renderWardrobe() {
   const box = byId('wardrobe');
-  const looks: { key: 'pink' | 'green'; id: string; label: string }[] = [
-    { key: 'pink', id: 'pink-hair', label: '🌸 Pink hair' },
-    { key: 'green', id: 'green-eyes', label: '💚 Green eyes' },
-  ];
+  const have = earned();
   box.replaceChildren(
-    ...looks.map((look) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'small-toggle look-toggle';
-      const got = unlocked.has(look.id);
-      b.disabled = !got;
-      b.setAttribute('aria-pressed', String(got && save.looks[look.key]));
-      b.textContent = got ? `${look.label}: ${save.looks[look.key] ? 'on' : 'off'}` : '🔒 A secret look';
-      b.addEventListener('click', () => {
-        save.looks[look.key] = !save.looks[look.key];
-        persist();
-        applyLooks();
-        renderWardrobe();
-      });
-      return b;
+    ...SLOTS.map(({ slot, label }) => {
+      const row = document.createElement('div');
+      row.className = 'wardrobe-row';
+      const name = document.createElement('span');
+      name.className = 'wardrobe-slot';
+      name.textContent = label;
+      row.append(
+        name,
+        ...LOOKS.filter((l) => l.slot === slot).map((look) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'small-toggle look-toggle';
+          const got = hasLook(look);
+          const on = got && save.outfit[slot] === look.id;
+          b.disabled = !got;
+          b.setAttribute('aria-pressed', String(on));
+          b.textContent = got ? look.label : lockedLabel(look, have);
+          b.addEventListener('click', () => {
+            save.outfit[slot] = on ? '' : look.id;
+            persist();
+            applyLooks();
+            renderWardrobe();
+          });
+          return b;
+        }),
+      );
+      return row;
     }),
   );
 }
@@ -1687,7 +1750,7 @@ function applyBook() {
   document.title = `${name} Trainer`;
   els.anya.setAttribute('aria-label', mystery ? 'Anya, holding out a wrapped mystery book on a plate' : `Anya, holding out a copy of ${book.title} on a plate${open ? '' : ', with a padlock on it'}`);
   els.menuKicker.textContent = `${book.title} · ${book.author}`;
-  els.askSowell.innerHTML = `👓 Ask ${book.short} <span>${HINT_COST}🥜</span>`;
+  lifelineLabels();
   els.take.classList.toggle('locked', !open);
   els.take.setAttribute('aria-disabled', String(!open));
   els.take.textContent = open ? 'Take the book' : mystery ? '🔒 ???' : `🔒 ${UNLOCK_AT[book.id]} 🥜 to unlock`;

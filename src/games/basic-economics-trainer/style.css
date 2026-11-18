@@ -1777,6 +1777,10 @@ button {
     animation: toast 4.2s ease-in-out forwards;
 }
 
+.toast.look {
+    background: #fde3e2;
+}
+
 .toast .icon {
     grid-row: span 2;
     font-size: 28px;
@@ -1871,12 +1875,28 @@ button {
 }
 
 /* --- Easter eggs: Anya's looks, and where she's touched --- */
-.anya.pink-hair .anya-hair {
+.anya.look-pink-hair .anya-hair {
     fill: #eda09e;
 }
 
-.anya.green-eyes .anya-iris {
+.anya.look-gold-hair .anya-hair {
+    fill: #f3d27a;
+}
+
+.anya.look-ancap-hair .anya-hair {
+    fill: url(#anya-hair-ancap);
+}
+
+.anya.look-green-eyes .anya-iris {
     fill: url(#anya-iris-green);
+}
+
+.anya.look-gold-eyes .anya-iris {
+    fill: url(#anya-iris-gold);
+}
+
+.anya.no-clips .anya-clips {
+    display: none;
 }
 
 .anya-hit {
@@ -1923,6 +1943,37 @@ button {
     justify-content: center;
     gap: 10px;
     margin: 4px 0 18px;
+}
+
+.wardrobe-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.wardrobe-slot {
+    flex: 0 0 64px;
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    text-align: right;
+}
+
+.wardrobe-row .look-toggle {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+@media (max-width: 640px) {
+    .wardrobe-slot {
+        flex-basis: 100%;
+        text-align: center;
+    }
 }
 
 .look-toggle {

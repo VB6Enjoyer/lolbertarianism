@@ -22,7 +22,7 @@
             <ol id="pips" class="pips" aria-label="Progress"></ol>
             <div class="top-right">
                 <span id="score" class="score" aria-live="polite"></span>
-                <span id="peanuts" class="peanuts" title="Peanuts: earn one for every right answer, spend them on lifelines">🥜 0</span>
+                <span id="peanuts" class="peanuts" title="Peanuts: your score. Earn one for every right answer; they unlock books and Anya’s looks">🥜 0</span>
                 <button id="show-settings" class="icon-button" type="button" aria-label="Stats and settings" title="Stats and settings">📊</button>
                 <button id="show-achievements" class="icon-button" type="button" aria-label="Achievements" title="Achievements">🏅</button>
                 <button id="mute" class="icon-button" type="button" aria-label="Toggle sound">🔊</button>
@@ -81,9 +81,9 @@
                 <div id="options" class="options"></div>
                 <div class="quiz-footer">
                     <div class="lifelines">
-                        <button id="ask-sowell" type="button" class="lifeline" title="A hint from the book (not the answer)">👓 Ask Sowell <span>1🥜</span></button>
-                        <button id="mind-read" type="button" class="lifeline" title="Anya reads the examiner’s mind: two wrong answers disappear">🔮 Mind-read <span>3🥜</span></button>
-                        <button id="swap" type="button" class="lifeline" title="Swap this question for another of the same difficulty">🔄 Swap <span>2🥜</span></button>
+                        <button id="ask-sowell" type="button" class="lifeline" title="A hint from the book (not the answer). Three per quiz">👓 Ask Sowell <span>×3</span></button>
+                        <button id="mind-read" type="button" class="lifeline" title="Anya reads the examiner’s mind: two wrong answers disappear. Once per quiz">🔮 Mind-read <span>×1</span></button>
+                        <button id="swap" type="button" class="lifeline" title="Swap this question for another of the same difficulty. Once per quiz">🔄 Swap <span>×1</span></button>
                     </div>
                     <p id="hint" class="hint">Tap an answer, or press 1–4</p>
                     <button id="next" type="button" class="next-button" hidden>Next ▶</button>
@@ -112,7 +112,7 @@
                 <h2 class="menu-title">🏅 Achievements</h2>
                 <p class="end-kicker"><span id="achievements-count">0</span> unlocked · saved in this browser</p>
                 <div id="achievements-grid" class="achievements-grid"></div>
-                <h3 class="menu-heading wardrobe-heading">🎀 Anya’s look <small>Looks you’ve found can be switched on and off</small></h3>
+                <h3 class="menu-heading wardrobe-heading">🎀 Anya’s wardrobe <small>Peanuts and achievements unlock new looks. One from each row at a time.</small></h3>
                 <div id="wardrobe" class="wardrobe"></div>
                 <button id="hide-achievements" type="button" class="next-button">Back ▶</button>
             </div>

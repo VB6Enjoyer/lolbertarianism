@@ -3,7 +3,8 @@
 // ends, rounded cat-ear clips with bands, and the ribbon at her collar (the colour of the book she’s holding).
 // The face is a separate layer, so expressions swap without redrawing her. Hair and eyes carry
 // classes so the unlockable looks (pink hair, green eyes) can recolor them from CSS. Invisible
-// hit zones (nose, eyes, head) are on top, for the easter eggs. Version 1 is kept in anya-v1.ts.
+// hit zones (nose, eyes, head) are on top, for the easter eggs. Hats and glasses go in #anya-wear
+// (see looks.ts). Version 1 is kept in anya-v1.ts.
 
 export type Face = 'neutral' | 'talk' | 'shock' | 'smug' | 'happy' | 'deadpan' | 'pout' | 'blink';
 
@@ -411,6 +412,15 @@ export function anyaSvg(): string {
       <stop offset="0.5" stop-color="#4fa55f"/>
       <stop offset="1" stop-color="#1d5530"/>
     </radialGradient>
+    <radialGradient id="anya-iris-gold" cx="50%" cy="68%" r="62%">
+      <stop offset="0" stop-color="#ffe9a3"/>
+      <stop offset="0.5" stop-color="#d9a21e"/>
+      <stop offset="1" stop-color="#6b4a08"/>
+    </radialGradient>
+    <linearGradient id="anya-hair-ancap" gradientUnits="userSpaceOnUse" x1="120" y1="60" x2="280" y2="300">
+      <stop offset="0.5" stop-color="#f6d24a"/>
+      <stop offset="0.5" stop-color="#262626"/>
+    </linearGradient>
     <pattern id="anya-tone" width="6" height="6" patternUnits="userSpaceOnUse">
       <circle cx="3" cy="3" r="1.1" fill="${INK}" opacity="0.35"/>
     </pattern>
@@ -444,7 +454,9 @@ export function anyaSvg(): string {
   <!-- The ahoge (that one strand) -->
   ${hair('M 196 74 C 184 46 216 30 230 48 C 216 42 202 52 207 74')}
   <!-- Cat-ear clips -->
-  ${clip(-1)}${clip(1)}
+  <g class="anya-clips">${clip(-1)}${clip(1)}</g>
+  <!-- Whatever she's wearing (hats, glasses): see looks.ts -->
+  <g id="anya-wear"></g>
   <g id="anya-over"></g>
   <!-- Arms, the plate and the book -->
   <g id="anya-arms">

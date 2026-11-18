@@ -109,11 +109,17 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'shared', icon: '📣', name: 'Bragging Rights', description: 'Share a daily quiz result.' },
   { id: 'lightning-10', icon: '⚡', name: 'Speed Reader', description: 'Get 10 right in a lightning round.' },
   { id: 'lightning-20', icon: '🌩️', name: 'Faster Than Inflation', description: 'Get 20 right in a lightning round.' },
-  // Peanuts and lifelines
+  // Peanuts (your score) and lifelines
   { id: 'mind-read', icon: '🔮', name: 'Telepath', description: 'Use Mind-read.' },
   { id: 'swap', icon: '🔄', name: 'Second Opinion', description: 'Use Swap.' },
   { id: 'ask-sowell', icon: '👓', name: 'Ask the Author', description: 'Ask the author for a hint.' },
   { id: 'peanuts-100', icon: '🥜', name: 'Peanut Gallery', description: 'Earn 100 peanuts in all.' },
+  { id: 'peanuts-500', icon: '🐿️', name: 'Time Preference: Low', description: 'Earn 500 peanuts in all.' },
+  { id: 'peanuts-1000', icon: '🐘', name: 'Peanut Tycoon', description: 'Earn 1,000 peanuts in all.' },
+  // Anya's wardrobe
+  { id: 'looks-6', icon: '👗', name: 'Fashionista', description: 'Unlock six of Anya’s looks.' },
+  { id: 'looks-all', icon: '🪞', name: 'Anya’s Whole Closet', description: 'Unlock every one of Anya’s looks.' },
+  { id: 'festive', icon: '🎄', name: 'Ho Ho Hayek', description: 'Visit Anya in December. She has a hat for it.' },
   { id: 'no-lifelines', icon: '🦾', name: 'No Help Needed', description: 'Pass a part without using any lifelines.' },
   // Secret
   { id: 'still-dumb', icon: '🤦', name: 'Still Dumb', description: 'Score 0 out of 10.', secret: true },
@@ -139,7 +145,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'impatient', icon: '⏰', name: 'Tick Tock', description: 'Keep Anya waiting until she gets impatient.', secret: true },
   { id: 'pink-hair', icon: '🌸', name: 'Pretty in Pink', description: 'Pat Anya’s head ten times.', secret: true },
   { id: 'green-eyes', icon: '💚', name: 'Green-Eyed', description: 'Poke Anya’s eyes ten times.', secret: true },
-  { id: 'makeover', icon: '🎀', name: 'Full Makeover', description: 'Unlock both of Anya’s new looks.', secret: true },
+  { id: 'makeover', icon: '🎀', name: 'Full Makeover', description: 'Give Anya pink hair and green eyes.', secret: true },
   // The secret book: Anya hands you Capital after too many wrong answers. Every one of these is a secret.
   { id: 'red-pill', icon: '🚩', name: 'Reading List', description: 'Get ten answers wrong in a row, or a hundred wrong in all. Anya has a book for you.', secret: true },
   { id: 'kap-part-1', icon: '🧥', name: '20 Yards of Linen', description: 'Pass Part I of Capital: Commodities, Money and Capital.', secret: true },
