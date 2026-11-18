@@ -5,7 +5,7 @@
 // holding something to trade (classmates): let those through, and the deal
 // happens. Slapping a trader is aggression, and it costs you a gold star.
 
-import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
+import { attraction, buildingById, FLAG_SCARE, GLUE_SECONDS, GUARD_EVERY, GUARD_WAGES, INTEREST, LEMONADE_EVERY, nextCost, nextWeek, noneBuilt, SIGN_SLOW, TOLL, type BuildId, type Built } from './capital.ts';
 import { busOffset, dayLength, PHOTO_RUSH_SPEED, photoAt, rollSpecial, type Photo, type SpecialDayId } from './days.ts';
 import { difficultyById, type Daily, type DifficultyId } from './modes.ts';
 import { FRIEND_AT, GRUDGE_DAYS, isFriend, noRegulars, REGULAR_SHARE, regularsMet, type ClassmateId, type Regulars } from './classmates.ts';
@@ -262,6 +262,13 @@ export const traderArc = (wave: number) => ({ center: 60, half: Math.min(180, 35
 export const TRADER_TRAVEL = 3.6;
 /** The share of hands that are traders: fewer if you've been slapping them (classmates talk). */
 export const traderShare = (stars: number) => 0.08 + 0.25 * (stars / CONFIG.maxStars);
+/**
+ * As the term goes on, more of the hands reaching for the pile are trouble: the share that come to
+ * trade shrinks to TERM_TRADERS_MIN of what it was by the fourth week. (More hands come every day, so
+ * without this the trading income snowballed exactly when the game should get harder.)
+ */
+export const TERM_TRADERS_MIN = 0.6;
+export const termTraders = (wave: number) => Math.max(TERM_TRADERS_MIN, 1 - (1 - TERM_TRADERS_MIN) * ((wave - 1) / 15));
 /** The combo multiplier: ×2 at 5 in a row, ×3 at 10, ×4 from 15 on. */
 export const multiplier = (combo: number, cap = 4) => Math.min(cap, 1 + Math.floor(combo / 5));
 /** What the perks change: the combo cap, the meter's size, how long Sticky Fingers take, how often a block turns up. */
@@ -431,7 +438,7 @@ function makeOffer(s: GameState, rng: () => number, who: ClassmateId | null): Of
 
 export function spawnHand(s: GameState, rng: () => number, kind?: HandKind, forced?: Role, who?: ClassmateId): Hand {
   const period = periodAt(s.waveTime);
-  kind ??= forced ? 'thief' : who ? 'trader' : rng() < Math.max(0.05, Math.min(0.85, traderShare(s.stars) + period.traders)) ? 'trader' : 'thief';
+  kind ??= forced ? 'thief' : who ? 'trader' : rng() < Math.max(0.05, Math.min(0.85, (traderShare(s.stars) + period.traders) * termTraders(s.wave))) ? 'trader' : 'thief';
   const role: Role | null = kind === 'thief' ? (forced ?? pickRole(s.wave, period.id, rng)) : null;
   const classmate = kind === 'trader' ? (who ?? pickClassmate(s, rng)) : null;
   // The fraud kid and the Free Lunch kid come in like traders, at a trader's pace.
@@ -540,7 +547,8 @@ function arrive(s: GameState, hand: Hand) {
     points = (offer.price - sold.cost) * CONFIG.tradePoints * 2;
     s.day.profit += offer.price - sold.cost;
   } else {
-    if (s.blocks < offer.price) {
+    // Jack keeps at least one block: a trade never empties the pile (an empty pile ends the game).
+    if (s.blocks <= offer.price) {
       s.events.push({ type: 'broke', hand });
       return;
     }
@@ -1015,11 +1023,15 @@ export function press(s: GameState, x: number, y: number, dt: number): Hand | nu
 }
 
 /** Builds (or upgrades) something at recess. Jack keeps at least one block. */
+/** The week whose permits you can build with now: at recess, the coming school day's (weekends bring next week's). */
+export const permitWeek = (s: GameState) => weekOf(s.wave + 1);
+
 export function build(s: GameState, id: BuildId): boolean {
   if (s.phase !== 'break') return false;
   const level = s.built[id];
-  const cost = nextCost(buildingById(id), level);
-  if (cost === null || s.blocks - cost < 1) return false;
+  const b = buildingById(id);
+  const cost = nextCost(b, level);
+  if (cost === null || s.blocks - cost < 1 || (nextWeek(b, level) ?? 1) > permitWeek(s)) return false;
   s.blocks -= cost;
   s.built[id] = level + 1;
   s.events.push({ type: 'built', id, level: level + 1 });

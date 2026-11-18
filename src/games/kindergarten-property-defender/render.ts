@@ -5,6 +5,7 @@
 import { holdTime, handPosition, ITEMS, needsFor, pileAt, slapRadius, type GameState, type Hand } from './logic.ts';
 import { isBoss, disguised, NEEDS, periodAt, roleInfo, type Role } from './school.ts';
 import { classmateById, isFriend } from './classmates.ts';
+import { tollText } from './capital.ts';
 
 export interface Floater {
   x: number;
@@ -463,7 +464,7 @@ function drawBuildings(ctx: CanvasRenderingContext2D, s: GameState, scene: Scene
   const signGround = tall ? ground + size * 3.8 : ground;
   const signOff = tall ? size * 2.3 : size * 5.5;
   if (b.sign) drawSign(ctx, pile.x - signOff, signGround, size, b.sign > 1 ? ['KEEP OUT!!', 'NO REALLY'] : ['NO', 'TRESPASSING'], b.sign > 1 ? '#c0392b' : INK, t, 700);
-  if (b.toll) drawSign(ctx, pile.x + signOff, signGround, size, ['🌉 TOLL', `+${b.toll}🧱 a trade`], '#1e8449', t, 720);
+  if (b.toll) drawSign(ctx, pile.x + signOff, signGround, size, ['🌉 TOLL', `${tollText(b.toll)} a trade`], '#1e8449', t, 720);
   if (b.guard) {
     // The hired kid, in shades
     const gx = pile.x - size * 3.3;

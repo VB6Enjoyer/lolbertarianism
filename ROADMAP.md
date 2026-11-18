@@ -817,3 +817,23 @@ Friedman vs. everyone who says capitalism is dying.
   six parts of town no cop has visited for the longest. Random destinations
   alone kept them in the middle (the busiest part got 32% of their time, the
   bottom corners 9%); now every part gets 14–21%.
+
+### Kindergarten Property Defender: progression balance ✅
+
+A player complained they had every upgrade within a few days. A simulated
+player (real rules, about 3 actions a second, 85% accurate) confirmed it:
+every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
+2, and almost nothing stolen until week 4.
+
+- Permits: bigger builds open week by week (`weeks` in `capital.ts`, new
+  permits every weekend). 20 levels instead of 16, costing about twice as
+  much in all; the first levels work as before, the top ones are stronger.
+- Trading income snowballed with the ever-busier days, so the share of hands
+  that come to trade shrinks to 60% by the fourth week (`termTraders()`):
+  more trouble later in the term, and less income than before.
+- Now the same player owns 8 levels after week 1, then 13, 17, 19 and all 20
+  in week 5, and theft rises week by week instead of jumping in week 4. A
+  sloppier player can lose in weeks 4–5 on Normal (Easy stays comfortable).
+- Fixes: a trader could take your last block (an empty pile ends the run on
+  the next grab); trades now always leave one. The toll sign showed the
+  level, not the toll.

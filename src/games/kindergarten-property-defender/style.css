@@ -487,6 +487,21 @@ body {
     white-space: nowrap;
 }
 
+/* Not yet: the permit comes through in a later week. */
+.build.locked .cost {
+    display: grid;
+    justify-items: center;
+    background: #e6e0d3;
+    font-size: 13px;
+}
+
+.build.locked .cost em {
+    font-style: normal;
+    font-weight: normal;
+    font-size: 11px;
+    opacity: 0.75;
+}
+
 
 /* --- The report card --- */
 .report {

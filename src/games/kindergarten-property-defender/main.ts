@@ -5,8 +5,8 @@ import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { ACHIEVEMENTS, achievementById, normalizeUnlocked } from './achievements.ts';
 import { GRADUATION_WEEK, honours, perkById, PERKS, type PerkId } from './perks.ts';
 import { Playground, type MoodId } from './music.ts';
-import { build, comboCap, CONFIG, edgeAt, gpa, meterMax, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type Hand, type ItemId } from './logic.ts';
-import { attraction, buildingById, BUILDINGS, nextCost, type BuildId } from './capital.ts';
+import { build, comboCap, CONFIG, edgeAt, gpa, meterMax, permitWeek, startDaily, takePerk, todayLength, handPosition, ITEM_USES, ITEMS, multiplier, newGame, nextWave, pileAt, press, resize, shout, slap, slapRadius, spawnHand, step, useItem, type GameEvent, type GameState, type Hand, type ItemId } from './logic.ts';
+import { attraction, buildingById, BUILDINGS, nextCost, nextWeek, type BuildId } from './capital.ts';
 import { bossFor, dayName, isBoss, isFriday, newToday, periodAt, weekOf, type Grade, type Role } from './school.ts';
 import { render, type Scene } from './render.ts';
 import { specialById, SPECIAL_DAYS } from './days.ts';
@@ -1211,19 +1211,22 @@ function renderShop() {
     const b = buildingById(id);
     const level = state.built[id];
     const cost = nextCost(b, level);
+    // Bigger builds need a permit, and permits come through week by week.
+    const week = nextWeek(b, level);
+    const locked = week !== null && week > permitWeek(state);
     const pips = b.costs.map((_, i) => (i < level ? '●' : '○')).join('');
     const now = level ? b.effect(level) : 'not built yet';
     const next = cost !== null ? b.effect(level + 1) : '';
-    return `<button type="button" class="build ${b.kind}" data-id="${id}" ${cost === null || state.blocks - cost < 1 ? 'disabled' : ''}>
+    return `<button type="button" class="build ${b.kind}${locked ? ' locked' : ''}" data-id="${id}" ${cost === null || locked || state.blocks - cost < 1 ? 'disabled' : ''}>
       <span class="icon">${b.icon}</span>
-      <span class="what"><b>${b.name}</b> <i>${pips}</i><small>${level ? `Now: ${now}` : 'Not built yet'}</small>${cost !== null ? `<small class="next">${level ? 'Next' : 'Build'}: ${next}</small>` : '<small class="next">Fully built</small>'}</span>
-      <span class="cost">${cost === null ? 'MAX' : `${cost}🧱`}</span>
+      <span class="what"><b>${b.name}</b> <i>${pips}</i><small>${level ? `Now: ${now}` : 'Not built yet'}</small>${cost !== null ? `<small class="next">${level ? 'Next' : 'Build'}: ${next}${locked ? ` · permit in week ${week}` : ''}</small>` : '<small class="next">Fully built</small>'}</span>
+      <span class="cost">${cost === null ? 'MAX' : locked ? `🔒 Wk ${week}<em>${cost}🧱</em>` : `${cost}🧱`}</span>
     </button>`;
   };
   const pull = attraction(state.blocks);
   els.shop.innerHTML = `
     <h2>${isFriday(state.wave) ? '🏖️ The weekend: spend your blocks' : '🏗️ After school: spend your blocks'} <span>${state.blocks}🧱</span></h2>
-    <p class="shop-note">Blocks you spend can't be stolen, but they're not growing either. Keep at least one.${pull > 1.05 ? ` A pile this big draws ${Math.round((pull - 1) * 100)}% more hands.` : ''}</p>
+    <p class="shop-note">Blocks you spend can't be stolen, but they're not growing either. Keep at least one. Bigger builds need a permit: new ones come through every weekend.${pull > 1.05 ? ` A pile this big draws ${Math.round((pull - 1) * 100)}% more hands.` : ''}</p>
     <h3>Makes blocks</h3><div class="builds">${BUILDINGS.filter((b) => b.kind === 'income').map((b) => card(b.id)).join('')}</div>
     <h3>Keeps them</h3><div class="builds">${BUILDINGS.filter((b) => b.kind === 'defence').map((b) => card(b.id)).join('')}</div>`;
   for (const b of els.shop.querySelectorAll<HTMLButtonElement>('.build')) {
