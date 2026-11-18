@@ -6,8 +6,9 @@ import { coverMarkup, lockMarkup } from './anya.ts';
 import type { Face, Mouth } from './anya.ts';
 import * as anyaV1 from './anya-v1.ts';
 import { ACHIEVEMENTS, achievementById, allPartsAchievement, normalizeUnlocked, partAchievement, wholeBookAchievement } from './achievements.ts';
-import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
+import { BOOKS, bookById, bookUnlocked, UNLOCK_AT, dateKey, EXAM_LENGTH, EXAM_PASS, noteAnswer, HINT_COST, LEVELS, LIGHTNING_SECONDS, MIND_READ_COST, PASS_MARK, questionsFor, roman, RUN_LENGTH, shuffle, swapFor, SWAP_COST, unlockedParts, type Mode } from './bank.ts';
 import type { Book, Level } from './books/types.ts';
+import { glossaryFor, type GlossaryEntry } from './books/glossary.ts';
 import { CERTIFICATE_FONTS, certificateFont, coverImage, drawCertificate, loadCertificateFonts, longDate } from './certificate.ts';
 import { combineStats, normalizeBookStats, recordAnswer, summarize, summarizeAnswers, type Stats } from './stats.ts';
 import { questionScript, speak, speechSupported, stopSpeaking } from './speech.ts';
@@ -36,6 +37,20 @@ const els = {
   exam: byId<HTMLButtonElement>('exam'),
   examNote: byId('exam-note'),
   openCertificate: byId<HTMLButtonElement>('open-certificate'),
+  flashcardsOpen: byId<HTMLButtonElement>('flashcards-open'),
+  flashcardsNote: byId('flashcards-note'),
+  flashcards: byId('flashcards'),
+  flashKicker: byId('flash-kicker'),
+  flashCard: byId<HTMLButtonElement>('flash-card'),
+  flashPart: byId('flash-part'),
+  flashTerm: byId('flash-term'),
+  flashBackTerm: byId('flash-back-term'),
+  flashDef: byId('flash-def'),
+  flashAgain: byId<HTMLButtonElement>('flash-again'),
+  flashKnow: byId<HTMLButtonElement>('flash-know'),
+  flashProgress: byId('flash-progress'),
+  flashRestart: byId<HTMLButtonElement>('flash-restart'),
+  hideFlashcards: byId<HTMLButtonElement>('hide-flashcards'),
   endCertificate: byId<HTMLButtonElement>('end-certificate'),
   certificate: byId('certificate'),
   certificateCanvas: byId<HTMLCanvasElement>('certificate-canvas'),
@@ -98,6 +113,8 @@ interface Progress {
   /** Best final exam score (null before the first try), and the date you first passed it ('' if not yet). */
   examBest: number | null;
   examPassed: string;
+  /** Glossary terms you’ve marked as known on the flashcards. */
+  known: string[];
 }
 
 interface Save {
@@ -141,6 +158,7 @@ function progressFrom(raw: unknown): Progress {
     lightningBest: count(r.lightningBest),
     missed: Object.fromEntries(Object.entries(counts(r.missed)).filter(([, n]) => n > 0)),
     examBest: r.examBest === undefined || r.examBest === null ? null : count(r.examBest),
+    known: Array.isArray(r.known) ? r.known.filter((t): t is string => typeof t === 'string') : [],
     examPassed: typeof r.examPassed === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.examPassed) ? r.examPassed : '',
   };
 }
@@ -468,6 +486,9 @@ function renderMenu() {
       ? `Passed · best ${examBest}/${EXAM_LENGTH}`
       : `${EXAM_LENGTH} questions, ${EXAM_PASS} to pass, no lifelines${examBest !== null ? ` · best ${examBest}/${EXAM_LENGTH}` : ''}`;
   els.openCertificate.hidden = !prog().examPassed;
+  const terms = glossaryFor(book.id);
+  const knownTerms = terms.filter((t) => prog().known.includes(t.term)).length;
+  els.flashcardsNote.textContent = knownTerms ? `${knownTerms} of ${terms.length} terms known` : `${terms.length} key terms from the book`;
 }
 
 function toMenu() {
@@ -1011,6 +1032,94 @@ function closeAchievements() {
 }
 
 els.showAchievements.addEventListener('click', () => (els.achievements.hidden ? openAchievements() : closeAchievements()));
+
+// ---------------------------------------------------------------------------
+// Glossary flashcards: the term on the front, its meaning on the back
+// ---------------------------------------------------------------------------
+
+/** The cards left this round (the first is showing), how many the round started with, and whether it’s flipped. */
+let deck: GlossaryEntry[] = [];
+let deckSize = 0;
+let flipped = false;
+
+function renderFlashcard() {
+  const terms = glossaryFor(book.id);
+  const knownTerms = terms.filter((t) => prog().known.includes(t.term)).length;
+  els.flashKicker.textContent = `${book.title} · ${knownTerms} of ${terms.length} terms known`;
+  const card = deck[0];
+  els.flashCard.classList.toggle('flipped', flipped && !!card);
+  els.flashCard.classList.toggle('done', !card);
+  els.flashAgain.disabled = els.flashKnow.disabled = !card || !flipped;
+  if (!card) {
+    els.flashPart.textContent = 'Deck finished';
+    els.flashTerm.textContent = knownTerms === terms.length ? 'Every term known!' : 'All done!';
+    els.flashCard.querySelector('em')!.textContent = knownTerms === terms.length ? 'Anya is mildly impressed.' : 'Shuffle to go again.';
+    els.flashProgress.textContent = `Round finished: ${deckSize} card${deckSize === 1 ? '' : 's'}.`;
+    els.flashCard.setAttribute('aria-label', `Deck finished. ${knownTerms} of ${terms.length} terms known.`);
+    return;
+  }
+  els.flashPart.textContent = `Part ${roman(card.part)}`;
+  els.flashTerm.textContent = card.term;
+  els.flashCard.querySelector('em')!.textContent = 'Tap to flip';
+  els.flashBackTerm.textContent = card.term;
+  els.flashDef.textContent = card.def;
+  els.flashProgress.textContent = `${deck.length} card${deck.length === 1 ? '' : 's'} left this round`;
+  els.flashCard.setAttribute('aria-label', flipped ? `${card.term}: ${card.def}` : `${card.term}. Flip to see what it means.`);
+}
+
+/** Starts a round: the terms you don’t know yet, or every term if you know them all (or ask for all). */
+function dealFlashcards(all: boolean) {
+  const terms = glossaryFor(book.id);
+  const unknown = terms.filter((t) => !prog().known.includes(t.term));
+  deck = shuffle(all || !unknown.length ? terms : unknown, Math.random);
+  deckSize = deck.length;
+  flipped = false;
+  renderFlashcard();
+}
+
+function flipFlashcard() {
+  if (!deck.length) return;
+  flipped = !flipped;
+  play('blip');
+  renderFlashcard();
+}
+
+/** “I knew it” takes the card out of the round; “study again” sends it to the back. */
+function judgeFlashcard(knew: boolean) {
+  const card = deck[0];
+  if (!card || !flipped) return;
+  const known = prog().known;
+  if (knew && !known.includes(card.term)) known.push(card.term);
+  if (!knew && known.includes(card.term)) known.splice(known.indexOf(card.term), 1);
+  deck.shift();
+  if (!knew) deck.push(card);
+  flipped = false;
+  persist();
+  play(knew ? 'right' : 'page');
+  if (!deck.length) {
+    award('flashcards');
+    if (glossaryFor(book.id).every((t) => known.includes(t.term))) award('flashcards-all');
+  }
+  renderFlashcard();
+}
+
+function openFlashcards() {
+  els.flashcards.hidden = false;
+  dealFlashcards(false);
+  els.flashCard.focus({ preventScroll: true });
+}
+
+function closeFlashcards() {
+  els.flashcards.hidden = true;
+  if (els.app.dataset.screen === 'menu') renderMenu();
+}
+
+els.flashcardsOpen.addEventListener('click', openFlashcards);
+els.hideFlashcards.addEventListener('click', closeFlashcards);
+els.flashCard.addEventListener('click', flipFlashcard);
+els.flashKnow.addEventListener('click', () => judgeFlashcard(true));
+els.flashAgain.addEventListener('click', () => judgeFlashcard(false));
+els.flashRestart.addEventListener('click', () => dealFlashcards(true));
 
 // ---------------------------------------------------------------------------
 // The certificate, for passing a book's final exam
@@ -1599,6 +1708,15 @@ els.lightning.addEventListener('click', () => start({ kind: 'lightning' }));
 
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!els.flashcards.hidden) {
+    if (e.key === 'Escape') closeFlashcards();
+    else if (e.key === ' ' || (e.key === 'Enter' && document.activeElement === els.flashCard)) flipFlashcard();
+    else if (e.key === 'ArrowRight') judgeFlashcard(true);
+    else if (e.key === 'ArrowLeft') judgeFlashcard(false);
+    else return;
+    e.preventDefault();
+    return;
+  }
   // The certificate has a text box: leave its keys alone, except Escape to close it.
   if (!els.certificate.hidden) {
     if (e.key === 'Escape') {

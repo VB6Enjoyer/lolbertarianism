@@ -806,6 +806,154 @@ button {
     font-size: 9px;
 }
 
+/* --- Glossary flashcards --- */
+.flash-panel {
+    width: min(620px, 100%);
+    gap: 12px;
+}
+
+.flash-card {
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: 5 / 3;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    perspective: 1200px;
+    color: var(--ink);
+    font: inherit;
+}
+
+.flash-card:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 6px;
+}
+
+.flash-inner {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.45s cubic-bezier(0.3, 0.7, 0.3, 1.2);
+}
+
+.flash-card.flipped .flash-inner {
+    transform: rotateY(180deg);
+}
+
+.flash-face {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 18px 22px;
+    border: 4px solid var(--ink);
+    background: #fff;
+    box-shadow: 6px 6px 0 var(--ink);
+    backface-visibility: hidden;
+    text-align: center;
+}
+
+.flash-front {
+    background: var(--paper-light);
+    background-image: var(--tone);
+    background-size: 7px 7px;
+}
+
+.flash-front small,
+.flash-back small {
+    color: var(--accent-ink);
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.flash-front b {
+    font-weight: 900;
+    font-size: clamp(22px, 5vw, 34px);
+    line-height: 1.15;
+}
+
+.flash-front em {
+    color: var(--muted);
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.flash-back {
+    transform: rotateY(180deg);
+    background: #fffdf6;
+}
+
+.flash-back span {
+    font-size: clamp(15px, 3.4vw, 19px);
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.flash-card.done .flash-front b {
+    color: var(--accent-ink);
+}
+
+.flash-help {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.flash-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.flash-buttons button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    box-shadow: none;
+    transform: none;
+}
+
+.flash-progress {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+@media (hover: none) {
+    .flash-help {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .flash-card {
+        aspect-ratio: 1 / 1;
+    }
+
+    .flash-face {
+        padding: 14px 16px;
+    }
+
+    .flash-back span {
+        font-size: 15px;
+    }
+
+    .flash-buttons button {
+        padding: 10px 14px;
+        font-size: 15px;
+        white-space: nowrap;
+    }
+}
+
 /* --- The certificate --- */
 .certificate-panel {
     width: min(980px, 100%);

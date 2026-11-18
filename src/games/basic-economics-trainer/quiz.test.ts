@@ -220,6 +220,20 @@ describe('basic economics trainer: the books', () => {
     expect(examVerdict(EXAM_PASS - 1, EXAM_LENGTH, EXAM_PASS).tone).not.toBe('good');
   });
 
+  it('has a glossary for every book, with unique terms tied to real parts', async () => {
+    const { glossaryFor } = await import('./books/glossary.ts');
+    for (const book of BOOKS) {
+      const terms = glossaryFor(book.id);
+      expect(terms.length, book.id).toBeGreaterThanOrEqual(15);
+      expect(new Set(terms.map((t) => t.term)).size, book.id).toBe(terms.length);
+      for (const t of terms) {
+        expect(book.parts.some((p) => p.n === t.part), `${book.id} ${t.term}`).toBe(true);
+        expect(t.def.length, t.term).toBeGreaterThan(20);
+        expect(t.def, t.term).not.toMatch(/'/);
+      }
+    }
+  });
+
   it('finds books by id, falling back to the first', () => {
     expect(bookById('ha').title).toBe('Human Action');
     expect(bookById('nope')).toBe(BOOK);
