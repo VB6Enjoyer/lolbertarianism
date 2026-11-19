@@ -45,6 +45,21 @@ button {
     touch-action: none;
 }
 
+/* --- Sound buttons: always there, top right --- */
+.sound-buttons {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 24px);
+    right: 10px;
+    z-index: 25;
+    display: flex;
+    gap: 6px;
+}
+
+#music.off {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
 /* --- HUD --- */
 .hud {
     position: fixed;
@@ -93,6 +108,8 @@ button {
     display: flex;
     align-items: center;
     gap: 10px;
+    /* Room for the sound buttons on the right. */
+    padding-right: 100px;
 }
 
 .hpbar {
@@ -442,6 +459,20 @@ button {
     line-height: 1.1;
 }
 
+.card-icon svg,
+.card-icon .btc {
+    display: block;
+    width: 46px;
+    height: 46px;
+}
+
+.slot svg,
+.damage svg {
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: -0.25em;
+}
+
 .card-tag {
     color: var(--gold);
     font-size: 12px;
@@ -530,6 +561,11 @@ kbd {
 
     .hud-row {
         gap: 6px;
+        padding-right: 84px;
+    }
+
+    .sound-buttons {
+        top: calc(env(safe-area-inset-top) + 22px);
     }
 
     .hpbar {

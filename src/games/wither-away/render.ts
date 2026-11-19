@@ -117,8 +117,16 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
       ctx.lineWidth = 1.2;
       ctx.stroke();
     } else {
-      const icon = pk.kind === 'gold' ? '🪙' : pk.kind === 'heal' ? '🥨' : pk.kind === 'magnet' ? '🧲' : '💰';
       const size = pk.kind === 'chest' ? 40 : 22;
+      // Bitcoin, the same coin as in Ancapistan Tycoon (an emoji until the image has loaded).
+      const btc = pk.kind === 'gold' ? sprites.get('pickup:bitcoin') : undefined;
+      if (btc) {
+        // A gentle bob, so it catches the eye.
+        const bob = Math.sin(g.time * 5 + pk.id) * 2;
+        ctx.drawImage(btc, pk.x - size / 2, pk.y - size / 2 + bob, size, size);
+        continue;
+      }
+      const icon = pk.kind === 'gold' ? '₿' : pk.kind === 'heal' ? '🥨' : pk.kind === 'magnet' ? '🧲' : '💰';
       ctx.drawImage(emoji(icon), pk.x - size / 2, pk.y - size / 2, size, size);
     }
   }
@@ -225,8 +233,9 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
       case 'laffer':
         ctx.save();
         ctx.translate(s.x, s.y);
-        ctx.rotate(g.time * 10);
-        ctx.drawImage(emoji('📈'), -16, -16, 32, 32);
+        // A wobble, not a spin: a Laffer Curve upside down would be a different argument entirely.
+        ctx.rotate(Math.sin(g.time * 9 + s.id) * 0.35);
+        ctx.drawImage(sprites.get('icon:laffer') ?? emoji('📈'), -17, -17, 34, 34);
         ctx.restore();
         break;
     }

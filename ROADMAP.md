@@ -1050,5 +1050,13 @@ state would wither away. It didn't. Make it." Survive 10 minutes against the sta
   engraved rings, the eye in the pyramid, a top hat and a gold monocle. Your face changes with the
   moment (`playerEyes`): X eyes when hit, happy after an upgrade or the boss, scared with a bead of
   sweat when low on health or swamped, angry in a crowd or near the boss.
-- Next: a meta shop for the gold, more characters and maps, evolutions (a maxed weapon plus the
-  right passive), achievements, a daily run, music, sharing.
+- Pickups drop Bitcoin (the coin from Ancapistan Tycoon); the Laffer Curve is a drawing of an
+  actual Laffer Curve (revenue against tax rate, peak marked), not a chart emoji.
+- Music (`music.ts`): thrash metal made in code. Power chords from detuned saws through a hard
+  clipper and a cabinet filter, palm-muted chugs, a bass, and drums (gallop, thrash skank beat,
+  blasts, double kick, half time). A menu loop ("The Road to Serfdom", 96 bpm), two run tracks that
+  take turns, swapping every loop ("Rip and Tear the Red Tape", E, 184 bpm; "Hyperinflation", D,
+  204 bpm), and the boss's ("Central Bank Must Die", C, 144 bpm, tritones). Riffs are written as
+  sixteen tokens a bar. 🎵 turns it off on its own; 🔊 mutes everything.
+- Next: a meta shop for the Bitcoin, more characters and maps, evolutions (a maxed weapon plus the
+  right passive), achievements, a daily run, sharing.

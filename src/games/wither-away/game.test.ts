@@ -229,3 +229,18 @@ describe('the bot', () => {
     }
   });
 });
+
+describe('the soundtrack', () => {
+  it('every track is made of whole bars of sixteen steps, with notes in each', async () => {
+    const { TRACKS, parseRiff } = await import('./music.ts');
+    for (const [id, tr] of Object.entries(TRACKS)) {
+      expect(tr.bars.length, id).toBeGreaterThanOrEqual(4);
+      for (const bar of tr.bars) {
+        expect(bar.riff, id).toHaveLength(16);
+        expect(bar.riff.some(Boolean), id).toBe(true);
+      }
+    }
+    expect(parseRiff('0o - - - . . 3 3 5o - 1 . . . 0 0')[0]).toEqual({ fret: 0, open: true, len: 4 });
+    expect(() => parseRiff('0 0 0')).toThrow();
+  });
+});

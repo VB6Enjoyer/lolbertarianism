@@ -7,8 +7,9 @@ import { getAudioContext, note, playTone, type Tone } from '../../shared/audio.t
 import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, loadSprites, RESTING, type Sprite } from './balls.ts';
-import { CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, PASSIVES, RUN_LENGTH, WEAPONS } from './data.ts';
+import { CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, LAFFER_SVG, PASSIVES, RUN_LENGTH, type WeaponId, WEAPONS } from './data.ts';
 import { choose, DT, type Game, newGame, type Offer, step } from './game.ts';
+import { Metal, type TrackId } from './music.ts';
 import { draw, particleColor, type Visuals } from './render.ts';
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,8 @@ import { draw, particleColor, type Visuals } from './render.ts';
 
 interface Save {
   muted: boolean;
+  /** Music on or off (the speaker mutes everything). */
+  music: boolean;
   character: CharacterId;
   meta: {
     runs: number;
@@ -33,6 +36,7 @@ const saved = slot.load();
 const count = (x: unknown) => Math.max(0, Math.floor(Number(x) || 0));
 const save: Save = {
   muted: saved?.muted === true,
+  music: saved?.music !== false,
   character: CHARACTER_ORDER.includes(saved?.character as CharacterId) ? (saved!.character as CharacterId) : 'ancap',
   meta: {
     runs: count(saved?.meta?.runs),
@@ -61,6 +65,7 @@ const els = {
   modal: byId('modal'),
   pause: byId<HTMLButtonElement>('pause'),
   mute: byId<HTMLButtonElement>('mute'),
+  music: byId<HTMLButtonElement>('music'),
   banner: byId('banner'),
 };
 const ctx = els.canvas.getContext('2d')!;
@@ -127,8 +132,47 @@ els.mute.addEventListener('click', () => {
   save.muted = !save.muted;
   persist();
   renderMute();
+  if (save.muted) metal.stop();
+  else startMusic();
 });
+
+// ---------------------------------------------------------------------------
+// Music: thrash metal, made in code. The menu loop; two run tracks taking turns; the boss's own.
+// ---------------------------------------------------------------------------
+
+const metal = new Metal();
+/** The run track playing now (they swap each time one finishes a loop). */
+let runTrack: TrackId = 'rip';
+metal.onLoop = (track) => {
+  if (track === 'rip' || track === 'hyper') runTrack = track === 'rip' ? 'hyper' : 'rip';
+};
+function startMusic() {
+  if (metal.playing || save.muted || !save.music) return;
+  const ctx = getAudioContext();
+  void ctx.resume().catch(() => {});
+  metal.play(wantTrack(), true);
+  metal.start(ctx);
+}
+function wantTrack(): TrackId {
+  if (!g || g.over) return 'menu';
+  if (g.enemies.some((e) => e.type === 'bank')) return 'boss';
+  return runTrack;
+}
+function renderMusic() {
+  els.music.classList.toggle('off', !save.music);
+  els.music.setAttribute('aria-pressed', String(save.music));
+  els.music.title = save.music ? 'Music on (tap to turn it off)' : 'Music off (tap to turn it on)';
+}
+els.music.addEventListener('click', () => {
+  save.music = !save.music;
+  persist();
+  renderMusic();
+  if (save.music) startMusic();
+  else metal.stop();
+});
+for (const type of ['pointerdown', 'keydown'] as const) document.addEventListener(type, startMusic, { once: true });
 renderMute();
+renderMusic();
 
 // ---------------------------------------------------------------------------
 // Input: keys, a gamepad's left stick, or a thumb anywhere on a touch screen
@@ -211,6 +255,9 @@ function startRun(character: CharacterId) {
   save.character = character;
   persist();
   g = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, character);
+  // Runs take turns opening with each track; the change happens at the next bar line.
+  runTrack = save.meta.runs % 2 ? 'hyper' : 'rip';
+  metal.play(runTrack);
   vis.particles = [];
   vis.texts = [];
   vis.rings = [];
@@ -229,6 +276,7 @@ function frame(now: number) {
   resize();
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
+  if (metal.playing) metal.play(wantTrack());
   if (!g || !sprites) return;
   if (!paused && !g.offer && !g.over) {
     acc += dt;
@@ -353,17 +401,21 @@ function banner(text: string) {
 // Level-ups, pause
 // ---------------------------------------------------------------------------
 
+/** A weapon's icon as HTML: its drawing if it has one, else its emoji. */
+const weaponIcon = (id: WeaponId) => WEAPONS[id].svg ?? WEAPONS[id].icon;
+const BTC_IMG = `<img class="btc" src="${import.meta.env.BASE_URL}vidya/img/bitcoin.webp" alt="₿">`;
+
 function describe(o: Offer): { icon: string; name: string; tag: string; text: string } {
   if (o.kind === 'weapon') {
     const w = WEAPONS[o.id];
-    return { icon: w.icon, name: w.name, tag: o.level === 1 ? 'NEW WEAPON' : `LEVEL ${o.level}`, text: w.levels[o.level - 1] };
+    return { icon: weaponIcon(o.id), name: w.name, tag: o.level === 1 ? 'NEW WEAPON' : `LEVEL ${o.level}`, text: w.levels[o.level - 1] };
   }
   if (o.kind === 'passive') {
     const p = PASSIVES[o.id];
     return { icon: p.icon, name: p.name, tag: o.level === 1 ? 'NEW' : `LEVEL ${o.level}`, text: p.text };
   }
   if (o.kind === 'heal') return { icon: '🥨', name: 'A Free Lunch', tag: 'EVERYTHING’S MAXED', text: 'Heal 30% of your Credibility. There is such a thing, apparently.' };
-  return { icon: '🪙', name: 'Gold', tag: 'EVERYTHING’S MAXED', text: '+25 gold.' };
+  return { icon: BTC_IMG, name: 'Bitcoin', tag: 'EVERYTHING’S MAXED', text: '+25 ₿. Stack sats.' };
 }
 
 function showOffer(g: Game) {
@@ -375,7 +427,8 @@ function showOffer(g: Game) {
   g.offer!.forEach((o, i) => {
     const d = describe(o);
     const card = button('', `card${o.kind === 'weapon' ? ' weapon' : ''}`, () => pick(i));
-    card.append(t('span', 'card-icon', d.icon), t('small', 'card-tag', d.tag), t('b', 'card-name', d.name), t('span', 'card-text', d.text));
+    // Icons are our own emoji or drawings (never player text), so they can go in as HTML.
+    card.append(h('span', 'card-icon', d.icon), t('small', 'card-tag', d.tag), t('b', 'card-name', d.name), t('span', 'card-text', d.text));
     cards.append(card);
   });
   box.append(cards, loadout(g));
@@ -386,7 +439,7 @@ function showOffer(g: Game) {
 /** What you're carrying, as a row of icons with levels. */
 function loadout(g: Game): HTMLElement {
   const row = h('div', 'loadout');
-  for (const w of g.weapons) row.append(t('span', 'slot weapon', `${WEAPONS[w.id].icon}${w.level}`));
+  for (const w of g.weapons) row.append(h('span', 'slot weapon', `${weaponIcon(w.id)}${w.level}`));
   for (const p of g.passives) row.append(t('span', 'slot', `${PASSIVES[p.id].icon}${p.level}`));
   return row;
 }
@@ -469,7 +522,7 @@ function showTitle() {
     button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wither-away')),
   );
   s.append(buttons);
-  if (save.meta.runs) s.append(t('p', 'meta', `${save.meta.runs} run${save.meta.runs === 1 ? '' : 's'} · ${save.meta.wins} won · ${save.meta.kills} statists sent packing · 🪙 ${save.meta.gold} gold`));
+  if (save.meta.runs) s.append(t('p', 'meta', `${save.meta.runs} run${save.meta.runs === 1 ? '' : 's'} · ${save.meta.wins} won · ${save.meta.kills} statists sent packing · ₿ ${save.meta.gold} Bitcoin`));
   s.append(t('p', 'proto', 'PROTOTYPE'));
   els.screen.append(s);
   els.screen.hidden = false;
@@ -488,7 +541,7 @@ function showHowTo() {
       <li>💎 Statists drop <b>XP</b>. Level up and pick one of three cards: a new weapon, or a level for one you have (up to 5 weapons and 5 passives, level 5 each).</li>
       <li>⏱️ Survive <b>${clock(RUN_LENGTH)}</b> and the state finally withers away. It gets busier every minute.</li>
       ${foes}
-      <li>🥨 A free lunch heals, 🧲 pulls in all the XP, 🪙 is gold (it does nothing yet: a shop is coming).</li>
+      <li>🥨 A free lunch heals, 🧲 pulls in all the XP, ₿ is Bitcoin (it does nothing yet: a shop is coming).</li>
       <li>⏸️ <kbd>Esc</kbd> or <kbd>P</kbd> to pause.</li>`,
     ),
     button('Got it', 'big', () => (els.modal.hidden = true)),
@@ -519,7 +572,7 @@ function showEnd(g: Game) {
     ['⏱️ Survived', clock(Math.min(RUN_LENGTH, g.time))],
     ['💀 Statists', String(g.kills)],
     ['⭐ Level', String(g.level)],
-    ['🪙 Gold', String(g.gold)],
+    ['₿ Bitcoin', String(g.gold)],
   ]) {
     const cell = h('div', 'stat');
     cell.append(t('b', '', value), t('small', '', label));
@@ -529,7 +582,7 @@ function showEnd(g: Game) {
   const dmg = Object.entries(g.damageBy).sort((a, b) => b[1] - a[1]);
   if (dmg.length) {
     const list = h('ul', 'damage');
-    for (const [id, n] of dmg) list.append(t('li', '', `${WEAPONS[id as keyof typeof WEAPONS].icon} ${WEAPONS[id as keyof typeof WEAPONS].name}: ${n.toLocaleString()} damage`));
+    for (const [id, n] of dmg) list.append(h('li', '', `${weaponIcon(id as WeaponId)} ${WEAPONS[id as WeaponId].name}: ${n.toLocaleString()} damage`));
     s.append(list);
   }
   const buttons = h('div', 'menu');
@@ -544,7 +597,27 @@ function showEnd(g: Game) {
 // ---------------------------------------------------------------------------
 
 showTitle();
-loadSprites().then((s) => {
+loadSprites().then(async (s) => {
+  // The pickups and icons that aren't balls: Bitcoin (from Ancapistan Tycoon) and the Laffer Curve.
+  const extra: [string, string][] = [
+    ['pickup:bitcoin', `${import.meta.env.BASE_URL}vidya/img/bitcoin.webp`],
+    ['icon:laffer', `data:image/svg+xml;charset=utf-8,${encodeURIComponent(LAFFER_SVG)}`],
+  ];
+  await Promise.all(
+    extra.map(async ([key, src]) => {
+      const img = new Image();
+      img.src = src;
+      try {
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = c.height = 64;
+        c.getContext('2d')!.drawImage(img, 0, 0, 64, 64);
+        s.set(key, c);
+      } catch {
+        // fall back to the emoji
+      }
+    }),
+  );
   sprites = s;
 });
 requestAnimationFrame(frame);

@@ -84,7 +84,19 @@ export interface WeaponDef {
   /** What it does, and what each level adds (index 0 = level 1). */
   text: string;
   levels: string[];
+  /** A drawing to use instead of the emoji, where there's no fitting emoji. */
+  svg?: string;
 }
+
+/** A real Laffer Curve: revenue against the tax rate, rising to a peak and falling back to zero at 100%. */
+export const LAFFER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect x="3" y="3" width="58" height="58" rx="9" fill="#fffdf3" stroke="#111" stroke-width="3"/>
+  <path d="M12 10 V52 H54" fill="none" stroke="#37474f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 18 V52" stroke="#90a4ae" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <path d="M12 52 C18 8 46 8 52 52" fill="none" stroke="#111" stroke-width="7" stroke-linecap="round"/>
+  <path d="M12 52 C18 8 46 8 52 52" fill="none" stroke="#ff6d00" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="32" cy="19" r="4" fill="#ffd54f" stroke="#111" stroke-width="2"/>
+</svg>`;
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   coins: { id: 'coins', name: 'Gold Coins', icon: '🪙', text: 'Fires gold coins at the nearest statist.', levels: ['Fires a gold coin at the nearest statist.', '+Damage, coins pierce 1.', '+1 coin.', 'Faster, pierce 2.', '+1 coin, +damage.'] },
@@ -93,7 +105,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   nein: { id: 'nein', name: 'NEIN!', icon: '🗯️', text: 'A shockwave of refusal all around you.', levels: ['A shockwave that damages and pushes back.', '+Radius, +damage.', 'More often.', '+Radius, +damage.', 'More often, +radius.'] },
   hand: { id: 'hand', name: 'Invisible Hand', icon: '🤚', text: 'Hands that circle you, slapping statists.', levels: ['2 hands circle you.', '+Damage, wider.', '+1 hand.', '+Damage, wider.', '+1 hand, faster.'] },
   signal: { id: 'signal', name: 'Price Signal', icon: '🚦', text: 'Homing signals that find a target on their own.', levels: ['A homing signal.', '+1 signal.', '+Damage, faster.', '+1 signal.', '+1 signal, +damage.'] },
-  laffer: { id: 'laffer', name: 'Laffer Curve', icon: '📈', text: 'Flies out in a curve and comes back, through everything.', levels: ['A curve that goes out and comes back.', '+Damage.', '+1 curve.', '+Damage, faster.', '+1 curve.'] },
+  laffer: { id: 'laffer', name: 'Laffer Curve', icon: '📈', svg: LAFFER_SVG, text: 'Flies out in a curve and comes back, through everything. Past the peak, every bit more hurts.', levels: ['A curve that goes out and comes back.', '+Damage.', '+1 curve.', '+Damage, faster.', '+1 curve.'] },
   nap: { id: 'nap', name: 'Non-Aggression Pact', icon: '🛡️', text: 'Anyone who comes too close gets hurt. They started it.', levels: ['Hurts statists close to you.', '+Radius, +damage.', '+Damage.', '+Radius, +damage.', '+Radius, +damage.'] },
 };
 
