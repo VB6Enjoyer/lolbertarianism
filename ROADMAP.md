@@ -778,7 +778,7 @@ into a handicapping game. Steps 1 and 2 of the plan:
   Simulator (title), and JUST GETTING STARTED (title). Ancapistan Tycoon
   keeps its own save codes; Eminem's Human Action saves nothing.
 
-### JUST GETTING STARTED: rebuilt as a deckbuilder (prototype)
+### JUST GETTING STARTED: rebuilt as a deckbuilder ✅
 
 The clicker overlapped Ancapistan Tycoon, so it's now a roguelike deckbuilder
 (`src/games/just-getting-started/`), built on the meme: laser-eyed Milton
@@ -902,3 +902,32 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
   play; the daily run stays Milton's.
 - The secret bosses are photos (deep-fried, with laser eyes on their pupils,
   measured like Milton's). Five achievements.
+
+#### Run history, the compendium, music and options ✅
+
+- 📜 Run history (`records.ts`): the last 25 runs, with who played, the stage
+  or daily, the score, how far you got and who ratio'd you, plus your nemesis.
+- 📚 Compendium: every card, relic and enemy you've come across, the rest as
+  silhouettes.
+- Music (`music.ts`): a phonk loop made in code (a sliding 808, cowbell, hats,
+  a clap), calmer on the map, harder in fights and bosses, with a distorted
+  lead as the Based meter fills.
+- ⚙️ Options: music and sound volume, reduced flashing (no Laser Eyes flash,
+  no jitter at full Based), screen shake on/off.
+
+#### More content, and a balance pass for Milton ✅
+
+- 8 new cards each. Milton: MV = PQ, The Thermostat, Rose's Edit, The Social
+  Responsibility of Business, Lift the Controls, The k-Percent Rule, The Cure
+  for Inflation, End the Draft. David: Wergild, Subscription Renewal, Turf
+  Wars Don't Pay, Law and Economics, Privatize the Roads, Cash Out a
+  Contract, Cariadoc of the Bow, Seasteading.
+- 3 new enemies: the MMT Economist and the Antiwork Mod (act 2), a Central
+  Bank Digital Currency (act 3, and an elite pairing).
+- 4 new TV appearances: Donahue round two, testifying to Congress and the
+  Free to Choose shoot for Milton; Patri's seastead for David.
+- Balance: the Fed Chair (the top killer for both) has 155 Credibility and a
+  15-damage Rate Hike. Over 1,500 bot runs each, Milton and David now win
+  about as often (before: 0.8% vs 5.5%).
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
+  with a new screenshot and link preview.

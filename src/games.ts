@@ -75,7 +75,7 @@ export const games: Game[] = [
     slug: 'just-getting-started',
     title: 'JUST GETTING STARTED 😈',
     blurb: 'Late stage capitalism? Nah. A deckbuilder: laser-eyed Milton Friedman vs. everyone who says capitalism is dying.',
-    status: 'prototype',
+    status: 'released', // v1.0
     legacyPaths: ['JUST GETTING STARTED 😈.html'],
   },
 ];
