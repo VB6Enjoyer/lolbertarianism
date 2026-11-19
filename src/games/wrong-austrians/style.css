@@ -846,6 +846,17 @@ q.pitch {
     }
 }
 
+#music.off {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
+.share-status {
+    min-height: 1.2em;
+    color: var(--muted);
+    white-space: pre-line;
+}
+
 /* --- The end --- */
 .end {
     text-align: center;
@@ -917,7 +928,7 @@ q.pitch {
         font-size: 17px;
     }
 
-    #mute {
+    #music {
         margin-left: auto;
     }
 

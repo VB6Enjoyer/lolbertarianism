@@ -82,7 +82,7 @@ export function ballSvg(look: BallLook): string {
     paint = `<rect x="0" y="0" width="100" height="110" fill="#ffe31a"/><polygon points="22,110 96,16 110,16 110,110" fill="#111"/>${look.flag === 'ancap' ? EAGLE : ''}`;
   }
   const flip = look.flip ? ' transform="translate(100 0) scale(-1 1)"' : '';
-  return `<svg class="ball" viewBox="0 -14 100 124" aria-hidden="true">
+  return `<svg class="ball" xmlns="http://www.w3.org/2000/svg" viewBox="0 -14 100 124" width="200" height="248" aria-hidden="true">
   <defs><clipPath id="${id}"><circle cx="50" cy="62" r="40"/></clipPath></defs>
   <g${flip}>
     <g clip-path="url(#${id})">${paint}</g>

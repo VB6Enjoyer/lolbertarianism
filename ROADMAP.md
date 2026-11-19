@@ -956,7 +956,7 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
 - Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
   outcomes, slips and accusations ~69%, random clicking ~11%.
-- Next: sharing, music, and a pass-the-phone party mode.
+- Next: a pass-the-phone party mode.
 
 #### Mirror mode ✅
 
@@ -986,4 +986,16 @@ against bot advisors (`src/games/wrong-austrians/`).
   Hayek Would Be Prouder), both sides and the daily, and secrets (Oops, I Thought I Hired Austrian
   Economists, Nationalize Oil, Privatize Vienna plz). Thresholds tuned against bot terms so each
   one can be earned. Toasts as they unlock (a summary when a term ends with a big haul).
+
+#### Sharing and music ✅
+
+- Sharing (`share.ts`): the result as text (the ending, the score, the meters and the council as a
+  row of emoji: 🦅 loyal, 🔥 impostor caught, 😬 loyal fired, 🕵️ impostor who got away), or a
+  1200×630 card with the whole council unmasked and each one's fate. The share sheet on phones, a
+  copy or download elsewhere. A Press Release achievement for sharing (26 in all).
+- Music (`music.ts`): a waltz made in code. Oom-pah-pah in 3/4 (the bass on the one, a chord on two
+  and three) under a tune built from the chords, the same every time. Calm between sessions,
+  livelier in the council, and in D minor when a meter drops to 25 or below. As Ancapball the tune
+  is a clarinet-ish lead with vibrato; as Austria, a reedy, detuned accordion. 🎵 turns the music
+  off on its own; 🔊 still mutes everything.
 

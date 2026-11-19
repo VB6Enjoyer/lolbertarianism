@@ -7,6 +7,8 @@ export interface Records {
   wins: number;
   mirrorWins: number;
   dailies: number;
+  /** Results shared. */
+  shared: number;
 }
 
 export interface Achievement {
@@ -54,6 +56,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'vienna-abides', icon: '🇦🇹', name: 'Vienna Abides', description: 'Win a term as Austria, in mirror mode.', done: (g, r) => (over(g) && won(g) && g.mode === 'mirror') || r.mirrorWins > 0 },
   { id: 'both-sides', icon: '🪞', name: 'Both Sides Now', description: 'Win a term on each side.', done: (_g, r) => r.mirrorWins > 0 && r.wins - r.mirrorWins > 0 },
   { id: 'daily', icon: '📆', name: 'Daily Briefing', description: 'Finish a daily term.', done: (g, r) => (over(g) && !!g.daily) || r.dailies > 0 },
+  { id: 'press-release', icon: '📣', name: 'Press Release', description: 'Share a result.', done: (_g, r) => r.shared > 0 },
   { id: 'dailies', icon: '🗞️', name: 'Newspaper of Record', description: 'Finish 7 daily terms.', done: (_g, r) => r.dailies >= 7 },
 
   // --- Secrets ---

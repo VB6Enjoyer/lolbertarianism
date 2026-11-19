@@ -14,6 +14,8 @@ import { crisisById, type Effect } from './crises.ts';
 import { type Side, sideOf } from './sides.ts';
 import { ACHIEVEMENTS, achievementById, earnedNow, normalizeUnlocked } from './achievements.ts';
 import { dailyFor, normalizeDailyBests, twistById } from './daily.ts';
+import { type MoodId, Waltz } from './music.ts';
+import { CARD_H, CARD_W, drawShareCard, shareText, type TermSummary } from './share.ts';
 import { QUESTIONS } from './talk.ts';
 
 // ---------------------------------------------------------------------------
@@ -29,6 +31,7 @@ interface Meta {
   /** Terms won in mirror mode, and daily terms finished. */
   mirrorWins: number;
   dailies: number;
+  shared: number;
 }
 
 interface Save {
@@ -41,6 +44,8 @@ interface Save {
   mirrorUnlocked: boolean;
   mode: Mode;
   achievements: string[];
+  /** Music on or off (the speaker button mutes everything). */
+  music: boolean;
   /** The best daily score, per date. */
   dailyBests: Record<string, number>;
 }
@@ -87,7 +92,9 @@ const save: Save = {
     wrong: count(saved?.meta?.wrong),
     mirrorWins: count(saved?.meta?.mirrorWins),
     dailies: count(saved?.meta?.dailies),
+    shared: count(saved?.meta?.shared),
   },
+  music: saved?.music !== false,
   achievements: normalizeUnlocked(saved?.achievements),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
   mirrorUnlocked: saved?.mirrorUnlocked === true || count(saved?.meta?.wins) > 0,
@@ -106,6 +113,7 @@ const els = {
   hud: byId('hud'),
   overlay: byId('overlay'),
   mute: byId<HTMLButtonElement>('mute'),
+  music: byId<HTMLButtonElement>('music'),
   toasts: byId('toasts'),
   home: byId<HTMLButtonElement>('home'),
 };
@@ -151,8 +159,44 @@ els.mute.addEventListener('click', () => {
   save.muted = !save.muted;
   persist();
   renderMute();
+  if (save.muted) waltz.stop();
+  else startMusic();
 });
+
+// The waltz: starts on the first click or key (browsers won't play audio before one).
+const waltz = new Waltz();
+function startMusic() {
+  if (waltz.playing || save.muted || !save.music) return;
+  const ctx = getAudioContext();
+  void ctx.resume().catch(() => {});
+  waltz.start(ctx);
+  updateMusic();
+}
+/** Calm between sessions, livelier in the council, minor-key when a meter is running out. */
+function updateMusic() {
+  const g = view === 'game' ? save.game : null;
+  let mood: MoodId = 'calm';
+  if (g && g.phase !== 'over') {
+    if (g.prosperity <= 25 || g.liberty <= 25) mood = 'tense';
+    else if (g.phase === 'council') mood = 'council';
+  }
+  waltz.set(mood, g?.mode ?? save.mode);
+}
+function renderMusic() {
+  els.music.classList.toggle('off', !save.music);
+  els.music.setAttribute('aria-pressed', String(save.music));
+  els.music.title = save.music ? 'Music on (tap to turn it off)' : 'Music off (tap to turn it on)';
+}
+els.music.addEventListener('click', () => {
+  save.music = !save.music;
+  persist();
+  renderMusic();
+  if (save.music) startMusic();
+  else waltz.stop();
+});
+for (const type of ['pointerdown', 'keydown'] as const) document.addEventListener(type, startMusic, { once: true });
 renderMute();
+renderMusic();
 
 // ---------------------------------------------------------------------------
 // Shared bits
@@ -203,6 +247,7 @@ function render() {
   els.screen.replaceChildren();
   const g = save.game;
   checkAchievements();
+  updateMusic();
   renderHud();
   if (view === 'title' || !g) return renderTitle();
   if (g.phase === 'over') return renderEnd(g);
@@ -746,9 +791,104 @@ function renderEnd(g: Game) {
   }
   s.append(grid);
   const buttons = h('div', 'menu');
+  const status = h('p', 'share-status');
+  const share = h('div', 'menu');
+  share.append(
+    button('📋 Share result', 'big secondary', () => void shareResult(g, status)),
+    button('🖼️ Save image', 'big secondary', () => void shareImage(g, status)),
+  );
+  s.append(share, status);
   buttons.append(button('▶ New term', 'big', startGame), button('Title screen', 'big secondary', () => go('title')));
   s.append(buttons);
   els.screen.append(s);
+}
+
+// --- Sharing ---
+
+function summaryOf(g: Game): TermSummary {
+  const sd = sideOf(g.mode);
+  const twist = twistById(g.twist);
+  return {
+    mode: g.mode,
+    won: won(g),
+    ending: g.ending!,
+    headline: sd.endings[g.ending!][0],
+    score: score(g),
+    quarter: g.quarter,
+    meters: [
+      [sd.meters.p[0], g.prosperity],
+      [sd.meters.l[0], g.liberty],
+    ],
+    advisors: g.advisors.map((a) => ({ name: a.name, impostor: a.impostor, fired: a.fired })),
+    daily: g.daily && twist ? { key: g.daily, name: twist.name, icon: twist.icon } : null,
+    url: `${location.origin}${location.pathname}`,
+  };
+}
+
+function shared() {
+  save.meta.shared++;
+  persist();
+  checkAchievements();
+}
+
+async function shareResult(g: Game, status: HTMLElement) {
+  const text = shareText(summaryOf(g));
+  try {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      await navigator.share({ text });
+      return shared();
+    }
+    await navigator.clipboard.writeText(text);
+    status.textContent = '📋 Copied! Paste it anywhere.';
+  } catch {
+    status.textContent = 'Couldn’t copy it. Here it is:\n' + text;
+  }
+  shared();
+}
+
+/** An advisor, unmasked, as an image (for the card). */
+function ballImage(look: BallLook): Promise<HTMLImageElement | null> {
+  const url = URL.createObjectURL(new Blob([ballSvg(look)], { type: 'image/svg+xml' }));
+  const img = new Image();
+  img.src = url;
+  return img
+    .decode()
+    .then(() => img)
+    .catch(() => null)
+    .finally(() => URL.revokeObjectURL(url));
+}
+
+async function shareImage(g: Game, status: HTMLElement) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CARD_W;
+  canvas.height = CARD_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const sd = sideOf(g.mode);
+  const balls = await Promise.all(
+    g.advisors.map((a) => ballImage({ flag: a.impostor ? sd.impostorFlag : sd.council, hat: a.hat, face: a.face, eyes: a.impostor ? 'shifty' : 'happy' })),
+  );
+  await Promise.all([document.fonts?.load("900 40px 'Roboto Condensed'").catch(() => {}), document.fonts?.load('700 28px Roboto').catch(() => {})]);
+  drawShareCard(ctx, summaryOf(g), balls);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return;
+  const file = new File([blob], 'wrong-austrians.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare?.({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
+      await navigator.share({ files: [file] });
+      return shared();
+    }
+  } catch {
+    // fall through to a download
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'wrong-austrians.png';
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  status.textContent = '🖼️ Saved the card.';
+  shared();
 }
 
 /** Set when the term just won opened mirror mode (for the end screen). */
@@ -817,5 +957,5 @@ els.home.addEventListener('click', () => go('title'));
 render();
 
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { wa: { save, render, go } });
+  Object.assign(window, { wa: { save, render, go, waltz } });
 }

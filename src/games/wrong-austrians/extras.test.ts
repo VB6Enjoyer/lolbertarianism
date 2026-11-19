@@ -3,6 +3,8 @@ import { ACHIEVEMENTS, earnedNow, normalizeUnlocked } from './achievements.ts';
 import { botPlay } from './bot.ts';
 import { ask, backgroundCheck, beginCouncil, canCheck, enact, fire, type Game, newGame, nextQuarter, questionsPer, termLength } from './council.ts';
 import { dailyFor, normalizeDailyBests, TWISTS } from './daily.ts';
+import { tuneFor } from './music.ts';
+import { councilEmoji, shareText, type TermSummary } from './share.ts';
 
 /** nextQuarter can end the term; TypeScript can't tell. */
 const isOver = (g: Game) => g.phase === 'over';
@@ -68,7 +70,7 @@ describe('the daily term', () => {
 });
 
 describe('achievements', () => {
-  const none = { wins: 0, mirrorWins: 0, dailies: 0 };
+  const none = { wins: 0, mirrorWins: 0, dailies: 0, shared: 0 };
 
   it('have unique ids, and every one can be earned', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
@@ -115,7 +117,7 @@ describe('achievements', () => {
   });
 
   it('the records count too, and the takeover is its own (secret) achievement', () => {
-    expect(earnedNow(null, { wins: 2, mirrorWins: 1, dailies: 7 })).toEqual(expect.arrayContaining(['stateless', 'vienna-abides', 'both-sides', 'daily', 'dailies']));
+    expect(earnedNow(null, { wins: 2, mirrorWins: 1, dailies: 7, shared: 1 })).toEqual(expect.arrayContaining(['stateless', 'vienna-abides', 'both-sides', 'daily', 'dailies', 'press-release']));
     const g = council(newGame(9));
     const loyal = g.advisors.filter((a) => !a.impostor);
     fire(g, loyal[0].id);
@@ -131,5 +133,62 @@ describe('achievements', () => {
   it('drops unknown ids from a save', () => {
     expect(normalizeUnlocked(['purge', 'nope', 'purge', 3])).toEqual(['purge']);
     expect(normalizeUnlocked('x')).toEqual([]);
+  });
+});
+
+describe('sharing', () => {
+  const summary = (over: Partial<TermSummary> = {}): TermSummary => ({
+    mode: 'ancap',
+    won: true,
+    ending: 'purged',
+    headline: 'COUNCIL PURGED 🦅',
+    score: 342,
+    quarter: 3,
+    meters: [['📈', 44], ['🗽', 51]],
+    advisors: [
+      { name: 'A', impostor: false, fired: false },
+      { name: 'B', impostor: true, fired: true },
+      { name: 'C', impostor: false, fired: true },
+      { name: 'D', impostor: true, fired: false },
+      { name: 'E', impostor: false, fired: false },
+    ],
+    daily: null,
+    url: 'https://example.com/x',
+    ...over,
+  });
+
+  it('turns the council into a row of emoji', () => {
+    expect(councilEmoji(summary())).toBe('🦅🔥😬🕵️🦅');
+    expect(councilEmoji(summary({ mode: 'mirror' }))).toBe('🇦🇹🔥😬🕵️🇦🇹');
+  });
+
+  it('writes a few lines: the title, the ending, the score, the council, the link', () => {
+    const text = shareText(summary());
+    expect(text.split('\n')).toEqual([
+      '🦅 I THOUGHT I HIRED AUSTRIAN ECONOMISTS',
+      'COUNCIL PURGED 🦅 · Year 1, Q3',
+      '🏆 342 points · 📈 44 · 🗽 51',
+      '🦅🔥😬🕵️🦅 (1/2 impostors caught)',
+      'https://example.com/x',
+    ]);
+    expect(shareText(summary({ mode: 'mirror', daily: { key: '2026-11-19', name: 'Double Check', icon: '🔍' } })).split('\n')[0]).toBe(
+      '🇦🇹 I THOUGHT I HIRED AUSTRIAN ECONOMISTS · 🪞 Mirror mode · 📅 Daily 2026-11-19 (🔍 Double Check)',
+    );
+  });
+});
+
+describe('the waltz', () => {
+  it('has a tune for every bar of every mood, in 3/4, the same every time', () => {
+    for (const mood of ['calm', 'council', 'tense'] as const) {
+      const tune = tuneFor(mood);
+      expect(tune).toHaveLength(16);
+      expect(tuneFor(mood)).toEqual(tune);
+      for (const bar of tune) {
+        expect(bar.length).toBeGreaterThan(0);
+        // The notes fill the bar's six eighths exactly, without overlapping.
+        expect(bar.reduce((t, n) => t + n.len, 0)).toBe(6);
+        bar.forEach((n, i) => expect(n.step).toBe(bar.slice(0, i).reduce((t, x) => t + x.len, 0)));
+      }
+    }
   });
 });
