@@ -4,8 +4,8 @@
 // seeded, so tests and the balance bot can replay runs exactly.
 
 import {
-  BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, RUN_LENGTH, WEAPON_SLOTS, WEAPON_STATS,
-  type WeaponId, WEAPONS,
+  BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, POOL_WEAPONS,
+  RUN_LENGTH, WEAPON_SLOTS, WEAPON_STATS, type WeaponId,
 } from './data.ts';
 import { makeRng, next, pickOne, type Rng, weighted } from './rng.ts';
 
@@ -63,7 +63,9 @@ export interface Enemy {
 
 export interface Shot {
   id: number;
-  kind: 'coin' | 'pellet' | 'bullet' | 'signal' | 'laffer';
+  kind: 'coin' | 'bar' | 'pellet' | 'bullet' | 'signal' | 'laffer';
+  /** Which weapon fired it (for the damage tally). */
+  from: WeaponId;
   x: number;
   y: number;
   vx: number;
@@ -111,6 +113,9 @@ export interface OwnedWeapon {
   /** The Invisible Hand's spin, and when each enemy was last slapped. */
   angle: number;
   lastHit: Record<number, number>;
+  /** NEIN NEIN NEIN: the waves still to come in this volley, and the time to the next. */
+  waves?: number;
+  waveT?: number;
 }
 
 export interface OwnedPassive {
@@ -121,6 +126,7 @@ export interface OwnedPassive {
 export type Offer =
   | { kind: 'weapon'; id: WeaponId; level: number }
   | { kind: 'passive'; id: PassiveId; level: number }
+  | { kind: 'evolve'; id: WeaponId; from: WeaponId }
   | { kind: 'heal' }
   | { kind: 'gold' };
 
@@ -130,6 +136,9 @@ export type Fx =
   | { kind: 'kill'; x: number; y: number; type: EnemyId }
   | { kind: 'hurt'; amount: number }
   | { kind: 'nein'; x: number; y: number; radius: number }
+  | { kind: 'boom'; x: number; y: number; radius: number }
+  | { kind: 'zap'; points: [number, number][] }
+  | { kind: 'evolve'; weapon: WeaponId }
   | { kind: 'shoot'; weapon: WeaponId }
   | { kind: 'pickup'; pickup: Pickup['kind'] }
   | { kind: 'level' }
@@ -164,19 +173,60 @@ export interface Game {
   events: { boss: boolean; revolution1: boolean; revolution2: boolean };
   /** Damage dealt by each weapon, for the end screen. */
   damageBy: Partial<Record<WeaponId, number>>;
+  /** What the shop bought before the run (and the difficulty chosen). */
+  mods: Mods;
+  /** Shop cards that may turn up on a level-up. */
+  unlocked: (WeaponId | PassiveId)[];
+  /** Whether the shop's weapon upgrade for this character has been bought. */
+  canEvolve: boolean;
+  /** Level-up rerolls left. */
+  rerolls: number;
+}
+
+/**
+ * Everything the shop (and the difficulty) changes about a run, as multipliers and bonuses. The
+ * defaults change nothing.
+ */
+export interface Mods {
+  maxHp: number;
+  damage: number;
+  speed: number;
+  magnet: number;
+  xp: number;
+  armor: number;
+  rerolls: number;
+  /** Bitcoin multiplier (the shop's Gold Rush and the difficulty bonus together). */
+  gold: number;
+  enemyHp: number;
+  enemySpeed: number;
+  spawns: number;
+  /** How much harder statists hit you. */
+  hurt: number;
+}
+
+export const NO_MODS: Mods = { maxHp: 0, damage: 1, speed: 1, magnet: 1, xp: 1, armor: 0, rerolls: 0, gold: 1, enemyHp: 1, enemySpeed: 1, spawns: 1, hurt: 1 };
+
+export interface Setup {
+  mods?: Partial<Mods>;
+  unlocked?: (WeaponId | PassiveId)[];
+  canEvolve?: boolean;
 }
 
 /** XP for the next level. */
 export const xpFor = (level: number) => Math.round(4 + level * 3 + level * level * 0.3);
 
-export function newGame(seed: number, character: CharacterId): Game {
+export function newGame(seed: number, character: CharacterId, setup: Setup = {}): Game {
   const c = CHARACTERS[character];
+  const mods: Mods = { ...NO_MODS, ...setup.mods };
+  const hp = c.hp + mods.maxHp;
   const g: Game = {
     seed,
     rng: makeRng(seed),
     character,
     time: 0,
-    player: { x: 0, y: 0, hp: c.hp, maxHp: c.hp, speed: c.speed, armor: c.armor, magnet: c.magnet, xpMult: c.xpMult, regen: 0, iframes: 0, facing: 1, aim: 0 },
+    player: {
+      x: 0, y: 0, hp, maxHp: hp, speed: c.speed * mods.speed, armor: c.armor + mods.armor, magnet: c.magnet * mods.magnet, xpMult: c.xpMult * mods.xp, regen: 0, iframes: 0, facing: 1, aim: 0,
+    },
     level: 1,
     xp: 0,
     next: xpFor(1),
@@ -196,6 +246,10 @@ export function newGame(seed: number, character: CharacterId): Game {
     spawnAcc: 0,
     events: { boss: false, revolution1: false, revolution2: false },
     damageBy: {},
+    mods,
+    unlocked: [...(setup.unlocked ?? [])],
+    canEvolve: setup.canEvolve === true,
+    rerolls: mods.rerolls,
   };
   addWeapon(g, c.weapon);
   return g;
@@ -220,10 +274,12 @@ function addPassive(g: Game, id: PassiveId) {
   else g.passives.push({ id, level: 1 });
   const p = g.player;
   const c = CHARACTERS[g.character];
+  const m = g.mods;
   const lv = passiveLevel(g, id);
-  if (id === 'property') p.armor = c.armor + lv;
-  if (id === 'freetrade') p.magnet = c.magnet * (1 + 0.25 * lv);
-  if (id === 'compound') p.xpMult = c.xpMult * (1 + 0.1 * lv);
+  if (id === 'property') p.armor = c.armor + m.armor + lv;
+  if (id === 'freetrade') p.magnet = c.magnet * m.magnet * (1 + 0.25 * lv);
+  if (id === 'compound') p.xpMult = c.xpMult * m.xp * (1 + 0.1 * lv);
+  if (id === 'exit') p.speed = c.speed * m.speed * (1 + 0.06 * lv);
   if (id === 'healthcare') {
     p.maxHp += 15;
     p.hp = Math.min(p.maxHp, p.hp + 15);
@@ -236,21 +292,28 @@ const extra = (g: Game) => Math.floor((passiveLevel(g, 'division') + 1) / 2);
 /** How many Invisible Hands are circling (for the screen). */
 export const handCount = (g: Game) => WEAPON_STATS.hand.count[weaponLevel(g, 'hand') - 1] + extra(g);
 const cooldownMult = (g: Game) => 1 - 0.08 * passiveLevel(g, 'timepref');
+/** Everything you hit, multiplied: the shop's Capital Accumulation and the Sound Money card. */
+const damageMult = (g: Game) => g.mods.damage * (1 + 0.08 * passiveLevel(g, 'sound'));
+const available = (g: Game, id: WeaponId | PassiveId) => !LOCKED_CARDS.includes(id) || g.unlocked.includes(id);
+
+/** The weapon upgrade, if it's been bought and the starting weapon is at its last level. */
+export function evolution(g: Game): Offer | null {
+  if (!g.canEvolve) return null;
+  const { from, to } = EVOLUTIONS[g.character];
+  return weaponLevel(g, from) >= MAX_LEVEL ? { kind: 'evolve', id: to, from } : null;
+}
 
 /** Three cards for a level-up: new things while there's room, and upgrades. */
 export function makeOffer(g: Game): Offer[] {
   const options: [Offer, number][] = [];
   for (const w of g.weapons) if (w.level < MAX_LEVEL) options.push([{ kind: 'weapon', id: w.id, level: w.level + 1 }, 3]);
-  if (g.weapons.length < WEAPON_SLOTS) {
-    for (const id of Object.keys(WEAPONS) as WeaponId[]) {
-      // Each character's starting weapon is theirs alone.
-      const startingElsewhere = (['coins', 'shotgun', 'ak', 'nein'] as WeaponId[]).includes(id) && id !== CHARACTERS[g.character].weapon;
-      if (!weaponLevel(g, id) && !startingElsewhere) options.push([{ kind: 'weapon', id, level: 1 }, 2]);
-    }
-  }
+  // New weapons come from the common pool: each character's starting weapon (and its upgrade) is theirs alone.
+  if (g.weapons.length < WEAPON_SLOTS) for (const id of POOL_WEAPONS) if (!weaponLevel(g, id) && available(g, id)) options.push([{ kind: 'weapon', id, level: 1 }, 2]);
   for (const p of g.passives) if (p.level < MAX_LEVEL) options.push([{ kind: 'passive', id: p.id, level: p.level + 1 }, 2]);
-  if (g.passives.length < PASSIVE_SLOTS) for (const id of Object.keys(PASSIVES) as PassiveId[]) if (!passiveLevel(g, id)) options.push([{ kind: 'passive', id, level: 1 }, 2]);
-  const picked: Offer[] = [];
+  if (g.passives.length < PASSIVE_SLOTS) for (const id of Object.keys(PASSIVES) as PassiveId[]) if (!passiveLevel(g, id) && available(g, id)) options.push([{ kind: 'passive', id, level: 1 }, 2]);
+  // The weapon upgrade, once it's ready, is always one of the three.
+  const evolve = evolution(g);
+  const picked: Offer[] = evolve ? [evolve] : [];
   while (picked.length < 3 && options.length) {
     const o = weighted(g.rng, options);
     picked.push(o);
@@ -266,11 +329,34 @@ export function choose(g: Game, i: number): boolean {
   if (!o) return false;
   if (o.kind === 'weapon') addWeapon(g, o.id);
   else if (o.kind === 'passive') addPassive(g, o.id);
+  else if (o.kind === 'evolve') {
+    const w = g.weapons.find((x) => x.id === o.from);
+    if (w) {
+      w.id = o.id;
+      w.cooldown = 0;
+    }
+    g.fx.push({ kind: 'evolve', weapon: o.id });
+  }
   else if (o.kind === 'heal') g.player.hp = Math.min(g.player.maxHp, g.player.hp + g.player.maxHp * 0.3);
   else g.gold += 25;
   g.pending--;
   g.offer = g.pending > 0 ? makeOffer(g) : null;
   return true;
+}
+
+/** Swap the three cards for three others (the shop's Second Opinion). */
+export function reroll(g: Game): boolean {
+  if (!g.offer || g.rerolls <= 0) return false;
+  g.rerolls--;
+  g.offer = makeOffer(g);
+  return true;
+}
+
+/** Bitcoin for a run: what you picked up, plus 1 for every six seconds you lasted and a bonus for winning, all multiplied by the shop and the difficulty. */
+export function goldEarned(g: Game): { picked: number; survived: number; total: number } {
+  const picked = g.gold;
+  const survived = Math.floor(Math.min(RUN_LENGTH, g.time) / 6) + (g.over === 'won' ? 100 : 0);
+  return { picked, survived, total: Math.round((picked + survived) * g.mods.gold) };
 }
 
 // ---------------------------------------------------------------------------
@@ -397,8 +483,8 @@ function spawnWeights(t: number): [EnemyId, number][] {
 
 export function spawnEnemy(g: Game, type: EnemyId, x: number, y: number): Enemy {
   const d = ENEMIES[type];
-  const hp = Math.round(d.hp * (type === 'bank' ? 1 : hpScale(g.time)));
-  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16), damage: d.damage, radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
+  const hp = Math.round(d.hp * (type === 'bank' ? 1 : hpScale(g.time)) * g.mods.enemyHp);
+  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16) * g.mods.enemySpeed, damage: d.damage, radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
   g.enemies.push(e);
   return e;
 }
@@ -429,7 +515,7 @@ function spawn(g: Game, dt: number) {
     }
   }
   if (g.enemies.length >= MAX_ENEMIES) return;
-  g.spawnAcc += spawnRate(t) * dt;
+  g.spawnAcc += spawnRate(t) * g.mods.spawns * dt;
   const weights = spawnWeights(t);
   while (g.spawnAcc >= 1) {
     g.spawnAcc -= 1;
@@ -448,7 +534,7 @@ function spawn(g: Game, dt: number) {
 
 function damage(g: Game, e: Enemy, amount: number, from: WeaponId, kx = 0, ky = 0) {
   if (e.dead) return;
-  const dealt = Math.round(amount);
+  const dealt = Math.round(amount * damageMult(g));
   e.hp -= dealt;
   e.flash = 0.12;
   if (e.type !== 'bank') {
@@ -471,9 +557,9 @@ function kill(g: Game, e: Enemy) {
   const d = ENEMIES[e.type];
   drop(g, 'xp', e.x, e.y, d.xp + e.stolen);
   const roll = next(g.rng);
-  if (roll < 0.015) drop(g, 'gold', e.x, e.y, 5);
-  else if (roll < 0.021) drop(g, 'heal', e.x, e.y, 25);
-  else if (roll < 0.0235) drop(g, 'magnet', e.x, e.y, 0);
+  if (roll < 0.025) drop(g, 'gold', e.x, e.y, 5);
+  else if (roll < 0.031) drop(g, 'heal', e.x, e.y, 25);
+  else if (roll < 0.0335) drop(g, 'magnet', e.x, e.y, 0);
   if (e.type === 'keynesian') for (let i = 0; i < 2; i++) spawnEnemy(g, 'stimulus', e.x + (i ? 12 : -12), e.y);
   if (e.type === 'bank') {
     drop(g, 'chest', e.x, e.y, 0);
@@ -502,6 +588,15 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
       napTick(g, grid, w, dt);
       continue;
     }
+    if (w.waves) {
+      w.waveT = (w.waveT ?? 0) - dt;
+      if (w.waveT <= 0) {
+        const s = WEAPON_STATS.nein3;
+        w.waves--;
+        w.waveT = s.gap;
+        shockwave(g, grid, s.radius[s.radius.length - 1 - w.waves], s.damage, s.knockback, 'nein3');
+      }
+    }
     w.cooldown -= dt;
     if (w.cooldown > 0) continue;
     switch (w.id) {
@@ -511,41 +606,119 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
         const n = s.count[L] + extra(g);
         for (let i = 0; i < n; i++) {
           const a = p.aim + (i - (n - 1) / 2) * 0.16;
-          shoot(g, { kind: 'coin', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: s.pierce[L], radius: 7, life: 1.4, knockback: 40 });
+          shoot(g, { kind: 'coin', from: 'coins', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: s.pierce[L], radius: 7, life: 1.4, knockback: 40 });
         }
         w.cooldown = s.cooldown[L] * cdm;
         break;
       }
-      case 'shotgun': {
+      case 'goldbars': {
         if (!target) continue;
-        const s = WEAPON_STATS.shotgun;
-        const n = s.count[L] + extra(g) * 2;
+        const s = WEAPON_STATS.goldbars;
+        const n = s.count + extra(g);
         for (let i = 0; i < n; i++) {
-          const a = p.aim + (i / (n - 1) - 0.5) * s.spread + (next(g.rng) - 0.5) * 0.05;
-          const v = s.speed * (0.9 + next(g.rng) * 0.2);
-          shoot(g, { kind: 'pellet', x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, damage: s.damage[L], pierce: 0, radius: 5, life: s.life, knockback: s.knockback });
+          const a = p.aim + (i - (n - 1) / 2) * 0.14;
+          shoot(g, { kind: 'bar', from: 'goldbars', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage, pierce: s.pierce, radius: 10, life: 1.4, knockback: 90 });
         }
-        w.cooldown = s.cooldown[L] * cdm;
+        w.cooldown = s.cooldown * cdm;
         break;
       }
-      case 'ak': {
+      case 'shotgun':
+      case 'autoshotgun': {
         if (!target) continue;
-        const s = WEAPON_STATS.ak;
-        const a = p.aim + (next(g.rng) - 0.5) * s.jitter * 2;
-        shoot(g, { kind: 'bullet', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: s.pierce[L], radius: 4, life: 1.1, knockback: 18 });
-        w.cooldown = s.cooldown[L] * cdm;
+        const auto = w.id === 'autoshotgun';
+        const base = WEAPON_STATS.shotgun;
+        const up = WEAPON_STATS.autoshotgun;
+        const n = (auto ? up.count : base.count[L]) + extra(g) * 2;
+        const spread = auto ? up.spread : base.spread;
+        const speed = auto ? up.speed : base.speed;
+        for (let i = 0; i < n; i++) {
+          const a = p.aim + (i / (n - 1) - 0.5) * spread + (next(g.rng) - 0.5) * 0.05;
+          const v = speed * (0.9 + next(g.rng) * 0.2);
+          shoot(g, {
+            kind: 'pellet', from: w.id, x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, damage: auto ? up.damage : base.damage[L], pierce: 0, radius: 5,
+            life: auto ? up.life : base.life, knockback: auto ? up.knockback : base.knockback,
+          });
+        }
+        w.cooldown = (auto ? up.cooldown : base.cooldown[L]) * cdm;
+        break;
+      }
+      case 'ak':
+      case 'm249': {
+        if (!target) continue;
+        const big = w.id === 'm249';
+        const base = WEAPON_STATS.ak;
+        const up = WEAPON_STATS.m249;
+        const speed = big ? up.speed : base.speed;
+        const a = p.aim + (next(g.rng) - 0.5) * (big ? up.jitter : base.jitter) * 2;
+        shoot(g, {
+          kind: 'bullet', from: w.id, x: p.x, y: p.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, damage: big ? up.damage : base.damage[L], pierce: big ? up.pierce : base.pierce[L],
+          radius: big ? 5 : 4, life: 1.1, knockback: big ? 24 : 18,
+        });
+        w.cooldown = (big ? up.cooldown : base.cooldown[L]) * cdm;
         break;
       }
       case 'nein': {
         const s = WEAPON_STATS.nein;
-        const r = s.radius[L];
-        for (const e of near(grid, p.x, p.y, r + 50)) {
-          const d = Math.hypot(e.x - p.x, e.y - p.y);
-          if (d > r + e.radius) continue;
-          const k = s.knockback / Math.max(1, d);
-          damage(g, e, s.damage[L], 'nein', (e.x - p.x) * k, (e.y - p.y) * k);
+        shockwave(g, grid, s.radius[L], s.damage[L], s.knockback, 'nein');
+        w.cooldown = s.cooldown[L] * cdm;
+        break;
+      }
+      case 'nein3': {
+        // The first wave now; the other two follow (see neinTick).
+        const s = WEAPON_STATS.nein3;
+        shockwave(g, grid, s.radius[0], s.damage, s.knockback, 'nein3');
+        w.waves = s.radius.length - 1;
+        w.waveT = s.gap;
+        w.cooldown = s.cooldown * cdm;
+        break;
+      }
+      case 'destruction': {
+        // Statists near you blow up, and take their neighbours with them.
+        const s = WEAPON_STATS.destruction;
+        const close = g.enemies.filter((e) => !e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < s.range * s.range);
+        if (!close.length) continue;
+        const n = s.count[L] + extra(g);
+        for (let i = 0; i < n && close.length; i++) {
+          const at = close.splice(Math.floor(next(g.rng) * close.length), 1)[0];
+          const r = s.radius[L];
+          const bx = at.x;
+          const by = at.y;
+          for (const e of near(grid, bx, by, r + 50)) {
+            const d = Math.hypot(e.x - bx, e.y - by);
+            if (d > r + e.radius) continue;
+            const k = 120 / Math.max(1, d);
+            damage(g, e, s.damage[L], 'destruction', (e.x - bx) * k, (e.y - by) * k);
+          }
+          g.fx.push({ kind: 'boom', x: bx, y: by, radius: r });
         }
-        g.fx.push({ kind: 'nein', x: p.x, y: p.y, radius: r });
+        w.cooldown = s.cooldown[L] * cdm;
+        break;
+      }
+      case 'happening': {
+        // Lightning: the nearest statist, then whoever's nearest to him, and so on.
+        const s = WEAPON_STATS.happening;
+        const first = nearest(g, p.x, p.y, s.range);
+        if (!first) continue;
+        const points: [number, number][] = [[p.x, p.y]];
+        const hit = new Set<number>();
+        let at: Enemy | null = first;
+        for (let j = 0; at && j <= s.jumps[L]; j++) {
+          hit.add(at.id);
+          points.push([at.x, at.y]);
+          const from: Enemy = at;
+          damage(g, from, s.damage[L], 'happening');
+          at = null;
+          let bd = s.reach * s.reach;
+          for (const e of near(grid, from.x, from.y, s.reach)) {
+            if (e.dead || hit.has(e.id)) continue;
+            const d = (e.x - from.x) ** 2 + (e.y - from.y) ** 2;
+            if (d < bd) {
+              bd = d;
+              at = e;
+            }
+          }
+        }
+        g.fx.push({ kind: 'zap', points });
         w.cooldown = s.cooldown[L] * cdm;
         break;
       }
@@ -556,7 +729,7 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
         for (let i = 0; i < n; i++) {
           const a = next(g.rng) * Math.PI * 2;
           const pickT = g.enemies.length ? pickOne(g.rng, g.enemies) : target;
-          shoot(g, { kind: 'signal', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: 0, radius: 7, life: 3, knockback: 30, target: pickT.id });
+          shoot(g, { kind: 'signal', from: 'signal', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: 0, radius: 7, life: 3, knockback: 30, target: pickT.id });
         }
         w.cooldown = s.cooldown[L] * cdm;
         break;
@@ -566,7 +739,7 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
         const n = s.count[L] + extra(g);
         for (let i = 0; i < n; i++) {
           const a = p.aim + (i / Math.max(1, n)) * Math.PI * 2;
-          shoot(g, { kind: 'laffer', x: p.x, y: p.y, vx: 0, vy: 0, damage: s.damage[L], pierce: 999, radius: 14, life: s.time, knockback: 60, ox: p.x, oy: p.y, age: 0, angle: a });
+          shoot(g, { kind: 'laffer', from: 'laffer', x: p.x, y: p.y, vx: 0, vy: 0, damage: s.damage[L], pierce: 999, radius: 14, life: s.time, knockback: 60, ox: p.x, oy: p.y, age: 0, angle: a });
         }
         w.cooldown = s.cooldown[L] * cdm;
         break;
@@ -574,6 +747,18 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
     }
     g.fx.push({ kind: 'shoot', weapon: w.id });
   }
+}
+
+/** A ring of refusal around you: everyone inside is hurt and pushed back. */
+function shockwave(g: Game, grid: Grid, r: number, amount: number, knockback: number, from: WeaponId) {
+  const p = g.player;
+  for (const e of near(grid, p.x, p.y, r + 50)) {
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > r + e.radius) continue;
+    const k = knockback / Math.max(1, d);
+    damage(g, e, amount, from, (e.x - p.x) * k, (e.y - p.y) * k);
+  }
+  g.fx.push({ kind: 'nein', x: p.x, y: p.y, radius: r });
 }
 
 function handTick(g: Game, grid: Grid, w: OwnedWeapon, dt: number) {
@@ -609,8 +794,6 @@ function napTick(g: Game, grid: Grid, w: OwnedWeapon, dt: number) {
     damage(g, e, s.dps[L] * 0.25, 'nap');
   }
 }
-
-const kindToWeapon: Record<Shot['kind'], WeaponId> = { coin: 'coins', pellet: 'shotgun', bullet: 'ak', signal: 'signal', laffer: 'laffer' };
 
 function moveShots(g: Game, grid: Grid, dt: number) {
   const p = g.player;
@@ -661,7 +844,7 @@ function moveShots(g: Game, grid: Grid, dt: number) {
       const kx = s.kind === 'laffer' ? (e.x - p.x) : (s.vx / sp) * s.knockback;
       const ky = s.kind === 'laffer' ? (e.y - p.y) : (s.vy / sp) * s.knockback;
       const norm = s.kind === 'laffer' ? s.knockback / Math.max(1, Math.hypot(kx, ky)) : 1;
-      damage(g, e, s.damage, kindToWeapon[s.kind], kx * norm, ky * norm);
+      damage(g, e, s.damage, s.from, kx * norm, ky * norm);
       s.pierce--;
     }
   }
@@ -760,7 +943,7 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     // Contact.
     const pd = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
     if (pd < (e.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
-      const hurt = Math.max(1, e.damage - p.armor);
+      const hurt = Math.max(1, Math.round(e.damage * g.mods.hurt) - p.armor);
       p.hp -= hurt;
       p.iframes = 0.4;
       g.fx.push({ kind: 'hurt', amount: hurt });
@@ -783,7 +966,7 @@ function moveFoeShots(g: Game, dt: number) {
     // Inflation: they grow.
     b.radius = Math.min(26, b.radius + 3.5 * dt);
     if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (b.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
-      const hurt = Math.max(1, b.damage - p.armor);
+      const hurt = Math.max(1, Math.round(b.damage * g.mods.hurt) - p.armor);
       p.hp -= hurt;
       p.iframes = 0.4;
       b.life = 0;

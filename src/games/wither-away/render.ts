@@ -4,7 +4,7 @@
 
 import type { Eyes, Sprite } from './balls.ts';
 import { RESTING } from './balls.ts';
-import { WEAPON_STATS } from './data.ts';
+import { WEAPON_STATS, type WeaponId } from './data.ts';
 import { type Game, handCount, PLAYER_RADIUS } from './game.ts';
 
 export const VIEW_UNITS = 720;
@@ -38,10 +38,18 @@ export interface Ring {
   life: number;
 }
 
+export interface Zap {
+  points: [number, number][];
+  life: number;
+}
+
 export interface Visuals {
   particles: Particle[];
   texts: FloatText[];
+  /** NEIN! shockwaves, Creative Destruction's blasts and It's Happening's bolts. */
   rings: Ring[];
+  booms: Ring[];
+  zaps: Zap[];
   /** Red flash when you're hit (seconds left), and how long you stay pleased with yourself after an upgrade. */
   hurt: number;
   happy: number;
@@ -180,9 +188,31 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
     }
   }
 
+  // Creative Destruction: a flash, then a ring of smoke.
+  for (const b of vis.booms) {
+    const t = 1 - b.life / 0.35;
+    ctx.globalAlpha = Math.max(0, b.life / 0.35);
+    const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius * (0.5 + 0.5 * t));
+    grad.addColorStop(0, '#fff59d');
+    grad.addColorStop(0.45, '#ff9800');
+    grad.addColorStop(1, 'rgba(183, 28, 28, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius * (0.5 + 0.5 * t), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   // You, and your gun if you carry one.
   drawBall(ctx, sprites, g.character, playerEyes(g, vis), p.x, p.y, PLAYER_RADIUS * 1.25, LETTERED.has(g.character) ? 1 : p.facing);
-  if (g.character === 'minarchist' || g.character === 'agorist') drawGun(ctx, p.x, p.y, p.aim, g.character);
+  for (const w of g.weapons) {
+    const gun = GUNS[w.id];
+    const img = gun && sprites.get(`gun:${w.id}`);
+    if (gun && img) {
+      drawGun(ctx, img, p.x, p.y, p.aim, gun.length, w.id === 'ak');
+      break;
+    }
+  }
 
   // Inflation balloons.
   for (const b of g.foeShots) {
@@ -194,6 +224,27 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   for (const s of g.shots) {
     if (!onScreen(s.x, s.y, 30)) continue;
     switch (s.kind) {
+      case 'bar': {
+        // A gold bar, tumbling end over end.
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(g.time * 10 + s.id);
+        ctx.fillStyle = '#ffc107';
+        ctx.strokeStyle = '#6d4c00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-11, 6);
+        ctx.lineTo(-7, -6);
+        ctx.lineTo(7, -6);
+        ctx.lineTo(11, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff3c4';
+        ctx.fillRect(-4, -3, 8, 2);
+        ctx.restore();
+        break;
+      }
       case 'coin':
         ctx.fillStyle = '#ffd54f';
         ctx.strokeStyle = '#8d6e00';
@@ -211,8 +262,8 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
         break;
       case 'bullet': {
         const sp = Math.hypot(s.vx, s.vy) || 1;
-        ctx.strokeStyle = '#fff59d';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = s.from === 'm249' ? '#ffcc80' : '#fff59d';
+        ctx.lineWidth = s.from === 'm249' ? 4 : 3;
         ctx.beginPath();
         ctx.moveTo(s.x, s.y);
         ctx.lineTo(s.x - (s.vx / sp) * 14, s.y - (s.vy / sp) * 14);
@@ -276,6 +327,27 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
     ctx.textAlign = 'center';
     ctx.strokeText('NEIN!', r.x, r.y - PLAYER_RADIUS - 18 - t * 16);
     ctx.fillText('NEIN!', r.x, r.y - PLAYER_RADIUS - 18 - t * 16);
+  }
+  ctx.globalAlpha = 1;
+
+  // It's Happening: jagged bolts, white with a blue glow.
+  for (const z of vis.zaps) {
+    ctx.globalAlpha = Math.max(0, z.life / 0.22);
+    for (const [color, width] of [['rgba(79, 195, 247, 0.6)', 9], ['#fff', 3]] as const) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      z.points.forEach(([x, y], i) => {
+        if (i === 0) return ctx.moveTo(x, y);
+        const [px, py] = z.points[i - 1];
+        // A kink halfway, so it looks like lightning and not a laser.
+        const mx = (px + x) / 2 + Math.sin(i * 12.9898 + z.points.length) * 10;
+        const my = (py + y) / 2 + Math.cos(i * 78.233) * 10;
+        ctx.lineTo(mx, my);
+        ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -394,40 +466,77 @@ function drawBall(ctx: CanvasRenderingContext2D, sprites: Map<string, Sprite>, i
   ctx.restore();
 }
 
-/** The minarchist's pump-action shotgun, or the agorist's AK (with its price tag). */
-function drawGun(ctx: CanvasRenderingContext2D, x: number, y: number, aim: number, who: 'minarchist' | 'agorist') {
+/**
+ * The guns, from the pictures in public/vidya/img: the direction each muzzle points in its picture
+ * (degrees, screen-style: negative is up), whether to mirror it first, and how long to draw it.
+ */
+export interface GunDef {
+  file: string;
+  angle: number;
+  mirror: boolean;
+  length: number;
+}
+export const GUNS: Partial<Record<WeaponId, GunDef>> = {
+  shotgun: { file: 'shotgun.webp', angle: -5, mirror: false, length: 56 },
+  autoshotgun: { file: 'autoshotgun.webp', angle: -43, mirror: false, length: 56 },
+  ak: { file: 'ak47.webp', angle: -49, mirror: false, length: 50 },
+  m249: { file: 'm249.webp', angle: -43, mirror: true, length: 60 },
+};
+
+/** Turns a gun picture so the muzzle points right, trimmed to the gun. */
+export function normalizeGun(img: HTMLImageElement, def: GunDef): HTMLCanvasElement {
+  const size = Math.ceil(Math.hypot(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d', { willReadFrequently: true })!;
+  x.translate(size / 2, size / 2);
+  x.rotate((-def.angle * Math.PI) / 180);
+  if (def.mirror) x.scale(-1, 1);
+  x.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  const data = x.getImageData(0, 0, size, size).data;
+  let x0 = size;
+  let y0 = size;
+  let x1 = 0;
+  let y1 = 0;
+  for (let y = 0; y < size; y++) {
+    for (let xx = 0; xx < size; xx++) {
+      if (data[(y * size + xx) * 4 + 3] < 24) continue;
+      if (xx < x0) x0 = xx;
+      if (xx > x1) x1 = xx;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, x1 - x0 + 1);
+  out.height = Math.max(1, y1 - y0 + 1);
+  out.getContext('2d')!.drawImage(c, -x0, -y0);
+  return out;
+}
+
+/** Your gun, held at your side and pointing at whoever you're shooting (the AK keeps its price tag). */
+function drawGun(ctx: CanvasRenderingContext2D, img: Sprite, x: number, y: number, aim: number, length: number, tag: boolean) {
   ctx.save();
-  ctx.translate(x, y + 4);
+  ctx.translate(x, y + 6);
   ctx.rotate(aim);
-  const flip = Math.cos(aim) < 0;
-  if (flip) ctx.scale(1, -1);
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = '#000';
-  if (who === 'minarchist') {
-    ctx.fillStyle = '#6d2b23';
-    ctx.fillRect(8, -3, 12, 7); // stock
-    ctx.strokeRect(8, -3, 12, 7);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(18, -3, 26, 4); // barrel
-    ctx.strokeRect(18, -3, 26, 4);
-    ctx.fillStyle = '#7b3027';
-    ctx.fillRect(26, 1, 10, 4); // pump
-    ctx.strokeRect(26, 1, 10, 4);
-  } else {
-    ctx.fillStyle = '#b5651d';
-    ctx.fillRect(6, -3, 11, 7);
-    ctx.strokeRect(6, -3, 11, 7);
-    ctx.fillStyle = '#444';
-    ctx.fillRect(16, -3, 28, 4);
-    ctx.strokeRect(16, -3, 28, 4);
-    ctx.fillStyle = '#b5651d';
-    ctx.fillRect(28, 1, 8, 3);
-    ctx.fillStyle = '#555';
-    ctx.fillRect(22, 1, 4, 9); // magazine
+  if (Math.cos(aim) < 0) ctx.scale(1, -1);
+  const h = (length * img.height) / img.width;
+  // A faint light edge, so a black gun still shows up on the night-time street.
+  ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+  ctx.shadowBlur = 4;
+  ctx.drawImage(img, -4, -h / 2, length, h);
+  ctx.shadowColor = 'transparent';
+  if (tag) {
+    // Hanging off the barrel on a string.
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(length * 0.62, -h * 0.1);
+    ctx.lineTo(length * 0.66, h * 0.45);
+    ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.fillRect(40, 3, 6, 5); // the price tag
-    ctx.strokeRect(40, 3, 6, 5);
+    ctx.fillRect(length * 0.6, h * 0.45, 7, 5);
+    ctx.strokeRect(length * 0.6, h * 0.45, 7, 5);
   }
   ctx.restore();
 }
-

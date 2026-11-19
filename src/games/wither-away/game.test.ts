@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { botRun } from './bot.ts';
-import { BOSS_AT, CHARACTER_ORDER, CHARACTERS, MAX_LEVEL, PASSIVE_SLOTS, RUN_LENGTH, STARTING_WEAPONS, WEAPON_SLOTS } from './data.ts';
-import { choose, DT, type Game, makeOffer, newGame, type Offer, spawnEnemy, step, weaponLevel, xpFor } from './game.ts';
+import { BOSS_AT, CHARACTER_ORDER, CHARACTERS, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, RUN_LENGTH, STARTING_WEAPONS, WEAPON_SLOTS } from './data.ts';
+import { choose, DT, type Game, goldEarned, makeOffer, newGame, type Offer, reroll, spawnEnemy, step, weaponLevel, xpFor } from './game.ts';
 
 const still = { x: 0, y: 0 };
 /** A game with no spawning: the clock parked before the first statist would arrive. */
@@ -137,6 +137,134 @@ describe('weapons (auto-aim)', () => {
       run(g, 3);
       expect(g.damageBy[id], id).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the shop’s cards and weapon upgrades', () => {
+  it('locked cards never turn up until bought', () => {
+    const offered = (g: Game) => {
+      const seen = new Set<string>();
+      for (let i = 0; i < 300; i++) {
+        g.pending = 1;
+        for (const o of makeOffer(g)) if (o.kind === 'weapon' || o.kind === 'passive') seen.add(o.id);
+      }
+      return seen;
+    };
+    const locked = offered(quiet('ancap'));
+    for (const id of LOCKED_CARDS) expect(locked.has(id), id).toBe(false);
+    const open = offered(newGame(1, 'ancap', { unlocked: [...LOCKED_CARDS] }));
+    for (const id of LOCKED_CARDS) expect(open.has(id), id).toBe(true);
+  });
+
+  it('the weapon upgrade is always offered once the starting weapon is maxed, and swaps the weapon', () => {
+    for (const id of CHARACTER_ORDER) {
+      const { from, to } = EVOLUTIONS[id];
+      const without = quiet(id);
+      without.weapons[0].level = MAX_LEVEL;
+      expect(makeOffer(without).some((o) => o.kind === 'evolve'), id).toBe(false);
+      const g = newGame(1, id, { canEvolve: true });
+      g.spawnAcc = -1e9;
+      g.pending = 1;
+      expect(makeOffer(g).some((o) => o.kind === 'evolve')).toBe(false); // not at level 1
+      g.weapons[0].level = MAX_LEVEL;
+      g.offer = makeOffer(g);
+      const i = g.offer.findIndex((o) => o.kind === 'evolve');
+      expect(i, id).toBeGreaterThanOrEqual(0);
+      choose(g, i);
+      expect(weaponLevel(g, to)).toBe(MAX_LEVEL);
+      expect(weaponLevel(g, from)).toBe(0);
+      expect(g.fx.some((f) => f.kind === 'evolve')).toBe(true);
+      // Never offered again, and the old weapon doesn't come back.
+      for (let k = 0; k < 50; k++) {
+        g.pending = 1;
+        for (const o of makeOffer(g)) {
+          expect(o.kind).not.toBe('evolve');
+          if (o.kind === 'weapon') expect(o.id).not.toBe(from);
+        }
+      }
+    }
+  });
+
+  it('every upgraded weapon outdoes its level-5 self', () => {
+    for (const id of CHARACTER_ORDER) {
+      const { from, to } = EVOLUTIONS[id];
+      const dealt = (weapon: typeof from) => {
+        const g = quiet(id);
+        g.player.hp = g.player.maxHp = 1e9;
+        g.weapons = [{ id: weapon, level: MAX_LEVEL, cooldown: 0, angle: 0, lastHit: {} }];
+        for (let k = 0; k < 24; k++) {
+          const a = (k / 24) * Math.PI * 2;
+          const e = spawnEnemy(g, 'socialist', Math.cos(a) * (90 + (k % 3) * 40), Math.sin(a) * (90 + (k % 3) * 40));
+          e.hp = e.maxHp = 1e6;
+          e.speed = 0;
+        }
+        run(g, 6);
+        return g.damageBy[weapon] ?? 0;
+      };
+      expect(dealt(to), `${from} → ${to}`).toBeGreaterThan(dealt(from) * 1.5);
+    }
+  });
+
+  it('the new weapons land: Creative Destruction blows up a crowd, It’s Happening jumps', () => {
+    const g = quiet('ancap');
+    g.weapons = [{ id: 'destruction', level: 1, cooldown: 0, angle: 0, lastHit: {} }];
+    const crowd = [0, 1, 2].map((k) => spawnEnemy(g, 'socialist', 200 + k * 20, 0));
+    for (const e of crowd) e.speed = 0;
+    run(g, 0.1);
+    expect(crowd.filter((e) => e.hp < e.maxHp).length).toBeGreaterThanOrEqual(2);
+    const z = quiet('ancap');
+    z.weapons = [{ id: 'happening', level: 1, cooldown: 0, angle: 0, lastHit: {} }];
+    const line = [0, 1, 2, 3].map((k) => spawnEnemy(z, 'socialist', 150 + k * 100, 0));
+    for (const e of line) e.speed = 0;
+    step(z, still);
+    expect(line.every((e) => e.hp < e.maxHp)).toBe(true);
+    expect(z.fx.find((f) => f.kind === 'zap')).toBeTruthy();
+  });
+
+  it('rerolls swap the cards, as many times as the shop allows', () => {
+    const g = newGame(1, 'ancap', { mods: { rerolls: 1 } });
+    g.spawnAcc = -1e9;
+    expect(reroll(g)).toBe(false); // nothing to reroll
+    g.pending = 1;
+    g.offer = makeOffer(g);
+    expect(reroll(g)).toBe(true);
+    expect(g.offer).toHaveLength(3);
+    expect(reroll(g)).toBe(false);
+  });
+
+  it('regulations make statists tougher, faster, more numerous and harder-hitting; the shop makes you stronger', () => {
+    const hard = newGame(1, 'ancap', { mods: { enemyHp: 1.5, enemySpeed: 1.2, hurt: 2, damage: 2 } });
+    hard.spawnAcc = -1e9;
+    const e = spawnEnemy(hard, 'communist', 0, 0);
+    expect(e.maxHp).toBe(12);
+    hard.weapons = [];
+    step(hard, still);
+    expect(hard.player.hp).toBe(CHARACTERS.ancap.hp - 12);
+    const busy = (spawns: number) => {
+      const g = newGame(4, 'ancap', { mods: { spawns } });
+      g.weapons = [];
+      g.player.hp = 1e9;
+      run(g, 30);
+      return g.enemies.length;
+    };
+    expect(busy(1.5)).toBeGreaterThan(busy(1));
+    const strong = newGame(1, 'ancap', { mods: { damage: 2 } });
+    strong.spawnAcc = -1e9;
+    const t = spawnEnemy(strong, 'socialist', 150, 0);
+    t.hp = t.maxHp = 1000;
+    run(strong, 1);
+    expect(strong.damageBy.coins! % 24).toBe(0); // 12 damage, doubled
+  });
+
+  it('pays Bitcoin for what you pick up, for lasting, and more for winning', () => {
+    const g = quiet('ancap');
+    g.gold = 30;
+    g.time = 125;
+    expect(goldEarned(g)).toEqual({ picked: 30, survived: 20, total: 50 });
+    g.over = 'won';
+    g.time = RUN_LENGTH;
+    g.mods.gold = 1.5;
+    expect(goldEarned(g).total).toBe(Math.round((30 + 100 + 100) * 1.5));
   });
 });
 

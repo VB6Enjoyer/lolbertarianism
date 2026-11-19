@@ -1058,5 +1058,24 @@ state would wither away. It didn't. Make it." Survive 10 minutes against the sta
   take turns, swapping every loop ("Rip and Tear the Red Tape", E, 184 bpm; "Hyperinflation", D,
   204 bpm), and the boss's ("Central Bank Must Die", C, 144 bpm, tritones). Riffs are written as
   sixteen tokens a bar. 🎵 turns it off on its own; 🔊 mutes everything.
-- Next: a meta shop for the Bitcoin, more characters and maps, evolutions (a maxed weapon plus the
-  right passive), achievements, a daily run, sharing.
+- The guns are the pictures in `public/vidya/img` (the pump-action shotgun, the AK-47), turned at
+  load so the muzzle points along your aim (`normalizeGun`), with a faint light edge so they show up
+  at night. The AK keeps its price tag.
+- The Free Market (`shop.ts`), where the Bitcoin goes between runs. Every run pays what you picked
+  up, plus 1 for every six seconds you lasted and 100 for winning. On sale:
+  - Permanent upgrades, several ranks each: Self-Ownership (+10 HP), Capital Accumulation (+6%
+    damage), Hustle (speed), Network Effects (pickup range), Praxeology (XP), Gold Rush (+10%
+    Bitcoin), Second Opinion (a reroll of the level-up cards per run), Castle Doctrine (+1 armour).
+  - New cards for the level-up pool: Creative Destruction (statists near you explode, taking their
+    neighbours along), It's Happening (lightning that jumps from statist to statist), Sound Money
+    (+8% damage) and Right of Exit (+6% speed).
+  - Each libertarian's weapon upgrade. Once the starting weapon is level 5, the upgrade is always
+    one of the three cards: Gold Coins become the Gold Standard (tumbling gold bars through five
+    statists each), the Pump Shotgun the Auto Shotgun (10 pellets, wider, twice the rate), the AK
+    the M249 (twice the rate, harder, through three), NEIN! becomes NEIN NEIN NEIN (three ever-wider
+    shockwaves).
+  - Regulations, the difficulty: Money Printer Go Brrr (statists +50% HP), Red Tape (+35%
+    statists), Five-Year Plan (15% faster), Wealth Tax (hits take 50% more). Each one you switch on
+    adds to the Bitcoin a run pays.
+  Old saves turn the Bitcoin earned so far into Bitcoin to spend.
+- Next: more characters and maps, achievements, a daily run, sharing.
