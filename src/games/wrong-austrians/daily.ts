@@ -11,11 +11,11 @@ export interface Twist {
 }
 
 export const TWISTS: readonly Twist[] = [
-  { id: 'loose-lips', icon: '🗣️', name: 'Loose Lips', description: 'The impostors slip in interviews far more often.' },
-  { id: 'poker-face', icon: '😐', name: 'Poker Face', description: 'The impostors never slip in interviews. They dodge instead.' },
+  { id: 'loose-lips', icon: '🗣️', name: 'Loose Lips', description: 'The impostors slip outright in interviews far more often.' },
+  { id: 'poker-face', icon: '😐', name: 'Poker Face', description: 'The impostors never slip outright in interviews, and near-miss less. They dodge instead.' },
   { id: 'snap-election', icon: '🗳️', name: 'Snap Election', description: 'The term is only 6 quarters. Less time for the bills to land, less time to find anyone.' },
-  { id: 'press-pass', icon: '📰', name: 'Press Pass', description: '3 questions a quarter instead of 2.' },
-  { id: 'double-check', icon: '🔍', name: 'Double Check', description: 'Two background checks this term instead of one.' },
+  { id: 'press-pass', icon: '📰', name: 'Press Pass', description: '4 questions a quarter instead of 3.' },
+  { id: 'double-check', icon: '🔍', name: 'Double Check', description: 'Every investigation can be used twice this term (still one a quarter).' },
   { id: 'lean-times', icon: '📉', name: 'Lean Times', description: 'Both meters start at 40 instead of 50.' },
 ];
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENTS, earnedNow, normalizeUnlocked } from './achievements.ts';
 import { botPlay } from './bot.ts';
-import { ask, backgroundCheck, beginCouncil, canCheck, enact, fire, type Game, newGame, nextQuarter, questionsPer, termLength } from './council.ts';
+import { ask, beginCouncil, canInvestigate, enact, fire, FIRING_FROM, type Game, investigate, newGame, nextQuarter, policyOf, questionsPer, QUESTIONS_PER_QUARTER, termLength } from './council.ts';
 import { dailyFor, normalizeDailyBests, TWISTS } from './daily.ts';
 import { tuneFor } from './music.ts';
 import { councilEmoji, shareText, type TermSummary } from './share.ts';
@@ -10,6 +10,16 @@ import { councilEmoji, shareText, type TermSummary } from './share.ts';
 const isOver = (g: Game) => g.phase === 'over';
 const council = (g: Game) => {
   beginCouncil(g);
+  return g;
+};
+/** Plays sound policy through the probation quarters, to the first council where firing is allowed. */
+const atFiring = (g: Game) => {
+  beginCouncil(g);
+  while (g.quarter < FIRING_FROM && !isOver(g)) {
+    enact(g, (g.proposals.find((p) => policyOf(p.policy).kind === 'sound') ?? g.proposals[0]).policy);
+    nextQuarter(g);
+    beginCouncil(g);
+  }
   return g;
 };
 
@@ -37,16 +47,19 @@ describe('the daily term', () => {
     const snap = botPlay(newGame(2, 'x', 'ancap', 'snap-election'), 'naive');
     if (snap.ending === 'term') expect(snap.quarter).toBe(6);
     const press = council(newGame(3, 'x', 'ancap', 'press-pass'));
-    expect(questionsPer(press)).toBe(3);
-    expect(press.questionsLeft).toBe(3);
+    expect(questionsPer(press)).toBe(QUESTIONS_PER_QUARTER + 1);
+    expect(press.questionsLeft).toBe(QUESTIONS_PER_QUARTER + 1);
     const lean = newGame(4, 'x', 'ancap', 'lean-times');
     expect(lean.prosperity).toBeLessThanOrEqual(40);
     const dc = council(newGame(5, 'x', 'ancap', 'double-check'));
-    expect(backgroundCheck(dc, 0)).toBe(true);
-    expect(canCheck(dc)).toBe(true);
-    expect(backgroundCheck(dc, 1)).toBe(true);
-    expect(canCheck(dc)).toBe(false);
-    expect(dc.checked).toEqual([0, 1]);
+    // Double Check: every investigation can be used twice (still one a quarter).
+    expect(investigate(dc, 'thesis', 0)).not.toBeNull();
+    expect(canInvestigate(dc)).toBe(false);
+    dc.investigated = false;
+    expect(investigate(dc, 'thesis', 1)).not.toBeNull();
+    dc.investigated = false;
+    expect(canInvestigate(dc, 'thesis')).toBe(false);
+    expect(canInvestigate(dc, 'cv')).toBe(true);
   });
 
   it('Poker Face means no slips; Loose Lips means more of them', () => {
@@ -83,7 +96,7 @@ describe('achievements', () => {
   });
 
   it('firing: an impostor, a loyal advisor, both impostors', () => {
-    const g = council(newGame(7));
+    const g = atFiring(newGame(7));
     const [i1, i2] = g.advisors.filter((a) => a.impostor);
     const loyal = g.advisors.find((a) => !a.impostor)!;
     fire(g, loyal.id);
@@ -105,7 +118,7 @@ describe('achievements', () => {
   });
 
   it('a clean, quick purge', () => {
-    const g = council(newGame(8));
+    const g = atFiring(newGame(8));
     const [i1, i2] = g.advisors.filter((a) => a.impostor);
     fire(g, i1.id);
     enact(g, g.proposals[0].policy);
@@ -118,7 +131,7 @@ describe('achievements', () => {
 
   it('the records count too, and the takeover is its own (secret) achievement', () => {
     expect(earnedNow(null, { wins: 2, mirrorWins: 1, dailies: 7, shared: 1, parties: 1 })).toEqual(expect.arrayContaining(['stateless', 'vienna-abides', 'both-sides', 'daily', 'dailies', 'press-release', 'party']));
-    const g = council(newGame(9));
+    const g = atFiring(newGame(9));
     const loyal = g.advisors.filter((a) => !a.impostor);
     fire(g, loyal[0].id);
     enact(g, g.proposals[0].policy);
