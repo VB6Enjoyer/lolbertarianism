@@ -1713,3 +1713,11 @@ body.christmas .main-btn-wrap {
     padding: 8px 24px 12px;
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 30%);
 }
+
+/* Icons that are pictures rather than emoji (the pistol), sized like the text around them. */
+.inline-icon {
+    width: auto;
+    height: 1em;
+    vertical-align: -0.12em;
+    pointer-events: none;
+}

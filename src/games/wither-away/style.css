@@ -351,13 +351,6 @@ button {
     font-size: 14px;
 }
 
-.proto {
-    margin-top: 6px;
-    color: #66708a;
-    font-size: 12px;
-    letter-spacing: 2px;
-}
-
 .stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1152,4 +1145,12 @@ body.pad .card:focus {
     .trophies {
         grid-template-columns: 1fr;
     }
+}
+
+.char-weapon img.gun,
+.char-weapon svg {
+    width: 2em;
+    height: 1.3em;
+    object-fit: contain;
+    vertical-align: -0.35em;
 }

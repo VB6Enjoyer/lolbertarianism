@@ -1018,7 +1018,7 @@ against bot advisors (`src/games/wrong-austrians/`).
   (27 in all).
 
 
-### WITHER AWAY (prototype)
+### WITHER AWAY ✅
 
 A new game: a top-down arcade survival roguelite (`src/games/wither-away/`). "Marx promised the
 state would wither away. It didn't. Make it." Survive 15 minutes against the statist horde.
@@ -1123,4 +1123,7 @@ state would wither away. It didn't. Make it." Survive 15 minutes against the sta
   regulation on), Big Tent, Voting with Your Feet, HODL and more. Run achievements are checked
   twice a second and pop up as toasts (two at a time, the rest queued); lifetime ones at the end of
   a run and after shopping. A screen on the title lists them all; the end screen lists the run's.
-- Next: more characters, a daily run, sharing.
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
+  screenshot and link preview (Marx and his hammers and sickles on the streets).
+- The 🔫 emoji is gone: the gun weapons show their own pictures, and Ancapistan Tycoon's Items tab,
+  Private Armory set and Very Polite Society achievement use the pistol picture.

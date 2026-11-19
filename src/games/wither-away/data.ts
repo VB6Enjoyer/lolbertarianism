@@ -90,7 +90,7 @@ export interface WeaponDef {
   levels: string[];
   /** A drawing to use instead of the emoji, where there's no fitting emoji. */
   svg?: string;
-  /** A picture (in public/vidya/img) to use instead, for the guns. */
+  /** A picture (in public/vidya/img) to use instead, for the guns (then the emoji is left empty). */
   img?: string;
 }
 
@@ -131,7 +131,7 @@ export const NEIN3_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   coins: { id: 'coins', name: 'Gold Coins', icon: '🪙', text: 'Fires gold coins at the nearest statist.', levels: ['Fires a gold coin at the nearest statist.', '+Damage, coins pierce 1.', '+1 coin.', 'Faster, pierce 2.', '+1 coin, +damage.'] },
-  shotgun: { id: 'shotgun', name: 'Pump Shotgun', icon: '🔫', img: 'shotgun.webp', text: 'A short-range spread that knocks them back.', levels: ['5 pellets, short range, big knockback.', '+1 pellet, faster.', '+1 pellet, +damage.', '+1 pellet, faster.', '+1 pellet, +damage.'] },
+  shotgun: { id: 'shotgun', name: 'Pump Shotgun', icon: '', img: 'shotgun.webp', text: 'A short-range spread that knocks them back.', levels: ['5 pellets, short range, big knockback.', '+1 pellet, faster.', '+1 pellet, +damage.', '+1 pellet, faster.', '+1 pellet, +damage.'] },
   ak: { id: 'ak', name: 'AK (Price Negotiable)', icon: '🏷️', img: 'ak47.webp', text: 'Rapid fire. Bought on the counter-economy.', levels: ['Rapid fire at the nearest statist.', '+Damage.', 'Bullets pierce 1.', 'Faster, +damage.', 'Pierce 2, faster.'] },
   nein: { id: 'nein', name: 'NEIN!', icon: '🗯️', text: 'A shockwave of refusal all around you.', levels: ['A shockwave that damages and pushes back.', '+Radius, +damage.', 'More often.', '+Radius, +damage.', 'More often, +radius.'] },
   hand: { id: 'hand', name: 'Invisible Hand', icon: '🤚', text: 'Hands that circle you, slapping statists.', levels: ['2 hands circle you.', '+Damage, wider.', '+1 hand.', '+Damage, wider.', '+1 hand, faster.'] },
@@ -142,8 +142,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   happening: { id: 'happening', name: 'It’s Happening', icon: '⚡', text: 'Lightning that jumps from statist to statist.', levels: ['A bolt that jumps 3 times.', '+1 jump, +damage.', '+1 jump, more often.', '+1 jump, +damage.', '+2 jumps, +damage, more often.'] },
   // The upgraded forms (from the shop's weapon upgrades): offered once the starting weapon is level 5.
   goldbars: { id: 'goldbars', name: 'Gold Standard', icon: '🧈', svg: GOLDBARS_SVG, text: 'Heavy gold bars that plough through whole rows of statists.', levels: ['4 gold bars at a time, more damage, and each goes through 5 statists.'] },
-  autoshotgun: { id: 'autoshotgun', name: 'Auto Shotgun', icon: '🔫', img: 'autoshotgun.webp', text: 'No more pumping: a drum magazine and twice the rate of fire.', levels: ['10 pellets, a wider spread, more damage, twice as fast.'] },
-  m249: { id: 'm249', name: 'M249 (Bulk Discount)', icon: '🔫', img: 'm249.webp', text: 'A belt-fed machine gun. Bought wholesale.', levels: ['Fires twice as fast, hits harder, and goes through 3 statists.'] },
+  autoshotgun: { id: 'autoshotgun', name: 'Auto Shotgun', icon: '', img: 'autoshotgun.webp', text: 'No more pumping: a drum magazine and twice the rate of fire.', levels: ['10 pellets, a wider spread, more damage, twice as fast.'] },
+  m249: { id: 'm249', name: 'M249 (Bulk Discount)', icon: '', img: 'm249.webp', text: 'A belt-fed machine gun. Bought wholesale.', levels: ['Fires twice as fast, hits harder, and goes through 3 statists.'] },
   nein3: { id: 'nein3', name: 'NEIN NEIN NEIN', icon: '🗯️', svg: NEIN3_SVG, text: 'Three shockwaves, each bigger than the last. The answer has not changed.', levels: ['Three waves in a row, each wider, each hitting harder than NEIN! did.'] },
 };
 

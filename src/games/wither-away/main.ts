@@ -724,7 +724,7 @@ const IMG = `${import.meta.env.BASE_URL}vidya/img/`;
 /** A weapon's icon as HTML: its picture or drawing if it has one, else its emoji. */
 function weaponIcon(id: WeaponId): string {
   const w = WEAPONS[id];
-  if (w.img) return `<img class="gun" src="${IMG}${w.img}" alt="${w.icon}">`;
+  if (w.img) return `<img class="gun" src="${IMG}${w.img}" alt="">`;
   return w.svg ?? w.icon;
 }
 const BTC_IMG = `<img class="btc" src="${IMG}bitcoin.webp" alt="₿">`;
@@ -861,7 +861,7 @@ function showTitle() {
       persist();
       showTitle();
     });
-    card.append(ballImg(id), t('b', 'char-name', c.name), t('small', 'char-weapon', `${WEAPONS[c.weapon].icon} ${WEAPONS[c.weapon].name}`), t('small', 'char-perk', c.perk));
+    card.append(ballImg(id), t('b', 'char-name', c.name), h('small', 'char-weapon', `${weaponIcon(c.weapon)} ${WEAPONS[c.weapon].name}`), t('small', 'char-perk', c.perk));
     const best = save.meta.best[id];
     if (best) card.append(t('small', 'char-best', best >= RUN_LENGTH ? '🏆 Won' : `Best: ${clock(best)}`));
     card.setAttribute('aria-pressed', String(save.character === id));
@@ -924,7 +924,6 @@ function showTitle() {
     s.append(t('p', 'heat-line', `Regulations in force: ${save.shop.heatOn.map((id) => `${HEAT[id].icon} ${HEAT[id].name}`).join(', ')} (×${heatBonus(save.shop).toFixed(2)} ₿)`));
   }
   if (save.meta.runs) s.append(t('p', 'meta', `${save.meta.runs} run${save.meta.runs === 1 ? '' : 's'} · ${save.meta.wins} won · ${save.meta.kills} statists sent packing · ₿ ${save.meta.gold} earned`));
-  s.append(t('p', 'proto', 'PROTOTYPE'));
   els.screen.append(s);
   els.screen.hidden = false;
   padFocus();

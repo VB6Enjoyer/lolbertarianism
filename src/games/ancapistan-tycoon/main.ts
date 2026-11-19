@@ -320,8 +320,22 @@ function updateUI() {
 // Achievements
 // ---------------------------------------------------------------------------
 
-function toast(title: string, detail: string) {
+/** An icon as an element: an emoji, or (for 'img:name') one of the pictures in img/. */
+function iconEl(icon: string, className = ''): HTMLElement {
+  const span = el('span', className);
+  if (icon.startsWith('img:')) {
+    const img = document.createElement('img');
+    img.src = `img/${icon.slice(4)}.webp`;
+    img.alt = '';
+    img.className = 'inline-icon';
+    span.append(img);
+  } else span.textContent = icon;
+  return span;
+}
+
+function toast(title: string, detail: string, icon?: string) {
   const t = el('div', 'toast', title);
+  if (icon) t.prepend(iconEl(icon), ' ');
   t.append(el('small', '', detail));
   els.toasts.append(t);
   setTimeout(() => t.remove(), 4000);
@@ -335,7 +349,7 @@ function refresh() {
   if (unlocked.length > 3) {
     toast(`🏆 ${unlocked.length} achievements unlocked!`, 'Open 🏆 Achievements to see them.');
   } else {
-    for (const a of unlocked) toast(`${a.icon} Achievement unlocked: ${a.name}`, a.description);
+    for (const a of unlocked) toast(`Achievement unlocked: ${a.name}`, a.description, a.icon);
   }
   updateUI();
 }
@@ -367,7 +381,8 @@ function unlockSecret(id: SecretAchievementId | string) {
   const a = grantAchievement(state, id);
   if (!a) return;
   sfx.achievement();
-  toast(a.secret ? `🤫 Secret achievement: ${a.icon} ${a.name}` : `${a.icon} Achievement unlocked: ${a.name}`, a.description);
+  if (a.secret) toast(`🤫 Secret achievement: ${a.name}`, a.description, a.icon);
+  else toast(`Achievement unlocked: ${a.name}`, a.description, a.icon);
   updateUI();
 }
 
@@ -376,7 +391,7 @@ function achievementCard(a: Achievement) {
   const card = el('div', `achievement${unlocked ? '' : ' locked'}${a.secret ? ' secret' : ''}`);
   const hidden = a.secret && !unlocked;
   card.append(
-    el('span', 'achievement-icon', unlocked ? a.icon : hidden ? '🤫' : '🔒'),
+    iconEl(unlocked ? a.icon : hidden ? '🤫' : '🔒', 'achievement-icon'),
     el('span', 'achievement-name', hidden ? '???' : a.name),
     el('span', 'achievement-desc', hidden ? `Hint: ${a.hint}` : a.description),
   );
@@ -661,6 +676,7 @@ function renderStickerShop(): HTMLElement {
       `sticker-tab${c.id === tab ? ' active' : ''}${done ? ' complete' : ''}`,
       `${c.label} ${done ? '✔' : `${owned}/${inCat.length}`}`,
     );
+    if (c.icon) btn.prepend(iconEl(c.icon), ' ');
     btn.addEventListener('click', () => {
       shopTab = c.id;
       els.modalBody.replaceChildren(renderStickerShop());
@@ -675,7 +691,11 @@ function renderStickerShop(): HTMLElement {
     const left = inCat.filter((s) => !hasSticker(state, s.id)).length;
     const banner = el('div', `sticker-set${left ? '' : ' complete'}`);
     banner.append(
-      el('span', 'sticker-set-name', `${set.icon} Set bonus: ${set.name}`),
+      (() => {
+        const name = el('span', 'sticker-set-name', ` Set bonus: ${set.name}`);
+        name.prepend(iconEl(set.icon));
+        return name;
+      })(),
       el('span', 'sticker-set-desc', set.description),
       el('span', 'sticker-set-status', left ? `${left} to go` : '✔ Active'),
     );
@@ -737,7 +757,7 @@ function onBuySticker(id: string) {
     ? STICKER_SETS.find((x) => x.category === STICKERS.find((s) => s.id === id)?.category)
     : undefined;
   if (newSet) {
-    toast(`${newSet.icon} Set complete: ${newSet.name}`, newSet.description);
+    toast(`Set complete: ${newSet.name}`, newSet.description, newSet.icon);
     sfx.perk();
   }
   if (firstPurchase && id === 'flag-eu-cross') unlockSecret('brussels-effect');
@@ -924,7 +944,11 @@ function finishChallenge(win: ChallengeWin) {
   );
   if (win.achievements.length) {
     const list = el('ul', 'challenge-win-achievements');
-    for (const a of win.achievements) list.append(el('li', '', `${a.icon} ${a.name}`));
+    for (const a of win.achievements) {
+      const li = el('li', '', ` ${a.name}`);
+      li.prepend(iconEl(a.icon));
+      list.append(li);
+    }
     body.append(paragraph('Achievements unlocked:', 'fine-print'), list);
   }
   body.append(paragraph('Welcome back to your empire. It waited for you.', 'fine-print'));
