@@ -10,6 +10,7 @@ import { ballSvg, loadSprites, RESTING, type Sprite } from './balls.ts';
 import {
   BOMB, BOSSES, CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, EVOLUTIONS, LAFFER_SVG, MAP_ORDER, type MapId, MAPS, PASSIVES, RUN_LENGTH, type WeaponId, WEAPONS,
 } from './data.ts';
+import { ACHIEVEMENTS, type Achievement, newlyEarned, type Progress } from './achievements.ts';
 import { FEATS, MAP_FEATS, unlockedCharacters, unlockedMaps } from './feats.ts';
 import { choose, DT, type Game, goldEarned, newGame, type Offer, reroll, type Source, step } from './game.ts';
 import { Metal, type TrackId } from './music.ts';
@@ -32,8 +33,11 @@ interface Save {
   shake: boolean;
   /** Who you can play (Ancapball, and whoever's feat you've done). */
   unlocked: CharacterId[];
-  /** Where the next run is. */
+  /** Where the next run is, and whether it's endless. */
   map: MapId;
+  endless: boolean;
+  /** Achievements earned (ids). */
+  achievements: string[];
   meta: {
     runs: number;
     wins: number;
@@ -42,6 +46,9 @@ interface Save {
     /** Central Banks and Marxes brought down, ever. */
     banks: number;
     marx: number;
+    /** Maps played on, and the longest endless run on each (seconds). */
+    maps: MapId[];
+    endless: Partial<Record<MapId, number>>;
     /** Longest survived, per character (seconds). */
     best: Partial<Record<CharacterId, number>>;
   };
@@ -59,6 +66,8 @@ const save: Save = {
   shake: saved?.shake !== false,
   unlocked: [],
   map: MAP_ORDER.includes(saved?.map as MapId) ? (saved!.map as MapId) : 'streets',
+  endless: saved?.endless === true,
+  achievements: Array.isArray(saved?.achievements) ? saved.achievements.filter((id) => ACHIEVEMENTS.some((a) => a.id === id)) : [],
   meta: {
     runs: count(saved?.meta?.runs),
     wins: count(saved?.meta?.wins),
@@ -66,6 +75,8 @@ const save: Save = {
     gold: count(saved?.meta?.gold),
     banks: count(saved?.meta?.banks),
     marx: count(saved?.meta?.marx),
+    maps: Array.isArray(saved?.meta?.maps) ? saved.meta.maps.filter((id) => MAP_ORDER.includes(id)) : [],
+    endless: Object.fromEntries(MAP_ORDER.map((id) => [id, count(saved?.meta?.endless?.[id])]).filter(([, v]) => (v as number) > 0)),
     best: Object.fromEntries(CHARACTER_ORDER.map((id) => [id, count(saved?.meta?.best?.[id])]).filter(([, v]) => (v as number) > 0)),
   },
   // Before the shop opened, Bitcoin only piled up: it all becomes spendable.
@@ -76,6 +87,71 @@ save.unlocked = unlockedCharacters(save.meta, Array.isArray(saved?.unlocked) ? s
 if (!save.unlocked.includes(save.character)) save.character = 'ancap';
 if (!unlockedMaps(save.meta).includes(save.map)) save.map = 'streets';
 const persist = () => slot.save(save);
+
+/** The lifetime numbers the achievements look at. */
+function progress(): Progress {
+  const sh = save.shop;
+  const bought = Object.values(sh.upgrades).reduce((t, n) => t + (n ?? 0), 0) + sh.cards.length + sh.evolutions.length + sh.heatOwned.length;
+  return {
+    runs: save.meta.runs,
+    wins: save.meta.wins,
+    kills: save.meta.kills,
+    banks: save.meta.banks,
+    marx: save.meta.marx,
+    gold: save.meta.gold,
+    bank: sh.bank,
+    bought,
+    played: CHARACTER_ORDER.filter((id) => (save.meta.best[id] ?? 0) > 0),
+    maps: save.meta.maps,
+    endless: Math.max(0, ...Object.values(save.meta.endless).map((v) => v ?? 0)),
+  };
+}
+
+/** Records any newly earned achievements and pops a toast for each. */
+function award(game: Game | null, withLifetime: boolean): Achievement[] {
+  const fresh = newlyEarned(save.achievements, game, withLifetime ? progress() : null);
+  if (!fresh.length) return fresh;
+  for (const a of fresh) {
+    save.achievements.push(a.id);
+    toast(a);
+  }
+  persist();
+  return fresh;
+}
+
+const toasts = document.createElement('div');
+toasts.className = 'toasts';
+toasts.setAttribute('aria-live', 'polite');
+document.body.append(toasts);
+/** Toasts wait their turn: two on screen at most. */
+const toastQueue: Achievement[] = [];
+function toast(a: Achievement) {
+  toastQueue.push(a);
+  nextToast();
+}
+function nextToast() {
+  if (toasts.childElementCount >= 2 || !toastQueue.length) return;
+  showToast(toastQueue.shift()!);
+}
+function showToast(a: Achievement) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  const icon = document.createElement('span');
+  icon.className = 'toast-icon';
+  icon.textContent = a.icon;
+  const text = document.createElement('div');
+  text.innerHTML = '<small>🏆 Achievement</small>';
+  const b = document.createElement('b');
+  b.textContent = a.name;
+  text.append(b);
+  el.append(icon, text);
+  toasts.append(el);
+  setTimeout(() => {
+    el.remove();
+    nextToast();
+  }, 3600);
+  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.12, 0.04, 'triangle'), i * 0.07));
+}
 
 // ---------------------------------------------------------------------------
 // Elements
@@ -417,11 +493,14 @@ let paused = false;
 let last = 0;
 let acc = 0;
 let shownOffer: Offer[] | null = null;
+let lastCheck = -1;
+/** Achievements held when the run began (to list the run's own on the end screen). */
+let trophiesBefore: string[] = [];
 
 function startRun(character: CharacterId) {
   save.character = character;
   persist();
-  g = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, character, { ...setupFor(save.shop, character), map: save.map });
+  g = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, character, { ...setupFor(save.shop, character), map: save.map, endless: save.endless });
   // Runs take turns opening with each track; the change happens at the next bar line.
   runTrack = save.meta.runs % 2 ? 'hyper' : 'rip';
   metal.play(runTrack);
@@ -431,6 +510,8 @@ function startRun(character: CharacterId) {
   vis.booms = [];
   vis.zaps = [];
   vis.blasts = [];
+  trophiesBefore = [...save.achievements];
+  lastCheck = -1;
   vis.warn = 0;
   vis.shake = 0;
   bombQueued = false;
@@ -441,7 +522,7 @@ function startRun(character: CharacterId) {
   els.hud.hidden = false;
   last = performance.now();
   acc = 0;
-  banner(`Survive ${clock(RUN_LENGTH)}. The state withers away.`);
+  banner(save.endless ? 'Endless: there’s no withering this time. How long can you last?' : `Survive ${clock(RUN_LENGTH)}. The state withers away.`);
 }
 
 function frame(now: number) {
@@ -467,6 +548,11 @@ function frame(now: number) {
   draw(ctx, g, sprites, w, hgt, dpr, vis);
   renderHud(g);
   if (g.offer && shownOffer !== g.offer) showOffer(g);
+  // Achievements for this run, as they happen (twice a second is plenty).
+  if (!g.over && Math.floor(g.time * 2) !== lastCheck) {
+    lastCheck = Math.floor(g.time * 2);
+    award(g, false);
+  }
   if (g.over && els.screen.hidden) showEnd(g);
 }
 
@@ -562,6 +648,9 @@ function react(g: Game) {
       case 'wither':
         play('win', 1);
         break;
+      case 'overtime':
+        banner('♾️ 15:00. It should have withered by now. It hasn’t. Keep going.');
+        break;
     }
   }
 }
@@ -609,7 +698,7 @@ function renderHud(g: Game) {
   els.hp.querySelector('span')!.textContent = `❤️ ${Math.ceil(p.hp)} / ${p.maxHp}`;
   els.xp.style.setProperty('--fill', String(Math.min(1, g.xp / g.next)));
   els.level.textContent = `Lv ${g.level}`;
-  els.timer.textContent = clock(Math.min(RUN_LENGTH, g.time));
+  els.timer.textContent = `${g.endless ? '♾️ ' : ''}${clock(g.endless ? g.time : Math.min(RUN_LENGTH, g.time))}`;
   els.kills.textContent = `💀 ${g.kills}`;
   if (els.bombs.textContent !== String(g.bombs)) els.bombs.textContent = String(g.bombs);
   els.bomb.disabled = g.bombs <= 0;
@@ -803,12 +892,29 @@ function showTitle() {
     maps.append(card);
   }
   s.append(maps);
+  // Standard (15:00) or endless.
+  const modes = h('div', 'modes');
+  modes.setAttribute('role', 'radiogroup');
+  modes.setAttribute('aria-label', 'Mode');
+  const best = save.meta.endless[save.map];
+  for (const [endless, label] of [[false, `⏱️ ${clock(RUN_LENGTH)}: wither the state`], [true, `♾️ Endless${best ? ` (best ${clock(best)})` : ''}`]] as const) {
+    const b = button(label, `mode${save.endless === endless ? ' picked' : ''}`, () => {
+      save.endless = endless;
+      persist();
+      showTitle();
+    });
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(save.endless === endless));
+    modes.append(b);
+  }
+  s.append(modes);
   const c = CHARACTERS[save.character];
   s.append(t('p', 'blurb', c.blurb));
   const buttons = h('div', 'menu');
   buttons.append(
     button(`▶ Play as ${c.name}`, 'big', () => startRun(save.character)),
     button(`${BTC_IMG} The Free Market (${save.shop.bank.toLocaleString()})`, 'big secondary shop-button', showShop),
+    button(`🏆 Achievements (${save.achievements.length}/${ACHIEVEMENTS.length})`, 'big secondary', showAchievements),
     button('📖 How to play', 'big secondary', showHowTo),
     button('⚙️ Options', 'big secondary', () => showOptions()),
     button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wither-away')),
@@ -828,6 +934,23 @@ function showTitle() {
 function padFocus() {
   if (!document.body.classList.contains('pad')) return;
   requestAnimationFrame(() => menuButtons()[0]?.focus());
+}
+
+function showAchievements() {
+  els.modal.replaceChildren();
+  const box = h('div', 'modal-box');
+  box.append(t('h2', 'modal-title', 'ACHIEVEMENTS'), t('p', 'muted', `${save.achievements.length} of ${ACHIEVEMENTS.length} earned.`));
+  const list = h('div', 'trophies all');
+  for (const a of ACHIEVEMENTS) {
+    const got = save.achievements.includes(a.id);
+    const row = h('div', `trophy${got ? ' got' : ''}`);
+    row.append(t('span', 'trophy-icon', got ? a.icon : '🔒'), h('span', '', `<b>${a.name}</b><br><small>${a.text}</small>`));
+    list.append(row);
+  }
+  box.append(list, button('Close', 'big', () => (els.modal.hidden = true)));
+  els.modal.append(box);
+  els.modal.hidden = false;
+  padFocus();
 }
 
 function showOptions(back?: () => void) {
@@ -882,6 +1005,7 @@ function shopRow(item: ShopItem, icon: string, name: string, text: string, ranks
       persist();
       play('buy', 0);
       showShop();
+      award(null, true);
     });
     b.disabled = cost > save.shop.bank;
     b.setAttribute('aria-label', `Buy ${name} for ${cost} Bitcoin`);
@@ -976,6 +1100,8 @@ function showHowTo() {
       ${foes}
       <li>🥨 A free lunch heals, 🧲 pulls in all the XP, ₿ is Bitcoin. You also earn 1 Bitcoin for every six seconds you last (and 100 for winning).</li>
       <li>🏪 Spend it in <b>the Free Market</b> between runs: permanent upgrades, new cards, each libertarian’s <b>weapon upgrade</b> (offered once the starting weapon reaches level 5), and regulations that make runs harder for more Bitcoin.</li>
+      <li>♾️ <b>Endless mode</b> (on the title screen): no withering at 15:00. Revolutions and bosses keep coming, bigger every time, until you fall. Your best time on each map is kept.</li>
+      <li>🏆 <b>Achievements</b>: ${ACHIEVEMENTS.length} of them, from your first kill to half an hour of endless. They pop up the moment you earn them.</li>
       <li>🔓 Ancapball is there from the start. The others join once you’ve done their <b>feat</b> (shown on the title screen).</li>
       <li>⏸️ <kbd>Esc</kbd>, <kbd>P</kbd> or a gamepad’s Start to pause. On the menus, a gamepad’s d-pad (or the arrow keys) moves, A picks, B goes back.</li>`,
     ),
@@ -988,6 +1114,7 @@ function showHowTo() {
 
 function showEnd(g: Game) {
   const won = g.over === 'won';
+  const runTrophies = save.achievements.filter((id) => !trophiesBefore.includes(id));
   play(won ? 'win' : 'lose', 1);
   const m = save.meta;
   m.runs++;
@@ -1000,6 +1127,10 @@ function showEnd(g: Game) {
   m.marx += g.marxKills;
   const mapsBefore = unlockedMaps({ ...m, marx: m.marx - g.marxKills, best: { ...m.best } });
   m.best[g.character] = Math.max(m.best[g.character] ?? 0, Math.floor(g.time));
+  if (!m.maps.includes(g.map)) m.maps.push(g.map);
+  const endlessBest = m.endless[g.map] ?? 0;
+  if (g.endless) m.endless[g.map] = Math.max(endlessBest, Math.floor(g.time));
+  const trophies = award(g, true);
   // Did that run earn anyone their place?
   const before = save.unlocked;
   save.unlocked = unlockedCharacters(m, before);
@@ -1011,11 +1142,17 @@ function showEnd(g: Game) {
   els.screen.replaceChildren();
   const s = h('section', `title end ${won ? 'won' : 'lost'}`);
   s.append(ballImg(g.character, 'ball big'));
-  s.append(t('h1', 'logo', won ? 'THE STATE HAS WITHERED AWAY' : 'THE STATE WINS THIS ROUND'));
-  s.append(t('p', 'tagline', won ? 'Marx was right about one thing, eventually. Ancapistan is open for business.' : `${CHARACTERS[g.character].name} lasted ${clock(g.time)}. The bureaucracy will want that in triplicate.`));
+  if (g.endless) {
+    s.append(t('h1', 'logo', g.time >= RUN_LENGTH ? 'THE STATE GREW BACK' : 'THE STATE WINS THIS ROUND'));
+    const record = g.time > endlessBest;
+    s.append(t('p', 'tagline', `${CHARACTERS[g.character].name} lasted ${clock(g.time)} in endless mode on ${MAPS[g.map].name}. ${record ? '🏅 A new record!' : `Best: ${clock(endlessBest)}.`}`));
+  } else {
+    s.append(t('h1', 'logo', won ? 'THE STATE HAS WITHERED AWAY' : 'THE STATE WINS THIS ROUND'));
+    s.append(t('p', 'tagline', won ? 'Marx was right about one thing, eventually. Ancapistan is open for business.' : `${CHARACTERS[g.character].name} lasted ${clock(g.time)}. The bureaucracy will want that in triplicate.`));
+  }
   const stats = h('div', 'stats');
   for (const [label, value] of [
-    ['⏱️ Survived', clock(Math.min(RUN_LENGTH, g.time))],
+    ['⏱️ Survived', clock(g.endless ? g.time : Math.min(RUN_LENGTH, g.time))],
     ['💀 Statists', String(g.kills)],
     ['⭐ Level', String(g.level)],
     ['₿ Bitcoin', `+${earned.total}`],
@@ -1037,6 +1174,17 @@ function showEnd(g: Game) {
     const box = h('div', 'unlocked');
     box.append(ballImg(id), h('p', '', `🔓 <b>${CHARACTERS[id].name}</b> joins the cause!<br><small>${FEATS[id]?.text ?? ''}</small>`));
     s.append(box);
+  }
+  // Achievements earned this run (the ones that popped up during it, and any at the end).
+  const thisRun = ACHIEVEMENTS.filter((a) => runTrophies.includes(a.id) || trophies.includes(a));
+  if (thisRun.length) {
+    const list = h('div', 'trophies');
+    for (const a of thisRun) {
+      const row = h('div', 'trophy got');
+      row.append(t('span', 'trophy-icon', a.icon), h('span', '', `<b>${a.name}</b><br><small>${a.text}</small>`));
+      list.append(row);
+    }
+    s.append(list);
   }
   for (const id of freshMaps) {
     const box = h('div', 'unlocked');
@@ -1062,6 +1210,8 @@ function showEnd(g: Game) {
 // ---------------------------------------------------------------------------
 
 showTitle();
+// Lifetime achievements an older save already qualifies for.
+award(null, true);
 loadSprites().then(async (s) => {
   // The pickups and icons that aren't balls: Bitcoin (from Ancapistan Tycoon) and the Laffer Curve.
   const extra: [string, string][] = [

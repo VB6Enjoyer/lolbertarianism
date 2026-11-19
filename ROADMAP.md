@@ -1112,4 +1112,15 @@ state would wither away. It didn't. Make it." Survive 15 minutes against the sta
     cash and stacks of gold. Every 50 seconds a money printer starts up near you (up to three) and
     prints Stimulus and Keynesians while you're near, until you smash it. The Central Bank twice,
     then Marx at 12:30. +30% Bitcoin.
-- Next: more characters, achievements, a daily run, sharing.
+- Endless mode (a toggle on the title screen): no withering at 15:00 ("It should have withered by
+  now. It hasn't."). After the map's own schedule, a revolution or a boss every 75 seconds, each
+  bigger than the last (`scheduled`), the Central Bank and Marx taking turns; the statists keep
+  getting tougher until you fall. Pays for every six seconds, with no winner's bonus. The best
+  endless time on each map is kept and shown on the toggle.
+- Achievements (`achievements.ts`): 27, from Voluntary Exchange (the first kill) to Perpetual
+  Growth (30:00 of endless), with End the Fed, The Close of His System (Marx), Non-Aggression (2:00
+  unhurt), Taxation Is Theft, YIMBY, Stop the Presses, Regulatory Capture (5:00 with every
+  regulation on), Big Tent, Voting with Your Feet, HODL and more. Run achievements are checked
+  twice a second and pop up as toasts (two at a time, the rest queued); lifetime ones at the end of
+  a run and after shopping. A screen on the title lists them all; the end screen lists the run's.
+- Next: more characters, a daily run, sharing.

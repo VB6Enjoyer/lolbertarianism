@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { botRun } from './bot.ts';
 import { BOMB, BOSS_AT, CHARACTER_ORDER, CHARACTERS, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, MAPS, MARX, NIMBY, PRINTER, RUN_LENGTH, STARTING_WEAPONS, TECHNOCRAT, WARNING_TIME, WEAPON_SLOTS } from './data.ts';
-import { choose, DT, type Game, goldEarned, makeOffer, newGame, type Offer, reroll, spawnEnemy, spawnWeights, step, weaponLevel, xpFor } from './game.ts';
+import { choose, DT, type Game, goldEarned, makeOffer, newGame, type Offer, reroll, scheduled, spawnEnemy, spawnWeights, step, weaponLevel, xpFor } from './game.ts';
 
 const still = { x: 0, y: 0 };
 /** A game with no spawning: the clock parked before the first statist would arrive. */
@@ -453,6 +453,58 @@ describe('the newer statists, Marx and the maps', () => {
     const streets = newGame(1, 'ancap');
     expect(spawnWeights(vienna, 130).some(([id]) => id === 'technocrat')).toBe(true);
     expect(spawnWeights(streets, 130).some(([id]) => id === 'technocrat')).toBe(false);
+  });
+});
+
+describe('endless mode', () => {
+  it('doesn’t end at 15:00: it says so, and the set pieces keep coming, bigger each time', () => {
+    const g = newGame(3, 'ancap', { endless: true });
+    g.spawnAcc = -1e9;
+    g.player.hp = g.player.maxHp = 1e9;
+    g.weapons = [];
+    g.nextEvent = MAPS.streets.schedule.length;
+    g.time = RUN_LENGTH - 0.001;
+    step(g, still);
+    expect(g.over).toBeNull();
+    expect(g.fx.some((f) => f.kind === 'overtime')).toBe(true);
+    const a = scheduled(g, MAPS.streets.schedule.length)!;
+    const b = scheduled(g, MAPS.streets.schedule.length + 1)!;
+    const c = scheduled(g, MAPS.streets.schedule.length + 2)!;
+    expect(a.kind).toBe('revolution');
+    expect(b.kind).toBe('boss');
+    expect(c.at).toBeGreaterThan(b.at);
+    expect(c.kind === 'revolution' && a.kind === 'revolution' && c.count > a.count).toBe(true);
+    // Run on past the first endless boss.
+    g.spawnAcc = -1e9;
+    g.time = b.at - 0.01;
+    g.nextEvent = MAPS.streets.schedule.length + 1;
+    step(g, still);
+    expect(g.enemies.some((e) => e.type === 'bank' || e.type === 'marx')).toBe(true);
+    // Standard mode has no extra set pieces.
+    expect(scheduled(newGame(3, 'ancap'), MAPS.streets.schedule.length)).toBeUndefined();
+  });
+
+  it('pays for every six seconds, however long, but no winner’s bonus', () => {
+    const g = newGame(3, 'ancap', { endless: true });
+    g.time = RUN_LENGTH * 2;
+    g.over = 'lost';
+    expect(goldEarned(g).survived).toBe((RUN_LENGTH * 2) / 6);
+  });
+
+  it('keeps the tallies the achievements need', () => {
+    const g = quiet('ancap');
+    g.weapons = [{ id: 'nein', level: 5, cooldown: 0, angle: 0, lastHit: {} }];
+    const t = spawnEnemy(g, 'taxman', 60, 0);
+    t.hp = 1;
+    step(g, still);
+    expect(g.killsBy.taxman).toBe(1);
+    expect(g.firstHurt).toBe(-1);
+    spawnEnemy(g, 'communist', 0, 0);
+    g.weapons = [];
+    step(g, still);
+    expect(g.firstHurt).toBeGreaterThan(0);
+    step(g, { x: 0, y: 0, bomb: true });
+    expect(g.bombsUsed).toBe(1);
   });
 });
 
