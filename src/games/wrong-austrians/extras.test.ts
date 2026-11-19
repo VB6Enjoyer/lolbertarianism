@@ -70,7 +70,7 @@ describe('the daily term', () => {
 });
 
 describe('achievements', () => {
-  const none = { wins: 0, mirrorWins: 0, dailies: 0, shared: 0 };
+  const none = { wins: 0, mirrorWins: 0, dailies: 0, shared: 0, parties: 0 };
 
   it('have unique ids, and every one can be earned', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
@@ -117,7 +117,7 @@ describe('achievements', () => {
   });
 
   it('the records count too, and the takeover is its own (secret) achievement', () => {
-    expect(earnedNow(null, { wins: 2, mirrorWins: 1, dailies: 7, shared: 1 })).toEqual(expect.arrayContaining(['stateless', 'vienna-abides', 'both-sides', 'daily', 'dailies', 'press-release']));
+    expect(earnedNow(null, { wins: 2, mirrorWins: 1, dailies: 7, shared: 1, parties: 1 })).toEqual(expect.arrayContaining(['stateless', 'vienna-abides', 'both-sides', 'daily', 'dailies', 'press-release', 'party']));
     const g = council(newGame(9));
     const loyal = g.advisors.filter((a) => !a.impostor);
     fire(g, loyal[0].id);

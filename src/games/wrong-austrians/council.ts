@@ -204,13 +204,16 @@ export function findPolicy(id: string): Policy | undefined {
   return policyById(id) ?? Object.values(MIRROR).flatMap((m) => m.policies).find((p) => p.id === id);
 }
 
-/** The quarter's crisis, as the side in charge sees it (its title, text and policies). */
-export function crisisOf(g: Game, quarter = g.quarter): Crisis {
-  const base = crisisById(g.crises[quarter - 1])!;
-  if (g.mode !== 'mirror') return base;
+/** A crisis as one side sees it (its title, text and policies). */
+export function crisisFor(id: string, mode: Mode): Crisis {
+  const base = crisisById(id)!;
+  if (mode !== 'mirror') return base;
   const m = MIRROR[base.id];
   return { ...base, title: m?.title ?? base.title, text: m?.text ?? base.text, policies: m?.policies ?? base.policies };
 }
+
+/** The quarter's crisis, as the side in charge sees it. */
+export const crisisOf = (g: Game, quarter = g.quarter): Crisis => crisisFor(g.crises[quarter - 1], g.mode);
 
 const linesFor = (g: Game) => (g.mode === 'mirror' ? LINES_MIRROR : LINES);
 export const advisorName = (g: Game, id: number) => g.advisors[id]?.name ?? '?';

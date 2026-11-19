@@ -26,6 +26,14 @@ export interface Side {
   pitch: (council: number, impostors: number) => string;
   how: (council: number, impostors: number, quarters: number) => string;
   endings: Record<Ending, [string, string]>;
+  /** Party mode: the role cards, the private labels on dealt policies, and who won. */
+  party: {
+    loyalGoal: string;
+    impostorGoal: string;
+    kinds: { sound: string; disguised: string; blatant: string };
+    loyalWin: string;
+    impostorsWin: string;
+  };
 }
 
 const SIDES: Record<Mode, Side> = {
@@ -71,6 +79,13 @@ const SIDES: Record<Mode, Side> = {
       chained: ['REGULATED INTO OBLIVION 📋', 'Liberty hit zero. You now need a permit to read this sentence.'],
       takeover: ['I THOUGHT I HIRED AUSTRIAN ECONOMISTS', 'The Viennese outnumber the real Austrians. The council votes to nationalize oil, then to regulate everything.'],
     },
+    party: {
+      loyalGoal: 'Propose sound policy, and find the Viennese. Your side wins if every impostor is fired, or if Ancapistan survives all 8 quarters.',
+      impostorGoal: 'Get statist policy enacted without getting caught. Your side wins if a meter hits 0, or if you match the real Austrians in number.',
+      kinds: { sound: '✅ Sound', disguised: '🎭 Statist, in disguise', blatant: '🚩 Openly statist' },
+      loyalWin: '🦅 The real Austrians win!',
+      impostorsWin: '🇦🇹 The Viennese win!',
+    },
   },
   mirror: {
     meters: { p: ['🏛️', 'The State'], l: ['🗳️', 'Approval'] },
@@ -113,6 +128,13 @@ const SIDES: Record<Mode, Side> = {
       broke: ['VIENNA HAS BEEN PRIVATIZED 🏷️', 'The State hit zero. The Hofburg is a hostel now, and the trams take crypto.'],
       chained: ['VOTED OUT 🗳️', 'Approval hit zero. The voters picked someone promising lower taxes. The horror.'],
       takeover: ['I THOUGHT I HIRED AUSTRIAN ECONOMISTS', 'The ancaps outnumber the loyal Viennese. The council votes to privatize Vienna, plz.'],
+    },
+    party: {
+      loyalGoal: 'Propose proper state policy, and find the ancaps. Your side wins if every impostor is fired, or if Austria survives all 8 quarters.',
+      impostorGoal: 'Get privatization enacted without getting caught. Your side wins if a meter hits 0, or if you match the loyal Viennese in number.',
+      kinds: { sound: '✅ Loyal', disguised: '🎭 Ancap, in disguise', blatant: '🚩 Openly ancap' },
+      loyalWin: '🇦🇹 The loyal Viennese win!',
+      impostorsWin: '🦅 The ancaps win!',
     },
   },
 };

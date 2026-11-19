@@ -956,7 +956,7 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
 - Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
   outcomes, slips and accusations ~69%, random clicking ~11%.
-- Next: a pass-the-phone party mode.
+- Next: from prototype to v1.0, once people have played it.
 
 #### Mirror mode ✅
 
@@ -998,4 +998,21 @@ against bot advisors (`src/games/wrong-austrians/`).
   livelier in the council, and in D minor when a meter drops to 25 or below. As Ancapball the tune
   is a clarinet-ish lead with vibrato; as Austria, a reedy, detuned accordion. 🎵 turns the music
   off on its own; 🔊 still mutes everything.
+
+#### Party mode ✅
+
+- 4 to 8 people round one phone (`party.ts`), on either side. Pass the phone for secret roles
+  (impostors see each other). Each quarter everyone is dealt two of the crisis's policies, labelled
+  for them alone (sound, disguised, openly hostile), and proposes one; loyal players get bad hands
+  too, which is everyone's cover. The proposals go on the table with names, the table argues, and
+  the rotating Chair enacts one. Then an optional firing vote: secret ballots, a strict majority
+  fires someone and their role is revealed. Bills land later with the proposer's name on them.
+- The loyal side wins by firing every impostor or surviving 8 quarters; the impostors win if a meter
+  hits 0 or they match the loyal players in number. Each impostor quietly costs −2 Liberty −1
+  Prosperity a quarter (gentler than solo, since firing takes a majority).
+- Tables tuned with simulated people (`TABLES`): 1 impostor at 4 players, 2 at 5–8, and starting
+  meters from 38 to 55, so the loyal side wins 54–59% at every size. A real table talks, so it's a
+  starting point.
+- Setup remembers the names; "same players, new game" deals again. A Party Animal achievement
+  (27 in all).
 

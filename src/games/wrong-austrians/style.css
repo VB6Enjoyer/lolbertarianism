@@ -857,6 +857,160 @@ q.pitch {
     white-space: pre-line;
 }
 
+/* --- Party mode --- */
+.party-count {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.party-count > span {
+    font: 700 15px var(--head);
+}
+
+.party-names {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.party-names input {
+    padding: 10px 12px;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    background: #fff;
+    font: 500 16px var(--body);
+}
+
+.party {
+    text-align: center;
+}
+
+.party .pitch {
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.party.pass {
+    display: grid;
+    justify-items: center;
+    padding: 40px 16px;
+}
+
+.pass-hand {
+    margin: 0;
+    font-size: 64px;
+    line-height: 1;
+}
+
+.party.secret {
+    background: #fff8d6;
+}
+
+.role-name {
+    font: 900 24px var(--head);
+}
+
+.role-name.good {
+    color: var(--green);
+}
+
+.role-name.bad {
+    color: var(--red);
+}
+
+.friends {
+    padding: 8px 12px;
+    border: 2px dashed var(--red);
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.chair {
+    font: 700 17px var(--head);
+}
+
+.proposal .kind,
+.proposal .proposer {
+    font: 700 13px var(--head);
+}
+
+.proposal.kind-sound .kind {
+    color: var(--green);
+}
+
+.proposal.kind-disguised .kind {
+    color: #c26a00;
+}
+
+.proposal.kind-blatant .kind {
+    color: var(--red);
+}
+
+.party .proposals {
+    text-align: left;
+}
+
+.roster {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 14px;
+}
+
+.roster-chip {
+    padding: 4px 10px;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.roster-chip.fired {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+
+.ballot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.ballot .ask {
+    padding: 12px 18px;
+    font-size: 17px;
+}
+
+.ballot .nobody {
+    background: #e6e1d4;
+}
+
+.tally {
+    display: inline-grid;
+    gap: 4px;
+    padding-left: 18px;
+    text-align: left;
+}
+
+.end-sub {
+    margin: 0;
+    font: 900 20px var(--head);
+}
+
+.leave {
+    display: block;
+    margin: 14px auto 0;
+}
+
 /* --- The end --- */
 .end {
     text-align: center;

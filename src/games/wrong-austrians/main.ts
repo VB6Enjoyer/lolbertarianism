@@ -16,6 +16,10 @@ import { ACHIEVEMENTS, achievementById, earnedNow, normalizeUnlocked } from './a
 import { dailyFor, normalizeDailyBests, twistById } from './daily.ts';
 import { type MoodId, Waltz } from './music.ts';
 import { CARD_H, CARD_W, drawShareCard, shareText, type TermSummary } from './share.ts';
+import {
+  activePlayers, beginProposals, callVote, castVote, chairEnacts, fellowImpostors, loyalWins, MAX_PLAYERS, MIN_PLAYERS, newParty, nextPartyQuarter,
+  partyCrisis, type PartyGame, propose, roleSeen, TABLES,
+} from './party.ts';
 import { QUESTIONS } from './talk.ts';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +36,8 @@ interface Meta {
   mirrorWins: number;
   dailies: number;
   shared: number;
+  /** Party games played to the end. */
+  parties: number;
 }
 
 interface Save {
@@ -46,6 +52,10 @@ interface Save {
   achievements: string[];
   /** Music on or off (the speaker button mutes everything). */
   music: boolean;
+  /** Party mode: the game in progress, and the names last used. */
+  party: PartyGame | null;
+  partyNames: string[];
+  partyRecorded: number | null;
   /** The best daily score, per date. */
   dailyBests: Record<string, number>;
 }
@@ -80,6 +90,21 @@ function gameFrom(raw: unknown): Game | null {
   }
 }
 
+/** A saved party, if it still makes sense with this version's content. */
+function partyFrom(raw: unknown): PartyGame | null {
+  try {
+    const g = raw as PartyGame;
+    if (!g || typeof g.seed !== 'number' || !g.rng || !Array.isArray(g.players) || g.players.length < MIN_PLAYERS || g.players.length > MAX_PLAYERS) return null;
+    if (g.crises.some((id) => !crisisById(id))) return null;
+    const ids = [...Object.values(g.hands ?? {}).flat(), ...g.proposals.map((p) => p.policy), ...g.pending.map((p) => p.policy)];
+    if (ids.some((id) => !findPolicy(id))) return null;
+    g.mode = g.mode === 'mirror' ? 'mirror' : 'ancap';
+    return g;
+  } catch {
+    return null;
+  }
+}
+
 const save: Save = {
   muted: saved?.muted === true,
   game: gameFrom(saved?.game),
@@ -93,8 +118,12 @@ const save: Save = {
     mirrorWins: count(saved?.meta?.mirrorWins),
     dailies: count(saved?.meta?.dailies),
     shared: count(saved?.meta?.shared),
+    parties: count(saved?.meta?.parties),
   },
   music: saved?.music !== false,
+  party: partyFrom(saved?.party),
+  partyNames: Array.isArray(saved?.partyNames) ? saved.partyNames.filter((n): n is string => typeof n === 'string').slice(0, MAX_PLAYERS) : [],
+  partyRecorded: typeof saved?.partyRecorded === 'number' ? saved.partyRecorded : null,
   achievements: normalizeUnlocked(saved?.achievements),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
   mirrorUnlocked: saved?.mirrorUnlocked === true || count(saved?.meta?.wins) > 0,
@@ -174,11 +203,11 @@ function startMusic() {
 }
 /** Calm between sessions, livelier in the council, minor-key when a meter is running out. */
 function updateMusic() {
-  const g = view === 'game' ? save.game : null;
+  const g = view === 'game' ? save.game : view === 'party' ? save.party : null;
   let mood: MoodId = 'calm';
   if (g && g.phase !== 'over') {
     if (g.prosperity <= 25 || g.liberty <= 25) mood = 'tense';
-    else if (g.phase === 'council') mood = 'council';
+    else if (g.phase === 'council' || g.phase === 'table' || g.phase === 'vote') mood = 'council';
   }
   waltz.set(mood, g?.mode ?? save.mode);
 }
@@ -203,7 +232,7 @@ renderMusic();
 // ---------------------------------------------------------------------------
 
 /** The side being played: the current term's, or the one picked for new terms. */
-const side = (): Side => sideOf(view === 'game' && save.game ? save.game.mode : save.mode);
+const side = (): Side => sideOf(view === 'game' && save.game ? save.game.mode : view === 'party' && save.party ? save.party.mode : save.mode);
 
 /** How an advisor looks right now: the council's colours until you know better. */
 function lookOf(a: Advisor, eyes: Eyes = 'normal'): BallLook {
@@ -239,7 +268,7 @@ const names = (g: Game, ids: number[]) => (ids.length ? ids.map((id) => advisorN
 // Screens
 // ---------------------------------------------------------------------------
 
-let view: 'title' | 'game' = 'title';
+let view: 'title' | 'game' | 'party' = 'title';
 /** The question picked, waiting for someone to ask it. */
 let picking: string | null = null;
 
@@ -249,6 +278,7 @@ function render() {
   checkAchievements();
   updateMusic();
   renderHud();
+  if (view === 'party') return renderParty();
   if (view === 'title' || !g) return renderTitle();
   if (g.phase === 'over') return renderEnd(g);
   els.screen.append(councilRow(g));
@@ -259,6 +289,7 @@ function render() {
 
 function renderHud() {
   els.hud.replaceChildren();
+  if (view === 'party') return partyHud();
   const g = save.game;
   if (view !== 'game' || !g) return;
   const meter = (icon: string, label: string, v: number) => {
@@ -330,6 +361,7 @@ function renderTitle() {
   const d = dailyFor(new Date());
   buttons.append(button(`📅 Daily term <small>${d.twist.icon} ${d.twist.name}</small>`, 'big secondary', showDaily));
   buttons.append(button(`🏅 Achievements <small>${save.achievements.length}/${ACHIEVEMENTS.length}</small>`, 'big secondary', showAchievements));
+  buttons.append(button(`🎉 Party mode <small>${save.party && save.party.phase !== 'over' ? 'continue the party' : `${MIN_PLAYERS}–${MAX_PLAYERS} players, one phone`}</small>`, 'big secondary', () => go('party')));
   buttons.append(button('📖 How to play', 'big secondary', showHowTo));
   buttons.append(button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wrong-austrians')));
   s.append(buttons);
@@ -339,7 +371,7 @@ function renderTitle() {
   els.screen.append(s);
 }
 
-function go(to: 'title' | 'game') {
+function go(to: 'title' | 'game' | 'party') {
   view = to;
   picking = null;
   render();
@@ -670,6 +702,423 @@ function doCheck(id: number) {
       }),
     );
   }, false);
+}
+
+// ---------------------------------------------------------------------------
+// Party mode: pass the phone round the table
+// ---------------------------------------------------------------------------
+
+/** Whether the player holding the phone has tapped to see their private screen. */
+let peek = false;
+/** The player count and side picked on the setup screen. */
+let setupCount = 5;
+let setupMode: Mode = 'ancap';
+
+function partyHud() {
+  const g = save.party;
+  if (!g || g.phase === 'roles') {
+    els.hud.append(t('span', 'hud-q', '🎉 Party mode'));
+    return;
+  }
+  const sd = sideOf(g.mode);
+  const meter = (icon: string, label: string, v: number) => {
+    const m = h('span', `meter${v <= 20 ? ' low' : ''}`, `<span>${icon}</span><b>${v}</b>`);
+    m.title = label;
+    return m;
+  };
+  els.hud.append(
+    t('span', 'hud-q', `🎉 ${quarterLabel(g.quarter)} · ${g.quarter}/${QUARTERS}`),
+    meter(sd.meters.p[0], sd.meters.p[1], g.prosperity),
+    meter(sd.meters.l[0], sd.meters.l[1], g.liberty),
+  );
+}
+
+function renderParty() {
+  const g = save.party;
+  if (!g) return partySetup();
+  const s = h('section', 'panel party');
+  switch (g.phase) {
+    case 'roles':
+      partyPass(s, g, g.turn, 'see your role', () => partyRole(s, g));
+      break;
+    case 'briefing':
+      partyBriefing(s, g);
+      break;
+    case 'propose':
+      partyPass(s, g, g.turn, 'see your policies', () => partyHand(s, g));
+      break;
+    case 'table':
+      partyTable(s, g);
+      break;
+    case 'result':
+      partyResult(s, g);
+      break;
+    case 'vote':
+      partyPass(s, g, g.turn, 'vote in secret', () => partyBallot(s, g));
+      break;
+    case 'voted':
+      partyVoted(s, g);
+      break;
+    case 'over':
+      partyEnd(s, g);
+      break;
+  }
+  els.screen.append(s);
+  if (g.phase !== 'over' && !peek) {
+    els.screen.append(
+      button('🚪 End this party', 'close leave', () =>
+        openOverlay('End this party?', (box) => {
+          box.append(t('p', '', 'The game ends here, with no winner, and you go back to setting up a table.'));
+          box.append(
+            button('Yes, end it', 'big danger', () => {
+              save.party = null;
+              persist();
+              closeOverlay();
+              render();
+            }),
+            button('Keep playing', 'big secondary', closeOverlay),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+function partySetup() {
+  const s = h('section', 'panel party');
+  s.append(t('h2', 'screen-title', '🎉 Party mode'));
+  s.append(t('p', 'pitch', `${MIN_PLAYERS} to ${MAX_PLAYERS} people round one phone. Everyone gets a secret role, the app deals the policies and counts the votes, and you argue it out loud.`));
+  const count = h('div', 'party-count');
+  count.append(t('span', '', 'Players:'));
+  for (let n = MIN_PLAYERS; n <= MAX_PLAYERS; n++) {
+    const b = button(String(n), `mode-tab${setupCount === n ? ' picked' : ''}`, () => {
+      setupCount = n;
+      render();
+    });
+    b.setAttribute('aria-pressed', String(setupCount === n));
+    count.append(b);
+  }
+  s.append(count, t('p', 'muted', `${TABLES[setupCount].impostors} impostor${TABLES[setupCount].impostors === 1 ? '' : 's'} at this table.`));
+  const sides = h('div', 'party-count');
+  sides.append(t('span', '', 'Side:'));
+  for (const [mode, label] of [['ancap', '🦅 Ancapball'], ['mirror', '🪞 Austria']] as [Mode, string][]) {
+    const b = button(label, `mode-tab${setupMode === mode ? ' picked' : ''}`, () => {
+      setupMode = mode;
+      render();
+    });
+    b.setAttribute('aria-pressed', String(setupMode === mode));
+    sides.append(b);
+  }
+  s.append(sides);
+  const names = h('div', 'party-names');
+  const inputs: HTMLInputElement[] = [];
+  for (let i = 0; i < setupCount; i++) {
+    const input = h('input');
+    input.type = 'text';
+    input.maxLength = 16;
+    input.placeholder = `Player ${i + 1}`;
+    input.value = save.partyNames[i] ?? '';
+    input.setAttribute('aria-label', `Player ${i + 1}’s name`);
+    input.addEventListener('input', () => {
+      save.partyNames[i] = input.value;
+    });
+    inputs.push(input);
+    names.append(input);
+  }
+  s.append(names);
+  s.append(
+    button('▶ Deal the roles', 'big', () => {
+      const list = inputs.map((inp, i) => inp.value.trim() || `Player ${i + 1}`);
+      save.partyNames = list;
+      save.party = newParty((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, list, setupMode);
+      peek = false;
+      persist();
+      play('click');
+      render();
+    }),
+    button('📖 Party rules', 'big secondary', showPartyRules),
+  );
+  els.screen.append(s);
+}
+
+function showPartyRules() {
+  openOverlay('🎉 Party rules', (box) => {
+    box.append(
+      h(
+        'ul',
+        'how',
+        `<li>🤫 <b>Secret roles.</b> Pass the phone round: everyone sees their role in private. Impostors also see who the other impostors are.</li>
+        <li>📰 <b>Each quarter</b> a crisis hits. The phone goes round again: everyone is dealt <b>two policies</b> and proposes one. Only you see what your cards really are (sound, or not). Loyal players get bad hands too: that’s your cover, or theirs.</li>
+        <li>🗣️ The proposals go on the table with names on them. <b>Argue.</b> Then the <b>Chair</b> (it rotates) enacts one.</li>
+        <li>⏳ Bad policy looks fine now and sends the bill later, with the proposer’s name on it.</li>
+        <li>🔥 After each quarter you can hold a <b>firing vote</b>: secret ballots, and a majority of the table fires someone. Their role is revealed.</li>
+        <li>📋 Every quarter, each impostor still at the table quietly costs you a little.</li>
+        <li>🏁 The loyal side wins by firing every impostor, or by surviving all ${QUARTERS} quarters. The impostors win if a meter hits 0, or if they ever match the loyal players in number.</li>`,
+      ),
+      button('Got it', 'big', closeOverlay),
+    );
+  });
+}
+
+/** "Pass the phone to Anna": the private screen only shows once she taps. */
+function partyPass(s: HTMLElement, g: PartyGame, player: number, what: string, reveal: () => void) {
+  if (peek) return reveal();
+  const name = g.players[player].name;
+  s.classList.add('pass');
+  s.append(t('p', 'pass-hand', '📱'), h('h2', 'screen-title', 'Pass the phone to <span></span>'));
+  s.querySelector('.screen-title span')!.textContent = name;
+  s.append(t('p', 'muted', 'Everyone else, look away.'));
+  const b = button('', 'big', () => {
+    peek = true;
+    play('click');
+    render();
+  });
+  b.textContent = `I’m ${name}: ${what}`;
+  s.append(b);
+}
+
+function partyRole(s: HTMLElement, g: PartyGame) {
+  const sd = sideOf(g.mode);
+  const me = g.players[g.turn];
+  s.classList.add('secret');
+  s.append(t('h2', 'screen-title', `${me.name}, you are…`));
+  s.append(ball({ flag: me.impostor ? sd.impostorFlag : sd.council, eyes: me.impostor ? 'shifty' : 'happy', hat: me.impostor ? 'tyrolean' : 'top' }, 'big-ball'));
+  s.append(t('p', `role-name ${me.impostor ? 'bad' : 'good'}`, me.impostor ? `${sd.role.impostor} · an impostor` : sd.role.loyal));
+  s.append(t('p', 'pitch', me.impostor ? sd.party.impostorGoal : sd.party.loyalGoal));
+  const friends = fellowImpostors(g, g.turn);
+  if (friends.length) s.append(t('p', 'friends', `Your fellow impostor${friends.length === 1 ? '' : 's'}: ${friends.map((k) => g.players[k].name).join(', ')}.`));
+  s.append(
+    button('Got it: hide it and pass the phone', 'big', () => {
+      peek = false;
+      roleSeen(g);
+      persist();
+      render();
+    }),
+  );
+}
+
+function partyBriefing(s: HTMLElement, g: PartyGame) {
+  s.append(t('h2', 'screen-title', `📰 ${quarterLabel(g.quarter)}`));
+  const list = h('ul', 'news');
+  for (const n of g.news) {
+    const li = h('li', `news-item${n.good === false ? ' bad' : n.good ? ' good' : ''}`);
+    li.append(t('span', 'news-text', n.text), effectChips(n.effect));
+    if (n.policy && n.proposer !== undefined) li.append(t('small', 'news-who', `“${policyOf(n.policy).title}”, proposed by ${g.players[n.proposer].name}`));
+    list.append(li);
+  }
+  const c = partyCrisis(g);
+  const card = h('div', 'crisis');
+  card.append(t('span', 'crisis-emoji', c.emoji), t('h3', '', c.title), t('p', '', c.text));
+  s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${g.players[g.chair].name}`));
+  s.append(
+    button('Deal the policies ▶', 'big', () => {
+      beginProposals(g);
+      peek = false;
+      persist();
+      play('click');
+      render();
+    }),
+  );
+}
+
+function partyHand(s: HTMLElement, g: PartyGame) {
+  const sd = sideOf(g.mode);
+  const me = g.players[g.turn];
+  s.classList.add('secret');
+  s.append(t('h2', 'screen-title', `${me.name}: propose one`));
+  s.append(t('p', 'muted', `${partyCrisis(g).emoji} ${partyCrisis(g).title}. Only you can see what these really are.`));
+  const hand = h('div', 'proposals');
+  for (const id of g.hands[g.turn]) {
+    const pol = policyOf(id);
+    const card = h('div', `proposal kind-${pol.kind}`);
+    card.append(t('small', 'kind', sd.party.kinds[pol.kind]), t('b', 'proposal-title', pol.title), t('q', 'pitch', pol.pitch));
+    card.append(
+      button('Propose this', 'enact', () => {
+        propose(g, id);
+        peek = false;
+        persist();
+        play('click');
+        render();
+      }),
+    );
+    hand.append(card);
+  }
+  s.append(hand);
+  if (me.impostor) {
+    const friends = fellowImpostors(g, g.turn);
+    if (friends.length) s.append(t('p', 'friends', `Your fellow impostor${friends.length === 1 ? '' : 's'}: ${friends.map((k) => g.players[k].name).join(', ')}.`));
+  }
+}
+
+function partyTable(s: HTMLElement, g: PartyGame) {
+  const c = partyCrisis(g);
+  s.append(h('h2', 'screen-title', `${c.emoji} <span></span>`));
+  s.querySelector('.screen-title span')!.textContent = c.title;
+  s.append(t('p', 'pitch', `Argue it out. Then ${g.players[g.chair].name}, the Chair, enacts one.`));
+  const props = h('div', 'proposals');
+  g.proposals.forEach((p, i) => {
+    const pol = policyOf(p.policy);
+    const card = h('div', 'proposal');
+    card.append(t('small', 'proposer', `🙋 ${g.players[p.player].name}`), t('b', 'proposal-title', pol.title), t('q', 'pitch', pol.pitch));
+    card.append(
+      button('Enact', 'enact', () => {
+        chairEnacts(g, i);
+        persist();
+        play('enact');
+        render();
+        window.scrollTo(0, 0);
+      }),
+    );
+    props.append(card);
+  });
+  s.append(props);
+  s.append(partyRoster(g));
+}
+
+/** Who's still at the table, and what's on their record. */
+function partyRoster(g: PartyGame): HTMLElement {
+  const box = h('div', 'roster');
+  const sd = sideOf(g.mode);
+  g.players.forEach((p, i) => {
+    const bills = g.enacted.filter((e) => e.proposer === i);
+    const bad = bills.filter((e) => policyOf(e.policy).kind !== 'sound' && e.quarter + policyOf(e.policy).later.in <= g.quarter).length;
+    const good = bills.filter((e) => policyOf(e.policy).kind === 'sound' && e.quarter + policyOf(e.policy).later.in <= g.quarter).length;
+    const chip = h('span', `roster-chip${p.fired ? ' fired' : ''}`);
+    chip.textContent = `${p.fired ? (p.impostor ? '🔥 ' : '😬 ') : i === g.chair ? '🪑 ' : ''}${p.name}${p.fired ? ` (${p.impostor ? sd.role.impostor : sd.role.loyal})` : bad || good ? ` · ${'✅'.repeat(good)}${'❌'.repeat(bad)}` : ''}`;
+    box.append(chip);
+  });
+  return box;
+}
+
+function partyResult(s: HTMLElement, g: PartyGame) {
+  const last = g.enacted[g.enacted.length - 1];
+  const pol = policyOf(last.policy);
+  s.append(t('h2', 'screen-title', '✍️ Enacted'));
+  const card = h('div', 'enacted');
+  card.append(t('b', '', pol.title), t('small', 'proposer', `Proposed by ${g.players[last.proposer].name}`), effectChips(pol.now));
+  card.append(t('p', 'later', `Its real effect lands ${pol.later.in === 1 ? 'next quarter' : 'in two quarters'}${g.quarter + pol.later.in > QUARTERS ? ', after the term (it won’t count)' : ''}.`));
+  s.append(card, partyRoster(g));
+  const buttons = h('div', 'menu');
+  buttons.append(
+    button('🔥 Hold a firing vote', 'big danger', () => {
+      callVote(g);
+      peek = false;
+      persist();
+      render();
+    }),
+    button(g.quarter >= QUARTERS ? 'End the term ▶' : 'Next quarter ▶', 'big', () => {
+      nextPartyQuarter(g);
+      persist();
+      render();
+      window.scrollTo(0, 0);
+    }),
+  );
+  s.append(buttons);
+}
+
+function partyBallot(s: HTMLElement, g: PartyGame) {
+  const me = g.players[g.turn];
+  s.classList.add('secret');
+  s.append(t('h2', 'screen-title', `${me.name}: fire someone?`));
+  s.append(t('p', 'muted', 'A majority of the table fires them. Your vote is secret.'));
+  const box = h('div', 'ballot');
+  for (const { p, i } of activePlayers(g)) {
+    if (i === g.turn) continue;
+    const b = button('', 'ask', () => {
+      castVote(g, i);
+      peek = false;
+      persist();
+      play('click');
+      render();
+    });
+    b.textContent = `🔥 ${p.name}`;
+    box.append(b);
+  }
+  box.append(
+    button('Nobody', 'ask nobody', () => {
+      castVote(g, -1);
+      peek = false;
+      persist();
+      play('click');
+      render();
+    }),
+  );
+  s.append(box);
+}
+
+function partyVoted(s: HTMLElement, g: PartyGame) {
+  const sd = sideOf(g.mode);
+  const v = g.lastVote!;
+  s.append(t('h2', 'screen-title', '🗳️ The votes are in'));
+  const tally = h('ul', 'tally');
+  for (const [target, n] of Object.entries(v.tally).sort((a, b) => b[1] - a[1])) {
+    const li = h('li');
+    li.textContent = `${Number(target) === -1 ? 'Nobody' : g.players[Number(target)].name}: ${n} vote${n === 1 ? '' : 's'}`;
+    tally.append(li);
+  }
+  s.append(tally);
+  if (v.fired === null) s.append(t('p', 'pitch', 'No majority. Nobody is fired.'));
+  else {
+    const p = g.players[v.fired];
+    play(p.impostor ? 'caught' : 'oops');
+    s.append(ball({ flag: p.impostor ? sd.impostorFlag : sd.council, eyes: p.impostor ? 'shifty' : 'shocked' }, 'big-ball'));
+    s.append(t('p', `role-name ${p.impostor ? 'good' : 'bad'}`, `${p.name} is fired. ${p.impostor ? `${sd.role.impostor}: an impostor!` : `${sd.role.loyal}: loyal. Oops.`}`));
+  }
+  s.append(
+    button(g.quarter >= QUARTERS ? 'End the term ▶' : 'Next quarter ▶', 'big', () => {
+      nextPartyQuarter(g);
+      persist();
+      render();
+      window.scrollTo(0, 0);
+    }),
+  );
+}
+
+function partyEnd(s: HTMLElement, g: PartyGame) {
+  const sd = sideOf(g.mode);
+  if (save.partyRecorded !== g.seed) {
+    save.partyRecorded = g.seed;
+    save.meta.parties++;
+    persist();
+    checkAchievements();
+    play(loyalWins(g) ? 'win' : 'lose');
+  }
+  const [title, line] = sd.endings[g.ending!];
+  s.classList.add('end', loyalWins(g) ? 'won' : 'lost');
+  s.append(t('h2', 'end-title', loyalWins(g) ? sd.party.loyalWin : sd.party.impostorsWin), t('p', 'end-sub', title), t('p', 'pitch', line));
+  // If a vote ended it, show the count (there was no screen for it).
+  const v = g.lastVote;
+  if (v && v.fired !== null) {
+    const fired = g.players[v.fired];
+    s.append(t('p', 'meta', `🗳️ The last vote fired ${fired.name}, ${v.tally[v.fired]} of ${Object.values(v.tally).reduce((a, b) => a + b, 0)} votes.`));
+  }
+  const grid = h('div', 'reveal-grid');
+  for (const p of g.players) {
+    const card = h('div', `reveal-card ${p.impostor ? 'impostor' : 'real'}`);
+    card.append(ball({ flag: p.impostor ? sd.impostorFlag : sd.council, eyes: p.impostor ? 'shifty' : 'happy' }));
+    card.append(t('b', '', p.name), t('small', 'role', p.impostor ? sd.role.impostor : sd.role.loyal), t('small', '', p.fired ? '🔥 Fired' : 'Stayed'));
+    grid.append(card);
+  }
+  s.append(grid);
+  const buttons = h('div', 'menu');
+  buttons.append(
+    button('▶ Same players, new game', 'big', () => {
+      save.party = newParty((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, g.players.map((p) => p.name), g.mode);
+      peek = false;
+      persist();
+      render();
+      window.scrollTo(0, 0);
+    }),
+    button('New table', 'big secondary', () => {
+      save.party = null;
+      setupCount = g.players.length;
+      setupMode = g.mode;
+      persist();
+      render();
+    }),
+    button('Title screen', 'big secondary', () => go('title')),
+  );
+  s.append(buttons);
 }
 
 // --- The daily term, achievements ---
