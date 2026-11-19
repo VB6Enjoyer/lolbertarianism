@@ -28,7 +28,12 @@ export type Status =
   | 'agency'
   | 'machinery'
   | 'marketLaw'
-  | 'polycentric';
+  | 'polycentric'
+  // Newer powers: the k-Percent Rule (Composure every turn), End the Draft (Composure per Argument),
+  // Seasteading (Airtime with 3+ Agencies).
+  | 'kRule'
+  | 'draft'
+  | 'seastead';
 
 /** Statuses that count down at the end of their owner's turn. */
 export const TIMED: readonly Status[] = ['exposed', 'rattled'];

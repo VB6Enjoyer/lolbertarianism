@@ -180,6 +180,68 @@ export const EVENTS: TvEvent[] = [
       },
     ],
   },
+  {
+    id: 'donahue2',
+    title: 'The Phil Donahue Show, Round Two',
+    emoji: '📺',
+    text: 'Phil’s back, and he’s brought a bigger studio audience. “Last time you said everybody runs on greed. Well, I’ve got two hundred people here who say they don’t.”',
+    choices: [
+      {
+        label: '“Which of you works for free?”',
+        detail: 'Gain The Donahue Comeback+',
+        effects: [{ kind: 'card', id: 'donahue', up: true }],
+        result: 'Silence. One man in the back raises his hand, then lowers it when he remembers his job.',
+      },
+      {
+        label: 'Let the audience argue with each other',
+        detail: 'Heal 8 Credibility. Gain 30 Based.',
+        effects: [{ kind: 'hp', amount: 8 }, { kind: 'based', amount: 30 }],
+        result: 'Spontaneous order breaks out in row four. Phil goes to a commercial.',
+      },
+    ],
+  },
+  {
+    id: 'congress',
+    title: 'Testifying to Congress',
+    emoji: '🏛️',
+    text: 'The committee has three questions for you and forty minutes of speeches for the cameras. A congressman asks whether you’re “for or against the American worker.”',
+    choices: [
+      {
+        label: '“Cut spending. All of it. Starting with this hearing.”',
+        detail: 'Lose 7 Credibility. Remove 2 cards (Show the Data or Stay Calm).',
+        effects: [{ kind: 'hp', amount: -7 }, { kind: 'removeRandom' }, { kind: 'removeRandom' }],
+        result: 'Nobody cuts anything. But you leave lighter, and the clip goes everywhere.',
+        needs: { hp: 8 },
+      },
+      {
+        label: 'Submit written testimony and leave early',
+        detail: 'Gain 50 Royalties',
+        effects: [{ kind: 'royalties', amount: 50 }],
+        result: 'Forty pages, footnoted. Nobody reads it. A think tank buys the reprint rights.',
+      },
+    ],
+  },
+  {
+    id: 'pbs',
+    title: 'Free to Choose: the PBS Shoot, 1979',
+    emoji: '🎬',
+    text: 'Ten episodes, filmed around the world. The director wants you on a Hong Kong street at dawn, explaining the price system to a camera crew that hasn’t had coffee.',
+    choices: [
+      {
+        label: 'Shoot the Hong Kong opener',
+        detail: 'Lose 5 Credibility. Gain Prime Time.',
+        effects: [{ kind: 'hp', amount: -5 }, { kind: 'card', id: 'primetime' }],
+        result: 'One take. The pencil speech, the market stalls, the sunrise. PBS replays it for years.',
+        needs: { hp: 6 },
+      },
+      {
+        label: 'Film the debate segments instead',
+        detail: 'Gain Free to Choose+',
+        effects: [{ kind: 'card', id: 'choose', up: true }],
+        result: 'Each episode ends with you and your critics around a table. You enjoy it far too much.',
+      },
+    ],
+  },
 ];
 
 // --- David's appearances ---
@@ -268,6 +330,28 @@ EVENTS.push(
         detail: 'Gain 40 Royalties',
         effects: [{ kind: 'royalties', amount: 40 }],
         result: 'A steady job, for a while. The economists keep calling.',
+      },
+    ],
+  },
+  {
+    id: 'patri',
+    who: 'david',
+    title: 'Your Son Has a Plan',
+    emoji: '🌊',
+    text: 'Patri calls from a conference. “Dad, why argue for new jurisdictions when you could just float one? Platforms. Open ocean. A city that competes for citizens.”',
+    choices: [
+      {
+        label: 'Back the seastead',
+        detail: 'Pay 60 Royalties. Gain Seasteading.',
+        effects: [{ kind: 'royalties', amount: -60 }, { kind: 'card', id: 'seastead' }],
+        result: 'It’s still mostly a plan. But it’s a very good plan, and he got it from somewhere.',
+        needs: { royalties: 60 },
+      },
+      {
+        label: 'Give fatherly advice',
+        detail: 'Heal 10 Credibility',
+        effects: [{ kind: 'hp', amount: 10 }],
+        result: '“Start with the legal code. Then the seasickness.” He writes it down.',
       },
     ],
   },

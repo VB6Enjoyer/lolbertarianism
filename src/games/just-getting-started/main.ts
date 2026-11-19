@@ -309,6 +309,9 @@ const STATUS_INFO: Record<Status, [string, string]> = {
   machinery: ['⚙️', 'The Machinery of Freedom: at the end of your turn, gain 1 Composure for each Agency.'],
   marketLaw: ['🏪', 'A Market for Law: gain this many Agencies at the start of each turn.'],
   polycentric: ['🕸️', 'Polycentric Law: gain this many Agencies whenever you play a Rebuttal.'],
+  kRule: ['🧮', 'The k-Percent Rule: gain this much Composure at the start of each turn.'],
+  draft: ['🪖', 'End the Draft: gain this much Composure whenever you play an Argument.'],
+  seastead: ['🌊', 'Seasteading: gain this much Airtime at the start of each turn, with 3 or more Agencies.'],
 };
 
 function statusRow(status: Partial<Record<Status, number>>): HTMLElement {
