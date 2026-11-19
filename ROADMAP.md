@@ -1017,3 +1017,33 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Setup remembers the names; "same players, new game" deals again. A Party Animal achievement
   (27 in all).
 
+
+### WITHER AWAY (prototype)
+
+A new game: a top-down arcade survival roguelite (`src/games/wither-away/`). "Marx promised the
+state would wither away. It didn't. Make it." Survive 10 minutes against the statist horde.
+
+- Four polcompballs to play, each with a starting weapon and a perk (`data.ts`): Ancapball (gold and
+  black; Gold Coins; a big pickup magnet), Minarchistball (gold and blue, a cigarette; a pump-action
+  shotgun, drawn in his hands; tougher, 1 armour), Agoristball (grey and black; an AK with its price
+  tag still on; the fastest) and the Austrian School ball (red-white-red with a coiled snake and
+  "nein"; NEIN!, a shockwave; +15% XP).
+- Auto-aim. Move with WASD or the arrows, a gamepad's left stick, or a thumb anywhere on a touch
+  screen (a floating joystick).
+- Level up and pick one of three cards (up to 5 weapons and 5 passives, level 5 each): Invisible
+  Hand (orbiting slaps), Price Signal (homing), Laffer Curve (out and back through everything),
+  Non-Aggression Pact (an aura); passives Property Rights, Low Time Preference, Division of Labour,
+  Compound Interest, Free Trade, Private Healthcare.
+- The statists, each with a trick: Communistball (the masses), Socialistball (heals the others),
+  Keynesianball (splits into stimulus), Bureaucratball (red tape that slows you), Taxmanball
+  (steals your XP; kill him to get it back). A revolution (a ring of communists) at 2:30 and 7:30;
+  the Central Bank at 5:00 (inflation balloons that grow, and more Keynesians). At 10:00 the state
+  withers away.
+- The engine (`game.ts`) is plain, seeded and DOM-free: a fixed 60 Hz step, a spatial grid, up to
+  380 statists. A bot (`bot.ts`) plays whole runs for the tests and balancing (it keeps its
+  distance like a player would for each weapon's reach). 60 fps in a headless browser with 380 on
+  screen; the step takes under a millisecond.
+- The balls are SVG, drawn once per expression (normal, angry, happy, hurt) into canvas sprites
+  (`balls.ts`); balls with writing on them never flip.
+- Next: a meta shop for the gold, more characters and maps, evolutions (a maxed weapon plus the
+  right passive), achievements, a daily run, music, sharing.
