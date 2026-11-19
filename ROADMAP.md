@@ -931,3 +931,30 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
   about as often (before: 0.8% vs 5.5%).
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
   with a new screenshot and link preview.
+
+### I THOUGHT I HIRED AUSTRIAN ECONOMISTS (prototype)
+
+A new game from the countryball meme: Austrian School economists (ancap flag, eagle) and economists
+who are merely from Austria keep getting hired by the wrong side. Single-player social deduction
+against bot advisors (`src/games/wrong-austrians/`).
+
+- You're Ancapball, two years (8 quarters) in office, with a council of 5 economists; 2 are secretly
+  from Vienna and want the state to grow (`council.ts`, plain data, seeded, saves mid-quarter).
+- Each quarter: a crisis (`crises.ts`, 12: an oil shock, a bank run, Vienna wanting a state opera,
+  the Big Schnitzel Merger…). Everyone proposes a fix: 3 sound policies, 2 statist ones dressed up
+  as market policies, 1 openly statist. Bad policy looks good now and sends the bill a quarter or
+  two later; sound policy often stings now and pays off. When a bill lands, the news names its
+  backers.
+- 2 questions a quarter (`talk.ts`, 20): real Austrians answer like Mises; the Viennese bluff,
+  dodge or slip ("Schumpeter! He was finance minister"). The council accuses each other: the real
+  ones on the evidence, the Viennese framing them and covering for each other.
+- Fire one advisor a quarter (revealed on firing; a real one costs −6 📈 −2 🗽), one background
+  check a term, ✅/🚩 marks and a record for each advisor. Each Viennese left on the council slips
+  an unsigned regulation through every quarter (−5 🗽 −2 📈).
+- Lose at 0 Prosperity or Liberty, or when the Viennese outnumber the real Austrians ("I thought I
+  hired Austrian economists"). Win by firing both Viennese, or by surviving the term.
+- Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
+- Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
+  outcomes, slips and accusations ~69%, random clicking ~11%.
+- Next: mirror mode (play Austria; the impostors keep saying "privatize Vienna plz"), a daily
+  term, achievements, sharing, music, and a pass-the-phone party mode.

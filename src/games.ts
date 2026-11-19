@@ -78,6 +78,12 @@ export const games: Game[] = [
     status: 'released', // v1.0
     legacyPaths: ['JUST GETTING STARTED 😈.html'],
   },
+  {
+    slug: 'wrong-austrians',
+    title: 'I Thought I Hired Austrian Economists',
+    blurb: 'Two of your five economists are just from Austria. Find the statists before they regulate everything.',
+    status: 'prototype',
+  },
 ];
 
 /** The games on the homepage and in the build (everything but the shelved ones). */
