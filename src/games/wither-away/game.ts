@@ -4,8 +4,8 @@
 // seeded, so tests and the balance bot can replay runs exactly.
 
 import {
-  BOMB, BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, POOL_WEAPONS,
-  RUN_LENGTH, SCHEDULE, WARNING_TIME, WEAPON_SLOTS, WEAPON_STATS, type WeaponId,
+  BOMB, BOSSES, BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, POOL_WEAPONS,
+  MAPS, MARX, type MapId, NIMBY, PRINTER, RUN_LENGTH, STATIONARY, TECHNOCRAT, WARNING_TIME, WEAPON_SLOTS, WEAPON_STATS, type WeaponId,
 } from './data.ts';
 import { makeRng, next, pickOne, type Rng, weighted } from './rng.ts';
 
@@ -35,6 +35,9 @@ export interface Player {
   aim: number;
   /** Seconds left winded after a bomb (moving slower). */
   slowed: number;
+  /** The way you were last heading (for the NIMBYs, who build fences across it). */
+  mx: number;
+  my: number;
 }
 
 export interface Enemy {
@@ -61,6 +64,8 @@ export interface Enemy {
   dash?: number;
   dx?: number;
   dy?: number;
+  /** A second timer, for Marx's rallying cry and the printer's Keynesians. */
+  summon?: number;
 }
 
 export interface Shot {
@@ -87,8 +92,9 @@ export interface Shot {
   target?: number;
 }
 
-/** Inflation balloons from the Central Bank. */
+/** What statists throw at you: inflation balloons (they grow), expert opinions, hammers and sickles. */
 export interface FoeShot {
+  kind: 'balloon' | 'bolt' | 'hammer' | 'sickle';
   x: number;
   y: number;
   vx: number;
@@ -106,6 +112,16 @@ export interface Pickup {
   value: number;
   /** Pulled towards you once in range. */
   pulled: boolean;
+}
+
+/** A NIMBY's picket fence: a segment you can't walk through, for a while. */
+export interface Wall {
+  id: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  life: number;
 }
 
 export interface OwnedWeapon {
@@ -145,7 +161,9 @@ export type Fx =
   | { kind: 'shoot'; weapon: WeaponId }
   | { kind: 'pickup'; pickup: Pickup['kind'] }
   | { kind: 'level' }
-  | { kind: 'boss'; second: boolean }
+  | { kind: 'boss'; boss: 'bank' | 'marx'; second: boolean }
+  | { kind: 'printer' }
+  | { kind: 'summon'; x: number; y: number }
   | { kind: 'revolution' }
   | { kind: 'warning' }
   | { kind: 'bomb'; x: number; y: number; radius: number }
@@ -178,9 +196,14 @@ export interface Game {
   /** The next set piece in SCHEDULE, and whether its warning has gone up. */
   nextEvent: number;
   warned: boolean;
-  /** Bombs in hand, and Central Banks brought down this run. */
+  /** Bombs in hand, and Central Banks (and Marxes) brought down this run. */
   bombs: number;
   bankKills: number;
+  marxKills: number;
+  /** Where we are, the NIMBYs' fences, and when the vault opens its next money printer. */
+  map: MapId;
+  walls: Wall[];
+  printerAt: number;
   /** Damage dealt by each weapon, for the end screen. */
   damageBy: Partial<Record<Source, number>>;
   /** What the shop bought before the run (and the difficulty chosen). */
@@ -223,6 +246,7 @@ export type Unlockable = WeaponId | PassiveId | 'bomb';
 export type Source = WeaponId | 'bomb';
 
 export interface Setup {
+  map?: MapId;
   mods?: Partial<Mods>;
   unlocked?: Unlockable[];
   canEvolve?: boolean;
@@ -233,7 +257,9 @@ export const xpFor = (level: number) => Math.round(4 + level * 3 + level * level
 
 export function newGame(seed: number, character: CharacterId, setup: Setup = {}): Game {
   const c = CHARACTERS[character];
+  const map = setup.map && MAPS[setup.map] ? setup.map : 'streets';
   const mods: Mods = { ...NO_MODS, ...setup.mods };
+  mods.gold *= MAPS[map].gold;
   const hp = c.hp + mods.maxHp;
   const g: Game = {
     seed,
@@ -241,7 +267,7 @@ export function newGame(seed: number, character: CharacterId, setup: Setup = {})
     character,
     time: 0,
     player: {
-      x: 0, y: 0, hp, maxHp: hp, speed: c.speed * mods.speed, armor: c.armor + mods.armor, magnet: c.magnet * mods.magnet, xpMult: c.xpMult * mods.xp, regen: 0, iframes: 0, facing: 1, aim: 0, slowed: 0,
+      x: 0, y: 0, hp, maxHp: hp, speed: c.speed * mods.speed, armor: c.armor + mods.armor, magnet: c.magnet * mods.magnet, xpMult: c.xpMult * mods.xp, regen: 0, iframes: 0, facing: 1, aim: 0, slowed: 0, mx: 1, my: 0,
     },
     level: 1,
     xp: 0,
@@ -264,6 +290,10 @@ export function newGame(seed: number, character: CharacterId, setup: Setup = {})
     warned: false,
     bombs: Math.min(BOMB.max, 1 + mods.bombs),
     bankKills: 0,
+    marxKills: 0,
+    map,
+    walls: [],
+    printerAt: PRINTER.first,
     damageBy: {},
     mods,
     unlocked: [...(setup.unlocked ?? [])],
@@ -453,6 +483,8 @@ export function step(g: Game, input: Input, dt = DT) {
   moveShots(g, grid, dt);
   moveEnemies(g, grid, dt);
   moveFoeShots(g, dt);
+  for (const w of g.walls) w.life -= dt;
+  if (g.walls.length) g.walls = g.walls.filter((w) => w.life > 0);
   collect(g, dt);
   g.enemies = g.enemies.filter((e) => !e.dead);
   if (g.player.hp <= 0) {
@@ -487,25 +519,59 @@ function movePlayer(g: Game, input: Input, dt: number) {
   p.slowed = Math.max(0, p.slowed - dt);
   p.x += x * speed * dt;
   p.y += y * speed * dt;
+  if (Math.hypot(x, y) > 0.2) {
+    const l = Math.hypot(x, y);
+    p.mx = x / l;
+    p.my = y / l;
+  }
+  // The NIMBYs' fences: you can't walk through them.
+  for (const w of g.walls) pushOut(p, w, PLAYER_RADIUS + 4);
   if (x > 0.1) p.facing = 1;
   else if (x < -0.1) p.facing = -1;
   p.iframes = Math.max(0, p.iframes - dt);
   if (p.regen) p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
 }
 
+/** Nudges a circle out of a wall segment. */
+function pushOut(c: { x: number; y: number }, w: Wall, r: number) {
+  const vx = w.x2 - w.x1;
+  const vy = w.y2 - w.y1;
+  const len2 = vx * vx + vy * vy || 1;
+  const t = Math.max(0, Math.min(1, ((c.x - w.x1) * vx + (c.y - w.y1) * vy) / len2));
+  const qx = w.x1 + vx * t;
+  const qy = w.y1 + vy * t;
+  const dx = c.x - qx;
+  const dy = c.y - qy;
+  const d = Math.hypot(dx, dy);
+  if (d >= r) return;
+  if (d < 1e-6) {
+    // Right on the line: out along its normal.
+    const l = Math.sqrt(len2);
+    c.x += (-vy / l) * r;
+    c.y += (vx / l) * r;
+    return;
+  }
+  c.x += (dx / d) * (r - d);
+  c.y += (dy / d) * (r - d);
+}
+
 // --- Spawning ---
 
 /** How many statists a second, how tough, and how hard they hit. */
 export const spawnRate = (t: number) => 0.65 + t / 28;
-export const hpScale = (t: number) => 1 + t / 140;
+export const hpScale = (t: number) => 1 + t / 150;
 export const damageScale = (t: number) => 1 + t / 600;
 
-function spawnWeights(t: number): [EnemyId, number][] {
+export function spawnWeights(g: Game, t: number): [EnemyId, number][] {
+  const map = MAPS[g.map];
   const w: [EnemyId, number][] = [['communist', 10]];
   if (t > 50) w.push(['socialist', 3]);
   if (t > 110) w.push(['keynesian', 3]);
   if (t > 170) w.push(['fascist', 2.2]);
+  if (t > map.technocratsFrom) w.push(['technocrat', 1.1]);
   if (t > 230) w.push(['taxman', 2]);
+  if (t > 260) w.push(['nimby', 1]);
+  for (const pair of w) pair[1] *= map.weights[pair[0]] ?? 1;
   if (t > BOSS_AT) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.6;
   if (t > 600) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.4;
   return w;
@@ -513,8 +579,9 @@ function spawnWeights(t: number): [EnemyId, number][] {
 
 export function spawnEnemy(g: Game, type: EnemyId, x: number, y: number): Enemy {
   const d = ENEMIES[type];
-  const hp = Math.round(d.hp * (type === 'bank' ? 1 : hpScale(g.time)) * g.mods.enemyHp);
-  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16) * g.mods.enemySpeed, damage: Math.round(d.damage * (type === 'bank' ? 1 : damageScale(g.time))), radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
+  const boss = BOSSES.includes(type);
+  const hp = Math.round(d.hp * (boss ? 1 : hpScale(g.time)) * g.mods.enemyHp);
+  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16) * g.mods.enemySpeed, damage: Math.round(d.damage * (boss ? 1 : damageScale(g.time))), radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
   g.enemies.push(e);
   return e;
 }
@@ -526,7 +593,7 @@ function ringPoint(g: Game, dist: number): [number, number] {
 
 function spawn(g: Game, dt: number) {
   const t = g.time;
-  const ev = SCHEDULE[g.nextEvent];
+  const ev = MAPS[g.map].schedule[g.nextEvent];
   if (ev) {
     // A few seconds' warning before a revolution closes in.
     if (ev.kind === 'revolution' && !g.warned && t >= ev.at - WARNING_TIME) {
@@ -538,9 +605,9 @@ function spawn(g: Game, dt: number) {
       g.warned = false;
       if (ev.kind === 'boss') {
         const [x, y] = ringPoint(g, SPAWN_DISTANCE * 0.8);
-        const bank = spawnEnemy(g, 'bank', x, y);
-        bank.hp = bank.maxHp = Math.round(bank.maxHp * ev.hp);
-        g.fx.push({ kind: 'boss', second: ev.hp > 1 });
+        const b = spawnEnemy(g, ev.boss, x, y);
+        b.hp = b.maxHp = Math.round(b.maxHp * ev.hp);
+        g.fx.push({ kind: 'boss', boss: ev.boss, second: ev.hp > 1 });
       } else {
         // The revolution: a ring of communists closing in from every side.
         for (let i = 0; i < ev.count; i++) {
@@ -551,9 +618,18 @@ function spawn(g: Game, dt: number) {
       }
     }
   }
+  // The vault: a new money printer every so often, somewhere near you.
+  if (MAPS[g.map].printers && t >= g.printerAt) {
+    g.printerAt = t + PRINTER.every;
+    if (g.enemies.filter((e) => e.type === 'printer').length < PRINTER.max) {
+      const [x, y] = ringPoint(g, 420 + next(g.rng) * 120);
+      spawnEnemy(g, 'printer', x, y);
+      g.fx.push({ kind: 'printer' });
+    }
+  }
   if (g.enemies.length >= MAX_ENEMIES) return;
   g.spawnAcc += spawnRate(t) * g.mods.spawns * dt;
-  const weights = spawnWeights(t);
+  const weights = spawnWeights(g, t);
   while (g.spawnAcc >= 1) {
     g.spawnAcc -= 1;
     const [x, y] = ringPoint(g, SPAWN_DISTANCE + next(g.rng) * 120);
@@ -574,7 +650,7 @@ function damage(g: Game, e: Enemy, amount: number, from: Source, kx = 0, ky = 0)
   const dealt = Math.round(amount * damageMult(g));
   e.hp -= dealt;
   e.flash = 0.12;
-  if (e.type !== 'bank') {
+  if (!BOSSES.includes(e.type) && !STATIONARY.includes(e.type)) {
     e.kx += kx;
     e.ky += ky;
   }
@@ -593,9 +669,11 @@ function bomb(g: Game, grid: Grid) {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > r + e.radius) continue;
     const k = BOMB.knockback / Math.max(1, d);
-    damage(g, e, e.type === 'bank' ? BOMB.bankDamage : BOMB.damage * hpScale(g.time) * g.mods.enemyHp, 'bomb', (e.x - p.x) * k, (e.y - p.y) * k);
+    damage(g, e, BOSSES.includes(e.type) || e.type === 'printer' ? BOMB.bankDamage : BOMB.damage * hpScale(g.time) * g.mods.enemyHp, 'bomb', (e.x - p.x) * k, (e.y - p.y) * k);
   }
   g.foeShots = g.foeShots.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > r * r);
+  // And the fences come down.
+  g.walls = g.walls.filter((w) => ((w.x1 + w.x2) / 2 - p.x) ** 2 + ((w.y1 + w.y2) / 2 - p.y) ** 2 > r * r);
   p.slowed = BOMB.slowFor;
   p.iframes = Math.max(p.iframes, BOMB.iframes);
   g.fx.push({ kind: 'bomb', x: p.x, y: p.y, radius: r });
@@ -616,8 +694,10 @@ function kill(g: Game, e: Enemy) {
   else if (roll < 0.031) drop(g, 'heal', e.x, e.y, 25);
   else if (roll < 0.0335) drop(g, 'magnet', e.x, e.y, 0);
   if (e.type === 'keynesian') for (let i = 0; i < 2; i++) spawnEnemy(g, 'stimulus', e.x + (i ? 12 : -12), e.y);
-  if (e.type === 'bank') {
-    g.bankKills++;
+  if (e.type === 'printer') for (let i = 0; i < 3; i++) drop(g, 'gold', e.x + (i - 1) * 14, e.y + 16, 10);
+  if (e.type === 'marx') g.marxKills++;
+  if (BOSSES.includes(e.type)) {
+    if (e.type === 'bank') g.bankKills++;
     drop(g, 'chest', e.x, e.y, 0);
     for (let i = 0; i < 6; i++) drop(g, 'gold', e.x + (i - 3) * 14, e.y + 20, 10);
   }
@@ -916,8 +996,42 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     if (e.dead) continue;
     e.flash = Math.max(0, e.flash - dt);
     e.timer += dt;
+    if (e.type === 'printer') {
+      printerTick(g, e, dt);
+      contact(g, e);
+      continue;
+    }
     let tx = p.x;
     let ty = p.y;
+    if (e.type === 'technocrat') {
+      // He keeps his distance: closer if too far, back if too near, otherwise sideways.
+      const d = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+      const ux = (p.x - e.x) / d;
+      const uy = (p.y - e.y) / d;
+      const side = e.id % 2 ? 1 : -1;
+      if (d > TECHNOCRAT.range + 40) {
+        tx = p.x;
+        ty = p.y;
+      } else if (d < TECHNOCRAT.range - 60) {
+        tx = e.x - ux * 100;
+        ty = e.y - uy * 100;
+      } else {
+        tx = e.x - uy * side * 100;
+        ty = e.y + ux * side * 100;
+      }
+      if (e.timer > TECHNOCRAT.every && d < TECHNOCRAT.range + 140) {
+        e.timer = 0;
+        g.foeShots.push({ kind: 'bolt', x: e.x, y: e.y, vx: ux * TECHNOCRAT.speed, vy: uy * TECHNOCRAT.speed, radius: TECHNOCRAT.radius, damage: Math.round(TECHNOCRAT.damage * damageScale(g.time)), life: 3 });
+      }
+    }
+    if (e.type === 'nimby' && e.timer > NIMBY.every && (p.x - e.x) ** 2 + (p.y - e.y) ** 2 < NIMBY.range ** 2 && g.walls.length < NIMBY.maxWalls) {
+      // A fence across the way you're going, a little ahead of you.
+      e.timer = 0;
+      const cx = p.x + p.mx * NIMBY.ahead;
+      const cy = p.y + p.my * NIMBY.ahead;
+      const half = NIMBY.length / 2;
+      g.walls.push({ id: g.nextId++, x1: cx - p.my * half, y1: cy + p.mx * half, x2: cx + p.my * half, y2: cy - p.mx * half, life: NIMBY.life });
+    }
     if (e.type === 'taxman') {
       // He'd rather take your XP than fight you.
       let best: Pickup | null = null;
@@ -984,32 +1098,78 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     }
     // Their tricks.
     if (e.type === 'socialist') {
-      for (const o of near(grid, e.x, e.y, 90, scratch)) if (o !== e && !o.dead && o.type !== 'bank') o.hp = Math.min(o.maxHp, o.hp + 4 * dt);
+      for (const o of near(grid, e.x, e.y, 90, scratch)) if (o !== e && !o.dead && !BOSSES.includes(o.type)) o.hp = Math.min(o.maxHp, o.hp + 4 * dt);
+    }
+    if (e.type === 'marx') {
+      if (e.timer > MARX.every) {
+        // A volley of hammers and sickles, fanned out at you.
+        e.timer = 0;
+        const a0 = Math.atan2(p.y - e.y, p.x - e.x);
+        for (let i = 0; i < MARX.volley; i++) {
+          const a = a0 + (i - (MARX.volley - 1) / 2) * MARX.spread;
+          g.foeShots.push({ kind: g.nextId % 2 ? 'hammer' : 'sickle', x: e.x, y: e.y, vx: Math.cos(a) * MARX.speed, vy: Math.sin(a) * MARX.speed, radius: 12, damage: MARX.damage, life: 4 });
+          g.nextId++;
+        }
+      }
+      e.summon = (e.summon ?? 0) + dt;
+      if (e.summon > MARX.summonEvery) {
+        // Workers of the world, unite!
+        e.summon = 0;
+        for (let i = 0; i < MARX.summon; i++) {
+          const a = (i / MARX.summon) * Math.PI * 2;
+          spawnEnemy(g, 'communist', e.x + Math.cos(a) * 70, e.y + Math.sin(a) * 70);
+        }
+        g.fx.push({ kind: 'summon', x: e.x, y: e.y });
+      }
     }
     if (e.type === 'bank') {
       if (e.timer > 3) {
         e.timer = 0;
         for (let i = 0; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2 + next(g.rng) * 0.3;
-          g.foeShots.push({ x: e.x, y: e.y, vx: Math.cos(a) * 115, vy: Math.sin(a) * 115, radius: 11, damage: 12, life: 4.5 });
+          g.foeShots.push({ kind: 'balloon', x: e.x, y: e.y, vx: Math.cos(a) * 115, vy: Math.sin(a) * 115, radius: 11, damage: 12, life: 4.5 });
         }
         if (next(g.rng) < 0.5) for (let i = 0; i < 3; i++) spawnEnemy(g, 'keynesian', e.x + (i - 1) * 30, e.y + 40);
       }
     }
-    // Contact.
-    const pd = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
-    if (pd < (e.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
-      const hurt = Math.max(1, Math.round(e.damage * g.mods.hurt) - p.armor);
-      p.hp -= hurt;
-      p.iframes = 0.4;
-      g.fx.push({ kind: 'hurt', amount: hurt });
-    }
+    const pd = contact(g, e);
     // Far behind you? Bring it back round in front (so the pressure stays on).
-    if (pd > (SPAWN_DISTANCE * 1.6) ** 2 && e.type !== 'bank') {
+    if (pd > (SPAWN_DISTANCE * 1.6) ** 2 && !BOSSES.includes(e.type)) {
       const [x, y] = ringPoint(g, SPAWN_DISTANCE);
       e.x = x;
       e.y = y;
     }
+  }
+}
+
+/** Touching you hurts (less with armour). Returns the squared distance, which the caller wants anyway. */
+function contact(g: Game, e: Enemy): number {
+  const p = g.player;
+  const pd = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
+  if (pd < (e.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
+    const hurt = Math.max(1, Math.round(e.damage * g.mods.hurt) - p.armor);
+    p.hp -= hurt;
+    p.iframes = 0.4;
+    g.fx.push({ kind: 'hurt', amount: hurt });
+  }
+  return pd;
+}
+
+/** A money printer, printing statists while you're anywhere near. */
+function printerTick(g: Game, e: Enemy, dt: number) {
+  const p = g.player;
+  if ((e.x - p.x) ** 2 + (e.y - p.y) ** 2 > PRINTER.wakeRange ** 2 || g.enemies.length >= MAX_ENEMIES) {
+    e.timer = 0;
+    return;
+  }
+  e.summon = (e.summon ?? 0) + dt;
+  if (e.timer > PRINTER.stimulusEvery) {
+    e.timer = 0;
+    spawnEnemy(g, 'stimulus', e.x + (next(g.rng) - 0.5) * 30, e.y + e.radius + 6);
+  }
+  if (e.summon > PRINTER.keynesianEvery) {
+    e.summon = 0;
+    spawnEnemy(g, 'keynesian', e.x, e.y + e.radius + 10);
   }
 }
 
@@ -1020,7 +1180,7 @@ function moveFoeShots(g: Game, dt: number) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     // Inflation: they grow.
-    b.radius = Math.min(26, b.radius + 3.5 * dt);
+    if (b.kind === 'balloon') b.radius = Math.min(26, b.radius + 3.5 * dt);
     if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (b.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
       const hurt = Math.max(1, Math.round(b.damage * g.mods.hurt) - p.armor);
       p.hp -= hurt;

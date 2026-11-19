@@ -1,14 +1,15 @@
 // Feats: Ancapball is there from the start; the others join once you've done something worth
 // noticing. Pure: works from the lifetime stats in the save.
 
-import { CHARACTER_ORDER, type CharacterId } from './data.ts';
+import { CHARACTER_ORDER, type CharacterId, MAP_ORDER, type MapId } from './data.ts';
 
 /** The lifetime numbers the feats look at. */
 export interface Lifetime {
   runs: number;
   kills: number;
-  /** Central Banks brought down, ever. */
+  /** Central Banks and Marxes brought down, ever. */
   banks: number;
+  marx: number;
   /** Longest survived, per character (seconds). */
   best: Partial<Record<CharacterId, number>>;
 }
@@ -44,4 +45,19 @@ export const featDone = (id: CharacterId, r: Lifetime) => {
  */
 export function unlockedCharacters(r: Lifetime, already: CharacterId[] = []): CharacterId[] {
   return CHARACTER_ORDER.filter((id) => already.includes(id) || (r.best[id] ?? 0) > 0 || featDone(id, r));
+}
+
+/** The maps beyond the streets unlock the same way. */
+export const MAP_FEATS: Partial<Record<MapId, Feat>> = {
+  vienna: { text: 'Survive 7:30 in a single run.', progress: (r) => [Math.min(450, longest(r)), 450] },
+  vault: { text: 'Bring down Marx (he’s in Vienna at 5:00).', progress: (r) => [Math.min(1, r.marx), 1] },
+};
+
+export function unlockedMaps(r: Lifetime): MapId[] {
+  return MAP_ORDER.filter((id) => {
+    const f = MAP_FEATS[id];
+    if (!f) return true;
+    const [have, need] = f.progress(r);
+    return have >= need;
+  });
 }

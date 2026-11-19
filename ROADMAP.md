@@ -1095,4 +1095,21 @@ state would wither away. It didn't. Make it." Survive 15 minutes against the sta
   semitone each while you chain them.
 - Gamepads work on every menu: the d-pad or stick moves between buttons (the nearest one in that
   direction), A picks, B goes back or resumes, Start pauses. The arrow keys do the same on menus.
-- Next: more characters and maps, achievements, a daily run, sharing.
+- Two more statists. Technocratball (a white-and-red yin-yang) keeps about 300 away, strafing, and
+  fires expert opinions at you, so you have to keep moving. NIMBYball (clapboard siding, a roof for
+  a hat, a little picket fence and a "NO!" sign) plants picket fences across your path, a little
+  ahead of where you're heading; you can't walk through them, they come down after 9 seconds, and a
+  bomb flattens them.
+- A second boss, Marxball: red, with the hair, the great grey beard and the moustache. Throws
+  volleys of spinning gold hammers and sickles, and every 8 seconds calls up a ring of communists
+  ("Workers of the world, unite!"). The boss arrow, health bar and boss music work for him too.
+- Maps (`MAPS` in `data.ts`), each with its own schedule, mix and Bitcoin bonus, picked on the title
+  screen and unlocked by feats:
+  - Ancapistan Streets: the Central Bank at 5:00, Marx at 10:00.
+  - Red Vienna (survive 7:30 to unlock): cobbles, tram lines and fountains; more Social Democrats,
+    Technocrats from 1:50, Marx at 5:00 and the Central Bank (bailed out) at 10:00. +15% Bitcoin.
+  - The Federal Reserve Vault (bring down Marx to unlock): steel plates, hazard stripes, pallets of
+    cash and stacks of gold. Every 50 seconds a money printer starts up near you (up to three) and
+    prints Stimulus and Keynesians while you're near, until you smash it. The Central Bank twice,
+    then Marx at 12:30. +30% Bitcoin.
+- Next: more characters, achievements, a daily run, sharing.

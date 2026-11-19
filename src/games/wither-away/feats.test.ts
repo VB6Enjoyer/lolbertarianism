@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { FEATS, featDone, type Lifetime, unlockedCharacters } from './feats.ts';
+import { FEATS, featDone, type Lifetime, unlockedCharacters, unlockedMaps } from './feats.ts';
 
-const fresh = (): Lifetime => ({ runs: 0, kills: 0, banks: 0, best: {} });
+const fresh = (): Lifetime => ({ runs: 0, kills: 0, banks: 0, marx: 0, best: {} });
 
 describe('feats', () => {
   it('only Ancapball to begin with', () => {
@@ -28,5 +28,14 @@ describe('feats', () => {
     r.best.austrian = 40;
     expect(unlockedCharacters(r)).toEqual(['ancap', 'austrian']);
     expect(unlockedCharacters(fresh(), ['agorist'])).toEqual(['ancap', 'agorist']);
+  });
+
+  it('the maps unlock too: Vienna for 7:30, the vault for bringing down Marx', () => {
+    const r = fresh();
+    expect(unlockedMaps(r)).toEqual(['streets']);
+    r.best.ancap = 450;
+    expect(unlockedMaps(r)).toEqual(['streets', 'vienna']);
+    r.marx = 1;
+    expect(unlockedMaps(r)).toEqual(['streets', 'vienna', 'vault']);
   });
 });

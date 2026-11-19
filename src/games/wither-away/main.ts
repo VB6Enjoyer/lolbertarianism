@@ -7,8 +7,10 @@ import { getAudioContext, note, playTone, type Tone } from '../../shared/audio.t
 import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, loadSprites, RESTING, type Sprite } from './balls.ts';
-import { BOMB, CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, EVOLUTIONS, LAFFER_SVG, PASSIVES, RUN_LENGTH, type WeaponId, WEAPONS } from './data.ts';
-import { FEATS, unlockedCharacters } from './feats.ts';
+import {
+  BOMB, BOSSES, CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, EVOLUTIONS, LAFFER_SVG, MAP_ORDER, type MapId, MAPS, PASSIVES, RUN_LENGTH, type WeaponId, WEAPONS,
+} from './data.ts';
+import { FEATS, MAP_FEATS, unlockedCharacters, unlockedMaps } from './feats.ts';
 import { choose, DT, type Game, goldEarned, newGame, type Offer, reroll, type Source, step } from './game.ts';
 import { Metal, type TrackId } from './music.ts';
 import { draw, GUNS, normalizeGun, particleColor, type Visuals } from './render.ts';
@@ -30,13 +32,16 @@ interface Save {
   shake: boolean;
   /** Who you can play (Ancapball, and whoever's feat you've done). */
   unlocked: CharacterId[];
+  /** Where the next run is. */
+  map: MapId;
   meta: {
     runs: number;
     wins: number;
     kills: number;
     gold: number;
-    /** Central Banks brought down, ever. */
+    /** Central Banks and Marxes brought down, ever. */
     banks: number;
+    marx: number;
     /** Longest survived, per character (seconds). */
     best: Partial<Record<CharacterId, number>>;
   };
@@ -53,12 +58,14 @@ const save: Save = {
   character: CHARACTER_ORDER.includes(saved?.character as CharacterId) ? (saved!.character as CharacterId) : 'ancap',
   shake: saved?.shake !== false,
   unlocked: [],
+  map: MAP_ORDER.includes(saved?.map as MapId) ? (saved!.map as MapId) : 'streets',
   meta: {
     runs: count(saved?.meta?.runs),
     wins: count(saved?.meta?.wins),
     kills: count(saved?.meta?.kills),
     gold: count(saved?.meta?.gold),
     banks: count(saved?.meta?.banks),
+    marx: count(saved?.meta?.marx),
     best: Object.fromEntries(CHARACTER_ORDER.map((id) => [id, count(saved?.meta?.best?.[id])]).filter(([, v]) => (v as number) > 0)),
   },
   // Before the shop opened, Bitcoin only piled up: it all becomes spendable.
@@ -67,6 +74,7 @@ const save: Save = {
 // Anyone already played stays playable; then the feats.
 save.unlocked = unlockedCharacters(save.meta, Array.isArray(saved?.unlocked) ? saved.unlocked.filter((id) => CHARACTER_ORDER.includes(id)) : []);
 if (!save.unlocked.includes(save.character)) save.character = 'ancap';
+if (!unlockedMaps(save.meta).includes(save.map)) save.map = 'streets';
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -200,7 +208,7 @@ function startMusic() {
 }
 function wantTrack(): TrackId {
   if (!g || g.over) return 'menu';
-  if (g.enemies.some((e) => e.type === 'bank')) return 'boss';
+  if (g.enemies.some((e) => BOSSES.includes(e.type))) return 'boss';
   return runTrack;
 }
 function renderMusic() {
@@ -413,7 +421,7 @@ let shownOffer: Offer[] | null = null;
 function startRun(character: CharacterId) {
   save.character = character;
   persist();
-  g = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, character, setupFor(save.shop, character));
+  g = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, character, { ...setupFor(save.shop, character), map: save.map });
   // Runs take turns opening with each track; the change happens at the next bar line.
   runTrack = save.meta.runs % 2 ? 'hyper' : 'rip';
   metal.play(runTrack);
@@ -472,11 +480,11 @@ function react(g: Game) {
         break;
       case 'kill': {
         const color = particleColor(f.type);
-        if (f.type === 'bank') {
+        if (BOSSES.includes(f.type)) {
           vis.happy = 3;
           shake(10);
         }
-        for (let i = 0; i < (f.type === 'bank' ? 40 : 6); i++) {
+        for (let i = 0; i < (BOSSES.includes(f.type) ? 40 : 6); i++) {
           if (vis.particles.length > 500) break;
           const a = Math.random() * Math.PI * 2;
           const v = 60 + Math.random() * 120;
@@ -522,7 +530,19 @@ function react(g: Game) {
       case 'boss':
         play('boss', 1);
         shake(6);
-        banner(f.second ? '💸 THE CENTRAL BANK IS BACK. Bailed out, with twice the reserves.' : '💸 THE CENTRAL BANK IS HERE. It prints.');
+        banner(
+          f.boss === 'marx'
+            ? '🧔 MARX HIMSELF! Hammers and sickles incoming.'
+            : f.second
+              ? '💸 THE CENTRAL BANK IS BACK. Bailed out, with twice the reserves.'
+              : '💸 THE CENTRAL BANK IS HERE. It prints.',
+        );
+        break;
+      case 'printer':
+        banner('🖨️ A money printer starts up nearby. Smash it!');
+        break;
+      case 'summon':
+        if (vis.texts.length < 40) vis.texts.push({ x: f.x, y: f.y - 60, text: 'WORKERS OF THE WORLD, UNITE!', life: 1.4, color: '#ffcc00' });
         break;
       case 'warning':
         vis.warn = 4;
@@ -759,6 +779,30 @@ function showTitle() {
     picker.append(card);
   }
   s.append(picker);
+  // Where to play.
+  const maps = h('div', 'maps');
+  const open = unlockedMaps(save.meta);
+  for (const id of MAP_ORDER) {
+    const m = MAPS[id];
+    const feat = MAP_FEATS[id];
+    if (!open.includes(id) && feat) {
+      const [have, need] = feat.progress(save.meta);
+      const card = h('div', 'map locked');
+      card.append(h('span', 'map-icon', '🔒'), t('b', 'map-name', m.name), t('small', 'char-feat', feat.text));
+      if (need > 1) card.append(t('small', 'char-best', `${clock(have)} / ${clock(need)}`));
+      maps.append(card);
+      continue;
+    }
+    const card = button('', `map map-${id}${save.map === id ? ' picked' : ''}`, () => {
+      save.map = id;
+      persist();
+      showTitle();
+    });
+    card.setAttribute('aria-pressed', String(save.map === id));
+    card.append(h('span', 'map-icon', m.icon), t('b', 'map-name', m.name), t('small', 'map-blurb', m.blurb));
+    maps.append(card);
+  }
+  s.append(maps);
   const c = CHARACTERS[save.character];
   s.append(t('p', 'blurb', c.blurb));
   const buttons = h('div', 'menu');
@@ -919,7 +963,7 @@ function showShop() {
 function showHowTo() {
   els.modal.replaceChildren();
   const box = h('div', 'modal-box');
-  const foes = (['communist', 'socialist', 'keynesian', 'fascist', 'taxman', 'bank'] as const).map((id) => `<li><b>${ENEMIES[id].name}</b>: ${ENEMIES[id].note}</li>`).join('');
+  const foes = (['communist', 'socialist', 'keynesian', 'fascist', 'technocrat', 'taxman', 'nimby', 'bank', 'marx', 'printer'] as const).map((id) => `<li><b>${ENEMIES[id].name}</b>: ${ENEMIES[id].note}</li>`).join('');
   box.append(
     t('h2', 'modal-title', 'HOW TO PLAY'),
     h(
@@ -953,11 +997,14 @@ function showEnd(g: Game) {
   m.gold += earned.total;
   save.shop.bank += earned.total;
   m.banks += g.bankKills;
+  m.marx += g.marxKills;
+  const mapsBefore = unlockedMaps({ ...m, marx: m.marx - g.marxKills, best: { ...m.best } });
   m.best[g.character] = Math.max(m.best[g.character] ?? 0, Math.floor(g.time));
   // Did that run earn anyone their place?
   const before = save.unlocked;
   save.unlocked = unlockedCharacters(m, before);
   const fresh = save.unlocked.filter((id) => !before.includes(id));
+  const freshMaps = unlockedMaps(m).filter((id) => !mapsBefore.includes(id));
   persist();
   els.modal.hidden = true;
   els.hud.hidden = true;
@@ -989,6 +1036,11 @@ function showEnd(g: Game) {
   for (const id of fresh) {
     const box = h('div', 'unlocked');
     box.append(ballImg(id), h('p', '', `🔓 <b>${CHARACTERS[id].name}</b> joins the cause!<br><small>${FEATS[id]?.text ?? ''}</small>`));
+    s.append(box);
+  }
+  for (const id of freshMaps) {
+    const box = h('div', 'unlocked');
+    box.append(h('span', 'map-icon', MAPS[id].icon), h('p', '', `🔓 New map: <b>${MAPS[id].name}</b><br><small>${MAP_FEATS[id]?.text ?? ''}</small>`));
     s.append(box);
   }
   const dmg = Object.entries(g.damageBy).sort((a, b) => b[1] - a[1]) as [Source, number][];

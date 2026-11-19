@@ -68,7 +68,50 @@ const PAINT: Record<BallId, string> = {
     <path d="M44 72 L50 62 L56 72 Z" fill="#fff59d"/>
     <ellipse cx="50" cy="69" rx="3.4" ry="2" fill="#fff"/><circle cx="50" cy="69" r="1.3" fill="#0d4d2e"/>
     <g stroke="#fff59d" stroke-width="1" opacity="0.8"><path d="M50 60 V54 M44 63 L40 59 M56 63 L60 59"/></g>`,
+  // Technocracy: a yin-yang in white and red (the white curling round the bottom, the red over the top).
+  technocrat: `<rect width="100" height="100" fill="#b71c1c"/>
+    <path d="M50 8 A22 22 0 0 0 50 52 A22 22 0 0 1 50 96 A44 44 0 0 1 50 8 Z" fill="#dedede"/>
+    <path d="M50 96 A44 44 0 0 1 8 60 Q30 92 50 96 Z" fill="#a8a8a8"/>
+    <path d="M94 52 A44 44 0 0 1 60 95 Q86 80 94 52 Z" fill="#7f1414"/>
+    <ellipse cx="66" cy="24" rx="12" ry="7" fill="#fff" opacity="0.18"/>`,
+  // The NIMBY: a suburb of a ball. Clapboard siding, a lawn, and a little picket fence along the bottom.
+  nimby: `<rect width="100" height="100" fill="#ecdfba"/>
+    <g stroke="#c9b583" stroke-width="1.4">${[14, 23, 32, 59, 68].map((y) => `<path d="M0 ${y} H100"/>`).join('')}</g>
+    <rect y="80" width="100" height="24" fill="#4caf50"/>
+    <g fill="#fafafa" stroke="#555" stroke-width="1">
+      <rect x="0" y="85" width="100" height="3"/>
+      ${[4, 13, 22, 31, 40, 49, 58, 67, 76, 85, 94].map((x) => `<path d="M${x} 83 L${x + 3} 79 L${x + 6} 83 V96 H${x} Z"/>`).join('')}
+    </g>`,
+  // Marx: a red ball under all that hair (the hair and beard go on top, in extras).
+  marx: `<rect width="100" height="100" fill="#c62828"/><ellipse cx="40" cy="20" rx="13" ry="6" fill="#fff" opacity="0.25"/>`,
+  printer: '',
 };
+
+/** The beard, hair and moustache: grey clouds outlined once round the outside (draw them stroked, then again unstroked on top). */
+const cloud = (circles: [number, number, number][], fill: string) =>
+  `<g fill="${fill}" stroke="#000" stroke-width="5">${circles.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join('')}</g>
+  <g fill="${fill}">${circles.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join('')}</g>`;
+const BEARD: [number, number, number][] = [[50, 83, 13], [35, 80, 13], [65, 80, 13], [23, 71, 12], [77, 71, 12], [50, 73, 14], [36, 70, 10], [64, 70, 10]];
+const HAIR_L: [number, number, number][] = [[13, 38, 9], [11, 52, 8], [16, 25, 8], [14, 62, 7]];
+const HAIR_R: [number, number, number][] = HAIR_L.map(([x, y, r]) => [100 - x, y, r]);
+
+/** The vault's money printer: not a ball, a machine, with bills coming out of the top. */
+function printerSvg(kind: Eyes, size: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -12 100 112" width="${size}" height="${Math.round((size * 112) / 100)}">
+  <g stroke="#000" stroke-width="3" stroke-linejoin="round">
+    <rect x="30" y="2" width="22" height="30" fill="#7cb342" transform="rotate(-12 41 17)"/>
+    <rect x="46" y="-2" width="22" height="34" fill="#9ccc65" transform="rotate(8 57 15)"/>
+    <rect x="8" y="28" width="84" height="66" rx="7" fill="#607d8b"/>
+    <rect x="16" y="24" width="68" height="8" rx="2" fill="#37474f"/>
+    <rect x="18" y="42" width="64" height="38" rx="4" fill="#263238"/>
+    <circle cx="80" cy="35" r="4" fill="#ff1744"/>
+  </g>
+  <text x="50" y="72" font-family="Anton, Impact, sans-serif" font-size="30" fill="#ffd54f" text-anchor="middle">$</text>
+  <text x="50" y="91" font-family="Anton, Impact, sans-serif" font-size="9" fill="#cfd8dc" text-anchor="middle">BRRRRR</text>
+  <text x="57" y="22" font-family="Anton, Impact, sans-serif" font-size="11" fill="#1b5e20" text-anchor="middle" transform="rotate(8 57 15)">$</text>
+  ${kind === 'hurt' ? '<rect x="8" y="-2" width="84" height="96" rx="7" fill="#ff1744" opacity="0.35"/>' : ''}
+</svg>`;
+}
 
 
 /** Eye positions: most balls look the same way; the Austrian's sit on his top band. */
@@ -111,6 +154,17 @@ function extras(id: BallId): string {
     case 'taxman':
       // A green accountant's eyeshade.
       return `<g ${OUT}><path d="M18 30 Q50 10 82 30 L78 38 Q50 24 22 38 Z" fill="#2e7d32" fill-opacity="0.92"/></g><path d="M18 30 Q50 10 82 30" fill="none" stroke="#a5d6a7" stroke-width="1.5"/>`;
+    case 'nimby':
+      // A roof for a hat (with a chimney), and his sign: NO!
+      return `<g ${OUT}><rect x="62" y="-6" width="9" height="16" fill="#8d6e63"/><path d="M14 18 L50 -8 L86 18 Z" fill="#b5523b"/></g>
+        <path d="M24 12 L50 -3 L76 12" fill="none" stroke="#8e3a28" stroke-width="1.5"/>
+        <path d="M90 52 V76" stroke="#6d4c41" stroke-width="4" stroke-linecap="round"/>
+        <g ${OUT}><rect x="74" y="34" width="26" height="19" rx="2" fill="#fafafa"/></g>
+        <text x="87" y="49" font-family="Anton, Impact, sans-serif" font-size="12" fill="#d50000" text-anchor="middle">NO!</text>`;
+    case 'marx':
+      // The hair either side, the great grey beard, and a dark moustache.
+      return `${cloud(HAIR_L, '#bdbdbd')}${cloud(HAIR_R, '#bdbdbd')}${cloud(BEARD, '#9e9e9e')}
+        <path d="M27 63 Q38 54 50 60 Q62 54 73 63 Q68 72 57 67 Q50 64 43 67 Q32 72 27 63 Z" fill="#424242" stroke="#000" stroke-width="2.5" stroke-linejoin="round"/>`;
     case 'bank':
       // A top hat with a gold band, and a gold monocle on its chain.
       return `<g ${OUT}><rect x="30" y="-10" width="40" height="24" rx="2" fill="#141414"/><rect x="20" y="12" width="60" height="7" rx="3" fill="#141414"/></g>
@@ -123,6 +177,7 @@ function extras(id: BallId): string {
 
 /** One ball as an SVG string (a 100 × 100 ball with room above for a hat). */
 export function ballSvg(id: BallId, kind: Eyes = 'normal', size = 128): string {
+  if (id === 'printer') return printerSvg(kind, size);
   const clip = `wa-${id}-${kind}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -12 100 112" width="${size}" height="${Math.round((size * 112) / 100)}">
   <defs><clipPath id="${clip}"><circle cx="50" cy="52" r="44"/></clipPath></defs>
@@ -133,9 +188,9 @@ export function ballSvg(id: BallId, kind: Eyes = 'normal', size = 128): string {
 }
 
 /** Each character's own resting face. */
-export const RESTING: Partial<Record<BallId, Eyes>> = { minarchist: 'angry', agorist: 'happy', austrian: 'happy', communist: 'angry', socialist: 'happy', fascist: 'angry', taxman: 'angry', bank: 'angry' };
+export const RESTING: Partial<Record<BallId, Eyes>> = { minarchist: 'angry', agorist: 'happy', austrian: 'happy', communist: 'angry', socialist: 'happy', fascist: 'angry', taxman: 'angry', bank: 'angry', technocrat: 'happy', nimby: 'angry', marx: 'angry' };
 
-export const ALL_BALLS: BallId[] = ['ancap', 'minarchist', 'agorist', 'austrian', 'communist', 'socialist', 'keynesian', 'stimulus', 'fascist', 'taxman', 'bank'];
+export const ALL_BALLS: BallId[] = ['ancap', 'minarchist', 'agorist', 'austrian', 'communist', 'socialist', 'keynesian', 'stimulus', 'fascist', 'taxman', 'technocrat', 'nimby', 'bank', 'marx', 'printer'];
 
 /** A canvas holding a ball, drawn once from its SVG. */
 export type Sprite = HTMLCanvasElement;

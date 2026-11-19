@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { botRun } from './bot.ts';
-import { BOMB, BOSS_AT, CHARACTER_ORDER, CHARACTERS, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, RUN_LENGTH, SCHEDULE, STARTING_WEAPONS, WARNING_TIME, WEAPON_SLOTS } from './data.ts';
-import { choose, DT, type Game, goldEarned, makeOffer, newGame, type Offer, reroll, spawnEnemy, step, weaponLevel, xpFor } from './game.ts';
+import { BOMB, BOSS_AT, CHARACTER_ORDER, CHARACTERS, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, MAPS, MARX, NIMBY, PRINTER, RUN_LENGTH, STARTING_WEAPONS, TECHNOCRAT, WARNING_TIME, WEAPON_SLOTS } from './data.ts';
+import { choose, DT, type Game, goldEarned, makeOffer, newGame, type Offer, reroll, spawnEnemy, spawnWeights, step, weaponLevel, xpFor } from './game.ts';
 
 const still = { x: 0, y: 0 };
 /** A game with no spawning: the clock parked before the first statist would arrive. */
@@ -329,16 +329,21 @@ describe('the statists', () => {
   it('the Central Bank arrives on time (and again, bailed out); the revolution too, with a warning; and the state withers at the end', () => {
     const g = newGame(5, 'ancap');
     g.time = BOSS_AT - 0.01;
-    g.nextEvent = SCHEDULE.findIndex((e) => e.at === BOSS_AT);
+    g.nextEvent = MAPS.streets.schedule.findIndex((e) => e.at === BOSS_AT);
     step(g, still);
     const bank = g.enemies.find((e) => e.type === 'bank')!;
     expect(bank).toBeTruthy();
     expect(g.fx.some((f) => f.kind === 'boss')).toBe(true);
-    const again = newGame(5, 'ancap');
+    const again = newGame(5, 'ancap', { map: 'vienna' });
     again.time = 599.99;
     again.nextEvent = 3;
     step(again, still);
     expect(again.enemies.find((e) => e.type === 'bank')!.maxHp).toBeGreaterThan(bank.maxHp * 2);
+    const marx = newGame(5, 'ancap');
+    marx.time = 599.99;
+    marx.nextEvent = 3;
+    step(marx, still);
+    expect(marx.enemies.some((e) => e.type === 'marx')).toBe(true);
     const r = quiet();
     r.time = 150 - WARNING_TIME - 0.01;
     step(r, still);
@@ -346,11 +351,11 @@ describe('the statists', () => {
     r.time = 149.99;
     step(r, still);
     expect(r.enemies.filter((e) => e.type === 'communist').length).toBeGreaterThanOrEqual(30);
-    expect(SCHEDULE.filter((e) => e.kind === 'revolution')).toHaveLength(3);
+    expect(MAPS.streets.schedule.filter((e) => e.kind === 'revolution')).toHaveLength(3);
     expect(RUN_LENGTH).toBe(900);
     const w = quiet();
     w.time = RUN_LENGTH - 0.001;
-    w.nextEvent = SCHEDULE.length;
+    w.nextEvent = MAPS.streets.schedule.length;
     spawnEnemy(w, 'communist', 500, 0);
     step(w, still);
     expect(w.over).toBe('won');
@@ -367,6 +372,90 @@ describe('the statists', () => {
   });
 });
 
+describe('the newer statists, Marx and the maps', () => {
+  it('a Technocrat keeps his distance and shoots', () => {
+    const g = quiet('ancap');
+    g.weapons = [];
+    const t = spawnEnemy(g, 'technocrat', 600, 0);
+    run(g, 6);
+    const d = Math.hypot(t.x - g.player.x, t.y - g.player.y);
+    expect(d).toBeGreaterThan(TECHNOCRAT.range - 90);
+    expect(d).toBeLessThan(TECHNOCRAT.range + 90);
+    expect(g.foeShots.some((b) => b.kind === 'bolt') || g.player.hp < g.player.maxHp).toBe(true);
+  });
+
+  it('a NIMBY builds a fence across your path, and you can’t walk through it', () => {
+    const g = quiet('ancap');
+    g.weapons = [];
+    const n = spawnEnemy(g, 'nimby', -300, 0);
+    n.speed = 0;
+    n.timer = NIMBY.every;
+    step(g, { x: 1, y: 0 });
+    expect(g.walls).toHaveLength(1);
+    const wall = g.walls[0];
+    expect((wall.x1 + wall.x2) / 2).toBeGreaterThan(g.player.x + 50); // ahead of you
+    n.timer = -999;
+    run(g, 2, { x: 1, y: 0 });
+    expect(g.player.x).toBeLessThan((wall.x1 + wall.x2) / 2); // stopped at the fence
+    run(g, NIMBY.life, { x: 0, y: 0 });
+    expect(g.walls).toHaveLength(0); // and it comes down eventually
+  });
+
+  it('Marx throws hammers and sickles, and calls up the workers', () => {
+    const g = quiet('ancap');
+    g.weapons = [];
+    g.player.hp = g.player.maxHp = 1e6;
+    const m = spawnEnemy(g, 'marx', 400, 0);
+    m.speed = 0;
+    m.timer = MARX.every;
+    step(g, still);
+    expect(g.foeShots.filter((b) => b.kind === 'hammer' || b.kind === 'sickle')).toHaveLength(MARX.volley);
+    m.summon = MARX.summonEvery;
+    step(g, still);
+    expect(g.enemies.filter((e) => e.type === 'communist')).toHaveLength(MARX.summon);
+    m.hp = 1;
+    g.weapons = [{ id: 'nein', level: 5, cooldown: 0, angle: 0, lastHit: {} }];
+    m.x = 60;
+    run(g, 0.2);
+    expect(g.marxKills).toBe(1);
+    expect(g.pickups.some((pk) => pk.kind === 'chest') || g.level > 2).toBe(true); // dropped (or already picked up)
+  });
+
+  it('the vault starts money printers that keep printing statists until smashed', () => {
+    const g = newGame(2, 'ancap', { map: 'vault' });
+    g.spawnAcc = -1e9;
+    g.weapons = [];
+    g.player.hp = g.player.maxHp = 1e6;
+    g.time = PRINTER.first - 0.01;
+    step(g, still);
+    const printer = g.enemies.find((e) => e.type === 'printer')!;
+    expect(printer).toBeTruthy();
+    g.spawnAcc = -1e9;
+    run(g, PRINTER.keynesianEvery + 0.5);
+    expect(g.enemies.filter((e) => e.type === 'stimulus').length).toBeGreaterThanOrEqual(2);
+    expect(g.enemies.some((e) => e.type === 'keynesian')).toBe(true);
+    expect(Math.hypot(printer.x - g.player.x, printer.y - g.player.y)).toBeGreaterThan(300); // it stays put
+    expect(newGame(2, 'ancap', { map: 'vault' }).mods.gold).toBeCloseTo(MAPS.vault.gold);
+    // Not on the other maps.
+    const s = newGame(2, 'ancap');
+    s.time = PRINTER.first + 1;
+    step(s, still);
+    expect(s.enemies.some((e) => e.type === 'printer')).toBe(false);
+  });
+
+  it('every map runs its own schedule to 15:00 and has its own mix', () => {
+    for (const map of Object.values(MAPS)) {
+      expect(map.schedule.every((e, i, a) => i === 0 || e.at > a[i - 1].at)).toBe(true);
+      expect(map.schedule.at(-1)!.at).toBeLessThan(RUN_LENGTH);
+      expect(map.schedule.some((e) => e.kind === 'boss' && e.boss === 'marx')).toBe(true);
+    }
+    const vienna = newGame(1, 'ancap', { map: 'vienna' });
+    const streets = newGame(1, 'ancap');
+    expect(spawnWeights(vienna, 130).some(([id]) => id === 'technocrat')).toBe(true);
+    expect(spawnWeights(streets, 130).some(([id]) => id === 'technocrat')).toBe(false);
+  });
+});
+
 describe('the bomb', () => {
   it('you start with one; it flattens everything nearby, pops balloons, and winds you', () => {
     const g = quiet('ancap');
@@ -376,7 +465,7 @@ describe('the bomb', () => {
     const crowd = [0, 1, 2, 3, 4, 5].map((k) => spawnEnemy(g, k % 2 ? 'fascist' : 'keynesian', Math.cos(k) * 250, Math.sin(k) * 250));
     const far = spawnEnemy(g, 'communist', 900, 0);
     const bank = spawnEnemy(g, 'bank', -300, 0);
-    g.foeShots.push({ x: 100, y: 0, vx: 0, vy: 0, radius: 11, damage: 12, life: 4 });
+    g.foeShots.push({ kind: 'balloon', x: 100, y: 0, vx: 0, vy: 0, radius: 11, damage: 12, life: 4 });
     step(g, { x: 1, y: 0, bomb: true });
     expect(crowd.every((e) => e.dead)).toBe(true);
     expect(far.dead).toBe(false);

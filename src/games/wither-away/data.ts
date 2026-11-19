@@ -8,7 +8,7 @@ export type WeaponId =
   | 'goldbars' | 'autoshotgun' | 'm249' | 'nein3'
   | 'hand' | 'signal' | 'laffer' | 'nap' | 'destruction' | 'happening';
 export type PassiveId = 'property' | 'timepref' | 'division' | 'compound' | 'freetrade' | 'healthcare' | 'sound' | 'exit';
-export type EnemyId = 'communist' | 'socialist' | 'keynesian' | 'stimulus' | 'fascist' | 'taxman' | 'bank';
+export type EnemyId = 'communist' | 'socialist' | 'keynesian' | 'stimulus' | 'fascist' | 'taxman' | 'technocrat' | 'nimby' | 'bank' | 'marx' | 'printer';
 
 export interface CharacterDef {
   id: CharacterId;
@@ -218,23 +218,86 @@ export const ENEMIES: Record<EnemyId, EnemyDef> = {
   stimulus: { id: 'stimulus', name: 'Stimulus', hp: 6, speed: 92, damage: 4, radius: 11, xp: 1, note: 'Small, fast, and borrowed.' },
   fascist: { id: 'fascist', name: 'Fascistball', hp: 28, speed: 50, damage: 7, radius: 17, xp: 3, note: 'Marches in squads, stops to wind up (watch for the “!”), then charges.' },
   taxman: { id: 'taxman', name: 'Taxmanball', hp: 20, speed: 100, damage: 5, radius: 15, xp: 3, note: 'Fast. Grabs your XP before you can. Kill him to get it back.' },
-  bank: { id: 'bank', name: 'The Central Bank', hp: 2400, speed: 46, damage: 20, radius: 50, xp: 80, note: 'Prints inflation balloons and stimulus. Arrives at 5:00.' },
+  technocrat: { id: 'technocrat', name: 'Technocratball', hp: 18, speed: 72, damage: 5, radius: 15, xp: 3, note: 'Keeps his distance and fires expert opinions at you. Keep moving.' },
+  nimby: { id: 'nimby', name: 'NIMBYball', hp: 26, speed: 60, damage: 6, radius: 16, xp: 3, note: 'Plants picket fences across your path. Not in his back yard, and not in your way out either.' },
+  bank: { id: 'bank', name: 'The Central Bank', hp: 2400, speed: 46, damage: 20, radius: 50, xp: 80, note: 'Prints inflation balloons and stimulus.' },
+  marx: { id: 'marx', name: 'Marxball', hp: 3200, speed: 42, damage: 22, radius: 48, xp: 100, note: 'The old man himself. Throws hammers and sickles, and calls the workers of the world to unite.' },
+  printer: { id: 'printer', name: 'Money Printer', hp: 420, speed: 0, damage: 4, radius: 32, xp: 25, note: 'Only in the vault: keeps printing statists until you smash it.' },
 };
+
+/** Bosses (no knockback, their own health bar, never moved round in front of you), and things that don't walk. */
+export const BOSSES: EnemyId[] = ['bank', 'marx'];
+export const STATIONARY: EnemyId[] = ['printer'];
+
+export const TECHNOCRAT = { range: 300, every: 2.8, speed: 250, damage: 7, radius: 7 };
+export const NIMBY = { every: 6.5, range: 380, ahead: 110, length: 130, life: 9, maxWalls: 24 };
+export const MARX = { every: 2.4, volley: 3, spread: 0.32, speed: 230, damage: 14, summonEvery: 8, summon: 6 };
+export const PRINTER = { stimulusEvery: 3, keynesianEvery: 9, wakeRange: 900, every: 50, first: 20, max: 3 };
 
 /** How long a run lasts (seconds). */
 export const RUN_LENGTH = 900;
 
-/** The set pieces: revolutions (a ring of communists closing in) and the Central Bank, twice. */
-export type ScheduledEvent = { at: number; kind: 'revolution'; count: number } | { at: number; kind: 'boss'; hp: number };
-export const SCHEDULE: ScheduledEvent[] = [
-  { at: 150, kind: 'revolution', count: 32 },
-  { at: 300, kind: 'boss', hp: 1 },
-  { at: 450, kind: 'revolution', count: 48 },
-  // Bailed out, and back with twice the reserves.
-  { at: 600, kind: 'boss', hp: 2.2 },
-  { at: 750, kind: 'revolution', count: 64 },
-];
-/** When the first Central Bank arrives. */
+/** The set pieces: revolutions (a ring of communists closing in) and the bosses. */
+export type ScheduledEvent = { at: number; kind: 'revolution'; count: number } | { at: number; kind: 'boss'; boss: 'bank' | 'marx'; hp: number };
+
+export type MapId = 'streets' | 'vienna' | 'vault';
+
+export interface MapDef {
+  id: MapId;
+  name: string;
+  icon: string;
+  blurb: string;
+  schedule: ScheduledEvent[];
+  /** More (or fewer) of some statists, and how soon the Technocrats turn up. */
+  weights: Partial<Record<EnemyId, number>>;
+  technocratsFrom: number;
+  /** Bitcoin multiplier: the harder maps pay more. */
+  gold: number;
+  /** The vault's money printers. */
+  printers: boolean;
+}
+
+const rev = (at: number, count: number): ScheduledEvent => ({ at, kind: 'revolution', count });
+const boss = (at: number, b: 'bank' | 'marx', hp = 1): ScheduledEvent => ({ at, kind: 'boss', boss: b, hp });
+
+export const MAPS: Record<MapId, MapDef> = {
+  streets: {
+    id: 'streets',
+    name: 'Ancapistan Streets',
+    icon: '🏙️',
+    blurb: 'The city at night. The Central Bank at 5:00, Marx himself at 10:00.',
+    schedule: [rev(150, 32), boss(300, 'bank'), rev(450, 48), boss(600, 'marx'), rev(750, 64)],
+    weights: {},
+    technocratsFrom: 200,
+    gold: 1,
+    printers: false,
+  },
+  vienna: {
+    id: 'vienna',
+    name: 'Red Vienna',
+    icon: '🎻',
+    blurb: 'Cobbles, trams and the Ringstraße. More Social Democrats and Technocrats; Marx arrives early, at 5:00. +15% Bitcoin.',
+    schedule: [rev(150, 36), boss(300, 'marx'), rev(450, 52), boss(600, 'bank', 2.2), rev(750, 64)],
+    weights: { socialist: 1.8, technocrat: 1.5 },
+    technocratsFrom: 110,
+    gold: 1.15,
+    printers: false,
+  },
+  vault: {
+    id: 'vault',
+    name: 'The Federal Reserve Vault',
+    icon: '🏦',
+    blurb: 'Steel, cash and gold. Money printers keep printing statists until you smash them; the Central Bank comes twice, then Marx. +30% Bitcoin.',
+    schedule: [rev(150, 32), boss(300, 'bank'), rev(450, 48), boss(600, 'bank', 2.2), boss(750, 'marx', 1.4)],
+    weights: { keynesian: 1.5, stimulus: 1 },
+    technocratsFrom: 200,
+    gold: 1.3,
+    printers: true,
+  },
+};
+export const MAP_ORDER: MapId[] = ['streets', 'vienna', 'vault'];
+
+/** When the first boss arrives (on every map). */
 export const BOSS_AT = 300;
 /** How long before a revolution the warning goes up. */
 export const WARNING_TIME = 4;
