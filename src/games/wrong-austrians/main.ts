@@ -8,10 +8,12 @@ import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, type BallLook, type Eyes } from './ball.ts';
 import {
   active, type Advisor, advisorName, ask, backgroundCheck, beginCouncil, canFire, COUNCIL, crisisOf, enact, findPolicy, fire, type Game, IMPOSTORS, type Mark,
-  type Mode, newGame, nextQuarter, policyOf, QUARTERS, score, setMark, won,
+  type Mode, newGame, nextQuarter, policyOf, QUARTERS, score, setMark, won, canCheck, checksAllowed, termLength,
 } from './council.ts';
 import { crisisById, type Effect } from './crises.ts';
 import { type Side, sideOf } from './sides.ts';
+import { ACHIEVEMENTS, achievementById, earnedNow, normalizeUnlocked } from './achievements.ts';
+import { dailyFor, normalizeDailyBests, twistById } from './daily.ts';
 import { QUESTIONS } from './talk.ts';
 
 // ---------------------------------------------------------------------------
@@ -24,8 +26,9 @@ interface Meta {
   best: number;
   caught: number;
   wrong: number;
-  /** Terms won in mirror mode. */
+  /** Terms won in mirror mode, and daily terms finished. */
   mirrorWins: number;
+  dailies: number;
 }
 
 interface Save {
@@ -37,6 +40,9 @@ interface Save {
   /** Mirror mode opens after the first win; the side new terms are played on. */
   mirrorUnlocked: boolean;
   mode: Mode;
+  achievements: string[];
+  /** The best daily score, per date. */
+  dailyBests: Record<string, number>;
 }
 
 const slot = createSaveSlot<Save>({ game: 'wrong-austrians', version: 1 });
@@ -50,6 +56,12 @@ function gameFrom(raw: unknown): Game | null {
     if (!g || typeof g.seed !== 'number' || !g.rng || !Array.isArray(g.advisors) || g.advisors.length !== COUNCIL) return null;
     if (!Array.isArray(g.crises) || g.crises.some((id) => !crisisById(id))) return null;
     g.mode = g.mode === 'mirror' ? 'mirror' : 'ancap';
+    // Saves from before the daily term had one background check, as a yes/no.
+    const old = g as Game & { checkUsed?: boolean };
+    if (typeof g.checksUsed !== 'number') g.checksUsed = old.checkUsed ? 1 : 0;
+    delete old.checkUsed;
+    g.checked ??= [];
+    g.twist = twistById(g.twist)?.id ?? null;
     if ([...g.proposals, ...g.tabled].some((p) => !findPolicy(p.policy)) || g.pending.some((p) => !findPolicy(p.policy))) return null;
     // Saves from before mirror mode called the impostors "viennese".
     for (const a of g.advisors as (Advisor & { viennese?: boolean })[]) {
@@ -74,7 +86,10 @@ const save: Save = {
     caught: count(saved?.meta?.caught),
     wrong: count(saved?.meta?.wrong),
     mirrorWins: count(saved?.meta?.mirrorWins),
+    dailies: count(saved?.meta?.dailies),
   },
+  achievements: normalizeUnlocked(saved?.achievements),
+  dailyBests: normalizeDailyBests(saved?.dailyBests),
   mirrorUnlocked: saved?.mirrorUnlocked === true || count(saved?.meta?.wins) > 0,
   mode: 'ancap',
 };
@@ -91,6 +106,7 @@ const els = {
   hud: byId('hud'),
   overlay: byId('overlay'),
   mute: byId<HTMLButtonElement>('mute'),
+  toasts: byId('toasts'),
   home: byId<HTMLButtonElement>('home'),
 };
 
@@ -186,6 +202,7 @@ let picking: string | null = null;
 function render() {
   els.screen.replaceChildren();
   const g = save.game;
+  checkAchievements();
   renderHud();
   if (view === 'title' || !g) return renderTitle();
   if (g.phase === 'over') return renderEnd(g);
@@ -207,14 +224,22 @@ function renderHud() {
   };
   const { meters } = side();
   els.hud.append(
-    t('span', 'hud-q', `${g.mode === 'mirror' ? '🪞 ' : ''}${quarterLabel(Math.min(g.quarter, QUARTERS))} · ${Math.min(g.quarter, QUARTERS)}/${QUARTERS}`),
+    t('span', 'hud-q', `${g.mode === 'mirror' ? '🪞 ' : ''}${quarterLabel(Math.min(g.quarter, termLength(g)))} · ${Math.min(g.quarter, termLength(g))}/${termLength(g)}`),
     meter(meters.p[0], meters.p[1], g.prosperity),
     meter(meters.l[0], meters.l[1], g.liberty),
   );
-  if (!g.checkUsed && g.phase !== 'over') {
-    const chk = t('span', 'hud-check', '🔍 1');
-    chk.title = 'Background check: one per term (tap an advisor)';
+  const checks = checksAllowed(g) - g.checksUsed;
+  if (checks > 0 && g.phase !== 'over') {
+    const chk = t('span', 'hud-check', `🔍 ${checks}`);
+    chk.title = `Background check${checks === 1 ? '' : 's'} left this term (tap an advisor)`;
     els.hud.append(chk);
+  }
+  const twist = twistById(g.twist);
+  if (twist) {
+    const badge = t('span', 'hud-daily', `📅 ${twist.icon}`);
+    badge.title = `Daily term ${g.daily}: ${twist.name}. ${twist.description}`;
+    badge.setAttribute('aria-label', badge.title);
+    els.hud.append(badge);
   }
 }
 
@@ -257,6 +282,9 @@ function renderTitle() {
     buttons.append(button(`▶ Continue <small>${g.mode === 'mirror' ? '🪞 Mirror · ' : ''}${quarterLabel(g.quarter)} · ${gs.meters.p[0]}${g.prosperity} ${gs.meters.l[0]}${g.liberty}</small>`, 'big', () => go('game')));
     buttons.append(button(`New term <small>${save.mode === 'mirror' ? 'as Austria' : 'as Ancapball'}</small>`, 'big secondary', confirmNew));
   } else buttons.append(button(save.mode === 'mirror' ? '▶ Start a term as Austria' : '▶ Start a term', 'big', startGame));
+  const d = dailyFor(new Date());
+  buttons.append(button(`📅 Daily term <small>${d.twist.icon} ${d.twist.name}</small>`, 'big secondary', showDaily));
+  buttons.append(button(`🏅 Achievements <small>${save.achievements.length}/${ACHIEVEMENTS.length}</small>`, 'big secondary', showAchievements));
   buttons.append(button('📖 How to play', 'big secondary', showHowTo));
   buttons.append(button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wrong-austrians')));
   s.append(buttons);
@@ -457,13 +485,13 @@ function renderResult(g: Game) {
   s.append(t('h2', 'screen-title', '✍️ Enacted'));
   const card = h('div', 'enacted');
   card.append(t('b', '', pol.title), t('q', 'pitch', pol.pitch), effectChips(pol.now));
-  card.append(t('p', 'later', `Backed by ${names(g, last.backers)}. Its real effect lands ${pol.later.in === 1 ? 'next quarter' : 'in two quarters'}${g.quarter + pol.later.in > QUARTERS ? ', after your term (it still counts)' : ''}.`));
+  card.append(t('p', 'later', `Backed by ${names(g, last.backers)}. Its real effect lands ${pol.later.in === 1 ? 'next quarter' : 'in two quarters'}${g.quarter + pol.later.in > termLength(g) ? ', after your term (it still counts)' : ''}.`));
   s.append(card);
   if (g.firedThisQuarter !== null) {
     const a = g.advisors[g.firedThisQuarter];
     s.append(t('p', `fired-note ${a.impostor ? 'good' : 'bad'}`, `🔥 You fired ${a.name}. ${a.impostor ? side().firedNote.impostor : side().firedNote.loyal}`));
   }
-  s.append(button(g.quarter >= QUARTERS ? 'End the term ▶' : 'Next quarter ▶', 'big', () => {
+  s.append(button(g.quarter >= termLength(g) ? 'End the term ▶' : 'Next quarter ▶', 'big', () => {
     nextQuarter(g);
     if (g.news.some((n) => n.good === false)) play('bill');
     persist();
@@ -530,7 +558,8 @@ function openDossier(id: number) {
     const actions = h('div', 'actions');
     if (!a.fired && g.phase === 'council') {
       actions.append(button(canFire(g) ? '🔥 Fire' : '🔥 Fire <small>(one a quarter)</small>', 'big danger', () => confirmFire(id), !canFire(g)));
-      if (!g.checkUsed && !a.revealed) actions.append(button('🔍 Background check <small>once a term</small>', 'big secondary', () => doCheck(id)));
+      const left = checksAllowed(g) - g.checksUsed;
+      if (canCheck(g) && !a.revealed) actions.append(button(`🔍 Background check <small>${left === 1 ? 'one left this term' : `${left} left this term`}</small>`, 'big secondary', () => doCheck(id)));
     } else if (!a.fired && g.phase !== 'council') actions.append(t('p', 'muted', 'Firing and background checks happen in the council session.'));
     box.append(actions);
   });
@@ -598,6 +627,87 @@ function doCheck(id: number) {
   }, false);
 }
 
+// --- The daily term, achievements ---
+
+function showDaily() {
+  const d = dailyFor(new Date());
+  const best = save.dailyBests[d.key];
+  const playing = save.game?.daily === d.key && save.game.phase !== 'over';
+  openOverlay('📅 Daily term', (box) => {
+    const tw = h('p', 'daily-twist', '<span></span><b></b><small></small>');
+    tw.querySelector('span')!.textContent = d.twist.icon;
+    tw.querySelector('b')!.textContent = d.twist.name;
+    tw.querySelector('small')!.textContent = d.twist.description;
+    box.append(tw, h('p', '', `The same term for everyone today (${d.key}): the same council, the same impostors, the same crises. Always as Ancapball.${best !== undefined ? ` Your best today: <b>${best}</b> points.` : ''}`));
+    box.append(
+      button(playing ? '▶ Continue today’s term' : '▶ Play today’s term', 'big', () => {
+        if (playing) {
+          closeOverlay();
+          return go('game');
+        }
+        const start = () => {
+          save.game = newGame(d.seed, d.key, 'ancap', d.twist.id);
+          persist();
+          closeOverlay();
+          go('game');
+        };
+        if (!save.game || save.game.phase === 'over') return start();
+        openOverlay('Start the daily term?', (b2) => {
+          b2.append(t('p', '', 'Your current term ends here (it counts as a loss).'));
+          b2.append(
+            button('Yes, play the daily', 'big', () => {
+              if (save.game) record(save.game, true);
+              start();
+            }),
+            button('Keep governing', 'big secondary', closeOverlay),
+          );
+        });
+      }),
+    );
+  });
+}
+
+function showAchievements() {
+  openOverlay(`🏅 Achievements · ${save.achievements.length}/${ACHIEVEMENTS.length}`, (box) => {
+    const grid = h('div', 'achievement-grid');
+    for (const a of ACHIEVEMENTS) {
+      const got = save.achievements.includes(a.id);
+      const hidden = a.secret && !got;
+      const card = h('div', `achievement${got ? '' : ' locked'}`, '<span class="icon"></span><b></b><small></small>');
+      card.querySelector('.icon')!.textContent = hidden ? '❓' : a.icon;
+      card.querySelector('b')!.textContent = hidden ? 'Secret' : a.name;
+      card.querySelector('small')!.textContent = hidden ? 'Keep governing. You’ll know it when it happens.' : a.description;
+      grid.append(card);
+    }
+    box.append(grid);
+  });
+}
+
+/** Unlocks whatever the term (and the records) have earned since the last look. */
+function checkAchievements() {
+  const fresh = earnedNow(save.game, save.meta).filter((id) => !save.achievements.includes(id));
+  if (!fresh.length) return;
+  save.achievements.push(...fresh);
+  persist();
+  // A few at a time; a big haul (the end of a term) gets a summary instead of a wall of toasts.
+  const shown = fresh.length > 3 ? fresh.slice(0, 2) : fresh;
+  shown.forEach((id, i) => window.setTimeout(() => achievementToast(id), i * 700));
+  if (shown.length < fresh.length) window.setTimeout(() => achievementToast(null, fresh.length - shown.length), shown.length * 700);
+}
+
+/** One achievement's toast, or (with `more`) a summary of the rest. */
+function achievementToast(id: string | null, more = 0) {
+  const a = id ? achievementById(id) : null;
+  if (id && !a) return;
+  const toast = h('div', 'toast', '<span class="icon"></span><small>ACHIEVEMENT UNLOCKED</small><b></b>');
+  toast.querySelector('.icon')!.textContent = a ? a.icon : '🏅';
+  toast.querySelector('b')!.textContent = a ? a.name : `+${more} more (see 🏅 Achievements)`;
+  if (!a) toast.querySelector('small')!.textContent = 'AND';
+  els.toasts.append(toast);
+  window.setTimeout(() => toast.remove(), 4200);
+  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.045, 'triangle'), i * 0.07));
+}
+
 // --- The end ---
 
 function renderEnd(g: Game) {
@@ -607,6 +717,8 @@ function renderEnd(g: Game) {
   const s = h('section', `panel end ${won(g) ? 'won' : 'lost'}`);
   s.append(t('h2', 'end-title', title), t('p', 'pitch', line));
   s.append(h('p', 'score-line', `🏆 <b>${score(g)}</b> points <small>· ${sd.meters.p[0]} ${g.prosperity} · ${sd.meters.l[0]} ${g.liberty}</small>`));
+  const twist = twistById(g.twist);
+  if (g.daily && twist) s.append(t('p', 'meta', `📅 Daily term ${g.daily} · ${twist.icon} ${twist.name} · your best today: ${Math.max(save.dailyBests[g.daily] ?? 0, score(g))}`));
   if (unlockedMirror) s.append(h('p', 'unlocked', '🪞 <b>Mirror mode unlocked.</b> Play as Austria, who hired Austrian economists and got the Austrian School. Pick it on the title screen.'));
   if (g.afterTerm.length) {
     s.append(t('h3', 'section', '⏳ After your term'));
@@ -658,6 +770,10 @@ function record(g: Game, abandoned = false) {
     }
   }
   if (!abandoned) m.best = Math.max(m.best, score(g));
+  if (!abandoned && g.daily) {
+    m.dailies++;
+    save.dailyBests[g.daily] = Math.max(save.dailyBests[g.daily] ?? 0, score(g));
+  }
   m.caught += g.advisors.filter((a) => a.fired && a.impostor).length;
   m.wrong += g.advisors.filter((a) => a.fired && !a.impostor).length;
   persist();

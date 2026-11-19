@@ -733,6 +733,119 @@ q.pitch {
     margin: 6px 0;
 }
 
+/* --- Daily term, achievements, toasts --- */
+.hud-daily {
+    cursor: help;
+}
+
+.daily-twist {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: 12px;
+    border: var(--line);
+    border-radius: 12px;
+    background: var(--yellow);
+}
+
+.daily-twist span {
+    font-size: 36px;
+    line-height: 1;
+}
+
+.daily-twist b {
+    font: 900 22px var(--head);
+}
+
+.achievement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+    margin: 10px 0;
+    text-align: left;
+}
+
+.achievement {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: var(--line);
+    border-radius: 12px;
+    background: var(--yellow);
+}
+
+.achievement .icon {
+    grid-row: span 2;
+    font-size: 28px;
+}
+
+.achievement b {
+    font: 900 15px/1.15 var(--head);
+}
+
+.achievement small {
+    font-size: 13px;
+}
+
+.achievement.locked {
+    border-color: #b9b3a5;
+    background: #ebe6da;
+    color: var(--muted);
+}
+
+.achievement.locked .icon {
+    filter: grayscale(1);
+    opacity: 0.6;
+}
+
+.toasts {
+    position: fixed;
+    top: 64px;
+    left: 50%;
+    z-index: 50;
+    display: grid;
+    gap: 6px;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.toast {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
+    min-width: 240px;
+    padding: 8px 14px;
+    border: var(--line);
+    border-radius: 12px;
+    background: var(--yellow);
+    box-shadow: 4px 4px 0 var(--ink);
+    animation: toast-in 0.25s ease-out;
+}
+
+.toast .icon {
+    grid-row: span 2;
+    font-size: 26px;
+}
+
+.toast small {
+    font: 700 11px var(--head);
+    letter-spacing: 1px;
+}
+
+.toast b {
+    font: 900 16px var(--head);
+}
+
+@keyframes toast-in {
+    from {
+        transform: translateY(-12px);
+        opacity: 0;
+    }
+}
+
 /* --- The end --- */
 .end {
     text-align: center;

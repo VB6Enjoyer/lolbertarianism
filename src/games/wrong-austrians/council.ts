@@ -10,6 +10,7 @@
 
 import { type Crisis, CRISES, crisisById, type Effect, type Policy, policyById, type PolicyKind } from './crises.ts';
 
+import type { TwistId } from './daily.ts';
 import { MIRROR } from './mirror.ts';
 import { int, makeRng, next, pickOne, type Rng, shuffleInPlace } from './rng.ts';
 import { DODGES, type Face, FACES, FIRST_NAMES, type Hat, HATS, LINES, LINES_MIRROR, QUESTIONS, SNEAK_NEWS, SURNAMES } from './talk.ts';
@@ -123,8 +124,9 @@ export interface Game {
   offered: string[];
   questionsLeft: number;
   firedThisQuarter: number | null;
-  /** The one background check of the term. */
-  checkUsed: boolean;
+  /** Background checks used (one a term, two on a Double Check day), and on whom. */
+  checksUsed: number;
+  checked: number[];
   enacted: Enacted[];
   /** Everything on the record, for the dossiers: what was proposed, said, and what landed. */
   tabled: (Proposal & { quarter: number })[];
@@ -133,15 +135,16 @@ export interface Game {
   /** Bills (and payoffs) that land after the term ends. */
   afterTerm: News[];
   ending: Ending | null;
-  /** The daily term's date, if it is one. */
+  /** The daily term's date and twist, if it is one. */
   daily: string | null;
+  twist: TwistId | null;
 }
 
 // ---------------------------------------------------------------------------
 // Setting up
 // ---------------------------------------------------------------------------
 
-export function newGame(seed: number, daily: string | null = null, mode: Mode = 'ancap'): Game {
+export function newGame(seed: number, daily: string | null = null, mode: Mode = 'ancap', twist: TwistId | null = null): Game {
   const rng = makeRng(seed);
   const firsts = shuffleInPlace(rng, [...FIRST_NAMES]);
   const lasts = shuffleInPlace(rng, [...SURNAMES]);
@@ -162,8 +165,8 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     rng,
     quarter: 1,
     phase: 'briefing',
-    prosperity: START_METER,
-    liberty: START_METER,
+    prosperity: twist === 'lean-times' ? 40 : START_METER,
+    liberty: twist === 'lean-times' ? 40 : START_METER,
     advisors,
     crises: shuffleInPlace(rng, CRISES.map((c) => c.id)).slice(0, QUARTERS),
     proposals: [],
@@ -174,7 +177,8 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     offered: [],
     questionsLeft: QUESTIONS_PER_QUARTER,
     firedThisQuarter: null,
-    checkUsed: false,
+    checksUsed: 0,
+    checked: [],
     enacted: [],
     tabled: [],
     said: [],
@@ -182,12 +186,19 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     afterTerm: [],
     ending: null,
     daily,
+    twist,
   };
+  g.questionsLeft = questionsPer(g);
   startQuarter(g);
   return g;
 }
 
 export const active = (g: Game) => g.advisors.filter((a) => !a.fired);
+/** How long the term is, how many questions a quarter, how many background checks (the daily twists change them). */
+export const termLength = (g: Game) => (g.twist === 'snap-election' ? 6 : QUARTERS);
+export const questionsPer = (g: Game) => (g.twist === 'press-pass' ? 3 : QUESTIONS_PER_QUARTER);
+export const checksAllowed = (g: Game) => (g.twist === 'double-check' ? 2 : 1);
+export const canCheck = (g: Game) => g.phase === 'council' && g.checksUsed < checksAllowed(g);
 /** Any policy, either side's. */
 export function findPolicy(id: string): Policy | undefined {
   return policyById(id) ?? Object.values(MIRROR).flatMap((m) => m.policies).find((p) => p.id === id);
@@ -238,7 +249,7 @@ function startQuarter(g: Game) {
   const hit = scaled(crisis.hit, HIT_SCALE);
   apply(g, hit);
   g.news.push({ text: `${crisis.emoji} ${crisis.title}: ${crisis.text}`, effect: hit });
-  g.questionsLeft = QUESTIONS_PER_QUARTER;
+  g.questionsLeft = questionsPer(g);
   g.firedThisQuarter = null;
   g.offered = shuffleInPlace(g.rng, QUESTIONS.map((q) => q.id)).slice(0, 3);
   g.phase = 'briefing';
@@ -353,7 +364,9 @@ export function ask(g: Game, advisor: number, question: string): Answer | null {
   if (g.phase !== 'council' || !a || a.fired || !q || g.questionsLeft <= 0 || !g.offered.includes(question)) return null;
   if (g.answers.some((x) => x.advisor === advisor && x.question === question)) return null;
   const roll = next(g.rng);
-  const tone: Answer['tone'] = a.impostor ? (roll < 0.5 ? 'sound' : roll < 0.73 ? 'dodge' : 'slip') : roll < 0.87 ? 'sound' : 'dodge';
+  // Impostors bluff half the time; Loose Lips makes them slip more, Poker Face never.
+  const [bluff, dodge] = g.twist === 'loose-lips' ? [0.3, 0.45] : g.twist === 'poker-face' ? [0.5, 1] : [0.5, 0.73];
+  const tone: Answer['tone'] = a.impostor ? (roll < bluff ? 'sound' : roll < dodge ? 'dodge' : 'slip') : roll < 0.87 ? 'sound' : 'dodge';
   // "Sound" means sound for whoever's in charge: in mirror mode, the statist answer.
   const [loyal, slips] = g.mode === 'mirror' ? [q.slips, q.sound] : [q.sound, q.slips];
   const text = tone === 'sound' ? pickOne(g.rng, loyal) : tone === 'slip' ? pickOne(g.rng, slips) : pickOne(g.rng, DODGES);
@@ -387,8 +400,9 @@ export function fire(g: Game, id: number): boolean {
 /** The term's one background check: you learn what someone is. They don't know you looked. */
 export function backgroundCheck(g: Game, id: number): boolean {
   const a = g.advisors[id];
-  if (g.checkUsed || g.phase !== 'council' || !a || a.fired || a.revealed) return false;
-  g.checkUsed = true;
+  if (!canCheck(g) || !a || a.fired || a.revealed) return false;
+  g.checksUsed++;
+  g.checked.push(id);
   a.revealed = true;
   return true;
 }
@@ -413,7 +427,7 @@ export function enact(g: Game, policy: string): boolean {
 /** On to the next quarter (or the end of the term). */
 export function nextQuarter(g: Game) {
   if (g.phase !== 'result') return;
-  if (g.quarter >= QUARTERS) return endTerm(g, 'term');
+  if (g.quarter >= termLength(g)) return endTerm(g, 'term');
   g.quarter++;
   startQuarter(g);
 }
@@ -458,7 +472,7 @@ export function score(g: Game): number {
   const fired = g.advisors.filter((a) => a.fired);
   const caught = fired.filter((a) => a.impostor).length;
   const wrong = fired.length - caught;
-  const early = g.ending === 'purged' ? 15 * (QUARTERS - g.quarter) : 0;
+  const early = g.ending === 'purged' ? 15 * (termLength(g) - g.quarter) : 0;
   const base = won(g) ? 100 : 10 * (g.quarter - 1);
   return Math.max(0, Math.round(base + g.prosperity + g.liberty + 40 * caught - 25 * wrong + early));
 }

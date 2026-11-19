@@ -62,7 +62,8 @@ const SIDES: Record<Mode, Side> = {
         <li>🔥 <b>Fire</b> one advisor a quarter; you’ll find out what they were. Firing a real Austrian costs you. 🔍 One <b>background check</b> a term tells you about someone quietly.</li>
         <li>📋 Every quarter a Viennese stays on the council, they slip a regulation through: <b>−5 🗽 −2 📈</b> each, unsigned.</li>
         <li>🏁 Lose if 📈 Prosperity or 🗽 Liberty hits 0, or if the Viennese outnumber the real Austrians. Fire both Viennese to win early; survive ${q} quarters to win anyway.</li>
-        <li>🚩 Tap an advisor for their record, and to mark them ✅ trusted or 🚩 suspect.</li>`,
+        <li>🚩 Tap an advisor for their record, and to mark them ✅ trusted or 🚩 suspect.</li>
+        <li>📅 The <b>daily term</b> is the same for everyone each day, with a twist, and a best score to beat. 🏅 Achievements on the title screen.</li>`,
     endings: {
       term: ['TWO YEARS. STILL STATELESS. 😎', 'You made it through the term. Not everyone on the council was who they said they were, but the country survived them.'],
       purged: ['COUNCIL PURGED 🦅', 'Only real Austrians left. The rest of the term runs itself, mostly by abolishing things.'],
@@ -104,7 +105,8 @@ const SIDES: Record<Mode, Side> = {
         <li>🔥 <b>Fire</b> one advisor a quarter; you’ll find out what they were. Firing a loyal Viennese costs you. 🔍 One <b>background check</b> a term.</li>
         <li>🏷️ Every quarter an ancap stays on the council, something gets quietly privatized, and the voters blame you: <b>−5 🗳️ −2 🏛️</b> each, unsigned.</li>
         <li>🏁 Lose if 🏛️ the State or 🗳️ Approval hits 0, or if the ancaps outnumber the loyal Viennese. Fire both ancaps to win early; survive ${q} quarters to win anyway.</li>
-        <li>🚩 Tap an advisor for their record, and to mark them ✅ trusted or 🚩 suspect.</li>`,
+        <li>🚩 Tap an advisor for their record, and to mark them ✅ trusted or 🚩 suspect.</li>
+        <li>📅 The <b>daily term</b> is the same for everyone each day, with a twist, and a best score to beat. 🏅 Achievements on the title screen.</li>`,
     endings: {
       term: ['TWO YEARS. STILL BUREAUCRATIC. 🇦🇹', 'You made it through the term. The forms are in triplicate, as they should be.'],
       purged: ['COUNCIL PURGED 🇦🇹', 'Only loyal Viennese left. The rest of the term runs itself, mostly by founding committees.'],

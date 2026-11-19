@@ -956,7 +956,7 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
 - Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
   outcomes, slips and accusations ~69%, random clicking ~11%.
-- Next: a daily term, achievements, sharing, music, and a pass-the-phone party mode.
+- Next: sharing, music, and a pass-the-phone party mode.
 
 #### Mirror mode ✅
 
@@ -972,3 +972,18 @@ against bot advisors (`src/games/wrong-austrians/`).
   council that turns yellow and black when unmasked (`sides.ts` holds each side's words).
 - Plays the same as the original with the bots (savvy 99%, outcome-only 68%, random 9%).
 - The impostor role is now `impostor` in the engine (old saves are converted on load).
+
+#### The daily term and achievements ✅
+
+- The daily term (`daily.ts`): the same seed for everyone each day, always as Ancapball, with one of
+  six twists cycling day by day: Loose Lips (the impostors slip more), Poker Face (they never slip),
+  Snap Election (6 quarters), Press Pass (3 questions a quarter), Double Check (two background
+  checks) and Lean Times (both meters start at 40). A best score per day; the twist shows in the
+  top bar. With the bots, the outcome-only player wins 46% (Poker Face) to 87% (Loose Lips).
+- 25 achievements (`achievements.ts`), 4 of them secret, checked after every move: firing (Under
+  the Paint, Purge, Clean Sweep, Blitz), detective work (Interrogator, Gotcha, Paper Trail, Good
+  Judge of Character), running the country (Sound Money, Boom Without Bust, Mises Would Be Proud,
+  Hayek Would Be Prouder), both sides and the daily, and secrets (Oops, I Thought I Hired Austrian
+  Economists, Nationalize Oil, Privatize Vienna plz). Thresholds tuned against bot terms so each
+  one can be earned. Toasts as they unlock (a summary when a term ends with a big haul).
+

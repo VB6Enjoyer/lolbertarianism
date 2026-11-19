@@ -2,7 +2,7 @@
 // can tell a disguised statist policy on sight); a naive one only goes by what happens: the bills
 // that land, the slips in the interviews, and who accuses whom. A random one just clicks.
 
-import { active, ask, backgroundCheck, beginCouncil, canFire, enact, fire, type Game, nextQuarter, policyOf } from './council.ts';
+import { active, ask, backgroundCheck, beginCouncil, canCheck, canFire, enact, fire, type Game, nextQuarter, policyOf } from './council.ts';
 import { next, pickOne } from './rng.ts';
 
 export type BotStyle = 'savvy' | 'naive' | 'random';
@@ -56,7 +56,7 @@ function councilTurn(g: Game, style: BotStyle) {
   const s = suspicion(g, style);
   const ranked = [...s].sort((a, b) => b[1] - a[1]);
   // The background check, on the top suspect, once there's something to go on.
-  if (!g.checkUsed && g.quarter >= 2 && ranked[0] && ranked[0][1] < 99) backgroundCheck(g, ranked[0][0]);
+  if (canCheck(g) && g.quarter >= 2 && ranked[0] && ranked[0][1] < 99) backgroundCheck(g, ranked[0][0]);
   const after = [...suspicion(g, style)].sort((a, b) => b[1] - a[1]);
   const threshold = style === 'savvy' ? 3 : 3.5;
   if (canFire(g) && after[0] && after[0][1] >= threshold) fire(g, after[0][0]);
