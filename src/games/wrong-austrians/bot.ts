@@ -29,11 +29,11 @@ export function suspicion(g: Game, style: BotStyle): Map<number, number> {
       // Accusing someone who turned out real, or defending someone who turned out Viennese, is a tell.
       const about = t.about === null ? null : g.advisors[t.about];
       if (t.from === a.id && about?.revealed) {
-        if (t.kind === 'accuse' && !about.viennese) x += 2.5;
-        if (t.kind === 'defend' && about.viennese) x += 3;
+        if (t.kind === 'accuse' && !about.impostor) x += 2.5;
+        if (t.kind === 'defend' && about.impostor) x += 3;
       }
     }
-    if (a.revealed) x = a.viennese ? 99 : -99;
+    if (a.revealed) x = a.impostor ? 99 : -99;
     s.set(a.id, x);
   }
   return s;

@@ -255,10 +255,38 @@ button {
     font-size: 14px;
 }
 
+/* --- Mode tabs (once mirror mode is open) --- */
+.mode-tabs {
+    display: flex;
+    gap: 6px;
+    margin: -6px 0 14px;
+}
+
+.mode-tab {
+    padding: 8px 16px;
+    border: var(--line);
+    border-radius: 999px;
+    background: var(--paper);
+    font: 700 15px var(--head);
+    cursor: pointer;
+}
+
+.mode-tab.picked {
+    background: var(--ink);
+    color: #fff;
+}
+
+.unlocked {
+    padding: 10px 14px;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    background: var(--yellow);
+}
+
 /* --- The council --- */
 .council {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     margin-bottom: 14px;
 }
@@ -279,8 +307,10 @@ button {
     background: #fff;
 }
 
-.advisor .name {
+.advisor .name,
+.reveal-card b {
     font: 700 14px/1.1 var(--head);
+    overflow-wrap: anywhere;
 }
 
 .advisor .tag {
@@ -301,7 +331,7 @@ button {
     background: #e6e1d4;
 }
 
-.advisor.is-viennese .tag {
+.advisor.is-impostor .tag {
     color: var(--red);
     font-weight: 700;
 }
@@ -736,7 +766,7 @@ q.pitch {
 
 .reveal-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -750,7 +780,7 @@ q.pitch {
     background: #fff;
 }
 
-.reveal-card.viennese {
+.reveal-card.impostor {
     border-color: var(--red);
 }
 
@@ -812,8 +842,13 @@ q.pitch {
         width: 54px;
     }
 
-    .advisor .name {
+    .advisor .name,
+    .reveal-card b {
         font-size: 11px;
+    }
+
+    .reveal-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .advisor .tag,

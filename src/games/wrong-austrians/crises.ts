@@ -37,9 +37,9 @@ export interface Crisis {
 type Line = [title: string, pitch: string, outcome: string];
 
 // The usual numbers for each kind; a crisis can nudge them.
-const sound = (id: string, [title, pitch, outcome]: Line, now: Effect = { p: -2 }, later: Policy['later'] = { p: 8, l: 2, in: 1 }): Policy => ({ id, kind: 'sound', title, pitch, outcome, now, later });
-const disguised = (id: string, [title, pitch, outcome]: Line, now: Effect = { p: 5 }, later: Policy['later'] = { p: -11, l: -4, in: 1 }): Policy => ({ id, kind: 'disguised', title, pitch, outcome, now, later });
-const blatant = (id: string, [title, pitch, outcome]: Line, now: Effect = { p: 6, l: -8 }, later: Policy['later'] = { p: -9, l: -3, in: 1 }): Policy => ({ id, kind: 'blatant', title, pitch, outcome, now, later });
+export const sound = (id: string, [title, pitch, outcome]: Line, now: Effect = { p: -2 }, later: Policy['later'] = { p: 8, l: 2, in: 1 }): Policy => ({ id, kind: 'sound', title, pitch, outcome, now, later });
+export const disguised = (id: string, [title, pitch, outcome]: Line, now: Effect = { p: 5 }, later: Policy['later'] = { p: -11, l: -4, in: 1 }): Policy => ({ id, kind: 'disguised', title, pitch, outcome, now, later });
+export const blatant = (id: string, [title, pitch, outcome]: Line, now: Effect = { p: 6, l: -8 }, later: Policy['later'] = { p: -9, l: -3, in: 1 }): Policy => ({ id, kind: 'blatant', title, pitch, outcome, now, later });
 
 export const CRISES: Crisis[] = [
   {

@@ -7,10 +7,11 @@ import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, type BallLook, type Eyes } from './ball.ts';
 import {
-  active, type Advisor, advisorName, ask, backgroundCheck, beginCouncil, canFire, COUNCIL, crisisOf, enact, fire, type Game, type Mark, newGame, nextQuarter,
-  policyOf, QUARTERS, score, setMark, VIENNESE, won,
+  active, type Advisor, advisorName, ask, backgroundCheck, beginCouncil, canFire, COUNCIL, crisisOf, enact, findPolicy, fire, type Game, IMPOSTORS, type Mark,
+  type Mode, newGame, nextQuarter, policyOf, QUARTERS, score, setMark, won,
 } from './council.ts';
-import { crisisById, type Effect, policyById } from './crises.ts';
+import { crisisById, type Effect } from './crises.ts';
+import { type Side, sideOf } from './sides.ts';
 import { QUESTIONS } from './talk.ts';
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,8 @@ interface Meta {
   best: number;
   caught: number;
   wrong: number;
+  /** Terms won in mirror mode. */
+  mirrorWins: number;
 }
 
 interface Save {
@@ -31,6 +34,9 @@ interface Save {
   /** The seed of the last term already counted in the records. */
   recorded: number | null;
   meta: Meta;
+  /** Mirror mode opens after the first win; the side new terms are played on. */
+  mirrorUnlocked: boolean;
+  mode: Mode;
 }
 
 const slot = createSaveSlot<Save>({ game: 'wrong-austrians', version: 1 });
@@ -43,7 +49,13 @@ function gameFrom(raw: unknown): Game | null {
     const g = raw as Game;
     if (!g || typeof g.seed !== 'number' || !g.rng || !Array.isArray(g.advisors) || g.advisors.length !== COUNCIL) return null;
     if (!Array.isArray(g.crises) || g.crises.some((id) => !crisisById(id))) return null;
-    if ([...g.proposals, ...g.tabled].some((p) => !policyById(p.policy)) || g.pending.some((p) => !policyById(p.policy))) return null;
+    g.mode = g.mode === 'mirror' ? 'mirror' : 'ancap';
+    if ([...g.proposals, ...g.tabled].some((p) => !findPolicy(p.policy)) || g.pending.some((p) => !findPolicy(p.policy))) return null;
+    // Saves from before mirror mode called the impostors "viennese".
+    for (const a of g.advisors as (Advisor & { viennese?: boolean })[]) {
+      if (typeof a.impostor !== 'boolean') a.impostor = a.viennese === true;
+      delete a.viennese;
+    }
     if (!(g.quarter >= 1 && g.quarter <= QUARTERS)) return null;
     return g;
   } catch {
@@ -61,8 +73,12 @@ const save: Save = {
     best: count(saved?.meta?.best),
     caught: count(saved?.meta?.caught),
     wrong: count(saved?.meta?.wrong),
+    mirrorWins: count(saved?.meta?.mirrorWins),
   },
+  mirrorUnlocked: saved?.mirrorUnlocked === true || count(saved?.meta?.wins) > 0,
+  mode: 'ancap',
 };
+save.mode = saved?.mode === 'mirror' && save.mirrorUnlocked ? 'mirror' : 'ancap';
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -126,9 +142,13 @@ renderMute();
 // Shared bits
 // ---------------------------------------------------------------------------
 
-/** How an advisor looks right now: the eagle until you know better. */
+/** The side being played: the current term's, or the one picked for new terms. */
+const side = (): Side => sideOf(view === 'game' && save.game ? save.game.mode : save.mode);
+
+/** How an advisor looks right now: the council's colours until you know better. */
 function lookOf(a: Advisor, eyes: Eyes = 'normal'): BallLook {
-  return { flag: a.revealed && a.viennese ? 'austria' : 'ancap', hat: a.hat, face: a.face, eyes: a.fired ? (a.viennese ? 'shifty' : 'shocked') : eyes };
+  const sd = side();
+  return { flag: a.revealed && a.impostor ? sd.impostorFlag : sd.council, hat: a.hat, face: a.face, eyes: a.fired ? (a.impostor ? 'shifty' : 'shocked') : eyes };
 }
 
 function ball(look: BallLook, className = ''): HTMLElement {
@@ -140,10 +160,11 @@ function ball(look: BallLook, className = ''): HTMLElement {
 const MARK_ICON: Record<Mark, string> = { none: '🤔', trust: '✅', suspect: '🚩' };
 const MARK_LABEL: Record<Mark, string> = { none: 'Unsure', trust: 'Trusted', suspect: 'Suspect' };
 
-/** "+3 📈 −5 🗽" */
+/** "+3 📈 −5 🗽" (or 🏛️ and 🗳️ in mirror mode) */
 function effectChips(e: Effect): HTMLElement {
   const box = h('span', 'effects');
-  for (const [k, icon] of [['p', '📈'], ['l', '🗽']] as const) {
+  const { meters } = side();
+  for (const [k, icon] of [['p', meters.p[0]], ['l', meters.l[0]]] as const) {
     const v = e[k] ?? 0;
     if (!v) continue;
     box.append(t('span', `chip ${v > 0 ? 'up' : 'down'}`, `${v > 0 ? '+' : '−'}${Math.abs(v)} ${icon}`));
@@ -184,10 +205,11 @@ function renderHud() {
     m.setAttribute('aria-label', `${label}: ${v}`);
     return m;
   };
+  const { meters } = side();
   els.hud.append(
-    t('span', 'hud-q', `${quarterLabel(Math.min(g.quarter, QUARTERS))} · ${Math.min(g.quarter, QUARTERS)}/${QUARTERS}`),
-    meter('📈', 'Prosperity', g.prosperity),
-    meter('🗽', 'Liberty', g.liberty),
+    t('span', 'hud-q', `${g.mode === 'mirror' ? '🪞 ' : ''}${quarterLabel(Math.min(g.quarter, QUARTERS))} · ${Math.min(g.quarter, QUARTERS)}/${QUARTERS}`),
+    meter(meters.p[0], meters.p[1], g.prosperity),
+    meter(meters.l[0], meters.l[1], g.liberty),
   );
   if (!g.checkUsed && g.phase !== 'over') {
     const chk = t('span', 'hud-check', '🔍 1');
@@ -204,31 +226,43 @@ function renderTitle() {
     c.append(t('div', 'bubble', text), ball(look));
     return c;
   };
+  const sd = side();
+  const [l1, l2, l3, you] = sd.comic;
   panel.append(
-    say('Cut all taxes to 0%', { flag: 'ancap', eyes: 'normal', hat: 'top', face: 'monocle' }),
-    say('Privatize Vienna plz', { flag: 'ancap', eyes: 'normal', face: 'glasses' }),
-    say('Nationalize oil', { flag: 'ancap', eyes: 'shifty', hat: 'tyrolean' }, 'sus'),
-    say('Wait. Why are Austrian economists suddenly statists?', { flag: 'player', eyes: 'happy', flip: true }, 'you'),
+    say(l1, { flag: sd.council, eyes: 'normal', hat: 'top', face: 'monocle' }),
+    say(l2, { flag: sd.council, eyes: 'normal', face: 'glasses' }),
+    say(l3, { flag: sd.council, eyes: 'shifty', hat: 'tyrolean' }, 'sus'),
+    say(you, { flag: sd.player, eyes: 'happy', flip: true }, 'you'),
   );
-  s.append(t('h1', 'title', 'I THOUGHT I HIRED AUSTRIAN ECONOMISTS'), panel);
-  s.append(
-    t(
-      'p',
-      'pitch',
-      `You’re Ancapball, two years in office, with a council of ${COUNCIL} economists. ${VIENNESE} of them aren’t from the Austrian School at all: they’re just from Austria, and they want the state to grow. Find them before they regulate everything.`,
-    ),
-  );
+  s.append(t('h1', 'title', 'I THOUGHT I HIRED AUSTRIAN ECONOMISTS'));
+  if (save.mirrorUnlocked) {
+    const tabs = h('div', 'mode-tabs');
+    for (const [mode, label] of [['ancap', '🦅 Ancapball'], ['mirror', '🪞 Mirror: Austria']] as [Mode, string][]) {
+      const b = button(label, `mode-tab${save.mode === mode ? ' picked' : ''}`, () => {
+        save.mode = mode;
+        persist();
+        play('click');
+        render();
+      });
+      b.setAttribute('aria-pressed', String(save.mode === mode));
+      tabs.append(b);
+    }
+    s.append(tabs);
+  }
+  s.append(panel, t('p', 'pitch', sd.pitch(COUNCIL, IMPOSTORS)));
   const buttons = h('div', 'menu');
   const g = save.game;
   if (g && g.phase !== 'over') {
-    buttons.append(button(`▶ Continue <small>${quarterLabel(g.quarter)} · 📈${g.prosperity} 🗽${g.liberty}</small>`, 'big', () => go('game')));
-    buttons.append(button('New term', 'big secondary', confirmNew));
-  } else buttons.append(button('▶ Start a term', 'big', startGame));
+    const gs = sideOf(g.mode);
+    buttons.append(button(`▶ Continue <small>${g.mode === 'mirror' ? '🪞 Mirror · ' : ''}${quarterLabel(g.quarter)} · ${gs.meters.p[0]}${g.prosperity} ${gs.meters.l[0]}${g.liberty}</small>`, 'big', () => go('game')));
+    buttons.append(button(`New term <small>${save.mode === 'mirror' ? 'as Austria' : 'as Ancapball'}</small>`, 'big secondary', confirmNew));
+  } else buttons.append(button(save.mode === 'mirror' ? '▶ Start a term as Austria' : '▶ Start a term', 'big', startGame));
   buttons.append(button('📖 How to play', 'big secondary', showHowTo));
   buttons.append(button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wrong-austrians')));
   s.append(buttons);
   const m = save.meta;
-  if (m.terms) s.append(t('p', 'meta', `${m.terms} term${m.terms === 1 ? '' : 's'} · ${m.wins} won · best ${m.best} points · ${m.caught} Viennese caught, ${m.wrong} real Austrians fired by mistake`));
+  if (m.terms) s.append(t('p', 'meta', `${m.terms} term${m.terms === 1 ? '' : 's'} · ${m.wins} won${m.mirrorWins ? ` (${m.mirrorWins} as Austria)` : ''} · best ${m.best} points · ${m.caught} impostors caught, ${m.wrong} loyal advisors fired by mistake`));
+  if (!save.mirrorUnlocked) s.append(t('p', 'meta', '🔒 Win a term to unlock mirror mode: play as Austria.'));
   els.screen.append(s);
 }
 
@@ -240,7 +274,7 @@ function go(to: 'title' | 'game') {
 }
 
 function startGame() {
-  save.game = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0);
+  save.game = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, null, save.mode);
   persist();
   go('game');
 }
@@ -262,19 +296,7 @@ function confirmNew() {
 function showHowTo() {
   openOverlay('How to play', (box) => {
     box.append(
-      h(
-        'ul',
-        'how',
-        `<li>🏛️ Your council has <b>${COUNCIL} economists</b>. <b>${VIENNESE}</b> are secretly <b>from Vienna</b>: Austrian, but not the Austrian School. They want the state to grow.</li>
-        <li>📰 Each quarter a <b>crisis</b> hits. Everyone proposes a fix. Real Austrians propose sound policy; the Viennese usually dress up something statist so it sounds market-friendly.</li>
-        <li>⏳ <b>Bad policy looks good now and sends the bill later</b>; sound policy often stings now and pays off later. When a bill lands, the news says who backed it.</li>
-        <li>❓ Ask <b>2 questions</b> a quarter. Real Austrians answer like Mises would. The Viennese bluff, and sometimes slip. Anyone might dodge.</li>
-        <li>🗣️ The council <b>accuses each other</b>. The real ones go on the evidence. The Viennese frame the real ones, and cover for each other.</li>
-        <li>🔥 <b>Fire</b> one advisor a quarter; you’ll find out what they were. Firing a real Austrian costs you. 🔍 One <b>background check</b> a term tells you about someone quietly.</li>
-        <li>📋 Every quarter a Viennese stays on the council, they slip a regulation through: <b>−5 🗽 −2 📈</b> each, unsigned.</li>
-        <li>🏁 Lose if 📈 Prosperity or 🗽 Liberty hits 0, or if the Viennese outnumber the real Austrians. Fire both Viennese to win early; survive ${QUARTERS} quarters to win anyway.</li>
-        <li>🚩 Tap an advisor for their record, and to mark them ✅ trusted or 🚩 suspect.</li>`,
-      ),
+      h('ul', 'how', side().how(COUNCIL, IMPOSTORS, QUARTERS)),
       button('Got it', 'big', closeOverlay),
     );
   });
@@ -285,9 +307,10 @@ function showHowTo() {
 function councilRow(g: Game): HTMLElement {
   const row = h('div', 'council');
   for (const a of g.advisors) {
-    const card = button('', `advisor${a.fired ? ' fired' : ''}${a.revealed ? (a.viennese ? ' is-viennese' : ' is-real') : ''} mark-${a.mark}`, () => openDossier(a.id));
+    const card = button('', `advisor${a.fired ? ' fired' : ''}${a.revealed ? (a.impostor ? ' is-impostor' : ' is-real') : ''} mark-${a.mark}`, () => openDossier(a.id));
     card.append(ball(lookOf(a)), t('b', 'name', a.name));
-    const tag = a.fired ? (a.viennese ? '🇦🇹 Fired: from Vienna' : '😢 Fired: was real') : a.revealed ? (a.viennese ? '🔍 From Vienna!' : '🔍 Real Austrian') : `${MARK_ICON[a.mark]} ${MARK_LABEL[a.mark]}`;
+    const { tag: tags } = side();
+    const tag = a.fired ? (a.impostor ? tags.firedImpostor : tags.firedLoyal) : a.revealed ? (a.impostor ? tags.impostor : tags.loyal) : `${MARK_ICON[a.mark]} ${MARK_LABEL[a.mark]}`;
     card.append(t('small', 'tag', tag));
     card.setAttribute('aria-label', `${a.name}: ${tag}. Open record.`);
     row.append(card);
@@ -438,7 +461,7 @@ function renderResult(g: Game) {
   s.append(card);
   if (g.firedThisQuarter !== null) {
     const a = g.advisors[g.firedThisQuarter];
-    s.append(t('p', `fired-note ${a.viennese ? 'good' : 'bad'}`, a.viennese ? `🔥 You fired ${a.name}. From Vienna, as suspected.` : `🔥 You fired ${a.name}. A real Austrian. Oops.`));
+    s.append(t('p', `fired-note ${a.impostor ? 'good' : 'bad'}`, `🔥 You fired ${a.name}. ${a.impostor ? side().firedNote.impostor : side().firedNote.loyal}`));
   }
   s.append(button(g.quarter >= QUARTERS ? 'End the term ▶' : 'Next quarter ▶', 'big', () => {
     nextQuarter(g);
@@ -460,7 +483,7 @@ function openDossier(id: number) {
   openOverlay(a.name, (box) => {
     const head = h('div', 'dossier-head');
     head.append(ball(lookOf(a), 'big-ball'));
-    const status = a.revealed ? (a.viennese ? '🇦🇹 From Vienna. Not the Austrian School.' : '🦅 A real Austrian School economist.') : 'Austrian. But which kind?';
+    const status = a.revealed ? (a.impostor ? side().status.impostor : side().status.loyal) : 'Austrian. But which kind?';
     head.append(t('p', 'status', status));
     box.append(head);
     if (!a.fired) {
@@ -517,12 +540,12 @@ function confirmFire(id: number) {
   const g = save.game!;
   const a = g.advisors[id];
   openOverlay(`Fire ${a.name}?`, (box) => {
-    box.append(t('p', '', 'Everyone will find out what they were. A real Austrian costs you −6 📈 −2 🗽 (severance, and a scathing op-ed). A Viennese: +4 🗽.'));
+    box.append(t('p', '', side().fireWarning));
     box.append(
       button('🔥 You’re fired', 'big danger', () => {
         fire(g, id);
         persist();
-        play(a.viennese ? 'caught' : 'oops');
+        play(a.impostor ? 'caught' : 'oops');
         reveal(a);
       }),
       button('Not yet', 'big secondary', closeOverlay),
@@ -532,15 +555,14 @@ function confirmFire(id: number) {
 
 function reveal(a: Advisor) {
   const g = save.game!;
-  openOverlay(a.viennese ? 'FROM VIENNA!' : 'A REAL AUSTRIAN', (box) => {
-    box.append(ball({ ...lookOf(a), eyes: a.viennese ? 'shifty' : 'shocked' }, 'big-ball'));
+  const { reveal: rv } = side();
+  openOverlay(a.impostor ? rv.impostorTitle : rv.loyalTitle, (box) => {
+    box.append(ball({ ...lookOf(a), eyes: a.impostor ? 'shifty' : 'shocked' }, 'big-ball'));
     box.append(
       t(
         'p',
         'reveal-text',
-        a.viennese
-          ? `Under the ancap paint: red, white, red. ${a.name} goes back to the Finance Ministry, muttering about the social partnership.`
-          : `${a.name} was the real thing. They leave to write a book about your mistake. It’s footnoted.`,
+        a.impostor ? rv.impostor(a.name) : rv.loyal(a.name),
       ),
     );
     box.append(
@@ -558,16 +580,14 @@ function doCheck(id: number) {
   const a = g.advisors[id];
   if (!backgroundCheck(g, id)) return;
   persist();
-  play(a.viennese ? 'caught' : 'click');
+  play(a.impostor ? 'caught' : 'click');
   openOverlay('🔍 Background check', (box) => {
     box.append(ball(lookOf(a), 'big-ball'));
     box.append(
       t(
         'p',
         'reveal-text',
-        a.viennese
-          ? `The registrar writes back: ${a.name}, twenty years at the Ministry of Finance, member of three chambers, season pass to the State Opera. Austrian, yes. School: no.`
-          : `The registrar writes back: ${a.name}, no state employment on record, ever. Owns four copies of Human Action. The real thing.`,
+        a.impostor ? side().check.impostor(a.name) : side().check.loyal(a.name),
       ),
       t('p', 'muted', 'They don’t know you checked. Nobody else does either.'),
       button('Close', 'big', () => {
@@ -580,20 +600,14 @@ function doCheck(id: number) {
 
 // --- The end ---
 
-const ENDINGS: Record<NonNullable<Game['ending']>, [string, string]> = {
-  term: ['TWO YEARS. STILL STATELESS. 😎', 'You made it through the term. Not everyone on the council was who they said they were, but the country survived them.'],
-  purged: ['COUNCIL PURGED 🦅', 'Only real Austrians left. The rest of the term runs itself, mostly by abolishing things.'],
-  broke: ['THE ECONOMY COLLAPSED 📉', 'Prosperity hit zero. Somewhere in Vienna, someone is drafting a stimulus.'],
-  chained: ['REGULATED INTO OBLIVION 📋', 'Liberty hit zero. You now need a permit to read this sentence.'],
-  takeover: ['I THOUGHT I HIRED AUSTRIAN ECONOMISTS', 'The Viennese outnumber the real Austrians. The council votes to nationalize oil, then to regulate everything.'],
-};
-
 function renderEnd(g: Game) {
   record(g);
-  const [title, line] = ENDINGS[g.ending!];
+  const sd = sideOf(g.mode);
+  const [title, line] = sd.endings[g.ending!];
   const s = h('section', `panel end ${won(g) ? 'won' : 'lost'}`);
   s.append(t('h2', 'end-title', title), t('p', 'pitch', line));
-  s.append(h('p', 'score-line', `🏆 <b>${score(g)}</b> points <small>· 📈 ${g.prosperity} · 🗽 ${g.liberty}</small>`));
+  s.append(h('p', 'score-line', `🏆 <b>${score(g)}</b> points <small>· ${sd.meters.p[0]} ${g.prosperity} · ${sd.meters.l[0]} ${g.liberty}</small>`));
+  if (unlockedMirror) s.append(h('p', 'unlocked', '🪞 <b>Mirror mode unlocked.</b> Play as Austria, who hired Austrian economists and got the Austrian School. Pick it on the title screen.'));
   if (g.afterTerm.length) {
     s.append(t('h3', 'section', '⏳ After your term'));
     const list = h('ul', 'news');
@@ -608,13 +622,13 @@ function renderEnd(g: Game) {
   const grid = h('div', 'reveal-grid');
   for (const a of g.advisors) {
     const backed = g.tabled.filter((p) => p.backers.includes(a.id));
-    const statist = backed.filter((p) => policyOf(p.policy).kind !== 'sound').length;
-    const card = h('div', `reveal-card ${a.viennese ? 'viennese' : 'real'}`);
-    card.append(ball({ flag: a.viennese ? 'austria' : 'ancap', hat: a.hat, face: a.face, eyes: a.viennese ? 'shifty' : 'happy' }));
+    const bad = backed.filter((p) => policyOf(p.policy).kind !== 'sound').length;
+    const card = h('div', `reveal-card ${a.impostor ? 'impostor' : 'real'}`);
+    card.append(ball({ flag: a.impostor ? sd.impostorFlag : sd.council, hat: a.hat, face: a.face, eyes: a.impostor ? 'shifty' : 'happy' }));
     card.append(
       t('b', '', a.name),
-      t('small', 'role', a.viennese ? '🇦🇹 From Vienna' : '🦅 Austrian School'),
-      t('small', '', `${a.fired ? (a.viennese ? '🔥 Fired, rightly' : '🔥 Fired, wrongly') : 'Stayed'} · backed ${backed.length - statist} sound, ${statist} statist`),
+      t('small', 'role', a.impostor ? sd.role.impostor : sd.role.loyal),
+      t('small', '', `${a.fired ? (a.impostor ? '🔥 Fired, rightly' : '🔥 Fired, wrongly') : 'Stayed'} · backed ${backed.length - bad} sound, ${bad} ${g.mode === 'mirror' ? 'ancap' : 'statist'}`),
     );
     grid.append(card);
   }
@@ -625,16 +639,27 @@ function renderEnd(g: Game) {
   els.screen.append(s);
 }
 
+/** Set when the term just won opened mirror mode (for the end screen). */
+let unlockedMirror = false;
+
 /** Counts a finished (or abandoned) term in the records, once. */
 function record(g: Game, abandoned = false) {
   if (save.recorded === g.seed) return;
   save.recorded = g.seed;
   const m = save.meta;
   m.terms++;
-  if (!abandoned && won(g)) m.wins++;
+  unlockedMirror = false;
+  if (!abandoned && won(g)) {
+    m.wins++;
+    if (g.mode === 'mirror') m.mirrorWins++;
+    if (!save.mirrorUnlocked) {
+      save.mirrorUnlocked = true;
+      unlockedMirror = true;
+    }
+  }
   if (!abandoned) m.best = Math.max(m.best, score(g));
-  m.caught += g.advisors.filter((a) => a.fired && a.viennese).length;
-  m.wrong += g.advisors.filter((a) => a.fired && !a.viennese).length;
+  m.caught += g.advisors.filter((a) => a.fired && a.impostor).length;
+  m.wrong += g.advisors.filter((a) => a.fired && !a.impostor).length;
   persist();
 }
 

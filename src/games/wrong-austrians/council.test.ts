@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { botPlay } from './bot.ts';
 import {
-  active, ask, backgroundCheck, beginCouncil, canFire, COUNCIL, enact, fire, type Game, newGame, nextQuarter, policyOf, QUARTERS, score, VIENNESE, won,
+  active, ask, backgroundCheck, beginCouncil, canFire, COUNCIL, crisisOf, enact, findPolicy, fire, type Game, IMPOSTORS, newGame, nextQuarter, policyOf, QUARTERS,
+  score, won,
 } from './council.ts';
 import { CRISES } from './crises.ts';
-import { QUESTIONS } from './talk.ts';
+import { MIRROR } from './mirror.ts';
+import { LINES_MIRROR, QUESTIONS, SNEAK_NEWS } from './talk.ts';
 
 const council = (seed = 3): Game => {
   const g = newGame(seed);
@@ -41,10 +43,10 @@ describe('the content', () => {
 });
 
 describe('a term', () => {
-  it('starts with five advisors, two of them from Vienna, and eight different crises', () => {
+  it('starts with five advisors, two of them impostors, and eight different crises', () => {
     const g = newGame(1);
     expect(g.advisors).toHaveLength(COUNCIL);
-    expect(g.advisors.filter((a) => a.viennese)).toHaveLength(VIENNESE);
+    expect(g.advisors.filter((a) => a.impostor)).toHaveLength(IMPOSTORS);
     expect(new Set(g.advisors.map((a) => a.name)).size).toBe(COUNCIL);
     expect(new Set(g.crises).size).toBe(QUARTERS);
     expect(g.proposals.length).toBeGreaterThan(0);
@@ -84,7 +86,7 @@ describe('a term', () => {
       const g = council(seed);
       for (const a of g.advisors.slice(0, 2)) {
         const ans = ask(g, a.id, g.offered[0])!;
-        if (ans.tone === 'slip') a.viennese ? vienneseSlips++ : realSlips++;
+        if (ans.tone === 'slip') a.impostor ? vienneseSlips++ : realSlips++;
       }
     }
     expect(realSlips).toBe(0);
@@ -120,7 +122,7 @@ describe('a term', () => {
 
   it('fires one advisor a quarter and reveals them; the Viennese cost Liberty while they stay', () => {
     const g = council(9);
-    const real = g.advisors.find((a) => !a.viennese)!;
+    const real = g.advisors.find((a) => !a.impostor)!;
     expect(fire(g, real.id)).toBe(true);
     expect(real.revealed && real.fired).toBe(true);
     expect(canFire(g)).toBe(false);
@@ -134,7 +136,7 @@ describe('a term', () => {
 
   it('wins early once both Viennese are fired', () => {
     const g = council(10);
-    const [v1, v2] = g.advisors.filter((a) => a.viennese);
+    const [v1, v2] = g.advisors.filter((a) => a.impostor);
     fire(g, v1.id);
     enact(g, g.proposals[0].policy);
     nextQuarter(g);
@@ -148,7 +150,7 @@ describe('a term', () => {
 
   it('loses when the Viennese outnumber the real Austrians', () => {
     const g = council(11);
-    const reals = g.advisors.filter((a) => !a.viennese);
+    const reals = g.advisors.filter((a) => !a.impostor);
     fire(g, reals[0].id);
     enact(g, g.proposals[0].policy);
     nextQuarter(g);
@@ -189,5 +191,99 @@ describe('balance (bots)', () => {
       if (won(g)) expect(g.pending).toHaveLength(0);
       expect(active(g).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('mirror mode', () => {
+  const mirror = (seed = 3): Game => {
+    const g = newGame(seed, null, 'mirror');
+    beginCouncil(g);
+    return g;
+  };
+
+  it('has its own policies for every crisis: three loyal, two disguised, one blatant', () => {
+    const ids = new Set(CRISES.flatMap((c) => c.policies.map((p) => p.id)));
+    for (const c of CRISES) {
+      const m = MIRROR[c.id];
+      expect(m, c.id).toBeDefined();
+      const kinds = m.policies.map((p) => p.kind);
+      expect([kinds.filter((k) => k === 'sound').length, kinds.filter((k) => k === 'disguised').length, kinds.filter((k) => k === 'blatant').length], c.id).toEqual([3, 2, 1]);
+      for (const p of m.policies) {
+        expect(ids.has(p.id), p.id).toBe(false);
+        ids.add(p.id);
+        expect(findPolicy(p.id)).toBe(p);
+      }
+    }
+  });
+
+  it('tables the mirror policies, with the crisis as Vienna sees it', () => {
+    const g = mirror(4);
+    const crisis = crisisOf(g);
+    expect(crisis.policies).toBe(MIRROR[crisis.id].policies);
+    for (const p of g.proposals) expect(p.policy.startsWith('m-'), p.policy).toBe(true);
+    const opera = newGame(1, null, 'mirror');
+    opera.crises[0] = 'opera';
+    expect(crisisOf(opera).title).toBe('The Opera Wants a New Wing');
+  });
+
+  it('loyal Viennese answer like the Finance Ministry; the ancaps slip into Mises', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const g = mirror(seed);
+      for (const a of g.advisors.slice(0, 2)) {
+        const ans = ask(g, a.id, g.offered[0])!;
+        const q = QUESTIONS.find((x) => x.id === ans.question)!;
+        if (ans.tone === 'sound') expect(q.slips).toContain(ans.text);
+        if (ans.tone === 'slip') {
+          expect(a.impostor).toBe(true);
+          expect(q.sound).toContain(ans.text);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(10);
+  });
+
+  it('the debate and the quiet damage are the mirror kind', () => {
+    const lines = new Set(Object.values(LINES_MIRROR).flat());
+    let unsigned = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const g = mirror(seed);
+      for (const t of g.talk) {
+        const template = [...lines].some((l) => {
+          const re = new RegExp('^' + l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{x\\\}|\\\{p\\\}/g, '.*') + '$');
+          return re.test(t.text);
+        });
+        expect(template, t.text).toBe(true);
+      }
+      enact(g, g.proposals[0].policy);
+      nextQuarter(g);
+      for (const n of g.news.filter((x) => !x.policy && x.good === false)) {
+        expect(SNEAK_NEWS.mirror.some((l) => n.text.startsWith(l.split('{n}')[0].slice(0, 12)))).toBe(true);
+        unsigned++;
+      }
+    }
+    expect(unsigned).toBeGreaterThan(10);
+  });
+
+  it('saves and loads, and the same seed is the same term', () => {
+    const g = mirror(8);
+    expect(JSON.stringify(JSON.parse(JSON.stringify(g)))).toBe(JSON.stringify(g));
+    expect(JSON.stringify(newGame(9, null, 'mirror'))).toBe(JSON.stringify(newGame(9, null, 'mirror')));
+    expect(newGame(9, null, 'mirror').mode).toBe('mirror');
+    expect(newGame(9).mode).toBe('ancap');
+  });
+
+  it('plays about as hard as the original', () => {
+    const rate = (style: 'savvy' | 'naive' | 'random') => {
+      let wins = 0;
+      for (let s = 1; s <= 400; s++) if (won(botPlay(newGame(s * 7919, null, 'mirror'), style))) wins++;
+      return wins / 400;
+    };
+    expect(rate('savvy')).toBeGreaterThan(0.9);
+    const naive = rate('naive');
+    expect(naive).toBeGreaterThan(0.5);
+    expect(naive).toBeLessThan(0.85);
+    expect(rate('random')).toBeLessThan(0.25);
   });
 });

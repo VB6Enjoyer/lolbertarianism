@@ -956,5 +956,19 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
 - Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
   outcomes, slips and accusations ~69%, random clicking ~11%.
-- Next: mirror mode (play Austria; the impostors keep saying "privatize Vienna plz"), a daily
-  term, achievements, sharing, music, and a pass-the-phone party mode.
+- Next: a daily term, achievements, sharing, music, and a pass-the-phone party mode.
+
+#### Mirror mode ✅
+
+- The meme's top panel: you're Austria, who hired Austrian economists and got two from the
+  Austrian School. Unlocks after the first win; the title screen switches sides.
+- Meters: 🏛️ the State and 🗳️ Approval. 72 policies of its own (`mirror.ts`): loyal Viennese
+  propose state solutions (a culture levy, council flats, a schnitzel price board); the ancaps
+  dress up privatization ("a public-private partnership", "community banknotes", "a light review")
+  or say it outright ("Privatize Vienna plz").
+- Interviews swap sides: loyal Viennese give the Finance Ministry answers, and the ancaps slip into
+  Mises. Their own debate lines ("I saw him reading Hayek on the tram"), unsigned privatizations
+  that cost Approval, endings ("Vienna has been privatized", "Voted out"), and a red-white-red
+  council that turns yellow and black when unmasked (`sides.ts` holds each side's words).
+- Plays the same as the original with the bots (savvy 99%, outcome-only 68%, random 9%).
+- The impostor role is now `impostor` in the engine (old saves are converted on load).
