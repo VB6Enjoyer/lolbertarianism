@@ -105,6 +105,8 @@ function startTurn(c: Combat) {
   c.flags.turnCards = 0;
   if (p.status.monetarism) addStatus(c, p, 'momentum', p.status.monetarism, 'player');
   if (p.status.marketLaw) addStatus(c, p, 'agency', p.status.marketLaw, 'player');
+  if (p.status.kRule) gainBlock(c, p, p.status.kRule, 'player');
+  if (p.status.seastead && (p.status.agency ?? 0) >= 3) p.energy += p.status.seastead;
   const extra = (c.turn === 1 && c.relics.includes('glasses') ? 2 : 0) + (p.status.primeTime ?? 0) + (c.relics.includes('vhs') ? 1 : 0);
   drawCards(c, HAND_SIZE + extra);
 }
@@ -147,6 +149,7 @@ export function playCard(c: Combat, i: number, target?: number): boolean {
   c.flags.bigHit = Math.max(c.flags.bigHit ?? 0, (c.flags.damage ?? 0) - dealtBefore);
   if (card.id === 'withholding') c.flags.withheld = 1;
   if (card.id === 'choose') c.flags.chose = 1;
+  if (def.type === 'argument' && c.player.status.draft) gainBlock(c, c.player, c.player.status.draft, 'player');
   if (def.type === 'rebuttal' && c.player.status.polycentric) addStatus(c, c.player, 'agency', c.player.status.polycentric, 'player');
   if (def.type === 'rebuttal' && c.player.status.vouchers) {
     const standing = c.enemies.map((e, k) => (e.dead ? -1 : k)).filter((k) => k >= 0);

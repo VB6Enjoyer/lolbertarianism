@@ -75,8 +75,14 @@ export const games: Game[] = [
     slug: 'just-getting-started',
     title: 'JUST GETTING STARTED 😈',
     blurb: 'Late stage capitalism? Nah. A deckbuilder: laser-eyed Milton Friedman vs. everyone who says capitalism is dying.',
-    status: 'prototype',
+    status: 'released', // v1.0
     legacyPaths: ['JUST GETTING STARTED 😈.html'],
+  },
+  {
+    slug: 'wrong-austrians',
+    title: 'I Thought I Hired Austrian Economists',
+    blurb: 'Two of your five economists are just from Austria. Find the statists before they regulate everything.',
+    status: 'released', // v1.0
   },
 ];
 

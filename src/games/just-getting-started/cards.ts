@@ -2,6 +2,8 @@
 // the rest of the fight. Status cards (Inflation, Shortage) clog the deck for one fight; Regret is
 // a curse that stays for the whole run. Every card has an upgraded (+) version.
 
+import { ENEMIES } from './enemies.ts';
+import { int } from './rng.ts';
 import { addCard, addStatus, alive, type Combat, drawCards, gainBlock, heal, loseHp, strike, strikeAll } from './state.ts';
 
 export type CardType = 'argument' | 'rebuttal' | 'principle' | 'status' | 'curse';
@@ -257,6 +259,90 @@ const CARD_LIST: CardDef[] = [
     flavor: 'Free to Choose, ten episodes on PBS.',
   },
 
+  // --- More of Milton's: the 1970s, the PBS years, and the draft ---
+  {
+    id: 'mvpq', name: 'MV = PQ', emoji: '💵', type: 'argument', rarity: 'common', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 7, 10)} damage. If there’s an Inflation in your hand, Exhaust it and deal double.`,
+    play: (c, t, up) => {
+      const i = c.hand.findIndex((x) => x.id === 'inflation');
+      const before = c.flags.mult ?? 1;
+      if (i >= 0) {
+        c.exhausted.push(...c.hand.splice(i, 1));
+        c.flags.mult = before * 2;
+      }
+      strike(c, t, v(up, 7, 10));
+      c.flags.mult = before;
+    },
+    flavor: 'The quantity theory of money. Four letters, one lecture.',
+  },
+  {
+    id: 'thermostat', name: 'The Thermostat', emoji: '🎛️', type: 'rebuttal', rarity: 'common', cost: 1,
+    text: (up) => `Gain ${p(up, 5, 7)} Composure, and ${p(up, 5, 7)} more if an enemy is about to attack.`,
+    play: (c, _t, up) => {
+      const attacking = alive(c).some((e) => ENEMIES[e.id]?.moves[e.move]?.intent === 'attack');
+      gainBlock(c, c.player, v(up, 5, 7) * (attacking ? 2 : 1), 'player');
+    },
+    flavor: 'Turn the heat up when it’s cold. That’s what the Fed should do. (It doesn’t.)',
+  },
+  {
+    id: 'rose', name: 'Rose’s Edit', emoji: '📝', type: 'rebuttal', rarity: 'common', cost: 1,
+    text: (up) => `Draw ${p(up, 1, 2)} card${up ? 's' : ''}. Upgrade a random card in your hand for the rest of the fight.`,
+    play: (c, _t, up) => {
+      drawCards(c, v(up, 1, 2));
+      const options = c.hand.filter((x) => canUpgrade(x.id, x.up));
+      if (options.length) options[int(c.rng, 0, options.length - 1)].up = true;
+    },
+    flavor: 'Rose co-wrote Free to Choose. She was usually right, and said so.',
+  },
+  {
+    id: 'socialresp', name: 'The Social Responsibility of Business', emoji: '🗞️', type: 'argument', rarity: 'uncommon', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 9, 12)} damage. If it knocks them out, gain 1 Airtime and draw 2 cards.`,
+    play: (c, t, up) => {
+      const e = c.enemies[t];
+      strike(c, t, v(up, 9, 12));
+      if (e?.dead) {
+        c.player.energy++;
+        drawCards(c, 2);
+      }
+    },
+    flavor: '…is to increase its profits. The New York Times Magazine, 1970.',
+  },
+  {
+    id: 'lift', name: 'Lift the Controls', emoji: '🔓', type: 'argument', rarity: 'uncommon', cost: 2,
+    text: (up) => `Deal ${p(up, 7, 10)} damage to ALL enemies. Apply 1 Exposed to ALL enemies.`,
+    play: (c, _t, up) => {
+      strikeAll(c, v(up, 7, 10));
+      for (const e of alive(c)) addStatus(c, e, 'exposed', 1, e.uid);
+    },
+    flavor: 'Nixon froze wages and prices in 1971. The shelves emptied on schedule.',
+  },
+  {
+    id: 'krule', name: 'The k-Percent Rule', emoji: '🧮', type: 'principle', rarity: 'uncommon', cost: 1,
+    text: (up) => `At the start of each turn, gain ${p(up, 3, 4)} Composure.`,
+    play: (c, _t, up) => addStatus(c, c.player, 'kRule', v(up, 3, 4), 'player'),
+    flavor: 'Grow the money supply by a fixed few percent a year. Every year. Boring is the point.',
+  },
+  {
+    id: 'cure', name: 'The Cure for Inflation', emoji: '💊', type: 'rebuttal', rarity: 'rare', cost: 1, exhaust: true,
+    text: (up) => `Exhaust every Inflation in your hand, draw pile and discard pile. Gain ${p(up, 6, 9)} Composure, plus 3 for each one. Exhaust.`,
+    play: (c, _t, up) => {
+      const isInflation = (x: { id: string }) => x.id === 'inflation';
+      const burnt = [...c.hand, ...c.draw, ...c.discard].filter(isInflation);
+      c.hand = c.hand.filter((x) => !isInflation(x));
+      c.draw = c.draw.filter((x) => !isInflation(x));
+      c.discard = c.discard.filter((x) => !isInflation(x));
+      c.exhausted.push(...burnt);
+      gainBlock(c, c.player, v(up, 6, 9) + 3 * burnt.length, 'player');
+    },
+    flavor: 'Slow down the growth of money. That’s it. That’s the cure. Nobody likes it.',
+  },
+  {
+    id: 'draft', name: 'End the Draft', emoji: '🪖', type: 'principle', rarity: 'rare', cost: 2, upCost: 1,
+    text: () => 'Whenever you play an Argument, gain 3 Composure.',
+    play: (c) => addStatus(c, c.player, 'draft', 3, 'player'),
+    flavor: '“Would you rather command an army of slaves?” To General Westmoreland, 1969.',
+  },
+
   // --- David's cards: Protection Agencies, private law, and a little medieval cooking ---
   {
     id: 'theory', who: 'david', name: 'Price Theory', emoji: '📈', type: 'argument', rarity: 'starter', cost: 1, target: true,
@@ -393,6 +479,69 @@ const CARD_LIST: CardDef[] = [
       addStatus(c, c.player, 'agency', 2, 'player');
     },
     flavor: 'Technology will change the law. He wrote that one in 2008.',
+  },
+
+  // --- More of David's ---
+  {
+    id: 'wergild', who: 'david', name: 'Wergild', emoji: '🪙', type: 'argument', rarity: 'common', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 6, 8)} damage. Gain Composure equal to the damage dealt.`,
+    play: (c, t, up) => gainBlock(c, c.player, strike(c, t, v(up, 6, 8)), 'player'),
+    flavor: 'In the sagas, a killing had a price, paid to the family. Feud over.',
+  },
+  {
+    id: 'renewal', who: 'david', name: 'Subscription Renewal', emoji: '🔁', type: 'rebuttal', rarity: 'common', cost: 1,
+    text: (up) => `Gain 1 Agency. Draw ${p(up, 1, 2)} card${up ? 's' : ''}.`,
+    play: (c, _t, up) => {
+      addStatus(c, c.player, 'agency', 1, 'player');
+      drawCards(c, v(up, 1, 2));
+    },
+    flavor: 'Auto-renews monthly. Cancel any time, unlike some governments.',
+  },
+  {
+    id: 'turfwar', who: 'david', name: 'Turf Wars Don’t Pay', emoji: '💥', type: 'argument', rarity: 'common', cost: 1,
+    text: (up) => `Deal ${p(up, 3, 4)} damage to ALL enemies twice (three times with 3 or more Agencies).`,
+    play: (c, _t, up) => {
+      const times = (c.player.status.agency ?? 0) >= 3 ? 3 : 2;
+      for (let k = 0; k < times; k++) strikeAll(c, v(up, 3, 4));
+    },
+    flavor: 'Agencies that shoot it out go broke. Arbitration is cheaper.',
+  },
+  {
+    id: 'lawecon', who: 'david', name: 'Law and Economics', emoji: '🧑‍⚖️', type: 'rebuttal', rarity: 'uncommon', cost: 1, target: true,
+    text: (up) => `Apply ${p(up, 2, 3)} Exposed. Gain 1 Agency.`,
+    play: (c, t, up) => {
+      const e = c.enemies[t];
+      if (e && !e.dead) addStatus(c, e, 'exposed', v(up, 2, 3), e.uid);
+      addStatus(c, c.player, 'agency', 1, 'player');
+    },
+  },
+  {
+    id: 'roads', who: 'david', name: 'Privatize the Roads', emoji: '🛣️', type: 'argument', rarity: 'uncommon', cost: 1, target: true,
+    text: (up) => `Deal ${p(up, 4, 5)} damage for each card you’ve played this turn (this one too).`,
+    play: (c, t, up) => void strike(c, t, v(up, 4, 5) * Math.max(1, c.flags.turnCards ?? 1)),
+    flavor: '“But who will build the roads?” Toll companies. Next question.',
+  },
+  {
+    id: 'cashout', who: 'david', name: 'Cash Out a Contract', emoji: '💰', type: 'rebuttal', rarity: 'uncommon', cost: 0,
+    text: (up) => `Lose 1 Agency to gain 2 Airtime and draw ${p(up, 1, 2)} card${up ? 's' : ''}. (Nothing happens without one.)`,
+    play: (c, _t, up) => {
+      if (!c.player.status.agency) return;
+      addStatus(c, c.player, 'agency', -1, 'player');
+      c.player.energy += 2;
+      drawCards(c, v(up, 1, 2));
+    },
+  },
+  {
+    id: 'cariadoc', who: 'david', name: 'Cariadoc of the Bow', emoji: '🏹', type: 'argument', rarity: 'rare', cost: 2, target: true,
+    text: (up) => `Deal ${p(up, 7, 9)} damage 3 times.`,
+    play: (c, t, up) => void strike(c, t, v(up, 7, 9), 3),
+    flavor: 'His name in the Society for Creative Anachronism. He’s been a king of the Middle Kingdom. Twice.',
+  },
+  {
+    id: 'seastead', who: 'david', name: 'Seasteading', emoji: '🌊', type: 'principle', rarity: 'rare', cost: 2, upCost: 1,
+    text: () => 'At the start of each turn, if you have 3 or more Agencies, gain 1 Airtime.',
+    play: (c) => addStatus(c, c.player, 'seastead', 1, 'player'),
+    flavor: 'His son Patri’s idea: a new country, floating on the ocean. New jurisdictions run in the family.',
   },
 
   // --- Status and curse ---

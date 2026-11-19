@@ -1346,7 +1346,7 @@ kbd {
         font-size: 13px;
     }
 
-    #mute {
+    #options {
         margin-left: auto;
     }
 
@@ -1848,4 +1848,270 @@ kbd {
 
 .lasering .arena {
     overflow: hidden;
+}
+
+/* --- Options: reduced flashing, no shake --- */
+.reduce-flashing.lasering .arena::after {
+    display: none;
+}
+
+.reduce-flashing.fry-4:not(.lasering) .arena {
+    animation: none;
+}
+
+.reduce-flashing .friedman .eye {
+    animation: none;
+}
+
+.no-shake.lasering .arena,
+.no-shake .hit {
+    animation: none;
+}
+
+.options {
+    display: grid;
+    gap: 10px;
+    max-width: 480px;
+    margin: 12px auto;
+    text-align: left;
+}
+
+.option-row {
+    display: grid;
+    grid-template-columns: 1fr minmax(120px, 200px) 3.2em;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-2);
+    cursor: pointer;
+}
+
+.option-row.toggle {
+    grid-template-columns: 1fr auto;
+}
+
+.option-row small {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.option-row input[type='range'] {
+    width: 100%;
+    accent-color: var(--red);
+}
+
+.option-row input[type='checkbox'] {
+    width: 22px;
+    height: 22px;
+    accent-color: var(--red);
+}
+
+.option-row output {
+    color: var(--muted);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Run history --- */
+.history-summary {
+    color: var(--muted);
+}
+
+.history-summary b {
+    color: #fff;
+}
+
+.history-list {
+    display: grid;
+    gap: 6px;
+    max-width: 680px;
+    margin: 10px auto;
+    padding: 0;
+    list-style: none;
+    text-align: left;
+}
+
+.history-run {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 12px;
+    padding: 8px 12px;
+    border-left: 4px solid var(--red);
+    border-radius: 8px;
+    background: var(--panel-2);
+}
+
+.history-run.won {
+    border-left-color: var(--green);
+}
+
+.history-run.abandoned {
+    border-left-color: var(--muted);
+    opacity: 0.8;
+}
+
+.history-run .score {
+    grid-row: span 2;
+    align-self: center;
+    color: var(--gold);
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+}
+
+.history-run .who,
+.history-run .when {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.history-run .when {
+    grid-column: 1 / -1;
+}
+
+/* --- Compendium --- */
+.compendium-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+.compendium-tab {
+    padding: 6px 14px;
+    border: 2px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-2);
+    cursor: pointer;
+}
+
+.compendium-tab.picked {
+    border-color: var(--red);
+    background: var(--red-dark);
+}
+
+.compendium-tab small {
+    color: var(--muted);
+}
+
+.compendium.cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.compendium .card {
+    cursor: default;
+}
+
+.compendium .card.unseen {
+    --edge: #2e2624;
+    background: #0e0b0b;
+}
+
+.compendium .unseen .art,
+.compendium .unseen .relic-emoji,
+.compendium .unseen .foe-emoji {
+    filter: brightness(0) drop-shadow(0 0 1px #6b5a56);
+}
+
+.compendium .unseen .name {
+    color: var(--muted);
+}
+
+.compendium .card.davids::after {
+    content: 'DAVID';
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    color: var(--blue);
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+
+.compendium.relics,
+.compendium.enemies {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+    text-align: left;
+}
+
+.relic-entry,
+.enemy-entry {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel-2);
+}
+
+.relic-entry .relic-emoji {
+    grid-row: span 2;
+    font-size: 30px;
+}
+
+.relic-entry small,
+.enemy-entry small {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.enemy-entry.boss {
+    border-color: var(--red-dark);
+}
+
+.enemy-entry .foe-emoji {
+    font-size: 40px;
+    line-height: 1;
+}
+
+.enemy-entry .friedman.mini {
+    width: 56px;
+}
+
+.enemy-info {
+    display: grid;
+    gap: 2px;
+}
+
+.enemy-info i {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.compendium .unseen {
+    opacity: 0.75;
+}
+
+.compendium .unseen .friedman img {
+    filter: brightness(0) drop-shadow(0 0 1px #6b5a56);
+}
+
+.compendium .unseen .friedman .eye,
+.compendium .unseen .friedman .beam {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    .option-row {
+        grid-template-columns: 1fr 3.2em;
+    }
+
+    .option-row input[type='range'] {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .compendium .card {
+        width: 118px;
+    }
 }

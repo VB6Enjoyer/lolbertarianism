@@ -778,7 +778,7 @@ into a handicapping game. Steps 1 and 2 of the plan:
   Simulator (title), and JUST GETTING STARTED (title). Ancapistan Tycoon
   keeps its own save codes; Eminem's Human Action saves nothing.
 
-### JUST GETTING STARTED: rebuilt as a deckbuilder (prototype)
+### JUST GETTING STARTED: rebuilt as a deckbuilder ✅
 
 The clicker overlapped Ancapistan Tycoon, so it's now a roguelike deckbuilder
 (`src/games/just-getting-started/`), built on the meme: laser-eyed Milton
@@ -902,3 +902,118 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
   play; the daily run stays Milton's.
 - The secret bosses are photos (deep-fried, with laser eyes on their pupils,
   measured like Milton's). Five achievements.
+
+#### Run history, the compendium, music and options ✅
+
+- 📜 Run history (`records.ts`): the last 25 runs, with who played, the stage
+  or daily, the score, how far you got and who ratio'd you, plus your nemesis.
+- 📚 Compendium: every card, relic and enemy you've come across, the rest as
+  silhouettes.
+- Music (`music.ts`): a phonk loop made in code (a sliding 808, cowbell, hats,
+  a clap), calmer on the map, harder in fights and bosses, with a distorted
+  lead as the Based meter fills.
+- ⚙️ Options: music and sound volume, reduced flashing (no Laser Eyes flash,
+  no jitter at full Based), screen shake on/off.
+
+#### More content, and a balance pass for Milton ✅
+
+- 8 new cards each. Milton: MV = PQ, The Thermostat, Rose's Edit, The Social
+  Responsibility of Business, Lift the Controls, The k-Percent Rule, The Cure
+  for Inflation, End the Draft. David: Wergild, Subscription Renewal, Turf
+  Wars Don't Pay, Law and Economics, Privatize the Roads, Cash Out a
+  Contract, Cariadoc of the Bow, Seasteading.
+- 3 new enemies: the MMT Economist and the Antiwork Mod (act 2), a Central
+  Bank Digital Currency (act 3, and an elite pairing).
+- 4 new TV appearances: Donahue round two, testifying to Congress and the
+  Free to Choose shoot for Milton; Patri's seastead for David.
+- Balance: the Fed Chair (the top killer for both) has 155 Credibility and a
+  15-damage Rate Hike. Over 1,500 bot runs each, Milton and David now win
+  about as often (before: 0.8% vs 5.5%).
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
+  with a new screenshot and link preview.
+
+### I THOUGHT I HIRED AUSTRIAN ECONOMISTS ✅
+
+A new game from the countryball meme: Austrian School economists (ancap flag, eagle) and economists
+who are merely from Austria keep getting hired by the wrong side. Single-player social deduction
+against bot advisors (`src/games/wrong-austrians/`).
+
+- You're Ancapball, two years (8 quarters) in office, with a council of 5 economists; 2 are secretly
+  from Vienna and want the state to grow (`council.ts`, plain data, seeded, saves mid-quarter).
+- Each quarter: a crisis (`crises.ts`, 12: an oil shock, a bank run, Vienna wanting a state opera,
+  the Big Schnitzel Merger…). Everyone proposes a fix: 3 sound policies, 2 statist ones dressed up
+  as market policies, 1 openly statist. Bad policy looks good now and sends the bill a quarter or
+  two later; sound policy often stings now and pays off. When a bill lands, the news names its
+  backers.
+- 2 questions a quarter (`talk.ts`, 20): real Austrians answer like Mises; the Viennese bluff,
+  dodge or slip ("Schumpeter! He was finance minister"). The council accuses each other: the real
+  ones on the evidence, the Viennese framing them and covering for each other.
+- Fire one advisor a quarter (revealed on firing; a real one costs −6 📈 −2 🗽), one background
+  check a term, ✅/🚩 marks and a record for each advisor. Each Viennese left on the council slips
+  an unsigned regulation through every quarter (−5 🗽 −2 📈).
+- Lose at 0 Prosperity or Liberty, or when the Viennese outnumber the real Austrians ("I thought I
+  hired Austrian economists"). Win by firing both Viennese, or by surviving the term.
+- Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
+- Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
+  outcomes, slips and accusations ~69%, random clicking ~11%.
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
+  screenshot and link preview.
+
+#### Mirror mode ✅
+
+- The meme's top panel: you're Austria, who hired Austrian economists and got two from the
+  Austrian School. Unlocks after the first win; the title screen switches sides.
+- Meters: 🏛️ the State and 🗳️ Approval. 72 policies of its own (`mirror.ts`): loyal Viennese
+  propose state solutions (a culture levy, council flats, a schnitzel price board); the ancaps
+  dress up privatization ("a public-private partnership", "community banknotes", "a light review")
+  or say it outright ("Privatize Vienna plz").
+- Interviews swap sides: loyal Viennese give the Finance Ministry answers, and the ancaps slip into
+  Mises. Their own debate lines ("I saw him reading Hayek on the tram"), unsigned privatizations
+  that cost Approval, endings ("Vienna has been privatized", "Voted out"), and a red-white-red
+  council that turns yellow and black when unmasked (`sides.ts` holds each side's words).
+- Plays the same as the original with the bots (savvy 99%, outcome-only 68%, random 9%).
+- The impostor role is now `impostor` in the engine (old saves are converted on load).
+
+#### The daily term and achievements ✅
+
+- The daily term (`daily.ts`): the same seed for everyone each day, always as Ancapball, with one of
+  six twists cycling day by day: Loose Lips (the impostors slip more), Poker Face (they never slip),
+  Snap Election (6 quarters), Press Pass (3 questions a quarter), Double Check (two background
+  checks) and Lean Times (both meters start at 40). A best score per day; the twist shows in the
+  top bar. With the bots, the outcome-only player wins 46% (Poker Face) to 87% (Loose Lips).
+- 25 achievements (`achievements.ts`), 4 of them secret, checked after every move: firing (Under
+  the Paint, Purge, Clean Sweep, Blitz), detective work (Interrogator, Gotcha, Paper Trail, Good
+  Judge of Character), running the country (Sound Money, Boom Without Bust, Mises Would Be Proud,
+  Hayek Would Be Prouder), both sides and the daily, and secrets (Oops, I Thought I Hired Austrian
+  Economists, Nationalize Oil, Privatize Vienna plz). Thresholds tuned against bot terms so each
+  one can be earned. Toasts as they unlock (a summary when a term ends with a big haul).
+
+#### Sharing and music ✅
+
+- Sharing (`share.ts`): the result as text (the ending, the score, the meters and the council as a
+  row of emoji: 🦅 loyal, 🔥 impostor caught, 😬 loyal fired, 🕵️ impostor who got away), or a
+  1200×630 card with the whole council unmasked and each one's fate. The share sheet on phones, a
+  copy or download elsewhere. A Press Release achievement for sharing (26 in all).
+- Music (`music.ts`): a waltz made in code. Oom-pah-pah in 3/4 (the bass on the one, a chord on two
+  and three) under a tune built from the chords, the same every time. Calm between sessions,
+  livelier in the council, and in D minor when a meter drops to 25 or below. As Ancapball the tune
+  is a clarinet-ish lead with vibrato; as Austria, a reedy, detuned accordion. 🎵 turns the music
+  off on its own; 🔊 still mutes everything.
+
+#### Party mode ✅
+
+- 4 to 8 people round one phone (`party.ts`), on either side. Pass the phone for secret roles
+  (impostors see each other). Each quarter everyone is dealt two of the crisis's policies, labelled
+  for them alone (sound, disguised, openly hostile), and proposes one; loyal players get bad hands
+  too, which is everyone's cover. The proposals go on the table with names, the table argues, and
+  the rotating Chair enacts one. Then an optional firing vote: secret ballots, a strict majority
+  fires someone and their role is revealed. Bills land later with the proposer's name on them.
+- The loyal side wins by firing every impostor or surviving 8 quarters; the impostors win if a meter
+  hits 0 or they match the loyal players in number. Each impostor quietly costs −2 Liberty −1
+  Prosperity a quarter (gentler than solo, since firing takes a majority).
+- Tables tuned with simulated people (`TABLES`): 1 impostor at 4 players, 2 at 5–8, and starting
+  meters from 38 to 55, so the loyal side wins 54–59% at every size. A real table talks, so it's a
+  starting point.
+- Setup remembers the names; "same players, new game" deals again. A Party Animal achievement
+  (27 in all).
+

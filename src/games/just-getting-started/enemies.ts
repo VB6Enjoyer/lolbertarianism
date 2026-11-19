@@ -220,6 +220,33 @@ const LIST: EnemyDef[] = [
     },
     next: (e, rng) => mix(e, rng, [['hazard', 55], ['tbtf', 45]]),
   },
+  {
+    id: 'mmt', name: 'MMT Economist', emoji: '🪙', hp: [56, 60],
+    intro: 'Deficits don’t matter. Neither does your argument.',
+    moves: {
+      print: { name: 'Just Print It', intent: 'debuff', also: 'defend', act: (c, e) => {
+        addCard(c, 'inflation', 'draw');
+        gainBlock(c, e, 8, e.uid);
+        say(c, e, 'We can never run out of money. We print it.');
+      } },
+      finance: attack('Functional Finance', 11),
+      taxes: attack('Taxes Drive Money', 5, 2, (c) => addStatus(c, c.player, 'exposed', 1, 'player'), 'debuff'),
+    },
+    first: 'print',
+    next: cycle(['finance', 'taxes', 'print']),
+  },
+  {
+    id: 'antiwork', name: 'Antiwork Mod', emoji: '🛋️', hp: [46, 50],
+    intro: 'I don’t dream of labor. I dream of moderating this forum for free.',
+    moves: {
+      lieflat: { name: 'Lie Flat', intent: 'defend', act: (c, e) => gainBlock(c, e, 12, e.uid) },
+      banned: attack('Banned for Bootlicking', 8, 1, (c) => addStatus(c, c.player, 'rattled', 1, 'player'), 'debuff'),
+      solidarity: { name: 'Solidarity', intent: 'buff', act: (c) => {
+        for (const ally of alive(c)) addStatus(c, ally, 'momentum', 2, ally.uid);
+      } },
+    },
+    next: (e, rng) => mix(e, rng, [['banned', 50], ['lieflat', 30], ['solidarity', 20]]),
+  },
   // Act 2 elite
   {
     id: 'keynesian', name: 'The Keynesian', emoji: '🎩', hp: [110, 114],
@@ -239,7 +266,7 @@ const LIST: EnemyDef[] = [
   },
   // Act 2 boss
   {
-    id: 'fedchair', name: 'The Fed Chair', emoji: '🖨️', hp: [170, 170], boss: true,
+    id: 'fedchair', name: 'The Fed Chair', emoji: '🖨️', hp: [155, 155], boss: true,
     intro: 'Inflation is transitory. Brrrrr.',
     moves: {
       brrr: { name: 'Brrrrr', intent: 'debuff', also: 'buff', act: (c, e) => {
@@ -247,7 +274,7 @@ const LIST: EnemyDef[] = [
         addStatus(c, e, 'momentum', 2, e.uid);
         say(c, e, 'Money printer go brrrrr.');
       } },
-      hike: attack('Rate Hike', 17),
+      hike: attack('Rate Hike', 15),
       qe: { name: 'Quantitative Easing', intent: 'defend', act: (c, e) => gainBlock(c, e, 20, e.uid) },
       transitory: attack('Transitory', 7, 2, (c, e) => {
         heal(c, e, 10, e.uid);
@@ -303,6 +330,25 @@ const LIST: EnemyDef[] = [
       earmark: attack('Earmark', 8, 2),
     },
     next: (e, rng) => mix(e, rng, [['earmark', 60], ['capture', 40]]),
+  },
+  {
+    id: 'cbdc', name: 'Central Bank Digital Currency', emoji: '🪪', hp: [84, 88],
+    intro: 'Your money, now with an expiry date. And opinions.',
+    moves: {
+      freeze: { name: 'Account Frozen', intent: 'debuff', act: (c, e) => {
+        addStatus(c, c.player, 'rattled', 2, 'player');
+        addCard(c, 'shortage', 'draw');
+        say(c, e, 'Unusual activity detected: you disagreed.');
+      } },
+      tracking: attack('Transaction Tracking', 7, 2),
+      programmable: attack('Programmable Money', 16),
+      expiry: { name: 'Expiry Date', intent: 'defend', also: 'buff', act: (c, e) => {
+        gainBlock(c, e, 12, e.uid);
+        addStatus(c, e, 'momentum', 2, e.uid);
+      } },
+    },
+    first: 'freeze',
+    next: cycle(['tracking', 'programmable', 'expiry', 'freeze']),
   },
   // Act 3 elite
   {
@@ -417,15 +463,15 @@ export const ENCOUNTERS: Record<number, { easy: string[][]; normal: string[][]; 
     boss: ['doomposter'],
   },
   2: {
-    easy: [['druid'], ['banker']],
-    normal: [['streamer'], ['planner'], ['banker', 'druid'], ['streamer', 'replyguy'], ['planner', 'influencer']],
+    easy: [['druid'], ['banker'], ['antiwork']],
+    normal: [['streamer'], ['planner'], ['banker', 'druid'], ['streamer', 'replyguy'], ['planner', 'influencer'], ['mmt'], ['antiwork', 'influencer']],
     elite: [['keynesian'], ['banker', 'planner']],
     boss: ['fedchair'],
   },
   3: {
     easy: [['marxist'], ['lobbyist']],
-    normal: [['agency'], ['lobbyist', 'lobbyist'], ['marxist', 'druid'], ['agency', 'replyguy']],
-    elite: [['commissar'], ['agency', 'lobbyist']],
+    normal: [['agency'], ['lobbyist', 'lobbyist'], ['marxist', 'druid'], ['agency', 'replyguy'], ['cbdc'], ['mmt', 'lobbyist']],
+    elite: [['commissar'], ['agency', 'lobbyist'], ['cbdc', 'antiwork']],
     boss: ['latestage'],
   },
 };
