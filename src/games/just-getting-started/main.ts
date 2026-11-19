@@ -22,6 +22,8 @@ import { runScore } from './run.ts';
 import { clampStage, MAX_STAGE, STAGES, stageInfo } from './stages.ts';
 import { characterById, CHARACTERS, isCharacter, type CharacterId } from './characters.ts';
 import { fightSecret, skipSecret } from './run.ts';
+import { Phonk, type MoodId } from './music.ts';
+import { addHistory, DEFAULT_OPTIONS, historyEntry, normalizeHistory, normalizeOptions, normalizeSeen, noteSeen, type HistoryEntry, type Options, type Seen } from './records.ts';
 
 // ---------------------------------------------------------------------------
 // Save
@@ -51,6 +53,10 @@ interface Save {
   /** Who can be played (David once he's beaten), and who new runs are played as. */
   characters: CharacterId[];
   character: CharacterId;
+  /** The last runs (newest first), everything ever come across, and the options. */
+  history: HistoryEntry[];
+  seen: Seen;
+  options: Options;
 }
 
 const slot = createSaveSlot<Save>({ game: 'just-getting-started', version: 1 });
@@ -101,6 +107,9 @@ const save: Save = {
   stage: 1,
   characters: ['milton'],
   character: 'milton',
+  history: normalizeHistory(saved?.history),
+  seen: normalizeSeen(saved?.seen),
+  options: saved?.options ? normalizeOptions(saved.options) : { ...DEFAULT_OPTIONS },
 };
 save.stage = Math.min(clampStage(saved?.stage), save.stageUnlocked);
 save.characters = ['milton', ...(Array.isArray(saved?.characters) && saved.characters.includes('david') ? (['david'] as CharacterId[]) : [])];
@@ -119,6 +128,7 @@ const els = {
   overlay: byId('overlay'),
   toasts: byId('toasts'),
   mute: byId<HTMLButtonElement>('mute'),
+  options: byId<HTMLButtonElement>('options'),
   home: byId<HTMLButtonElement>('home'),
 };
 
@@ -137,7 +147,33 @@ function button(label: string, className: string, onClick: () => void, disabled 
 }
 const IMG = (name: string) => `${import.meta.env.BASE_URL}vidya/img/${name}.webp`;
 
+/** The soundtrack: starts on the first click or key (browsers won't play audio before one). */
+const music = new Phonk();
+function startMusic() {
+  if (music.playing || save.muted || save.options.music <= 0) return;
+  const ctx = getAudioContext();
+  void ctx.resume().catch(() => {});
+  music.setVolume(save.options.music);
+  music.start(ctx);
+  updateMusic();
+}
+/** The mood follows the screen (calm, a fight, a boss), and the Based meter brings in the lead. */
+function updateMusic() {
+  if (!music.playing) return;
+  const run = save.run;
+  const c = view === 'run' && run?.screen === 'combat' ? run.combat : null;
+  const mood: MoodId = !c ? 'calm' : c.kind === 'boss' ? 'boss' : 'fight';
+  music.setMood(mood);
+  music.setIntensity(c ? c.based / BASED_MAX : 0);
+}
+for (const type of ['pointerdown', 'keydown'] as const) document.addEventListener(type, startMusic, { once: true });
 document.addEventListener('pointerdown', () => void getAudioContext().resume().catch(() => {}), { once: true });
+/** A sound effect at the options' volume. */
+function tone(t: Tone, delay = 0) {
+  const v = save.options.sound;
+  if (v <= 0) return;
+  playTone({ ...t, gain: t.gain.map((p) => [p[0], Math.max(0.0001, p[1] * v), p[2]] as typeof p) }, delay);
+}
 const sweep = (from: number, to: number, duration: number, volume = 0.06, wave: OscillatorType = 'sawtooth'): Tone => ({
   wave,
   duration,
@@ -145,18 +181,18 @@ const sweep = (from: number, to: number, duration: number, volume = 0.06, wave: 
   gain: [[0, volume], [duration, 0.001, 'exp']],
 });
 const SOUNDS = {
-  card: () => playTone(note(660, 0.06, 0.04, 'triangle')),
-  hit: () => playTone(sweep(220, 80, 0.12, 0.08, 'square')),
-  hurt: () => playTone(sweep(160, 50, 0.2, 0.09, 'sawtooth')),
-  block: () => playTone(note(1200, 0.05, 0.035, 'triangle')),
-  heal: () => [523, 659, 784].forEach((hz, i) => playTone(note(hz, 0.09, 0.04, 'triangle'), i * 0.06)),
+  card: () => tone(note(660, 0.06, 0.04, 'triangle')),
+  hit: () => tone(sweep(220, 80, 0.12, 0.08, 'square')),
+  hurt: () => tone(sweep(160, 50, 0.2, 0.09, 'sawtooth')),
+  block: () => tone(note(1200, 0.05, 0.035, 'triangle')),
+  heal: () => [523, 659, 784].forEach((hz, i) => tone(note(hz, 0.09, 0.04, 'triangle'), i * 0.06)),
   laser: () => {
-    playTone(sweep(180, 2400, 0.5, 0.07));
-    playTone(sweep(2400, 300, 0.6, 0.05, 'square'), 0.45);
+    tone(sweep(180, 2400, 0.5, 0.07));
+    tone(sweep(2400, 300, 0.6, 0.05, 'square'), 0.45);
   },
-  win: () => [392, 523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.14, 0.05), i * 0.09)),
-  lose: () => [392, 330, 262, 196].forEach((hz, i) => playTone(note(hz, 0.22, 0.05, 'sawtooth'), i * 0.16)),
-  buy: () => [880, 1320].forEach((hz, i) => playTone(note(hz, 0.08, 0.04, 'triangle'), i * 0.07)),
+  win: () => [392, 523, 659, 784, 1047].forEach((hz, i) => tone(note(hz, 0.14, 0.05), i * 0.09)),
+  lose: () => [392, 330, 262, 196].forEach((hz, i) => tone(note(hz, 0.22, 0.05, 'sawtooth'), i * 0.16)),
+  buy: () => [880, 1320].forEach((hz, i) => tone(note(hz, 0.08, 0.04, 'triangle'), i * 0.07)),
 };
 function play(name: keyof typeof SOUNDS) {
   if (!save.muted) SOUNDS[name]();
@@ -169,6 +205,8 @@ els.mute.addEventListener('click', () => {
   save.muted = !save.muted;
   persist();
   renderMute();
+  if (save.muted) music.stop();
+  else startMusic();
 });
 renderMute();
 
@@ -425,8 +463,10 @@ function setFry() {
   // The meme screens (the title, the end of an act, the secret boss, a win) always have full laser eyes.
   const meme = view === 'title' || (!!run && (run.screen === 'act-clear' || run.screen === 'secret' || run.screen === 'won'));
   const stage = meme ? 2 : Math.min(4, Math.floor(based / 25));
-  els.app.className = `fry-${stage} act-${run && view !== 'title' ? run.act : 0}`;
+  const o = save.options;
+  els.app.className = `fry-${stage} act-${run && view !== 'title' ? run.act : 0}${o.reduceFlashing ? ' reduce-flashing' : ''}${o.shake ? '' : ' no-shake'}`;
   els.app.style.setProperty('--based', String(meme ? 1 : based / BASED_MAX));
+  updateMusic();
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +482,7 @@ let selected: number | null = null;
 function render() {
   hideTip();
   if (save.run && view === 'run' && !shownCombat) checkAchievements();
+  if (save.run && view === 'run' && noteSeen(save.seen, save.run)) persist();
   setFry();
   renderHud();
   els.screen.replaceChildren();
@@ -486,6 +527,8 @@ function renderTitle() {
   const d = dailyFor(new Date());
   buttons.append(button(`📅 Daily run <small>${d.twist.icon} ${d.twist.name}</small>`, 'big-button secondary', showDaily));
   buttons.append(button(`🏅 Achievements <small>${save.achievements.length}/${ACHIEVEMENTS.length}</small>`, 'big-button secondary', showAchievements));
+  if (save.history.length) buttons.append(button(`📜 Run history <small>last ${save.history.length}</small>`, 'big-button secondary', showHistory));
+  buttons.append(button(`📚 Compendium <small>${seenCount()}/${compendiumSize()}</small>`, 'big-button secondary', () => showCompendium()));
   buttons.append(button('📖 How to play', 'big-button secondary', showHowTo));
   buttons.append(button('💾 Save &amp; load', 'big-button secondary', () => openSaveTransfer('just-getting-started')));
   s.append(buttons);
@@ -993,6 +1036,8 @@ function playFx(fx: Fx[], maxHp?: (t: 'player' | number) => number): number {
 }
 
 function recordEnd(run: Run, won: boolean) {
+  noteSeen(save.seen, run);
+  save.history = addHistory(save.history, historyEntry(run, { abandoned: run.screen !== 'won' && run.screen !== 'lost' }));
   const m = save.meta;
   m.runs++;
   if (won) m.wins++;
@@ -1050,7 +1095,7 @@ function achievementToast(id: string) {
   t.querySelector('b')!.textContent = a.name;
   els.toasts.append(t);
   window.setTimeout(() => t.remove(), 4200);
-  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => playTone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
+  if (!save.muted) [784, 988, 1175, 1568].forEach((hz, i) => tone(note(hz, 0.1, 0.05, 'triangle'), i * 0.07));
 }
 
 function showAchievements() {
@@ -1068,6 +1113,153 @@ function showAchievements() {
     box.append(grid);
   });
 }
+
+// --- Run history, the compendium, options ---
+
+const enemyLabel = (id: string) => `${enemyDef(id).emoji} ${enemyDef(id).name}`;
+
+function showHistory() {
+  openOverlay('📜 Run history', (box) => {
+    const runs = save.history;
+    const best = Math.max(...runs.map((r) => r.score));
+    // Who ratio'd you most (abandoned runs don't count).
+    const tally: Record<string, number> = {};
+    for (const r of runs) if (r.killer && !r.abandoned) tally[r.killer] = (tally[r.killer] ?? 0) + 1;
+    const nemesis = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+    const wins = runs.filter((r) => r.won).length;
+    const top = h('p', 'history-summary');
+    top.innerHTML = `Last ${runs.length} run${runs.length === 1 ? '' : 's'} · <b>${wins}</b> won · best <b>${best}</b> points`;
+    if (nemesis) {
+      const n = h('span', 'nemesis');
+      n.textContent = ` · Nemesis: ${enemyLabel(nemesis[0])} (${nemesis[1]}×)`;
+      top.append(n);
+    }
+    const list = h('ol', 'history-list');
+    for (const r of runs) {
+      const li = h('li', `history-run ${r.won ? 'won' : r.abandoned ? 'abandoned' : 'lost'}`);
+      const when = new Date(r.at);
+      const result = r.won
+        ? `🏆 Won${r.secret === 'won' ? ' · 🤝 beat the secret boss' : r.secret === 'lost' ? ' · 🤝 lost to the secret boss' : ''}`
+        : r.abandoned
+          ? `🏳️ Abandoned · Act ${r.act}, floor ${r.floor}`
+          : `💀 Ratio’d${r.killer ? ` by ${enemyLabel(r.killer)}` : ''} · Act ${r.act}, floor ${r.floor}`;
+      li.innerHTML = '<span class="result"></span><span class="who"></span><b class="score"></b><small class="when"></small>';
+      li.querySelector('.result')!.textContent = result;
+      li.querySelector('.who')!.textContent = [characterById(r.character).short, r.daily ? `📅 Daily ${r.daily}` : `Late Stage ${r.stage}`].join(' · ');
+      li.querySelector('.score')!.textContent = `${r.score}${r.score === best && best > 0 ? ' 👑' : ''}`;
+      li.querySelector('.when')!.textContent = when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      list.append(li);
+    }
+    box.append(top, list);
+  });
+}
+
+type CompendiumTab = 'cards' | 'relics' | 'enemies';
+const CARD_ORDER = Object.values(CARDS);
+const RELIC_ORDER = Object.values(RELICS);
+const ENEMY_ORDER = Object.values(ENEMIES);
+const compendiumSize = () => CARD_ORDER.length + RELIC_ORDER.length + ENEMY_ORDER.length;
+const seenCount = () => save.seen.cards.length + save.seen.relics.length + save.seen.enemies.length;
+
+/** Everything you've come across; the rest as silhouettes. */
+function showCompendium(tab: CompendiumTab = 'cards') {
+  const seen = save.seen;
+  openOverlay(`📚 Compendium · ${seenCount()}/${compendiumSize()}`, (box) => {
+    const tabs = h('div', 'compendium-tabs');
+    const counts: Record<CompendiumTab, [string, number, number]> = {
+      cards: ['🃏 Cards', seen.cards.length, CARD_ORDER.length],
+      relics: ['🏺 Relics', seen.relics.length, RELIC_ORDER.length],
+      enemies: ['😡 Enemies', seen.enemies.length, ENEMY_ORDER.length],
+    };
+    for (const id of Object.keys(counts) as CompendiumTab[]) {
+      const [label, got, all] = counts[id];
+      const b = button(`${label} <small>${got}/${all}</small>`, `compendium-tab${id === tab ? ' picked' : ''}`, () => showCompendium(id));
+      b.setAttribute('aria-pressed', String(id === tab));
+      tabs.append(b);
+    }
+    box.append(tabs);
+    const grid = h('div', `compendium ${tab}`);
+    if (tab === 'cards') {
+      for (const def of CARD_ORDER) {
+        if (seen.cards.includes(def.id)) {
+          const el = cardEl({ uid: 0, id: def.id, up: false }, { flavor: true });
+          if (def.who === 'david') el.classList.add('davids');
+          grid.append(el);
+        } else grid.append(h('div', `card unseen type-${def.type}`, `<span class="cost">?</span><span class="art">${def.emoji}</span><b class="name">???</b><small class="kind">${TYPE_LABEL[def.type]}</small>`));
+      }
+    } else if (tab === 'relics') {
+      for (const r of RELIC_ORDER) {
+        const known = seen.relics.includes(r.id);
+        const el = h('div', `relic-entry${known ? '' : ' unseen'}`, '<span class="relic-emoji"></span><b></b><small></small>');
+        el.querySelector('.relic-emoji')!.textContent = r.emoji;
+        el.querySelector('b')!.textContent = known ? r.name : '???';
+        el.querySelector('small')!.textContent = known ? r.text : r.tier === 'boss' ? 'A boss relic.' : r.tier === 'starter' ? 'Someone’s starting relic.' : 'Not found yet.';
+        grid.append(el);
+      }
+    } else {
+      for (const def of ENEMY_ORDER) {
+        const known = seen.enemies.includes(def.id);
+        const el = h('div', `enemy-entry${known ? '' : ' unseen'}${def.boss ? ' boss' : ''}`);
+        const look = def.image ? friedman('mini', def.image === 'dfriedman' ? 'david' : 'milton') : h('span', 'foe-emoji', def.emoji);
+        const ratiod = save.history.filter((r) => r.killer === def.id && !r.abandoned).length;
+        const info = h('div', 'enemy-info', '<b></b><small class="hp"></small><i></i>');
+        info.querySelector('b')!.textContent = known ? def.name : def.image ? '??? (a secret)' : '???';
+        info.querySelector('.hp')!.textContent = known ? `${def.boss ? '💀 Boss · ' : ''}❤️ ${def.hp[0]}–${def.hp[1]}${ratiod ? ` · ratio’d you ${ratiod}×` : ''}` : def.boss ? '💀 Boss' : '';
+        info.querySelector('i')!.textContent = known ? `“${def.intro}”` : '';
+        el.append(look, info);
+        grid.append(el);
+      }
+    }
+    box.append(grid);
+  });
+}
+
+function showOptions() {
+  openOverlay('⚙️ Options', (box) => {
+    const o = save.options;
+    const form = h('div', 'options');
+    const changed = () => {
+      persist();
+      setFry();
+      music.setVolume(o.music);
+      if (o.music > 0) startMusic();
+      else music.stop();
+    };
+    const slider = (label: string, key: 'music' | 'sound') => {
+      const row = h('label', 'option-row', `<span>${label}</span><input type="range" min="0" max="100" step="5"><output></output>`);
+      const input = row.querySelector('input')!;
+      const out = row.querySelector('output')!;
+      input.value = String(Math.round(o[key] * 100));
+      out.textContent = `${input.value}%`;
+      input.addEventListener('input', () => {
+        o[key] = Number(input.value) / 100;
+        out.textContent = `${input.value}%`;
+        changed();
+      });
+      if (key === 'sound') input.addEventListener('change', () => play('card'));
+      return row;
+    };
+    const toggle = (label: string, hint: string, get: () => boolean, set: (v: boolean) => void) => {
+      const row = h('label', 'option-row toggle', `<span>${label}<small>${hint}</small></span><input type="checkbox">`);
+      const input = row.querySelector('input')!;
+      input.checked = get();
+      input.addEventListener('change', () => {
+        set(input.checked);
+        changed();
+      });
+      return row;
+    };
+    form.append(
+      slider('🎵 Music', 'music'),
+      slider('🔊 Sound effects', 'sound'),
+      toggle('⚡ Reduce flashing', 'No red flash on Laser Eyes, no jitter when the screen’s fully deep-fried.', () => o.reduceFlashing, (v) => (o.reduceFlashing = v)),
+      toggle('📳 Screen shake', 'Laser Eyes and big hits shake the screen.', () => o.shake, (v) => (o.shake = v)),
+    );
+    box.append(form);
+    if (save.muted) box.append(h('p', 'meta', '🔇 Sound is muted (the speaker button up top). Unmute to hear any of it.'));
+  });
+}
+els.options.addEventListener('click', showOptions);
 
 // --- The daily run ---
 
