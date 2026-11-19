@@ -1,11 +1,11 @@
 // The polcompballs, drawn as SVG and then stamped into canvas sprites once (hundreds of them on
 // screen would be too slow as live SVG). Thick black outline, white eyes, no pupils: the eyes do
-// the acting (normal, angry, happy, hurt).
+// the acting (normal, angry, happy, hurt, scared).
 
 import type { CharacterId, EnemyId } from './data.ts';
 
 export type BallId = CharacterId | EnemyId;
-export type Eyes = 'normal' | 'angry' | 'happy' | 'hurt';
+export type Eyes = 'normal' | 'angry' | 'happy' | 'hurt' | 'scared';
 
 const OUT = 'stroke="#000" stroke-width="3" stroke-linejoin="round"';
 const EYE = `fill="#fff" ${OUT}`;
@@ -13,30 +13,63 @@ const EYE = `fill="#fff" ${OUT}`;
 /** Diagonal two-tone (top-left / bottom-right), like the ancap flag. */
 const diagonal = (a: string, b: string) => `<rect x="0" y="0" width="100" height="100" fill="${a}"/><polygon points="8,100 100,6 100,100" fill="${b}"/>`;
 
+/** A fleur-de-lis, for the Keynesian (after the flag in his picture). */
+const fleur = (cx: number, cy: number, s: number) => `<g transform="translate(${cx} ${cy}) scale(${s})" fill="#cfd3d6">
+  <path d="M0 -10 C3.2 -6 3.2 -2 0 2.5 C-3.2 -2 -3.2 -6 0 -10 Z"/>
+  <path d="M-1 1 C-6 -6 -11.5 -2 -8.5 2.5 C-6.5 4.5 -3.5 3.5 -2 1.5 Z"/>
+  <path d="M1 1 C6 -6 11.5 -2 8.5 2.5 C6.5 4.5 3.5 3.5 2 1.5 Z"/>
+  <rect x="-5.5" y="2.5" width="11" height="2.4" rx="0.6"/>
+  <path d="M-1.6 4.9 L1.6 4.9 L0.9 10.5 L-0.9 10.5 Z"/>
+</g>`;
+
 /** The flag, emblem and extras for each ball (inside a 100 × 100 box, clipped to the circle). */
 const PAINT: Record<BallId, string> = {
   ancap: diagonal('#ffe600', '#111'),
   minarchist: diagonal('#f2c552', '#4a86e8'),
   agorist: diagonal('#8c8c8c', '#141414'),
   austrian: `<rect width="100" height="100" fill="#ef2b2d"/><rect y="34" width="100" height="33" fill="#fff"/>`,
-  communist: `<rect width="100" height="100" fill="#d6261c"/>${star(30, 30, 11, '#ffd700')}`,
-  socialist: `<rect width="100" height="100" fill="#e2373f"/><circle cx="68" cy="70" r="10" fill="#fff" opacity="0.9"/><path d="M68 62c-5 3-5 10 0 12 5-2 5-9 0-12z" fill="#c2185b"/><path d="M68 80v12" stroke="#2e7d32" stroke-width="3"/>`,
-  keynesian: `<rect width="100" height="100" fill="#2f8f5b"/><text x="68" y="82" font-family="Arial Black, Arial, sans-serif" font-size="30" font-weight="900" fill="#e8f5e9" text-anchor="middle">$</text>`,
-  stimulus: `<rect width="100" height="100" fill="#55b47e"/><text x="50" y="86" font-family="Arial Black, Arial, sans-serif" font-size="34" font-weight="900" fill="#e8f5e9" text-anchor="middle">$</text>`,
-  bureaucrat: `<rect width="100" height="100" fill="#9aa0a6"/><polygon points="0,64 100,30 100,44 0,78" fill="#d32f2f"/><rect x="58" y="70" width="22" height="14" fill="none" stroke="#d32f2f" stroke-width="3" transform="rotate(-12 69 77)"/>`,
-  taxman: `<rect width="100" height="100" fill="#1f3d2c"/><text x="50" y="88" font-family="Arial Black, Arial, sans-serif" font-size="22" font-weight="900" fill="#ffd54f" text-anchor="middle">TAX</text>`,
-  bank: `<rect width="100" height="100" fill="#0e5c3a"/><circle cx="50" cy="74" r="15" fill="none" stroke="#c8e6c9" stroke-width="3"/><text x="50" y="82" font-family="Arial Black, Arial, sans-serif" font-size="22" font-weight="900" fill="#c8e6c9" text-anchor="middle">$</text>`,
+  // Red, a golden hammer and sickle (the sickle arcs round the right, the hammer's head at top left).
+  communist: `<rect width="100" height="100" fill="#cc0000"/>
+    <g fill="none" stroke="#ffcc00" stroke-linecap="round">
+      <path d="M40 53 A20 20 0 1 1 43 85" stroke-width="6"/>
+      <path d="M43 85 L35 93" stroke-width="7.5"/>
+      <path d="M66 88 L40 62" stroke-width="5.5"/>
+    </g>
+    <rect x="28" y="55" width="23" height="9" rx="1.5" fill="#ffcc00" transform="rotate(-45 39.5 59.5)"/>`,
+  // Social democracy: red, a white rose (one silhouette: outer petals curling up, a pointed bud, red folds).
+  socialist: `<rect width="100" height="100" fill="#e30613"/>
+    <path d="M36 57 Q35 80 50 83 Q65 80 64 57 Q60 51 56 55 Q53 47 50 44 Q47 47 44 55 Q40 51 36 57 Z" fill="#fff"/>
+    <path d="M44 55 Q46 66 50 71 Q54 66 56 55 M39 63 Q43 74 50 76 Q57 74 61 63" fill="none" stroke="#e30613" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M46 86 L54 86 L50 93 Z" fill="#fff"/>`,
+  // Keynesianism: blue, three diagonal stripes, a fleur-de-lis in two corners.
+  keynesian: `<rect width="100" height="100" fill="#0f4fa1"/>
+    <g stroke="#cfd3d6" stroke-width="3.5"><path d="M10 -6 L108 92"/><path d="M2 2 L100 100"/><path d="M-10 10 L88 108"/></g>
+    ${fleur(76, 24, 1.15)}${fleur(24, 78, 1.15)}`,
+  stimulus: `<rect width="100" height="100" fill="#3b78c9"/>
+    <g stroke="#e3e6e8" stroke-width="5"><path d="M6 -4 L104 94"/><path d="M-6 8 L92 106"/></g>
+    ${fleur(74, 26, 1.5)}`,
+  // Black, the fasces: a bundle of golden rods bound in white cord, an axe head out of the side.
+  fascist: `<rect width="100" height="100" fill="#151515"/>
+    <path d="M60 52 Q76 50 76 62 Q76 72 61 70 Z" fill="#d6d6d6" stroke="#9e9e9e" stroke-width="1"/>
+    <rect x="42" y="44" width="18" height="46" rx="3" fill="#c9a227"/>
+    <g stroke="#8a6d10" stroke-width="1.6"><path d="M47 46 V88"/><path d="M51 46 V88"/><path d="M55 46 V88"/></g>
+    <path d="M42 54 L60 64 M42 64 L60 74 M42 74 L60 84" stroke="#fafafa" stroke-width="2.6" stroke-linecap="round"/>`,
+  // The taxman: a charcoal suit of a ball, a gold percent sign.
+  taxman: `<rect width="100" height="100" fill="#2e3238"/>
+    <rect x="0" y="66" width="100" height="40" fill="#23262b"/>
+    <path d="M50 66 L44 100 M50 66 L56 100" stroke="#fafafa" stroke-width="3"/>
+    <path d="M50 70 L46 78 L50 96 L54 78 Z" fill="#b71c1c"/>
+    <g fill="none" stroke="#ffca28" stroke-width="3"><circle cx="72" cy="74" r="4"/><circle cx="84" cy="88" r="4"/><path d="M86 70 L70 92"/></g>`,
+  // The Central Bank: dollar-bill green, engraved rings, and the eye in the pyramid.
+  bank: `<rect width="100" height="100" fill="#0d4d2e"/>
+    <g fill="none" stroke="#2f7d55" stroke-width="1.2"><circle cx="50" cy="56" r="40"/><circle cx="50" cy="56" r="34"/><circle cx="50" cy="56" r="28"/></g>
+    <path d="M34 90 L50 62 L66 90 Z" fill="#b8a03a" stroke="#6e5f1c" stroke-width="1.5"/>
+    <path d="M40 80 H60 M37 85 H63" stroke="#6e5f1c" stroke-width="1.2"/>
+    <path d="M44 72 L50 62 L56 72 Z" fill="#fff59d"/>
+    <ellipse cx="50" cy="69" rx="3.4" ry="2" fill="#fff"/><circle cx="50" cy="69" r="1.3" fill="#0d4d2e"/>
+    <g stroke="#fff59d" stroke-width="1" opacity="0.8"><path d="M50 60 V54 M44 63 L40 59 M56 63 L60 59"/></g>`,
 };
 
-function star(cx: number, cy: number, r: number, fill: string): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    const rr = i % 2 ? r * 0.45 : r;
-    pts.push(`${(cx + Math.cos(a) * rr).toFixed(1)},${(cy + Math.sin(a) * rr).toFixed(1)}`);
-  }
-  return `<polygon points="${pts.join(' ')}" fill="${fill}"/>`;
-}
 
 /** Eye positions: most balls look the same way; the Austrian's sit on his top band. */
 const EYE_AT: Partial<Record<BallId, [number, number, number, number]>> = { austrian: [34, 25, 66, 25] };
@@ -52,6 +85,10 @@ function eyes(kind: Eyes, id: BallId): string {
       // Closed, smiling arcs (the agorist's look, and the Austrian's).
       return `<path ${EYE} d="M${lx - 10},${ly + 4} Q${lx},${ly - 8} ${lx + 10},${ly + 4} Q${lx},${ly - 1} ${lx - 10},${ly + 4} Z"/>
         <path ${EYE} d="M${rx - 10},${ry + 4} Q${rx},${ry - 8} ${rx + 10},${ry + 4} Q${rx},${ry - 1} ${rx - 10},${ry + 4} Z"/>`;
+    case 'scared':
+      // Wide eyes and a bead of sweat: low on health, or surrounded.
+      return `<ellipse ${EYE} cx="${lx}" cy="${ly}" rx="9.5" ry="11.5"/><ellipse ${EYE} cx="${rx}" cy="${ry}" rx="9.5" ry="11.5"/>
+        <path d="M86 26 Q80 36 84 40 Q90 40 88 32 Z" fill="#7fd3ff" stroke="#000" stroke-width="2"/>`;
     case 'hurt':
       return `<path d="M${lx - 7},${ly - 6} L${lx + 7},${ly + 6} M${lx + 7},${ly - 6} L${lx - 7},${ly + 6} M${rx - 7},${ry - 6} L${rx + 7},${ry + 6} M${rx + 7},${ry - 6} L${rx - 7},${ry + 6}" stroke="#000" stroke-width="4" stroke-linecap="round"/>`;
     default:
@@ -68,12 +105,17 @@ function extras(id: BallId): string {
       // A coiled snake (after the Gadsden flag) on the white band, and his one word.
       return `<path d="M60 38 q10 2 8 9 q-2 6 -12 6 q-10 0 -12 7 q-1 7 9 8" fill="none" stroke="#111" stroke-width="3.2" stroke-linecap="round"/><circle cx="61" cy="38" r="2.6" fill="#111"/>
         <text x="52" y="86" font-family="'Comic Sans MS', 'Comic Neue', cursive, sans-serif" font-size="15" fill="#111" text-anchor="middle">nein</text>`;
-    case 'keynesian':
-      return `<g ${OUT}><rect x="34" y="-6" width="32" height="20" rx="2" fill="#151515"/><rect x="26" y="12" width="48" height="6" rx="3" fill="#151515"/></g>`;
+    case 'fascist':
+      // A black side cap with a red badge.
+      return `<g ${OUT}><path d="M28 18 Q50 2 74 14 L72 22 Q50 16 30 24 Z" fill="#1d1d1d"/></g><path d="M47 12 l3 -4 3 4 -3 3 z" fill="#e53935" stroke="#ffca28" stroke-width="1"/>`;
+    case 'taxman':
+      // A green accountant's eyeshade.
+      return `<g ${OUT}><path d="M18 30 Q50 10 82 30 L78 38 Q50 24 22 38 Z" fill="#2e7d32" fill-opacity="0.92"/></g><path d="M18 30 Q50 10 82 30" fill="none" stroke="#a5d6a7" stroke-width="1.5"/>`;
     case 'bank':
-      return `<g ${OUT}><rect x="30" y="-8" width="40" height="22" rx="2" fill="#1b1b1b"/><rect x="22" y="12" width="56" height="6" rx="3" fill="#1b1b1b"/><rect x="30" y="7" width="40" height="4" fill="#c9a227" stroke="none"/></g>`;
-    case 'bureaucrat':
-      return `<g ${OUT}><path d="M32 16 Q50 4 68 16 L66 20 L34 20 Z" fill="#37474f"/></g>`;
+      // A top hat with a gold band, and a gold monocle on its chain.
+      return `<g ${OUT}><rect x="30" y="-10" width="40" height="24" rx="2" fill="#141414"/><rect x="20" y="12" width="60" height="7" rx="3" fill="#141414"/></g>
+        <rect x="30" y="6" width="40" height="5" fill="#d4af37"/>
+        <circle cx="67" cy="44" r="12" fill="none" stroke="#d4af37" stroke-width="3"/><path d="M78 50 Q86 64 80 76" fill="none" stroke="#d4af37" stroke-width="1.6"/>`;
     default:
       return '';
   }
@@ -91,9 +133,9 @@ export function ballSvg(id: BallId, kind: Eyes = 'normal', size = 128): string {
 }
 
 /** Each character's own resting face. */
-export const RESTING: Partial<Record<BallId, Eyes>> = { minarchist: 'angry', agorist: 'happy', austrian: 'happy', bank: 'angry', bureaucrat: 'angry', taxman: 'angry' };
+export const RESTING: Partial<Record<BallId, Eyes>> = { minarchist: 'angry', agorist: 'happy', austrian: 'happy', communist: 'angry', socialist: 'happy', fascist: 'angry', taxman: 'angry', bank: 'angry' };
 
-export const ALL_BALLS: BallId[] = ['ancap', 'minarchist', 'agorist', 'austrian', 'communist', 'socialist', 'keynesian', 'stimulus', 'bureaucrat', 'taxman', 'bank'];
+export const ALL_BALLS: BallId[] = ['ancap', 'minarchist', 'agorist', 'austrian', 'communist', 'socialist', 'keynesian', 'stimulus', 'fascist', 'taxman', 'bank'];
 
 /** A canvas holding a ball, drawn once from its SVG. */
 export type Sprite = HTMLCanvasElement;
@@ -102,7 +144,7 @@ export async function loadSprites(size = 128): Promise<Map<string, Sprite>> {
   const sprites = new Map<string, Sprite>();
   const jobs: Promise<void>[] = [];
   for (const id of ALL_BALLS) {
-    for (const kind of ['normal', 'angry', 'happy', 'hurt'] as Eyes[]) {
+    for (const kind of ['normal', 'angry', 'happy', 'hurt', 'scared'] as Eyes[]) {
       jobs.push(
         (async () => {
           const img = new Image();

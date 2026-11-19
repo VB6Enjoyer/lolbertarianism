@@ -113,11 +113,11 @@ describe('weapons (auto-aim)', () => {
 
   it('the shotgun knocks them back; NEIN! hits everyone around you', () => {
     const g = quiet('minarchist');
-    const e = spawnEnemy(g, 'bureaucrat', 120, 0);
+    const e = spawnEnemy(g, 'socialist', 120, 0);
     run(g, 0.5);
     expect(g.damageBy.shotgun).toBeGreaterThan(0);
     const a = quiet('austrian');
-    const ring = [0, 1, 2, 3].map((k) => spawnEnemy(a, 'bureaucrat', Math.cos(k * 1.57) * 120, Math.sin(k * 1.57) * 120));
+    const ring = [0, 1, 2, 3].map((k) => spawnEnemy(a, 'socialist', Math.cos(k * 1.57) * 120, Math.sin(k * 1.57) * 120));
     run(a, 0.5);
     for (const x of ring) expect(x.hp).toBeLessThan(x.maxHp);
     void e;
@@ -132,7 +132,7 @@ describe('weapons (auto-aim)', () => {
       choose(g, 0);
       expect(weaponLevel(g, id)).toBe(1);
       const dist = id === 'hand' ? 70 : id === 'nap' ? 40 : id === 'laffer' ? 240 : 150;
-      const e = spawnEnemy(g, 'bureaucrat', dist, 0);
+      const e = spawnEnemy(g, 'socialist', dist, 0);
       e.speed = 0;
       run(g, 3);
       expect(g.damageBy[id], id).toBeGreaterThan(0);
@@ -170,16 +170,32 @@ describe('the statists', () => {
     expect(tax.stolen).toBe(7);
   });
 
-  it('red tape slows you down', () => {
+  it('a fascist stops to wind up, then charges straight at where you were', () => {
     const g = quiet('ancap');
     g.weapons = [];
-    step(g, { x: 1, y: 0 });
-    const free = g.player.x;
-    const s = quiet('ancap');
-    s.weapons = [];
-    s.zones.push({ x: 0, y: 0, radius: 50, life: 5 });
-    step(s, { x: 1, y: 0 });
-    expect(s.player.x).toBeLessThan(free);
+    const f = spawnEnemy(g, 'fascist', 300, 0);
+    f.timer = 3.6;
+    step(g, still);
+    expect(f.windup).toBeGreaterThan(0);
+    const x0 = f.x;
+    run(g, 0.6);
+    expect(Math.abs(f.x - x0)).toBeLessThan(5); // standing still while winding up
+    run(g, 0.2);
+    expect(f.dash).toBeGreaterThan(0);
+    const x1 = f.x;
+    run(g, 0.2);
+    expect(x1 - f.x).toBeGreaterThan(40); // charging: much faster than his walk
+  });
+
+  it('fascists march in squads of four', () => {
+    const g = newGame(9, 'ancap');
+    g.time = 400;
+    g.events = { boss: true, revolution1: true, revolution2: true };
+    for (let i = 0; i < 60 * 20 && g.enemies.filter((e) => e.type === 'fascist').length === 0; i++) {
+      if (g.offer) choose(g, 0);
+      step(g, still);
+    }
+    expect(g.enemies.filter((e) => e.type === 'fascist').length % 4).toBe(0);
   });
 
   it('the Central Bank arrives on time; the revolution too; and the state withers at the end', () => {

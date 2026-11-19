@@ -1034,16 +1034,21 @@ state would wither away. It didn't. Make it." Survive 10 minutes against the sta
   Hand (orbiting slaps), Price Signal (homing), Laffer Curve (out and back through everything),
   Non-Aggression Pact (an aura); passives Property Rights, Low Time Preference, Division of Labour,
   Compound Interest, Free Trade, Private Healthcare.
-- The statists, each with a trick: Communistball (the masses), Socialistball (heals the others),
-  Keynesianball (splits into stimulus), Bureaucratball (red tape that slows you), Taxmanball
-  (steals your XP; kill him to get it back). A revolution (a ring of communists) at 2:30 and 7:30;
+- The statists, each with a trick: Communistball (red, golden hammer and sickle; the masses),
+  Social Democratball (red, white rose; heals the others, little green crosses drifting up),
+  Keynesianball (blue, three stripes, fleurs-de-lis; splits into stimulus), Fascistball (black, the
+  fasces; marches in squads of four, winds up with a "!" and charges), Taxmanball (charcoal suit,
+  green eyeshade, gold %; steals your XP, kill him to get it back). A revolution (a ring of communists) at 2:30 and 7:30;
   the Central Bank at 5:00 (inflation balloons that grow, and more Keynesians). At 10:00 the state
   withers away.
 - The engine (`game.ts`) is plain, seeded and DOM-free: a fixed 60 Hz step, a spatial grid, up to
   380 statists. A bot (`bot.ts`) plays whole runs for the tests and balancing (it keeps its
   distance like a player would for each weapon's reach). 60 fps in a headless browser with 380 on
   screen; the step takes under a millisecond.
-- The balls are SVG, drawn once per expression (normal, angry, happy, hurt) into canvas sprites
-  (`balls.ts`); balls with writing on them never flip.
+- The balls are SVG, drawn once per expression (normal, angry, happy, scared, hurt) into canvas
+  sprites (`balls.ts`); balls with writing on them never flip. The Central Bank: dollar-bill green,
+  engraved rings, the eye in the pyramid, a top hat and a gold monocle. Your face changes with the
+  moment (`playerEyes`): X eyes when hit, happy after an upgrade or the boss, scared with a bead of
+  sweat when low on health or swamped, angry in a crowd or near the boss.
 - Next: a meta shop for the gold, more characters and maps, evolutions (a maxed weapon plus the
   right passive), achievements, a daily run, music, sharing.

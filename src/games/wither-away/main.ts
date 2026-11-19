@@ -146,7 +146,7 @@ window.addEventListener('blur', () => {
   if (g && !g.over && !g.offer) setPaused(true);
 });
 
-const vis: Visuals = { particles: [], texts: [], rings: [], hurt: 0, stick: null };
+const vis: Visuals = { particles: [], texts: [], rings: [], hurt: 0, happy: 0, stick: null };
 let stickId: number | null = null;
 els.canvas.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse') return;
@@ -258,6 +258,7 @@ function react(g: Game) {
         break;
       case 'kill': {
         const color = particleColor(f.type);
+        if (f.type === 'bank') vis.happy = 3;
         for (let i = 0; i < (f.type === 'bank' ? 40 : 6); i++) {
           if (vis.particles.length > 500) break;
           const a = Math.random() * Math.PI * 2;
@@ -313,6 +314,7 @@ function updateVisuals(dt: number) {
   for (const r of vis.rings) r.life -= dt;
   vis.rings = vis.rings.filter((r) => r.life > 0);
   vis.hurt = Math.max(0, vis.hurt - dt);
+  vis.happy = Math.max(0, vis.happy - dt);
 }
 
 let dpr = 1;
@@ -393,6 +395,7 @@ function pick(i: number) {
   if (!g?.offer) return;
   choose(g, i);
   shownOffer = null;
+  vis.happy = 1.6;
   if (!g.offer) {
     els.modal.hidden = true;
     last = performance.now();
@@ -475,7 +478,7 @@ function showTitle() {
 function showHowTo() {
   els.modal.replaceChildren();
   const box = h('div', 'modal-box');
-  const foes = (['communist', 'socialist', 'keynesian', 'bureaucrat', 'taxman', 'bank'] as const).map((id) => `<li><b>${ENEMIES[id].name}</b>: ${ENEMIES[id].note}</li>`).join('');
+  const foes = (['communist', 'socialist', 'keynesian', 'fascist', 'taxman', 'bank'] as const).map((id) => `<li><b>${ENEMIES[id].name}</b>: ${ENEMIES[id].note}</li>`).join('');
   box.append(
     t('h2', 'modal-title', 'HOW TO PLAY'),
     h(

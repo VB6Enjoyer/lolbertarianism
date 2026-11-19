@@ -4,7 +4,7 @@
 export type CharacterId = 'ancap' | 'minarchist' | 'agorist' | 'austrian';
 export type WeaponId = 'coins' | 'shotgun' | 'ak' | 'nein' | 'hand' | 'signal' | 'laffer' | 'nap';
 export type PassiveId = 'property' | 'timepref' | 'division' | 'compound' | 'freetrade' | 'healthcare';
-export type EnemyId = 'communist' | 'socialist' | 'keynesian' | 'stimulus' | 'bureaucrat' | 'taxman' | 'bank';
+export type EnemyId = 'communist' | 'socialist' | 'keynesian' | 'stimulus' | 'fascist' | 'taxman' | 'bank';
 
 export interface CharacterDef {
   id: CharacterId;
@@ -27,7 +27,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     weapon: 'coins',
     perk: 'A big pickup magnet: profits come to him.',
     blurb: 'Gold and black. Pays in gold, literally, at high velocity.',
-    hp: 100,
+    hp: 110,
     speed: 165,
     magnet: 125,
     armor: 0,
@@ -141,10 +141,10 @@ export interface EnemyDef {
 
 export const ENEMIES: Record<EnemyId, EnemyDef> = {
   communist: { id: 'communist', name: 'Communistball', hp: 8, speed: 58, damage: 6, radius: 14, xp: 1, note: 'Slow, and there are always more of them: the masses.' },
-  socialist: { id: 'socialist', name: 'Socialistball', hp: 16, speed: 52, damage: 6, radius: 16, xp: 2, note: 'Heals the statists around him: redistribution.' },
+  socialist: { id: 'socialist', name: 'Social Democratball', hp: 16, speed: 52, damage: 6, radius: 16, xp: 2, note: 'Heals the statists around him: redistribution, with a first-aid kit.' },
   keynesian: { id: 'keynesian', name: 'Keynesianball', hp: 24, speed: 62, damage: 8, radius: 18, xp: 2, note: 'Splits into two when you hit him hard enough: stimulus.' },
   stimulus: { id: 'stimulus', name: 'Stimulus', hp: 6, speed: 92, damage: 4, radius: 11, xp: 1, note: 'Small, fast, and borrowed.' },
-  bureaucrat: { id: 'bureaucrat', name: 'Bureaucratball', hp: 30, speed: 44, damage: 8, radius: 18, xp: 3, note: 'Leaves red tape behind that slows you down.' },
+  fascist: { id: 'fascist', name: 'Fascistball', hp: 28, speed: 50, damage: 7, radius: 17, xp: 3, note: 'Marches in squads, stops to wind up (watch for the “!”), then charges.' },
   taxman: { id: 'taxman', name: 'Taxmanball', hp: 20, speed: 100, damage: 5, radius: 15, xp: 3, note: 'Fast. Grabs your XP before you can. Kill him to get it back.' },
   bank: { id: 'bank', name: 'The Central Bank', hp: 2400, speed: 46, damage: 20, radius: 50, xp: 80, note: 'Prints inflation balloons and stimulus. Arrives at 5:00.' },
 };

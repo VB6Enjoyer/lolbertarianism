@@ -14,6 +14,8 @@ export const PLAYER_RADIUS = 16;
 /** Where new statists appear: a ring this far from you (just off screen). */
 export const SPAWN_DISTANCE = 720;
 export const MAX_ENEMIES = 380;
+/** How fast a fascist charges. */
+export const FASCIST_DASH = 240;
 const CELL = 64;
 
 export interface Player {
@@ -52,6 +54,11 @@ export interface Enemy {
   /** XP the taxman has grabbed (he drops it when he dies). */
   stolen: number;
   dead: boolean;
+  /** The fascist's charge: winding up (seconds left), then dashing (seconds left) in a fixed direction. */
+  windup?: number;
+  dash?: number;
+  dx?: number;
+  dy?: number;
 }
 
 export interface Shot {
@@ -95,14 +102,6 @@ export interface Pickup {
   value: number;
   /** Pulled towards you once in range. */
   pulled: boolean;
-}
-
-/** Red tape: slows you while you stand in it. */
-export interface Zone {
-  x: number;
-  y: number;
-  radius: number;
-  life: number;
 }
 
 export interface OwnedWeapon {
@@ -155,7 +154,6 @@ export interface Game {
   shots: Shot[];
   foeShots: FoeShot[];
   pickups: Pickup[];
-  zones: Zone[];
   /** Level-ups waiting, and the cards on offer for the first one (null: playing). */
   pending: number;
   offer: Offer[] | null;
@@ -190,7 +188,6 @@ export function newGame(seed: number, character: CharacterId): Game {
     shots: [],
     foeShots: [],
     pickups: [],
-    zones: [],
     pending: 0,
     offer: null,
     over: null,
@@ -346,8 +343,6 @@ export function step(g: Game, input: Input, dt = DT) {
   moveEnemies(g, grid, dt);
   moveFoeShots(g, dt);
   collect(g, dt);
-  for (const z of g.zones) z.life -= dt;
-  g.zones = g.zones.filter((z) => z.life > 0);
   g.enemies = g.enemies.filter((e) => !e.dead);
   if (g.player.hp <= 0) {
     g.player.hp = 0;
@@ -376,10 +371,8 @@ function movePlayer(g: Game, input: Input, dt: number) {
     x /= len;
     y /= len;
   }
-  const slowed = g.zones.some((z) => (z.x - p.x) ** 2 + (z.y - p.y) ** 2 < z.radius ** 2);
-  const speed = p.speed * (slowed ? 0.55 : 1);
-  p.x += x * speed * dt;
-  p.y += y * speed * dt;
+  p.x += x * p.speed * dt;
+  p.y += y * p.speed * dt;
   if (x > 0.1) p.facing = 1;
   else if (x < -0.1) p.facing = -1;
   p.iframes = Math.max(0, p.iframes - dt);
@@ -396,7 +389,7 @@ function spawnWeights(t: number): [EnemyId, number][] {
   const w: [EnemyId, number][] = [['communist', 10]];
   if (t > 50) w.push(['socialist', 3]);
   if (t > 110) w.push(['keynesian', 3]);
-  if (t > 170) w.push(['bureaucrat', 2.2]);
+  if (t > 170) w.push(['fascist', 2.2]);
   if (t > 230) w.push(['taxman', 2]);
   if (t > BOSS_AT) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.6;
   return w;
@@ -441,7 +434,13 @@ function spawn(g: Game, dt: number) {
   while (g.spawnAcc >= 1) {
     g.spawnAcc -= 1;
     const [x, y] = ringPoint(g, SPAWN_DISTANCE + next(g.rng) * 120);
-    spawnEnemy(g, weighted(g.rng, weights), x, y);
+    const type = weighted(g.rng, weights);
+    if (type === 'fascist') {
+      // They march in squads: four abreast, side by side across your line.
+      const a = Math.atan2(g.player.y - y, g.player.x - x) + Math.PI / 2;
+      for (let i = 0; i < 4; i++) spawnEnemy(g, 'fascist', x + Math.cos(a) * (i - 1.5) * 38, y + Math.sin(a) * (i - 1.5) * 38);
+      g.spawnAcc -= 3;
+    } else spawnEnemy(g, type, x, y);
   }
 }
 
@@ -704,8 +703,30 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     const dx = tx - e.x;
     const dy = ty - e.y;
     const d = Math.hypot(dx, dy) || 1;
-    e.x += (dx / d) * e.speed * dt + e.kx * dt;
-    e.y += (dy / d) * e.speed * dt + e.ky * dt;
+    let vx = (dx / d) * e.speed;
+    let vy = (dy / d) * e.speed;
+    if (e.type === 'fascist') {
+      if (e.dash && e.dash > 0) {
+        // Charging, straight, wherever you were when he started.
+        e.dash -= dt;
+        vx = (e.dx ?? 0) * FASCIST_DASH;
+        vy = (e.dy ?? 0) * FASCIST_DASH;
+      } else if (e.windup && e.windup > 0) {
+        e.windup -= dt;
+        vx = 0;
+        vy = 0;
+        if (e.windup <= 0) {
+          e.dash = 0.6;
+          e.dx = dx / d;
+          e.dy = dy / d;
+        }
+      } else if (e.timer > 3.5 && d < 420) {
+        e.timer = 0;
+        e.windup = 0.75;
+      }
+    }
+    e.x += vx * dt + e.kx * dt;
+    e.y += vy * dt + e.ky * dt;
     const decay = Math.exp(-8 * dt);
     e.kx *= decay;
     e.ky *= decay;
@@ -725,10 +746,6 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     // Their tricks.
     if (e.type === 'socialist') {
       for (const o of near(grid, e.x, e.y, 90, scratch)) if (o !== e && !o.dead && o.type !== 'bank') o.hp = Math.min(o.maxHp, o.hp + 4 * dt);
-    }
-    if (e.type === 'bureaucrat' && e.timer > 3) {
-      e.timer = 0;
-      g.zones.push({ x: e.x, y: e.y, radius: 44, life: 5 });
     }
     if (e.type === 'bank') {
       if (e.timer > 3) {

@@ -10,7 +10,7 @@ import { type Game, handCount, PLAYER_RADIUS } from './game.ts';
 export const VIEW_UNITS = 720;
 
 /** Balls with writing on them never flip (or "TAX" would read "XAT"). */
-const LETTERED = new Set(['austrian', 'keynesian', 'stimulus', 'taxman', 'bank']);
+const LETTERED = new Set(['austrian', 'taxman', 'bank']);
 
 export interface Particle {
   x: number;
@@ -42,8 +42,9 @@ export interface Visuals {
   particles: Particle[];
   texts: FloatText[];
   rings: Ring[];
-  /** Red flash when you're hit (seconds left). */
+  /** Red flash when you're hit (seconds left), and how long you stay pleased with yourself after an upgrade. */
   hurt: number;
+  happy: number;
   /** The touch joystick, if a finger is down. */
   stick: null | { ox: number; oy: number; x: number; y: number };
 }
@@ -67,13 +68,13 @@ function emoji(char: string, size = 48): HTMLCanvasElement {
 }
 
 const PARTICLE_COLORS: Record<string, string> = {
-  communist: '#d6261c',
-  socialist: '#e2373f',
-  keynesian: '#2f8f5b',
-  stimulus: '#55b47e',
-  bureaucrat: '#9aa0a6',
-  taxman: '#1f3d2c',
-  bank: '#0e5c3a',
+  communist: '#cc0000',
+  socialist: '#e30613',
+  keynesian: '#0f4fa1',
+  stimulus: '#3b78c9',
+  fascist: '#2a2a2a',
+  taxman: '#ffca28',
+  bank: '#0d4d2e',
 };
 export const particleColor = (type: string) => PARTICLE_COLORS[type] ?? '#fff';
 
@@ -96,23 +97,6 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   const onScreen = (x: number, y: number, r: number) => x + r > left && x - r < right && y + r > top && y - r < bottom;
 
   drawGround(ctx, left, top, right, bottom);
-
-  // Red tape.
-  for (const z of g.zones) {
-    if (!onScreen(z.x, z.y, z.radius)) continue;
-    ctx.globalAlpha = Math.min(1, z.life) * 0.35;
-    ctx.fillStyle = '#d32f2f';
-    ctx.beginPath();
-    ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = Math.min(1, z.life);
-    ctx.setLineDash([6, 5]);
-    ctx.strokeStyle = '#ff5252';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  ctx.globalAlpha = 1;
 
   // XP and pickups.
   for (const pk of g.pickups) {
@@ -156,7 +140,29 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   const foes = g.enemies.filter((e) => onScreen(e.x, e.y, e.radius * 1.4)).sort((a, b) => a.y - b.y);
   for (const e of foes) {
     const eyes: Eyes = e.flash > 0.06 ? 'hurt' : (RESTING[e.type] ?? 'normal');
-    drawBall(ctx, sprites, e.type, eyes, e.x, e.y, e.radius, LETTERED.has(e.type) ? 1 : e.x > p.x ? -1 : 1);
+    // A fascist winding up for a charge shakes a little.
+    const shake = e.windup && e.windup > 0 ? Math.sin(g.time * 60) * 2 : 0;
+    drawBall(ctx, sprites, e.type, eyes, e.x + shake, e.y, e.radius, LETTERED.has(e.type) ? 1 : e.x > p.x ? -1 : 1);
+    if (e.windup && e.windup > 0) {
+      ctx.font = "900 22px 'Anton', Impact, sans-serif";
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#000';
+      ctx.fillStyle = '#ff1744';
+      ctx.strokeText('!', e.x, e.y - e.radius - 8);
+      ctx.fillText('!', e.x, e.y - e.radius - 8);
+    }
+    if (e.type === 'socialist') {
+      // Redistribution in progress: little green crosses drifting up.
+      const t = (g.time * 0.9 + e.id * 0.37) % 1;
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = '#4cdc5c';
+      const cx = e.x + e.radius * 0.6;
+      const cy = e.y - e.radius - t * 18;
+      ctx.fillRect(cx - 5, cy - 1.6, 10, 3.2);
+      ctx.fillRect(cx - 1.6, cy - 5, 3.2, 10);
+      ctx.globalAlpha = 1;
+    }
     if (e.type === 'bank') {
       // Its own health bar, under it.
       ctx.fillStyle = '#000';
@@ -167,8 +173,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   }
 
   // You, and your gun if you carry one.
-  const hurt = p.iframes > 0.2;
-  drawBall(ctx, sprites, g.character, hurt ? 'hurt' : (RESTING[g.character] ?? 'normal'), p.x, p.y, PLAYER_RADIUS * 1.25, LETTERED.has(g.character) ? 1 : p.facing);
+  drawBall(ctx, sprites, g.character, playerEyes(g, vis), p.x, p.y, PLAYER_RADIUS * 1.25, LETTERED.has(g.character) ? 1 : p.facing);
   if (g.character === 'minarchist' || g.character === 'agorist') drawGun(ctx, p.x, p.y, p.aim, g.character);
 
   // Inflation balloons.
@@ -305,6 +310,27 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
     ctx.fill();
     ctx.globalAlpha = 1;
   }
+}
+
+/**
+ * Your face, moment to moment: hurt when hit, pleased after an upgrade or a big kill, sweating when
+ * low on health or swamped, angry when the crowd closes in or the boss is near, otherwise your own
+ * resting face.
+ */
+export function playerEyes(g: Game, vis: Pick<Visuals, 'happy'>): Eyes {
+  const p = g.player;
+  if (p.iframes > 0.2) return 'hurt';
+  if (vis.happy > 0 || g.over === 'won') return 'happy';
+  let close = 0;
+  let bossNear = false;
+  for (const e of g.enemies) {
+    const d2 = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
+    if (d2 < 170 * 170) close++;
+    if (e.type === 'bank' && d2 < 400 * 400) bossNear = true;
+  }
+  if (p.hp < p.maxHp * 0.3 || close >= 25) return 'scared';
+  if (close >= 8 || bossNear) return 'angry';
+  return RESTING[g.character] ?? 'normal';
 }
 
 /** A night-time street grid: blocks, roads, dashed lane markings. */
