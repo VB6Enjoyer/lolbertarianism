@@ -4,8 +4,8 @@
 // seeded, so tests and the balance bot can replay runs exactly.
 
 import {
-  BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, POOL_WEAPONS,
-  RUN_LENGTH, WEAPON_SLOTS, WEAPON_STATS, type WeaponId,
+  BOMB, BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, POOL_WEAPONS,
+  RUN_LENGTH, SCHEDULE, WARNING_TIME, WEAPON_SLOTS, WEAPON_STATS, type WeaponId,
 } from './data.ts';
 import { makeRng, next, pickOne, type Rng, weighted } from './rng.ts';
 
@@ -33,6 +33,8 @@ export interface Player {
   /** Which way he faces (for the sprite), and where he's aiming (for the gun). */
   facing: 1 | -1;
   aim: number;
+  /** Seconds left winded after a bomb (moving slower). */
+  slowed: number;
 }
 
 export interface Enemy {
@@ -127,12 +129,13 @@ export type Offer =
   | { kind: 'weapon'; id: WeaponId; level: number }
   | { kind: 'passive'; id: PassiveId; level: number }
   | { kind: 'evolve'; id: WeaponId; from: WeaponId }
+  | { kind: 'bomb' }
   | { kind: 'heal' }
   | { kind: 'gold' };
 
 /** Things that happened this step, for the screen and the speakers. */
 export type Fx =
-  | { kind: 'hit'; x: number; y: number; amount: number; from: WeaponId }
+  | { kind: 'hit'; x: number; y: number; amount: number; from: Source }
   | { kind: 'kill'; x: number; y: number; type: EnemyId }
   | { kind: 'hurt'; amount: number }
   | { kind: 'nein'; x: number; y: number; radius: number }
@@ -142,8 +145,10 @@ export type Fx =
   | { kind: 'shoot'; weapon: WeaponId }
   | { kind: 'pickup'; pickup: Pickup['kind'] }
   | { kind: 'level' }
-  | { kind: 'boss' }
+  | { kind: 'boss'; second: boolean }
   | { kind: 'revolution' }
+  | { kind: 'warning' }
+  | { kind: 'bomb'; x: number; y: number; radius: number }
   | { kind: 'wither' };
 
 export interface Game {
@@ -170,13 +175,18 @@ export interface Game {
   fx: Fx[];
   nextId: number;
   spawnAcc: number;
-  events: { boss: boolean; revolution1: boolean; revolution2: boolean };
+  /** The next set piece in SCHEDULE, and whether its warning has gone up. */
+  nextEvent: number;
+  warned: boolean;
+  /** Bombs in hand, and Central Banks brought down this run. */
+  bombs: number;
+  bankKills: number;
   /** Damage dealt by each weapon, for the end screen. */
-  damageBy: Partial<Record<WeaponId, number>>;
+  damageBy: Partial<Record<Source, number>>;
   /** What the shop bought before the run (and the difficulty chosen). */
   mods: Mods;
-  /** Shop cards that may turn up on a level-up. */
-  unlocked: (WeaponId | PassiveId)[];
+  /** Shop cards that may turn up on a level-up ('bomb' is the spare-bomb card). */
+  unlocked: Unlockable[];
   /** Whether the shop's weapon upgrade for this character has been bought. */
   canEvolve: boolean;
   /** Level-up rerolls left. */
@@ -202,13 +212,19 @@ export interface Mods {
   spawns: number;
   /** How much harder statists hit you. */
   hurt: number;
+  /** Extra bombs to start with. */
+  bombs: number;
 }
 
-export const NO_MODS: Mods = { maxHp: 0, damage: 1, speed: 1, magnet: 1, xp: 1, armor: 0, rerolls: 0, gold: 1, enemyHp: 1, enemySpeed: 1, spawns: 1, hurt: 1 };
+export const NO_MODS: Mods = { maxHp: 0, damage: 1, speed: 1, magnet: 1, xp: 1, armor: 0, rerolls: 0, gold: 1, enemyHp: 1, enemySpeed: 1, spawns: 1, hurt: 1, bombs: 0 };
+
+export type Unlockable = WeaponId | PassiveId | 'bomb';
+/** What did the damage: a weapon, or a bomb. */
+export type Source = WeaponId | 'bomb';
 
 export interface Setup {
   mods?: Partial<Mods>;
-  unlocked?: (WeaponId | PassiveId)[];
+  unlocked?: Unlockable[];
   canEvolve?: boolean;
 }
 
@@ -225,7 +241,7 @@ export function newGame(seed: number, character: CharacterId, setup: Setup = {})
     character,
     time: 0,
     player: {
-      x: 0, y: 0, hp, maxHp: hp, speed: c.speed * mods.speed, armor: c.armor + mods.armor, magnet: c.magnet * mods.magnet, xpMult: c.xpMult * mods.xp, regen: 0, iframes: 0, facing: 1, aim: 0,
+      x: 0, y: 0, hp, maxHp: hp, speed: c.speed * mods.speed, armor: c.armor + mods.armor, magnet: c.magnet * mods.magnet, xpMult: c.xpMult * mods.xp, regen: 0, iframes: 0, facing: 1, aim: 0, slowed: 0,
     },
     level: 1,
     xp: 0,
@@ -244,7 +260,10 @@ export function newGame(seed: number, character: CharacterId, setup: Setup = {})
     fx: [],
     nextId: 1,
     spawnAcc: 0,
-    events: { boss: false, revolution1: false, revolution2: false },
+    nextEvent: 0,
+    warned: false,
+    bombs: Math.min(BOMB.max, 1 + mods.bombs),
+    bankKills: 0,
     damageBy: {},
     mods,
     unlocked: [...(setup.unlocked ?? [])],
@@ -311,6 +330,8 @@ export function makeOffer(g: Game): Offer[] {
   if (g.weapons.length < WEAPON_SLOTS) for (const id of POOL_WEAPONS) if (!weaponLevel(g, id) && available(g, id)) options.push([{ kind: 'weapon', id, level: 1 }, 2]);
   for (const p of g.passives) if (p.level < MAX_LEVEL) options.push([{ kind: 'passive', id: p.id, level: p.level + 1 }, 2]);
   if (g.passives.length < PASSIVE_SLOTS) for (const id of Object.keys(PASSIVES) as PassiveId[]) if (!passiveLevel(g, id) && available(g, id)) options.push([{ kind: 'passive', id, level: 1 }, 2]);
+  // A spare bomb instead of an upgrade (once the shop has sold you the card).
+  if (g.unlocked.includes('bomb') && g.bombs < BOMB.max) options.push([{ kind: 'bomb' }, 1.5]);
   // The weapon upgrade, once it's ready, is always one of the three.
   const evolve = evolution(g);
   const picked: Offer[] = evolve ? [evolve] : [];
@@ -319,7 +340,7 @@ export function makeOffer(g: Game): Offer[] {
     picked.push(o);
     options.splice(options.findIndex(([x]) => x === o), 1);
   }
-  if (!picked.length) return [{ kind: 'heal' }, { kind: 'gold' }];
+  if (!picked.length) return [{ kind: 'heal' }, { kind: 'gold' }, ...(g.bombs < BOMB.max ? [{ kind: 'bomb' } as Offer] : [])];
   return picked;
 }
 
@@ -337,6 +358,7 @@ export function choose(g: Game, i: number): boolean {
     }
     g.fx.push({ kind: 'evolve', weapon: o.id });
   }
+  else if (o.kind === 'bomb') g.bombs = Math.min(BOMB.max, g.bombs + 1);
   else if (o.kind === 'heal') g.player.hp = Math.min(g.player.maxHp, g.player.hp + g.player.maxHp * 0.3);
   else g.gold += 25;
   g.pending--;
@@ -415,6 +437,8 @@ export interface Input {
   /** Where the player is pushing, each from -1 to 1 (normalized here). */
   x: number;
   y: number;
+  /** Set for one step to set off a bomb. */
+  bomb?: boolean;
 }
 
 export function step(g: Game, input: Input, dt = DT) {
@@ -422,6 +446,7 @@ export function step(g: Game, input: Input, dt = DT) {
   if (g.over || g.offer) return;
   g.time += dt;
   const grid = buildGrid(g);
+  if (input.bomb) bomb(g, grid);
   movePlayer(g, input, dt);
   spawn(g, dt);
   fireWeapons(g, grid, dt);
@@ -457,8 +482,11 @@ function movePlayer(g: Game, input: Input, dt: number) {
     x /= len;
     y /= len;
   }
-  p.x += x * p.speed * dt;
-  p.y += y * p.speed * dt;
+  // Winded after a bomb.
+  const speed = p.speed * (p.slowed > 0 ? BOMB.slowBy : 1);
+  p.slowed = Math.max(0, p.slowed - dt);
+  p.x += x * speed * dt;
+  p.y += y * speed * dt;
   if (x > 0.1) p.facing = 1;
   else if (x < -0.1) p.facing = -1;
   p.iframes = Math.max(0, p.iframes - dt);
@@ -467,9 +495,10 @@ function movePlayer(g: Game, input: Input, dt: number) {
 
 // --- Spawning ---
 
-/** How many statists a second, and how tough. */
-export const spawnRate = (t: number) => 0.6 + t / 30;
-export const hpScale = (t: number) => 1 + t / 150;
+/** How many statists a second, how tough, and how hard they hit. */
+export const spawnRate = (t: number) => 0.65 + t / 28;
+export const hpScale = (t: number) => 1 + t / 140;
+export const damageScale = (t: number) => 1 + t / 600;
 
 function spawnWeights(t: number): [EnemyId, number][] {
   const w: [EnemyId, number][] = [['communist', 10]];
@@ -478,13 +507,14 @@ function spawnWeights(t: number): [EnemyId, number][] {
   if (t > 170) w.push(['fascist', 2.2]);
   if (t > 230) w.push(['taxman', 2]);
   if (t > BOSS_AT) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.6;
+  if (t > 600) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.4;
   return w;
 }
 
 export function spawnEnemy(g: Game, type: EnemyId, x: number, y: number): Enemy {
   const d = ENEMIES[type];
   const hp = Math.round(d.hp * (type === 'bank' ? 1 : hpScale(g.time)) * g.mods.enemyHp);
-  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16) * g.mods.enemySpeed, damage: d.damage, radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
+  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16) * g.mods.enemySpeed, damage: Math.round(d.damage * (type === 'bank' ? 1 : damageScale(g.time))), radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
   g.enemies.push(e);
   return e;
 }
@@ -496,22 +526,29 @@ function ringPoint(g: Game, dist: number): [number, number] {
 
 function spawn(g: Game, dt: number) {
   const t = g.time;
-  if (!g.events.boss && t >= BOSS_AT) {
-    g.events.boss = true;
-    const [x, y] = ringPoint(g, SPAWN_DISTANCE * 0.8);
-    spawnEnemy(g, 'bank', x, y);
-    g.fx.push({ kind: 'boss' });
-  }
-  // The revolution: a ring of communists closing in from every side.
-  for (const [flag, at] of [['revolution1', 150], ['revolution2', 450]] as const) {
-    if (!g.events[flag] && t >= at) {
-      g.events[flag] = true;
-      const n = flag === 'revolution1' ? 32 : 48;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        spawnEnemy(g, 'communist', g.player.x + Math.cos(a) * 560, g.player.y + Math.sin(a) * 560);
+  const ev = SCHEDULE[g.nextEvent];
+  if (ev) {
+    // A few seconds' warning before a revolution closes in.
+    if (ev.kind === 'revolution' && !g.warned && t >= ev.at - WARNING_TIME) {
+      g.warned = true;
+      g.fx.push({ kind: 'warning' });
+    }
+    if (t >= ev.at) {
+      g.nextEvent++;
+      g.warned = false;
+      if (ev.kind === 'boss') {
+        const [x, y] = ringPoint(g, SPAWN_DISTANCE * 0.8);
+        const bank = spawnEnemy(g, 'bank', x, y);
+        bank.hp = bank.maxHp = Math.round(bank.maxHp * ev.hp);
+        g.fx.push({ kind: 'boss', second: ev.hp > 1 });
+      } else {
+        // The revolution: a ring of communists closing in from every side.
+        for (let i = 0; i < ev.count; i++) {
+          const a = (i / ev.count) * Math.PI * 2;
+          spawnEnemy(g, 'communist', g.player.x + Math.cos(a) * 560, g.player.y + Math.sin(a) * 560);
+        }
+        g.fx.push({ kind: 'revolution' });
       }
-      g.fx.push({ kind: 'revolution' });
     }
   }
   if (g.enemies.length >= MAX_ENEMIES) return;
@@ -532,7 +569,7 @@ function spawn(g: Game, dt: number) {
 
 // --- Damage ---
 
-function damage(g: Game, e: Enemy, amount: number, from: WeaponId, kx = 0, ky = 0) {
+function damage(g: Game, e: Enemy, amount: number, from: Source, kx = 0, ky = 0) {
   if (e.dead) return;
   const dealt = Math.round(amount * damageMult(g));
   e.hp -= dealt;
@@ -544,6 +581,24 @@ function damage(g: Game, e: Enemy, amount: number, from: WeaponId, kx = 0, ky = 
   g.damageBy[from] = (g.damageBy[from] ?? 0) + dealt;
   g.fx.push({ kind: 'hit', x: e.x, y: e.y - e.radius, amount: dealt, from });
   if (e.hp <= 0) kill(g, e);
+}
+
+/** The bomb: everyone near you takes a beating, the inflation balloons pop, and you're winded. */
+function bomb(g: Game, grid: Grid) {
+  if (g.bombs <= 0) return;
+  g.bombs--;
+  const p = g.player;
+  const r = BOMB.radius;
+  for (const e of near(grid, p.x, p.y, r + 60)) {
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > r + e.radius) continue;
+    const k = BOMB.knockback / Math.max(1, d);
+    damage(g, e, e.type === 'bank' ? BOMB.bankDamage : BOMB.damage * hpScale(g.time) * g.mods.enemyHp, 'bomb', (e.x - p.x) * k, (e.y - p.y) * k);
+  }
+  g.foeShots = g.foeShots.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > r * r);
+  p.slowed = BOMB.slowFor;
+  p.iframes = Math.max(p.iframes, BOMB.iframes);
+  g.fx.push({ kind: 'bomb', x: p.x, y: p.y, radius: r });
 }
 
 function drop(g: Game, kind: Pickup['kind'], x: number, y: number, value: number) {
@@ -562,6 +617,7 @@ function kill(g: Game, e: Enemy) {
   else if (roll < 0.0335) drop(g, 'magnet', e.x, e.y, 0);
   if (e.type === 'keynesian') for (let i = 0; i < 2; i++) spawnEnemy(g, 'stimulus', e.x + (i ? 12 : -12), e.y);
   if (e.type === 'bank') {
+    g.bankKills++;
     drop(g, 'chest', e.x, e.y, 0);
     for (let i = 0; i < 6; i++) drop(g, 'gold', e.x + (i - 3) * 14, e.y + 20, 10);
   }

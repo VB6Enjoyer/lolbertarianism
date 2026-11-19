@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { botRun } from './bot.ts';
-import { BOSS_AT, CHARACTER_ORDER, CHARACTERS, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, RUN_LENGTH, STARTING_WEAPONS, WEAPON_SLOTS } from './data.ts';
+import { BOMB, BOSS_AT, CHARACTER_ORDER, CHARACTERS, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, RUN_LENGTH, SCHEDULE, STARTING_WEAPONS, WARNING_TIME, WEAPON_SLOTS } from './data.ts';
 import { choose, DT, type Game, goldEarned, makeOffer, newGame, type Offer, reroll, spawnEnemy, step, weaponLevel, xpFor } from './game.ts';
 
 const still = { x: 0, y: 0 };
@@ -264,7 +264,7 @@ describe('the shop’s cards and weapon upgrades', () => {
     g.over = 'won';
     g.time = RUN_LENGTH;
     g.mods.gold = 1.5;
-    expect(goldEarned(g).total).toBe(Math.round((30 + 100 + 100) * 1.5));
+    expect(goldEarned(g).total).toBe(Math.round((30 + RUN_LENGTH / 6 + 100) * 1.5));
   });
 });
 
@@ -318,7 +318,7 @@ describe('the statists', () => {
   it('fascists march in squads of four', () => {
     const g = newGame(9, 'ancap');
     g.time = 400;
-    g.events = { boss: true, revolution1: true, revolution2: true };
+    g.nextEvent = 3;
     for (let i = 0; i < 60 * 20 && g.enemies.filter((e) => e.type === 'fascist').length === 0; i++) {
       if (g.offer) choose(g, 0);
       step(g, still);
@@ -326,24 +326,98 @@ describe('the statists', () => {
     expect(g.enemies.filter((e) => e.type === 'fascist').length % 4).toBe(0);
   });
 
-  it('the Central Bank arrives on time; the revolution too; and the state withers at the end', () => {
+  it('the Central Bank arrives on time (and again, bailed out); the revolution too, with a warning; and the state withers at the end', () => {
     const g = newGame(5, 'ancap');
     g.time = BOSS_AT - 0.01;
-    g.events.revolution1 = true;
+    g.nextEvent = SCHEDULE.findIndex((e) => e.at === BOSS_AT);
     step(g, still);
-    expect(g.enemies.some((e) => e.type === 'bank')).toBe(true);
+    const bank = g.enemies.find((e) => e.type === 'bank')!;
+    expect(bank).toBeTruthy();
     expect(g.fx.some((f) => f.kind === 'boss')).toBe(true);
+    const again = newGame(5, 'ancap');
+    again.time = 599.99;
+    again.nextEvent = 3;
+    step(again, still);
+    expect(again.enemies.find((e) => e.type === 'bank')!.maxHp).toBeGreaterThan(bank.maxHp * 2);
     const r = quiet();
+    r.time = 150 - WARNING_TIME - 0.01;
+    step(r, still);
+    expect(r.fx.some((f) => f.kind === 'warning')).toBe(true);
     r.time = 149.99;
     step(r, still);
     expect(r.enemies.filter((e) => e.type === 'communist').length).toBeGreaterThanOrEqual(30);
+    expect(SCHEDULE.filter((e) => e.kind === 'revolution')).toHaveLength(3);
+    expect(RUN_LENGTH).toBe(900);
     const w = quiet();
     w.time = RUN_LENGTH - 0.001;
-    w.events = { boss: true, revolution1: true, revolution2: true };
+    w.nextEvent = SCHEDULE.length;
     spawnEnemy(w, 'communist', 500, 0);
     step(w, still);
     expect(w.over).toBe('won');
     expect(w.enemies).toHaveLength(0);
+  });
+
+  it('they get tougher and hit harder as time goes on', () => {
+    const g = quiet();
+    const early = spawnEnemy(g, 'communist', 900, 0);
+    g.time = 800;
+    const late = spawnEnemy(g, 'communist', 900, 0);
+    expect(late.maxHp).toBeGreaterThan(early.maxHp * 6);
+    expect(late.damage).toBeGreaterThan(early.damage * 2);
+  });
+});
+
+describe('the bomb', () => {
+  it('you start with one; it flattens everything nearby, pops balloons, and winds you', () => {
+    const g = quiet('ancap');
+    g.weapons = [];
+    expect(g.bombs).toBe(1);
+    g.time = 400;
+    const crowd = [0, 1, 2, 3, 4, 5].map((k) => spawnEnemy(g, k % 2 ? 'fascist' : 'keynesian', Math.cos(k) * 250, Math.sin(k) * 250));
+    const far = spawnEnemy(g, 'communist', 900, 0);
+    const bank = spawnEnemy(g, 'bank', -300, 0);
+    g.foeShots.push({ x: 100, y: 0, vx: 0, vy: 0, radius: 11, damage: 12, life: 4 });
+    step(g, { x: 1, y: 0, bomb: true });
+    expect(crowd.every((e) => e.dead)).toBe(true);
+    expect(far.dead).toBe(false);
+    expect(bank.dead).toBe(false);
+    expect(bank.hp).toBeLessThan(bank.maxHp);
+    expect(g.foeShots).toHaveLength(0);
+    expect(g.bombs).toBe(0);
+    expect(g.player.slowed).toBeGreaterThan(2.9);
+    expect(g.fx.some((f) => f.kind === 'bomb')).toBe(true);
+    // Winded: half speed for three seconds.
+    const x0 = g.player.x;
+    step(g, { x: 1, y: 0 });
+    expect(g.player.x - x0).toBeCloseTo((CHARACTERS.ancap.speed * BOMB.slowBy) / 60, 3);
+    run(g, 3.1, { x: 0, y: 0 });
+    const x1 = g.player.x;
+    step(g, { x: 1, y: 0 });
+    expect(g.player.x - x1).toBeCloseTo(CHARACTERS.ancap.speed / 60, 3);
+    // No bombs left: nothing happens.
+    const e = spawnEnemy(g, 'communist', g.player.x + 100, g.player.y);
+    step(g, { x: 0, y: 0, bomb: true });
+    expect(e.dead).toBe(false);
+  });
+
+  it('the shop adds starting bombs, and the spare-bomb card turns up once bought', () => {
+    expect(newGame(1, 'ancap', { mods: { bombs: 2 } }).bombs).toBe(3);
+    const seen = (g: Game) => {
+      for (let i = 0; i < 200; i++) {
+        g.pending = 1;
+        if (makeOffer(g).some((o) => o.kind === 'bomb')) return true;
+      }
+      return false;
+    };
+    expect(seen(quiet())).toBe(false);
+    const g = newGame(1, 'ancap', { unlocked: ['bomb'] });
+    expect(seen(g)).toBe(true);
+    g.pending = 1;
+    g.offer = [{ kind: 'bomb' }];
+    choose(g, 0);
+    expect(g.bombs).toBe(2);
+    g.bombs = BOMB.max;
+    expect(seen(g)).toBe(false);
   });
 });
 

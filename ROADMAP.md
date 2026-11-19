@@ -1021,7 +1021,7 @@ against bot advisors (`src/games/wrong-austrians/`).
 ### WITHER AWAY (prototype)
 
 A new game: a top-down arcade survival roguelite (`src/games/wither-away/`). "Marx promised the
-state would wither away. It didn't. Make it." Survive 10 minutes against the statist horde.
+state would wither away. It didn't. Make it." Survive 15 minutes against the statist horde.
 
 - Four polcompballs to play, each with a starting weapon and a perk (`data.ts`): Ancapball (gold and
   black; Gold Coins; a big pickup magnet), Minarchistball (gold and blue, a cigarette; a pump-action
@@ -1038,9 +1038,9 @@ state would wither away. It didn't. Make it." Survive 10 minutes against the sta
   Social Democratball (red, white rose; heals the others, little green crosses drifting up),
   Keynesianball (blue, three stripes, fleurs-de-lis; splits into stimulus), Fascistball (black, the
   fasces; marches in squads of four, winds up with a "!" and charges), Taxmanball (charcoal suit,
-  green eyeshade, gold %; steals your XP, kill him to get it back). A revolution (a ring of communists) at 2:30 and 7:30;
-  the Central Bank at 5:00 (inflation balloons that grow, and more Keynesians). At 10:00 the state
-  withers away.
+  green eyeshade, gold %; steals your XP, kill him to get it back). A revolution (a ring of communists)
+  three times; the Central Bank twice (inflation balloons that grow, and more Keynesians). At 15:00
+  the state withers away.
 - The engine (`game.ts`) is plain, seeded and DOM-free: a fixed 60 Hz step, a spatial grid, up to
   380 statists. A bot (`bot.ts`) plays whole runs for the tests and balancing (it keeps its
   distance like a player would for each weapon's reach). 60 fps in a headless browser with 380 on
@@ -1078,4 +1078,21 @@ state would wither away. It didn't. Make it." Survive 10 minutes against the sta
     statists), Five-Year Plan (15% faster), Wealth Tax (hits take 50% more). Each one you switch on
     adds to the Bitcoin a run pays.
   Old saves turn the Bitcoin earned so far into Bitcoin to spend.
+- Runs last 15 minutes, and get nastier as they go: statists come faster, with more health, and
+  hit harder (`spawnRate`, `hpScale`, `damageScale`). The set pieces are data (`SCHEDULE`): the
+  revolution at 2:30, 7:30 and 12:30 (with a few seconds' warning: red at the screen edges and an
+  alarm), the Central Bank at 5:00 and again at 10:00, bailed out with 2.2 times the reserves.
+- Bombs: Space, a gamepad's A (or X, RB), or the 💣 button. A shockwave all around you that kills
+  nearly anything but the Central Bank and pops its balloons; then you're winded (half speed, a
+  snail over your head) for 3 seconds. You start with one; the shop's Bug-Out Bag adds up to two
+  more, and its Spare Bomb card puts "+1 bomb" among the level-up cards (up to five).
+- Feats unlock the characters (`feats.ts`): Ancapball from the start; Minarchistball for
+  surviving 5:00, Agoristball for 2,500 statists in all, the Austrian School ball for bringing down
+  the Central Bank. Locked ones show as silhouettes with the feat and a progress bar; the end
+  screen announces who joined. Anyone played before the feats stays unlocked.
+- Game feel: screen shake on hits, bombs, the boss (Options can turn it off), an arrow at the screen
+  edge pointing to the Central Bank when it's off screen, and pickups and level-ups that climb a
+  semitone each while you chain them.
+- Gamepads work on every menu: the d-pad or stick moves between buttons (the nearest one in that
+  direction), A picks, B goes back or resumes, Start pauses. The arrow keys do the same on menus.
 - Next: more characters and maps, achievements, a daily run, sharing.

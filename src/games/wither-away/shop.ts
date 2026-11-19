@@ -6,7 +6,7 @@
 import { type CharacterId, EVOLUTIONS, type PassiveId, PASSIVES, type WeaponId, WEAPONS } from './data.ts';
 import { type Mods, NO_MODS, type Setup } from './game.ts';
 
-export type UpgradeId = 'grit' | 'might' | 'hustle' | 'reach' | 'learning' | 'greed' | 'reroll' | 'armor';
+export type UpgradeId = 'grit' | 'might' | 'hustle' | 'reach' | 'learning' | 'greed' | 'reroll' | 'bombs' | 'armor';
 export type HeatId = 'printer' | 'redtape' | 'fiveyear' | 'wealthtax';
 
 export interface UpgradeDef {
@@ -28,15 +28,21 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
   learning: { id: 'learning', name: 'Praxeology', icon: '📚', text: '+6% XP.', costs: [70, 150, 260], apply: (m, r) => (m.xp *= 1 + 0.06 * r) },
   greed: { id: 'greed', name: 'Gold Rush', icon: '⛏️', text: '+10% Bitcoin from every run.', costs: [50, 100, 170, 260, 380], apply: (m, r) => (m.gold *= 1 + 0.1 * r) },
   reroll: { id: 'reroll', name: 'Second Opinion', icon: '🎲', text: '+1 reroll of the level-up cards, each run.', costs: [80, 160, 280], apply: (m, r) => (m.rerolls += r) },
+  bombs: { id: 'bombs', name: 'Bug-Out Bag', icon: '🎒', text: '+1 bomb to start every run with.', costs: [150, 320], apply: (m, r) => (m.bombs += r) },
   armor: { id: 'armor', name: 'Castle Doctrine', icon: '🏰', text: '+1 armour: every hit does 1 less.', costs: [400], apply: (m, r) => (m.armor += r) },
 };
-export const UPGRADE_ORDER: UpgradeId[] = ['grit', 'might', 'hustle', 'reach', 'learning', 'greed', 'reroll', 'armor'];
+export const UPGRADE_ORDER: UpgradeId[] = ['grit', 'might', 'hustle', 'reach', 'learning', 'greed', 'reroll', 'bombs', 'armor'];
 
-/** New cards, and what they cost to let into the level-up pool. */
-export const CARD_PRICES: Partial<Record<WeaponId | PassiveId, number>> = { exit: 100, sound: 120, destruction: 150, happening: 200 };
-export const CARD_ORDER = ['exit', 'sound', 'destruction', 'happening'] as const;
+/** New cards, and what they cost to let into the level-up pool ('bomb' is A Spare Bomb, instead of an upgrade). */
+export const CARD_ORDER = ['exit', 'sound', 'bomb', 'destruction', 'happening'] as const;
 export type CardId = (typeof CARD_ORDER)[number];
-export const cardName = (id: CardId) => (id in WEAPONS ? WEAPONS[id as WeaponId].name : PASSIVES[id as PassiveId].name);
+export const CARD_PRICES: Record<CardId, number> = { exit: 100, sound: 120, bomb: 140, destruction: 150, happening: 200 };
+export const SPARE_BOMB = { name: 'A Spare Bomb', icon: '💣', text: '+1 bomb, instead of an upgrade (up to 5).' };
+export function cardInfo(id: CardId): { name: string; icon: string; text: string; weapon: boolean } {
+  if (id === 'bomb') return { ...SPARE_BOMB, weapon: false };
+  if (id in WEAPONS) return { ...WEAPONS[id as WeaponId], weapon: true };
+  return { ...PASSIVES[id as PassiveId], weapon: false };
+}
 
 export const EVOLUTION_PRICE = 300;
 
@@ -103,7 +109,7 @@ export function price(s: ShopState, item: ShopItem): number | null {
     case 'upgrade':
       return UPGRADES[item.id].costs[rank(s, item.id)] ?? null;
     case 'card':
-      return s.cards.includes(item.id) ? null : CARD_PRICES[item.id]!;
+      return s.cards.includes(item.id) ? null : CARD_PRICES[item.id];
     case 'evolution':
       return s.evolutions.includes(item.id) ? null : EVOLUTION_PRICE;
     case 'heat':
@@ -146,7 +152,7 @@ export function setupFor(s: ShopState, character: CharacterId): Setup {
 /** Every price in the shop added up (for the "bought it all" line, and the tests). */
 export function totalCost(): number {
   const ups = UPGRADE_ORDER.reduce((t, id) => t + UPGRADES[id].costs.reduce((a, b) => a + b, 0), 0);
-  const cards = CARD_ORDER.reduce((t, id) => t + CARD_PRICES[id]!, 0);
+  const cards = CARD_ORDER.reduce((t, id) => t + CARD_PRICES[id], 0);
   const heat = HEAT_ORDER.reduce((t, id) => t + HEAT[id].cost, 0);
   return ups + cards + heat + EVOLUTION_PRICE * Object.keys(EVOLUTIONS).length;
 }

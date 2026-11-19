@@ -50,6 +50,11 @@ export interface Visuals {
   rings: Ring[];
   booms: Ring[];
   zaps: Zap[];
+  /** Bomb shockwaves. */
+  blasts: Ring[];
+  /** How hard the screen is shaking (world units; 0 = still), and the revolution warning (seconds left). */
+  shake: number;
+  warn: number;
   /** Red flash when you're hit (seconds left), and how long you stay pleased with yourself after an upgrade. */
   hurt: number;
   happy: number;
@@ -94,8 +99,10 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#1b2130';
   ctx.fillRect(0, 0, w * dpr, h * dpr);
-  // World coordinates from here on: (0, 0) is the screen centre, at the player.
-  ctx.setTransform(scale, 0, 0, scale, (w * dpr) / 2 - p.x * scale, (h * dpr) / 2 - p.y * scale);
+  // World coordinates from here on: (0, 0) is the screen centre, at the player (give or take a shake).
+  const sx = vis.shake ? (Math.random() - 0.5) * 2 * vis.shake * scale : 0;
+  const sy = vis.shake ? (Math.random() - 0.5) * 2 * vis.shake * scale : 0;
+  ctx.setTransform(scale, 0, 0, scale, (w * dpr) / 2 - p.x * scale + sx, (h * dpr) / 2 - p.y * scale + sy);
   const halfW = (w * dpr) / 2 / scale;
   const halfH = (h * dpr) / 2 / scale;
   const left = p.x - halfW;
@@ -212,6 +219,13 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
       drawGun(ctx, img, p.x, p.y, p.aim, gun.length, w.id === 'ak');
       break;
     }
+  }
+
+  // Winded after a bomb: a snail over your head.
+  if (p.slowed > 0) {
+    ctx.globalAlpha = Math.min(1, p.slowed * 2);
+    ctx.drawImage(emoji('🐌'), p.x - 11, p.y - PLAYER_RADIUS - 34 + Math.sin(g.time * 6) * 2, 22, 22);
+    ctx.globalAlpha = 1;
   }
 
   // Inflation balloons.
@@ -351,6 +365,25 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   }
   ctx.globalAlpha = 1;
 
+  // Bomb shockwaves: a white ring racing outwards, a gold one behind it.
+  for (const b of vis.blasts) {
+    const t = 1 - b.life / 0.5;
+    ctx.globalAlpha = Math.max(0, b.life / 0.5);
+    ctx.fillStyle = 'rgba(255, 245, 200, 0.18)';
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius * t, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#ffd54f';
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius * t * 0.85, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
   // Bits flying off.
   for (const q of vis.particles) {
     ctx.globalAlpha = Math.max(0, q.life / q.max);
@@ -370,8 +403,49 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, sprites: Map<string
   }
   ctx.globalAlpha = 1;
 
-  // Screen space: the hurt flash and the joystick.
+  // Screen space: the boss arrow, the revolution warning, the hurt flash and the joystick.
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const toScreen = (x: number, y: number): [number, number] => [w / 2 + ((x - p.x) * scale) / dpr, h / 2 + ((y - p.y) * scale) / dpr];
+  for (const e of g.enemies) {
+    if (e.type !== 'bank' || onScreen(e.x, e.y, e.radius)) continue;
+    // Where it is, off the edge: an arrow pinned to the border, pointing at it.
+    const [ex, ey] = toScreen(e.x, e.y);
+    const a = Math.atan2(ey - h / 2, ex - w / 2);
+    const m = 34;
+    const k = Math.min((w / 2 - m) / Math.max(1e-6, Math.abs(Math.cos(a))), (h / 2 - m) / Math.max(1e-6, Math.abs(Math.sin(a))));
+    const ax = w / 2 + Math.cos(a) * k;
+    const ay = h / 2 + Math.sin(a) * k;
+    const pulse = 1 + Math.sin(g.time * 8) * 0.08;
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.fillStyle = '#c62828';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 20 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.rotate(a);
+    ctx.fillStyle = '#ffd54f';
+    ctx.beginPath();
+    ctx.moveTo(30 * pulse, 0);
+    ctx.lineTo(18, -9);
+    ctx.lineTo(18, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.drawImage(emoji('💸'), ax - 13, ay - 13, 26, 26);
+  }
+  if (vis.warn > 0) {
+    // The red creeping in from every edge, pulsing: they're surrounding you.
+    const pulse = 0.5 + 0.5 * Math.sin(g.time * 10);
+    const grad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+    grad.addColorStop(0, 'rgba(204,0,0,0)');
+    grad.addColorStop(1, `rgba(204,0,0,${0.18 + 0.22 * pulse})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
   if (vis.hurt > 0) {
     const grad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
     grad.addColorStop(0, 'rgba(255,0,0,0)');

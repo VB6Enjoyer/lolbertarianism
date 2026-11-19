@@ -221,6 +221,26 @@ export const ENEMIES: Record<EnemyId, EnemyDef> = {
   bank: { id: 'bank', name: 'The Central Bank', hp: 2400, speed: 46, damage: 20, radius: 50, xp: 80, note: 'Prints inflation balloons and stimulus. Arrives at 5:00.' },
 };
 
-/** How long a run lasts, and when the boss arrives (seconds). */
-export const RUN_LENGTH = 600;
+/** How long a run lasts (seconds). */
+export const RUN_LENGTH = 900;
+
+/** The set pieces: revolutions (a ring of communists closing in) and the Central Bank, twice. */
+export type ScheduledEvent = { at: number; kind: 'revolution'; count: number } | { at: number; kind: 'boss'; hp: number };
+export const SCHEDULE: ScheduledEvent[] = [
+  { at: 150, kind: 'revolution', count: 32 },
+  { at: 300, kind: 'boss', hp: 1 },
+  { at: 450, kind: 'revolution', count: 48 },
+  // Bailed out, and back with twice the reserves.
+  { at: 600, kind: 'boss', hp: 2.2 },
+  { at: 750, kind: 'revolution', count: 64 },
+];
+/** When the first Central Bank arrives. */
 export const BOSS_AT = 300;
+/** How long before a revolution the warning goes up. */
+export const WARNING_TIME = 4;
+
+/**
+ * The bomb: a shockwave all around you for emergencies. Its damage grows with the statists' health,
+ * so it kills nearly anything but the Central Bank; afterwards you're winded (slower) for a while.
+ */
+export const BOMB = { radius: 430, damage: 70, bankDamage: 350, knockback: 420, slowFor: 3, slowBy: 0.5, iframes: 0.6, max: 5 };

@@ -7,12 +7,13 @@ import { getAudioContext, note, playTone, type Tone } from '../../shared/audio.t
 import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, loadSprites, RESTING, type Sprite } from './balls.ts';
-import { CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, EVOLUTIONS, LAFFER_SVG, PASSIVES, RUN_LENGTH, type WeaponId, WEAPONS } from './data.ts';
-import { choose, DT, type Game, goldEarned, newGame, type Offer, reroll, step } from './game.ts';
+import { BOMB, CHARACTER_ORDER, CHARACTERS, type CharacterId, ENEMIES, EVOLUTIONS, LAFFER_SVG, PASSIVES, RUN_LENGTH, type WeaponId, WEAPONS } from './data.ts';
+import { FEATS, unlockedCharacters } from './feats.ts';
+import { choose, DT, type Game, goldEarned, newGame, type Offer, reroll, type Source, step } from './game.ts';
 import { Metal, type TrackId } from './music.ts';
 import { draw, GUNS, normalizeGun, particleColor, type Visuals } from './render.ts';
 import {
-  buy, CARD_ORDER, type CardId, HEAT, HEAT_ORDER, heatBonus, loadShop, price, rank, setupFor, type ShopItem, type ShopState, toggleHeat,
+  buy, CARD_ORDER, cardInfo, HEAT, HEAT_ORDER, heatBonus, loadShop, price, rank, setupFor, type ShopItem, type ShopState, toggleHeat,
   UPGRADE_ORDER, UPGRADES,
 } from './shop.ts';
 
@@ -25,11 +26,17 @@ interface Save {
   /** Music on or off (the speaker mutes everything). */
   music: boolean;
   character: CharacterId;
+  /** Screen shake on big hits (some people would rather not). */
+  shake: boolean;
+  /** Who you can play (Ancapball, and whoever's feat you've done). */
+  unlocked: CharacterId[];
   meta: {
     runs: number;
     wins: number;
     kills: number;
     gold: number;
+    /** Central Banks brought down, ever. */
+    banks: number;
     /** Longest survived, per character (seconds). */
     best: Partial<Record<CharacterId, number>>;
   };
@@ -44,16 +51,22 @@ const save: Save = {
   muted: saved?.muted === true,
   music: saved?.music !== false,
   character: CHARACTER_ORDER.includes(saved?.character as CharacterId) ? (saved!.character as CharacterId) : 'ancap',
+  shake: saved?.shake !== false,
+  unlocked: [],
   meta: {
     runs: count(saved?.meta?.runs),
     wins: count(saved?.meta?.wins),
     kills: count(saved?.meta?.kills),
     gold: count(saved?.meta?.gold),
+    banks: count(saved?.meta?.banks),
     best: Object.fromEntries(CHARACTER_ORDER.map((id) => [id, count(saved?.meta?.best?.[id])]).filter(([, v]) => (v as number) > 0)),
   },
   // Before the shop opened, Bitcoin only piled up: it all becomes spendable.
   shop: loadShop(saved?.shop, count(saved?.meta?.gold)),
 };
+// Anyone already played stays playable; then the feats.
+save.unlocked = unlockedCharacters(save.meta, Array.isArray(saved?.unlocked) ? saved.unlocked.filter((id) => CHARACTER_ORDER.includes(id)) : []);
+if (!save.unlocked.includes(save.character)) save.character = 'ancap';
 const persist = () => slot.save(save);
 
 // ---------------------------------------------------------------------------
@@ -72,6 +85,8 @@ const els = {
   screen: byId('screen'),
   modal: byId('modal'),
   pause: byId<HTMLButtonElement>('pause'),
+  bomb: byId<HTMLButtonElement>('bomb'),
+  bombs: byId('bombs'),
   mute: byId<HTMLButtonElement>('mute'),
   music: byId<HTMLButtonElement>('music'),
   banner: byId('banner'),
@@ -120,14 +135,32 @@ const SOUNDS = {
   evolve: () => [262, 330, 392, 523, 659, 784].forEach((hz, i) => playTone(note(hz, 0.12, 0.05, 'sawtooth'), i * 0.05)),
   buy: () => [880, 1320].forEach((hz, i) => playTone(note(hz, 0.08, 0.04, 'triangle'), i * 0.07)),
   kill: () => playTone(sweep(420, 140, 0.08, 0.025, 'square')),
-  pickup: () => playTone(note(1320, 0.04, 0.018, 'triangle')),
+  // Pickups and level-ups climb in pitch while you keep chaining them.
+  pickup: () => playTone(note(880 * 2 ** (Math.min(chain.pickups, 24) / 12), 0.04, 0.018, 'triangle')),
+  bomb: () => {
+    playTone(sweep(90, 30, 0.7, 0.12, 'sawtooth'));
+    playTone(sweep(1400, 200, 0.35, 0.04, 'square'));
+  },
+  warning: () => [880, 660, 880, 660].forEach((hz, i) => playTone(note(hz, 0.16, 0.04, 'square'), i * 0.2)),
   hurt: () => playTone(sweep(200, 70, 0.18, 0.06, 'sawtooth')),
   nein: () => playTone(sweep(160, 60, 0.3, 0.07, 'sawtooth')),
-  level: () => [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz, 0.1, 0.045, 'triangle'), i * 0.06)),
+  level: () => [523, 659, 784, 1047].forEach((hz, i) => playTone(note(hz * 2 ** (Math.min(chain.levels, 12) / 12), 0.1, 0.045, 'triangle'), i * 0.06)),
   boss: () => [196, 185, 196, 185].forEach((hz, i) => playTone(note(hz, 0.25, 0.06, 'sawtooth'), i * 0.28)),
   win: () => [392, 523, 659, 784, 1047, 1319].forEach((hz, i) => playTone(note(hz, 0.16, 0.05), i * 0.1)),
   lose: () => [392, 330, 262, 196].forEach((hz, i) => playTone(note(hz, 0.25, 0.05, 'sawtooth'), i * 0.18)),
 };
+/** How many pickups (and level-ups) in a row, close together: each one sounds a semitone higher. */
+const chain = { pickups: 0, pickupAt: 0, levels: 0, levelAt: 0 };
+function chained(kind: 'pickup' | 'level') {
+  const now = performance.now() / 1000;
+  if (kind === 'pickup') {
+    chain.pickups = now - chain.pickupAt < 0.5 ? chain.pickups + 1 : 0;
+    chain.pickupAt = now;
+  } else {
+    chain.levels = now - chain.levelAt < 20 ? chain.levels + 1 : 0;
+    chain.levelAt = now;
+  }
+}
 const lastPlayed: Record<string, number> = {};
 function play(name: keyof typeof SOUNDS, gap = 0.05) {
   if (save.muted) return;
@@ -193,6 +226,17 @@ renderMusic();
 const keys = new Set<string>();
 document.addEventListener('keydown', (e) => {
   keys.add(e.key.toLowerCase());
+  if (menuOpen()) {
+    // The arrow keys move between buttons on the menus, like a gamepad's d-pad.
+    const dir = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
+    if (dir) {
+      e.preventDefault();
+      moveFocus(dir[0], dir[1]);
+    }
+  } else if (e.key === ' ' && g && !g.over && !paused) {
+    e.preventDefault();
+    if (!e.repeat) bombQueued = true;
+  }
   if (e.key === 'Escape' || e.key.toLowerCase() === 'p') togglePause();
   if (g?.offer && ['1', '2', '3'].includes(e.key)) pick(Number(e.key) - 1);
   if (g?.offer && e.key.toLowerCase() === 'r') rerollCards();
@@ -203,7 +247,15 @@ window.addEventListener('blur', () => {
   if (g && !g.over && !g.offer) setPaused(true);
 });
 
-const vis: Visuals = { particles: [], texts: [], rings: [], booms: [], zaps: [], hurt: 0, happy: 0, stick: null };
+const vis: Visuals = { particles: [], texts: [], rings: [], booms: [], zaps: [], blasts: [], shake: 0, warn: 0, hurt: 0, happy: 0, stick: null };
+/** Shake the screen (if the player hasn't turned it off). */
+const shake = (amount: number) => {
+  if (save.shake) vis.shake = Math.max(vis.shake, amount);
+};
+let bombQueued = false;
+els.bomb.addEventListener('click', () => {
+  if (g && !g.over && !paused && !g.offer) bombQueued = true;
+});
 let stickId: number | null = null;
 els.canvas.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse') return;
@@ -239,19 +291,113 @@ function readInput() {
     x += (vis.stick.x - vis.stick.ox) / 50;
     y += (vis.stick.y - vis.stick.oy) / 50;
   }
-  for (const pad of navigator.getGamepads?.() ?? []) {
-    if (!pad) continue;
-    const [ax = 0, ay = 0] = pad.axes;
-    if (Math.hypot(ax, ay) > 0.2) {
-      x += ax;
-      y += ay;
-    }
-    if (pad.buttons[9]?.pressed && !padStart) togglePause();
-    padStart = !!pad.buttons[9]?.pressed;
+  if (Math.hypot(pad.x, pad.y) > 0.2) {
+    x += pad.x;
+    y += pad.y;
   }
-  return { x, y };
+  const bomb = bombQueued;
+  bombQueued = false;
+  return { x, y, bomb };
 }
-let padStart = false;
+
+// --- Gamepads: the left stick moves you; on the menus the d-pad or stick moves between buttons,
+// A picks, B goes back; in a run A (or X, or RB) sets off a bomb; Start pauses. ---
+
+const pad = { x: 0, y: 0, held: new Set<string>(), moved: 0 };
+// Back to mouse or touch: drop the gamepad focus ring.
+document.addEventListener('pointerdown', () => document.body.classList.remove('pad'));
+function pollPad() {
+  pad.x = 0;
+  pad.y = 0;
+  const now = new Set<string>();
+  for (const gp of navigator.getGamepads?.() ?? []) {
+    if (!gp) continue;
+    const [ax = 0, ay = 0] = gp.axes;
+    pad.x += ax;
+    pad.y += ay;
+    const names: [string, number][] = [['a', 0], ['b', 1], ['x', 2], ['rb', 5], ['start', 9], ['up', 12], ['down', 13], ['left', 14], ['right', 15]];
+    for (const [name, i] of names) if (gp.buttons[i]?.pressed) now.add(name);
+    if (ay < -0.6) now.add('up');
+    if (ay > 0.6) now.add('down');
+    if (ax < -0.6) now.add('left');
+    if (ax > 0.6) now.add('right');
+  }
+  const pressed = (name: string) => now.has(name) && !pad.held.has(name);
+  // Holding a direction repeats, after a moment.
+  const t = performance.now();
+  const repeat = (name: string) => pressed(name) || (now.has(name) && t - pad.moved > 260);
+  if (pressed('start')) {
+    document.body.classList.add('pad');
+    if (g && !g.over && !g.offer) togglePause();
+  }
+  if (menuOpen()) {
+    for (const [name, dx, dy] of [['left', -1, 0], ['right', 1, 0], ['up', 0, -1], ['down', 0, 1]] as const) {
+      if (repeat(name)) {
+        document.body.classList.add('pad');
+        moveFocus(dx, dy);
+        pad.moved = t;
+      }
+    }
+    if (pressed('a')) {
+      document.body.classList.add('pad');
+      const el = document.activeElement;
+      if (el instanceof HTMLButtonElement && menuButtons().includes(el)) el.click();
+      else menuButtons()[0]?.focus();
+    }
+    if (pressed('b')) goBack();
+  } else if (g && !g.over && !paused && (pressed('a') || pressed('x') || pressed('rb'))) bombQueued = true;
+  pad.held = now;
+}
+
+/** A menu is up: the title, the shop, the end screen, a level-up, pause, how-to, options. */
+const menuOpen = () => !els.modal.hidden || !els.screen.hidden;
+function menuButtons(): HTMLButtonElement[] {
+  const root = !els.modal.hidden ? els.modal : els.screen;
+  return [...root.querySelectorAll<HTMLButtonElement>('button')].filter((b) => !b.disabled && b.offsetParent !== null);
+}
+
+/** Moves the focus to the nearest button in that direction (or the first one, if nothing has it). */
+function moveFocus(dx: number, dy: number) {
+  const list = menuButtons();
+  const cur = document.activeElement instanceof HTMLButtonElement && list.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) {
+    list[0]?.focus();
+    return;
+  }
+  const r = cur.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  let best: HTMLButtonElement | null = null;
+  let bestScore = Infinity;
+  for (const b of list) {
+    if (b === cur) continue;
+    const q = b.getBoundingClientRect();
+    const ox = q.left + q.width / 2 - cx;
+    const oy = q.top + q.height / 2 - cy;
+    const along = ox * dx + oy * dy;
+    if (along <= 4) continue;
+    const across = Math.abs(ox * dy - oy * dx);
+    // Buttons straight ahead (overlapping across the direction of travel) win; then the nearest.
+    const overlaps = dx ? q.top < r.bottom && q.bottom > r.top : q.left < r.right && q.right > r.left;
+    const score = (overlaps ? 0 : 1e5) + along + across * 2.5;
+    if (score < bestScore) {
+      bestScore = score;
+      best = b;
+    }
+  }
+  if (best) {
+    best.focus();
+    best.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/** B on a gamepad: close the box, resume, or go back to the title. */
+function goBack() {
+  if (!els.modal.hidden) {
+    if (g && paused) setPaused(false);
+    else if (!g?.offer) els.modal.hidden = true;
+  } else if (!els.screen.hidden && !g) showTitle();
+}
 
 // ---------------------------------------------------------------------------
 // The run
@@ -276,6 +422,10 @@ function startRun(character: CharacterId) {
   vis.rings = [];
   vis.booms = [];
   vis.zaps = [];
+  vis.blasts = [];
+  vis.warn = 0;
+  vis.shake = 0;
+  bombQueued = false;
   paused = false;
   shownOffer = null;
   els.screen.hidden = true;
@@ -292,6 +442,7 @@ function frame(now: number) {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
   if (metal.playing) metal.play(wantTrack());
+  pollPad();
   if (!g || !sprites) return;
   if (!paused && !g.offer && !g.over) {
     acc += dt;
@@ -321,7 +472,10 @@ function react(g: Game) {
         break;
       case 'kill': {
         const color = particleColor(f.type);
-        if (f.type === 'bank') vis.happy = 3;
+        if (f.type === 'bank') {
+          vis.happy = 3;
+          shake(10);
+        }
         for (let i = 0; i < (f.type === 'bank' ? 40 : 6); i++) {
           if (vis.particles.length > 500) break;
           const a = Math.random() * Math.PI * 2;
@@ -333,6 +487,7 @@ function react(g: Game) {
       }
       case 'hurt':
         vis.hurt = 0.3;
+        shake(f.amount >= 10 ? 6 : 3);
         play('hurt', 0.15);
         break;
       case 'nein':
@@ -341,6 +496,7 @@ function react(g: Game) {
         break;
       case 'boom':
         if (vis.booms.length < 12) vis.booms.push({ x: f.x, y: f.y, radius: f.radius, life: 0.35 });
+        shake(2);
         play('boom', 0.15);
         break;
       case 'zap':
@@ -356,17 +512,32 @@ function react(g: Game) {
         play('shoot', 0.09);
         break;
       case 'pickup':
-        play('pickup', 0.04);
+        chained('pickup');
+        play('pickup', 0.03);
         break;
       case 'level':
+        chained('level');
         play('level', 0.3);
         break;
       case 'boss':
         play('boss', 1);
-        banner('💸 THE CENTRAL BANK IS HERE. It prints.');
+        shake(6);
+        banner(f.second ? '💸 THE CENTRAL BANK IS BACK. Bailed out, with twice the reserves.' : '💸 THE CENTRAL BANK IS HERE. It prints.');
+        break;
+      case 'warning':
+        vis.warn = 4;
+        play('warning', 1);
+        banner('⚠️ They’re organizing… a revolution closes in!');
         break;
       case 'revolution':
+        vis.warn = 0;
+        shake(5);
         banner('🚩 THE REVOLUTION! They’re coming from every side.');
+        break;
+      case 'bomb':
+        vis.blasts.push({ x: f.x, y: f.y, radius: f.radius, life: 0.5 });
+        shake(14);
+        play('bomb', 0.2);
         break;
       case 'wither':
         play('win', 1);
@@ -393,6 +564,10 @@ function updateVisuals(dt: number) {
   vis.booms = vis.booms.filter((b) => b.life > 0);
   for (const z of vis.zaps) z.life -= dt;
   vis.zaps = vis.zaps.filter((z) => z.life > 0);
+  for (const b of vis.blasts) b.life -= dt;
+  vis.blasts = vis.blasts.filter((b) => b.life > 0);
+  vis.shake = vis.shake > 0.3 ? vis.shake * Math.exp(-10 * dt) : 0;
+  vis.warn = Math.max(0, vis.warn - dt);
   vis.hurt = Math.max(0, vis.hurt - dt);
   vis.happy = Math.max(0, vis.happy - dt);
 }
@@ -416,6 +591,9 @@ function renderHud(g: Game) {
   els.level.textContent = `Lv ${g.level}`;
   els.timer.textContent = clock(Math.min(RUN_LENGTH, g.time));
   els.kills.textContent = `💀 ${g.kills}`;
+  if (els.bombs.textContent !== String(g.bombs)) els.bombs.textContent = String(g.bombs);
+  els.bomb.disabled = g.bombs <= 0;
+  els.bomb.classList.toggle('winded', g.player.slowed > 0);
 }
 
 let bannerTimer = 0;
@@ -455,6 +633,7 @@ function describe(o: Offer): { icon: string; name: string; tag: string; text: st
     const w = WEAPONS[o.id];
     return { icon: weaponIcon(o.id), name: w.name, tag: `WEAPON UPGRADE: ${WEAPONS[o.from].name.toUpperCase()}`, text: `${w.text} ${w.levels[0]}` };
   }
+  if (o.kind === 'bomb') return { icon: '💣', name: 'A Spare Bomb', tag: 'INSTEAD OF AN UPGRADE', text: `+1 bomb for emergencies (you have ${g?.bombs ?? 0} of ${BOMB.max}).` };
   if (o.kind === 'heal') return { icon: '🥨', name: 'A Free Lunch', tag: 'EVERYTHING’S MAXED', text: 'Heal 30% of your Credibility. There is such a thing, apparently.' };
   return { icon: BTC_IMG, name: 'Bitcoin', tag: 'EVERYTHING’S MAXED', text: '+25 ₿. Stack sats.' };
 }
@@ -477,6 +656,7 @@ function showOffer(g: Game) {
   box.append(loadout(g));
   els.modal.append(box);
   els.modal.hidden = false;
+  padFocus();
 }
 
 function rerollCards() {
@@ -517,6 +697,7 @@ function setPaused(on: boolean) {
   box.append(t('h2', 'modal-title', 'PAUSED'), loadout(g));
   box.append(
     button('▶ Resume', 'big', () => setPaused(false)),
+    button('⚙️ Options', 'big secondary', () => showOptions(() => setPaused(true))),
     button('Give up', 'big secondary', () => {
       if (g) g.player.hp = 0;
       paused = false;
@@ -529,6 +710,7 @@ function setPaused(on: boolean) {
   );
   els.modal.append(box);
   els.modal.hidden = false;
+  padFocus();
 }
 function togglePause() {
   if (!g || g.over || g.offer) return;
@@ -550,6 +732,21 @@ function showTitle() {
   const picker = h('div', 'characters');
   for (const id of CHARACTER_ORDER) {
     const c = CHARACTERS[id];
+    const feat = FEATS[id];
+    if (!save.unlocked.includes(id) && feat) {
+      // Locked: a silhouette, the feat, and how far along you are.
+      const [have, need] = feat.progress(save.meta);
+      const card = h('div', 'character locked');
+      card.setAttribute('aria-label', `${c.name}, locked. ${feat.text}`);
+      card.append(ballImg(id), t('b', 'char-name', `🔒 ${c.name}`), t('small', 'char-feat', feat.text));
+      if (need > 1) {
+        const bar = h('span', 'feat-bar');
+        bar.style.setProperty('--fill', String(have / need));
+        card.append(bar, t('small', 'char-best', need === 300 ? `${clock(have)} / ${clock(need)}` : `${have.toLocaleString()} / ${need.toLocaleString()}`));
+      }
+      picker.append(card);
+      continue;
+    }
     const card = button('', `character${save.character === id ? ' picked' : ''}`, () => {
       save.character = id;
       persist();
@@ -569,6 +766,7 @@ function showTitle() {
     button(`▶ Play as ${c.name}`, 'big', () => startRun(save.character)),
     button(`${BTC_IMG} The Free Market (${save.shop.bank.toLocaleString()})`, 'big secondary shop-button', showShop),
     button('📖 How to play', 'big secondary', showHowTo),
+    button('⚙️ Options', 'big secondary', () => showOptions()),
     button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wither-away')),
   );
   s.append(buttons);
@@ -579,6 +777,40 @@ function showTitle() {
   s.append(t('p', 'proto', 'PROTOTYPE'));
   els.screen.append(s);
   els.screen.hidden = false;
+  padFocus();
+}
+
+/** With a gamepad in hand, put the focus on a menu's first button so A does something. */
+function padFocus() {
+  if (!document.body.classList.contains('pad')) return;
+  requestAnimationFrame(() => menuButtons()[0]?.focus());
+}
+
+function showOptions(back?: () => void) {
+  els.modal.replaceChildren();
+  const box = h('div', 'modal-box');
+  const sw = button(save.shake ? 'On' : 'Off', `toggle${save.shake ? ' on' : ''}`, () => {
+    save.shake = !save.shake;
+    persist();
+    showOptions(back);
+  });
+  sw.setAttribute('role', 'switch');
+  sw.setAttribute('aria-checked', String(save.shake));
+  sw.setAttribute('aria-label', 'Screen shake');
+  const row = h('div', 'option');
+  row.append(h('span', '', '<b>Screen shake</b><br><small class="muted">On big hits, bombs and the boss.</small>'), sw);
+  box.append(
+    t('h2', 'modal-title', 'OPTIONS'),
+    row,
+    h('p', 'muted', '🎵 and 🔊 (top right) turn the music and all sound on and off. A gamepad works on every menu: the d-pad or stick moves, A picks, B goes back.'),
+    button('Done', 'big', () => {
+      els.modal.hidden = true;
+      back?.();
+    }),
+  );
+  els.modal.append(box);
+  els.modal.hidden = false;
+  padFocus();
 }
 
 // ---------------------------------------------------------------------------
@@ -619,6 +851,7 @@ function showShop() {
   els.hud.hidden = true;
   els.modal.hidden = true;
   const scroll = els.screen.scrollTop;
+  const focusAt = !els.screen.hidden && document.activeElement instanceof HTMLButtonElement ? menuButtons().indexOf(document.activeElement) : -1;
   els.screen.replaceChildren();
   const s = h('section', 'title shop');
   s.append(t('h1', 'logo', 'THE FREE MARKET'), t('p', 'tagline', 'Voluntary exchange only. No refunds: this isn’t a government programme.'));
@@ -648,11 +881,8 @@ function showShop() {
 
   const cards = section('New cards', 'Bought cards join the level-up pool for everyone.');
   for (const id of CARD_ORDER) {
-    const isWeapon = id in WEAPONS;
-    const icon = isWeapon ? weaponIcon(id as WeaponId) : PASSIVES[id as Exclude<CardId, WeaponId>].icon;
-    const name = isWeapon ? WEAPONS[id as WeaponId].name : PASSIVES[id as Exclude<CardId, WeaponId>].name;
-    const text = isWeapon ? WEAPONS[id as WeaponId].text : PASSIVES[id as Exclude<CardId, WeaponId>].text;
-    cards.append(shopRow({ kind: 'card', id }, icon, `${name}${isWeapon ? ' (weapon)' : ''}`, text));
+    const c = cardInfo(id);
+    cards.append(shopRow({ kind: 'card', id }, c.weapon ? weaponIcon(id as WeaponId) : c.icon, `${c.name}${c.weapon ? ' (weapon)' : ''}`, c.text));
   }
 
   const heat = section('Regulations', `Harder runs, more Bitcoin. Buy one to be able to switch it on. Now: ×${heatBonus(save.shop).toFixed(2)} Bitcoin.`);
@@ -681,6 +911,9 @@ function showShop() {
   els.screen.append(s);
   els.screen.hidden = false;
   els.screen.scrollTop = scroll;
+  // Keep the focus where it was (buying re-draws the shop), for keyboard and gamepad players.
+  if (focusAt >= 0) menuButtons()[Math.min(focusAt, menuButtons().length - 1)]?.focus({ preventScroll: true });
+  else padFocus();
 }
 
 function showHowTo() {
@@ -694,16 +927,19 @@ function showHowTo() {
       'how',
       `<li>🕹️ <b>Move</b> with WASD or the arrow keys, a gamepad’s left stick, or a thumb anywhere on a touch screen. You <b>aim and shoot automatically</b>.</li>
       <li>💎 Statists drop <b>XP</b>. Level up and pick one of three cards: a new weapon, or a level for one you have (up to 5 weapons and 5 passives, level 5 each).</li>
-      <li>⏱️ Survive <b>${clock(RUN_LENGTH)}</b> and the state finally withers away. It gets busier every minute.</li>
+      <li>⏱️ Survive <b>${clock(RUN_LENGTH)}</b> and the state finally withers away. It gets busier and nastier every minute; the revolution comes three times (watch for the red at the edges), the Central Bank twice.</li>
+      <li>💣 <b>Bombs</b>: <kbd>Space</kbd>, a gamepad’s A, or the 💣 button. A shockwave all around you that kills nearly anything but the Central Bank, and pops its balloons. You start with one. Afterwards you’re winded 🐌: half speed for 3 seconds.</li>
       ${foes}
       <li>🥨 A free lunch heals, 🧲 pulls in all the XP, ₿ is Bitcoin. You also earn 1 Bitcoin for every six seconds you last (and 100 for winning).</li>
       <li>🏪 Spend it in <b>the Free Market</b> between runs: permanent upgrades, new cards, each libertarian’s <b>weapon upgrade</b> (offered once the starting weapon reaches level 5), and regulations that make runs harder for more Bitcoin.</li>
-      <li>⏸️ <kbd>Esc</kbd> or <kbd>P</kbd> to pause.</li>`,
+      <li>🔓 Ancapball is there from the start. The others join once you’ve done their <b>feat</b> (shown on the title screen).</li>
+      <li>⏸️ <kbd>Esc</kbd>, <kbd>P</kbd> or a gamepad’s Start to pause. On the menus, a gamepad’s d-pad (or the arrow keys) moves, A picks, B goes back.</li>`,
     ),
     button('Got it', 'big', () => (els.modal.hidden = true)),
   );
   els.modal.append(box);
   els.modal.hidden = false;
+  padFocus();
 }
 
 function showEnd(g: Game) {
@@ -716,7 +952,12 @@ function showEnd(g: Game) {
   const earned = goldEarned(g);
   m.gold += earned.total;
   save.shop.bank += earned.total;
+  m.banks += g.bankKills;
   m.best[g.character] = Math.max(m.best[g.character] ?? 0, Math.floor(g.time));
+  // Did that run earn anyone their place?
+  const before = save.unlocked;
+  save.unlocked = unlockedCharacters(m, before);
+  const fresh = save.unlocked.filter((id) => !before.includes(id));
   persist();
   els.modal.hidden = true;
   els.hud.hidden = true;
@@ -745,10 +986,15 @@ function showEnd(g: Game) {
       `₿ ${earned.picked} picked up + ${earned.survived} for ${won ? 'surviving and winning' : 'surviving'}${mult !== 1 ? ` × ${mult.toFixed(2)}` : ''} = ${earned.total}. You have ${save.shop.bank.toLocaleString()} to spend.`,
     ),
   );
-  const dmg = Object.entries(g.damageBy).sort((a, b) => b[1] - a[1]);
+  for (const id of fresh) {
+    const box = h('div', 'unlocked');
+    box.append(ballImg(id), h('p', '', `🔓 <b>${CHARACTERS[id].name}</b> joins the cause!<br><small>${FEATS[id]?.text ?? ''}</small>`));
+    s.append(box);
+  }
+  const dmg = Object.entries(g.damageBy).sort((a, b) => b[1] - a[1]) as [Source, number][];
   if (dmg.length) {
     const list = h('ul', 'damage');
-    for (const [id, n] of dmg) list.append(h('li', '', `${weaponIcon(id as WeaponId)} ${WEAPONS[id as WeaponId].name}: ${n.toLocaleString()} damage`));
+    for (const [id, n] of dmg) list.append(h('li', '', `${id === 'bomb' ? '💣' : weaponIcon(id)} ${id === 'bomb' ? 'Bombs' : WEAPONS[id].name}: ${n.toLocaleString()} damage`));
     s.append(list);
   }
   const buttons = h('div', 'menu');
@@ -756,6 +1002,7 @@ function showEnd(g: Game) {
   s.append(buttons);
   els.screen.append(s);
   els.screen.hidden = false;
+  padFocus();
 }
 
 // ---------------------------------------------------------------------------
