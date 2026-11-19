@@ -645,13 +645,16 @@ export interface StickerData {
 }
 
 /** Sticker shop tabs, in order. */
-export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string }[] = [
+/** An icon that's one of the pictures in img/ rather than an emoji (the pistol, for anything gun-shaped). */
+export const PISTOL_ICON = 'img:pistol';
+
+export const STICKER_CATEGORIES: readonly { id: StickerCategory; label: string; icon?: string }[] = [
   { id: 'quote', label: '💬 Quotes' },
   { id: 'emoji', label: '🐍 Emojis' },
   { id: 'html', label: '🏴 Flags' },
   { id: 'person', label: '🧔 People' },
   { id: 'organization', label: '🏛️ Orgs' },
-  { id: 'item', label: '🔫 Items' },
+  { id: 'item', label: 'Items', icon: PISTOL_ICON },
   { id: 'crypto', label: '🪙 Crypto' },
   { id: 'book', label: '📚 Books' },
   { id: 'christmas', label: '🎄 Christmas' },
@@ -919,7 +922,7 @@ export const STICKER_SETS: readonly StickerSet[] = [
   { category: 'html', icon: '🏴', name: 'Flag Collection', description: 'Income ×1.05.', incomeMultiplier: 1.05 },
   { category: 'person', icon: '🧔', name: 'Austrian Pantheon', description: 'Income ×1.25.', incomeMultiplier: 1.25 },
   { category: 'organization', icon: '🏛️', name: 'Think Tank Network', description: 'Fed raids happen 25% less often.', raidChance: 0.75 },
-  { category: 'item', icon: '🔫', name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
+  { category: 'item', icon: PISTOL_ICON, name: 'Private Armory', description: '+5% Critical Click chance.', critChance: 0.05 },
   { category: 'crypto', icon: '🪙', name: 'Cold Storage', description: 'Golden-sticker cash ×1.25.', goldenCash: 1.25 },
   { category: 'book', icon: '📚', name: 'Library of Liberty', description: 'Clicks are worth ×1.5. You have read the sacred texts.', clickMultiplier: 1.5 },
   { category: 'christmas', icon: '🎄', name: 'Christmas Spirit', description: 'Income ×1.1, all year round.', incomeMultiplier: 1.1 },
@@ -992,7 +995,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'income-100', icon: '📈', name: 'Passive Aggressive', description: 'Make $100/sec without lifting a finger.', check: (c) => c.incomePerSec >= 100 },
   { id: 'income-10k', icon: '🛥️', name: 'Rentier Class', description: 'Make $10,000/sec. Your money works harder than you.', check: (c) => c.incomePerSec >= 10000 },
   { id: 'lemonade-10', icon: '🍋', name: 'Lemonade Cartel', description: 'Own 10 unlicensed lemonade stands. The health inspector weeps.', check: (c) => c.owned(2) >= 10 },
-  { id: 'ak-10', icon: '🔫', name: 'Very Polite Society', description: 'Own 10 AK-47s.', check: (c) => c.owned(3) >= 10 },
+  { id: 'ak-10', icon: PISTOL_ICON, name: 'Very Polite Society', description: 'Own 10 AK-47s.', check: (c) => c.owned(3) >= 10 },
   { id: 'roads', icon: '🚧', name: 'Who Will Build the Roads?', description: 'Privatize the roads. You. You will.', check: (c) => c.owned(8) >= 1 },
   { id: 'moon', icon: '🌑', name: 'Lunar Lockean', description: 'Homestead the moon.', check: (c) => c.owned(12) >= 1 },
   { id: 'solar', icon: '🌌', name: 'Galactic Landlord', description: 'Privatize the solar system. Rent is due.', check: (c) => c.owned(14) >= 1 },

@@ -1018,10 +1018,10 @@ against bot advisors (`src/games/wrong-austrians/`).
   (27 in all).
 
 
-### WITHER AWAY (prototype)
+### WITHER AWAY ✅
 
 A new game: a top-down arcade survival roguelite (`src/games/wither-away/`). "Marx promised the
-state would wither away. It didn't. Make it." Survive 10 minutes against the statist horde.
+state would wither away. It didn't. Make it." Survive 15 minutes against the statist horde.
 
 - Four polcompballs to play, each with a starting weapon and a perk (`data.ts`): Ancapball (gold and
   black; Gold Coins; a big pickup magnet), Minarchistball (gold and blue, a cigarette; a pump-action
@@ -1034,16 +1034,96 @@ state would wither away. It didn't. Make it." Survive 10 minutes against the sta
   Hand (orbiting slaps), Price Signal (homing), Laffer Curve (out and back through everything),
   Non-Aggression Pact (an aura); passives Property Rights, Low Time Preference, Division of Labour,
   Compound Interest, Free Trade, Private Healthcare.
-- The statists, each with a trick: Communistball (the masses), Socialistball (heals the others),
-  Keynesianball (splits into stimulus), Bureaucratball (red tape that slows you), Taxmanball
-  (steals your XP; kill him to get it back). A revolution (a ring of communists) at 2:30 and 7:30;
-  the Central Bank at 5:00 (inflation balloons that grow, and more Keynesians). At 10:00 the state
-  withers away.
+- The statists, each with a trick: Communistball (red, golden hammer and sickle; the masses),
+  Social Democratball (red, white rose; heals the others, little green crosses drifting up),
+  Keynesianball (blue, three stripes, fleurs-de-lis; splits into stimulus), Fascistball (black, the
+  fasces; marches in squads of four, winds up with a "!" and charges), Taxmanball (charcoal suit,
+  green eyeshade, gold %; steals your XP, kill him to get it back). A revolution (a ring of communists)
+  three times; the Central Bank twice (inflation balloons that grow, and more Keynesians). At 15:00
+  the state withers away.
 - The engine (`game.ts`) is plain, seeded and DOM-free: a fixed 60 Hz step, a spatial grid, up to
   380 statists. A bot (`bot.ts`) plays whole runs for the tests and balancing (it keeps its
   distance like a player would for each weapon's reach). 60 fps in a headless browser with 380 on
   screen; the step takes under a millisecond.
-- The balls are SVG, drawn once per expression (normal, angry, happy, hurt) into canvas sprites
-  (`balls.ts`); balls with writing on them never flip.
-- Next: a meta shop for the gold, more characters and maps, evolutions (a maxed weapon plus the
-  right passive), achievements, a daily run, music, sharing.
+- The balls are SVG, drawn once per expression (normal, angry, happy, scared, hurt) into canvas
+  sprites (`balls.ts`); balls with writing on them never flip. The Central Bank: dollar-bill green,
+  engraved rings, the eye in the pyramid, a top hat and a gold monocle. Your face changes with the
+  moment (`playerEyes`): X eyes when hit, happy after an upgrade or the boss, scared with a bead of
+  sweat when low on health or swamped, angry in a crowd or near the boss.
+- Pickups drop Bitcoin (the coin from Ancapistan Tycoon); the Laffer Curve is a drawing of an
+  actual Laffer Curve (revenue against tax rate, peak marked), not a chart emoji.
+- Music (`music.ts`): thrash metal made in code. Power chords from detuned saws through a hard
+  clipper and a cabinet filter, palm-muted chugs, a bass, and drums (gallop, thrash skank beat,
+  blasts, double kick, half time). A menu loop ("The Road to Serfdom", 96 bpm), two run tracks that
+  take turns, swapping every loop ("Rip and Tear the Red Tape", E, 184 bpm; "Hyperinflation", D,
+  204 bpm), and the boss's ("Central Bank Must Die", C, 144 bpm, tritones). Riffs are written as
+  sixteen tokens a bar. 🎵 turns it off on its own; 🔊 mutes everything.
+- The guns are the pictures in `public/vidya/img` (the pump-action shotgun, the AK-47), turned at
+  load so the muzzle points along your aim (`normalizeGun`), with a faint light edge so they show up
+  at night. The AK keeps its price tag.
+- The Free Market (`shop.ts`), where the Bitcoin goes between runs. Every run pays what you picked
+  up, plus 1 for every six seconds you lasted and 100 for winning. On sale:
+  - Permanent upgrades, several ranks each: Self-Ownership (+10 HP), Capital Accumulation (+6%
+    damage), Hustle (speed), Network Effects (pickup range), Praxeology (XP), Gold Rush (+10%
+    Bitcoin), Second Opinion (a reroll of the level-up cards per run), Castle Doctrine (+1 armour).
+  - New cards for the level-up pool: Creative Destruction (statists near you explode, taking their
+    neighbours along), It's Happening (lightning that jumps from statist to statist), Sound Money
+    (+8% damage) and Right of Exit (+6% speed).
+  - Each libertarian's weapon upgrade. Once the starting weapon is level 5, the upgrade is always
+    one of the three cards: Gold Coins become the Gold Standard (tumbling gold bars through five
+    statists each), the Pump Shotgun the Auto Shotgun (10 pellets, wider, twice the rate), the AK
+    the M249 (twice the rate, harder, through three), NEIN! becomes NEIN NEIN NEIN (three ever-wider
+    shockwaves).
+  - Regulations, the difficulty: Money Printer Go Brrr (statists +50% HP), Red Tape (+35%
+    statists), Five-Year Plan (15% faster), Wealth Tax (hits take 50% more). Each one you switch on
+    adds to the Bitcoin a run pays.
+  Old saves turn the Bitcoin earned so far into Bitcoin to spend.
+- Runs last 15 minutes, and get nastier as they go: statists come faster, with more health, and
+  hit harder (`spawnRate`, `hpScale`, `damageScale`). The set pieces are data (`SCHEDULE`): the
+  revolution at 2:30, 7:30 and 12:30 (with a few seconds' warning: red at the screen edges and an
+  alarm), the Central Bank at 5:00 and again at 10:00, bailed out with 2.2 times the reserves.
+- Bombs: Space, a gamepad's A (or X, RB), or the 💣 button. A shockwave all around you that kills
+  nearly anything but the Central Bank and pops its balloons; then you're winded (half speed, a
+  snail over your head) for 3 seconds. You start with one; the shop's Bug-Out Bag adds up to two
+  more, and its Spare Bomb card puts "+1 bomb" among the level-up cards (up to five).
+- Feats unlock the characters (`feats.ts`): Ancapball from the start; Minarchistball for
+  surviving 5:00, Agoristball for 2,500 statists in all, the Austrian School ball for bringing down
+  the Central Bank. Locked ones show as silhouettes with the feat and a progress bar; the end
+  screen announces who joined. Anyone played before the feats stays unlocked.
+- Game feel: screen shake on hits, bombs, the boss (Options can turn it off), an arrow at the screen
+  edge pointing to the Central Bank when it's off screen, and pickups and level-ups that climb a
+  semitone each while you chain them.
+- Gamepads work on every menu: the d-pad or stick moves between buttons (the nearest one in that
+  direction), A picks, B goes back or resumes, Start pauses. The arrow keys do the same on menus.
+- Two more statists. Technocratball (a white-and-red yin-yang) keeps about 300 away, strafing, and
+  fires expert opinions at you, so you have to keep moving. NIMBYball (clapboard siding, a roof for
+  a hat, a little picket fence and a "NO!" sign) plants picket fences across your path, a little
+  ahead of where you're heading; you can't walk through them, they come down after 9 seconds, and a
+  bomb flattens them.
+- A second boss, Marxball: red, with the hair, the great grey beard and the moustache. Throws
+  volleys of spinning gold hammers and sickles, and every 8 seconds calls up a ring of communists
+  ("Workers of the world, unite!"). The boss arrow, health bar and boss music work for him too.
+- Maps (`MAPS` in `data.ts`), each with its own schedule, mix and Bitcoin bonus, picked on the title
+  screen and unlocked by feats:
+  - Ancapistan Streets: the Central Bank at 5:00, Marx at 10:00.
+  - Red Vienna (survive 7:30 to unlock): cobbles, tram lines and fountains; more Social Democrats,
+    Technocrats from 1:50, Marx at 5:00 and the Central Bank (bailed out) at 10:00. +15% Bitcoin.
+  - The Federal Reserve Vault (bring down Marx to unlock): steel plates, hazard stripes, pallets of
+    cash and stacks of gold. Every 50 seconds a money printer starts up near you (up to three) and
+    prints Stimulus and Keynesians while you're near, until you smash it. The Central Bank twice,
+    then Marx at 12:30. +30% Bitcoin.
+- Endless mode (a toggle on the title screen): no withering at 15:00 ("It should have withered by
+  now. It hasn't."). After the map's own schedule, a revolution or a boss every 75 seconds, each
+  bigger than the last (`scheduled`), the Central Bank and Marx taking turns; the statists keep
+  getting tougher until you fall. Pays for every six seconds, with no winner's bonus. The best
+  endless time on each map is kept and shown on the toggle.
+- Achievements (`achievements.ts`): 27, from Voluntary Exchange (the first kill) to Perpetual
+  Growth (30:00 of endless), with End the Fed, The Close of His System (Marx), Non-Aggression (2:00
+  unhurt), Taxation Is Theft, YIMBY, Stop the Presses, Regulatory Capture (5:00 with every
+  regulation on), Big Tent, Voting with Your Feet, HODL and more. Run achievements are checked
+  twice a second and pop up as toasts (two at a time, the rest queued); lifetime ones at the end of
+  a run and after shopping. A screen on the title lists them all; the end screen lists the run's.
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
+  screenshot and link preview (Marx and his hammers and sickles on the streets).
+- The 🔫 emoji is gone: the gun weapons show their own pictures, and Ancapistan Tycoon's Items tab,
+  Private Armory set and Very Polite Society achievement use the pistol picture.

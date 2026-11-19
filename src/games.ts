@@ -88,7 +88,7 @@ export const games: Game[] = [
     slug: 'wither-away',
     title: 'Wither Away',
     blurb: 'Marx promised the state would wither away. It didn’t. Survive the statist horde as an ancapball and make it.',
-    status: 'prototype',
+    status: 'released', // v1.0
   },
 ];
 

@@ -4,8 +4,8 @@
 // seeded, so tests and the balance bot can replay runs exactly.
 
 import {
-  BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, RUN_LENGTH, WEAPON_SLOTS, WEAPON_STATS,
-  type WeaponId, WEAPONS,
+  BOMB, BOSSES, type ScheduledEvent, BOSS_AT, CHARACTERS, type CharacterId, ENEMIES, type EnemyId, EVOLUTIONS, LOCKED_CARDS, MAX_LEVEL, PASSIVE_SLOTS, type PassiveId, PASSIVES, POOL_WEAPONS,
+  MAPS, MARX, type MapId, NIMBY, PRINTER, RUN_LENGTH, STATIONARY, TECHNOCRAT, WARNING_TIME, WEAPON_SLOTS, WEAPON_STATS, type WeaponId,
 } from './data.ts';
 import { makeRng, next, pickOne, type Rng, weighted } from './rng.ts';
 
@@ -14,6 +14,10 @@ export const PLAYER_RADIUS = 16;
 /** Where new statists appear: a ring this far from you (just off screen). */
 export const SPAWN_DISTANCE = 720;
 export const MAX_ENEMIES = 380;
+/** Revolutions, bosses' summons and splits can go a little past that, but no further. */
+const HARD_CAP = 460;
+/** How fast a fascist charges. */
+export const FASCIST_DASH = 240;
 const CELL = 64;
 
 export interface Player {
@@ -31,6 +35,11 @@ export interface Player {
   /** Which way he faces (for the sprite), and where he's aiming (for the gun). */
   facing: 1 | -1;
   aim: number;
+  /** Seconds left winded after a bomb (moving slower). */
+  slowed: number;
+  /** The way you were last heading (for the NIMBYs, who build fences across it). */
+  mx: number;
+  my: number;
 }
 
 export interface Enemy {
@@ -52,11 +61,20 @@ export interface Enemy {
   /** XP the taxman has grabbed (he drops it when he dies). */
   stolen: number;
   dead: boolean;
+  /** The fascist's charge: winding up (seconds left), then dashing (seconds left) in a fixed direction. */
+  windup?: number;
+  dash?: number;
+  dx?: number;
+  dy?: number;
+  /** A second timer, for Marx's rallying cry and the printer's Keynesians. */
+  summon?: number;
 }
 
 export interface Shot {
   id: number;
-  kind: 'coin' | 'pellet' | 'bullet' | 'signal' | 'laffer';
+  kind: 'coin' | 'bar' | 'pellet' | 'bullet' | 'signal' | 'laffer';
+  /** Which weapon fired it (for the damage tally). */
+  from: WeaponId;
   x: number;
   y: number;
   vx: number;
@@ -76,8 +94,9 @@ export interface Shot {
   target?: number;
 }
 
-/** Inflation balloons from the Central Bank. */
+/** What statists throw at you: inflation balloons (they grow), expert opinions, hammers and sickles. */
 export interface FoeShot {
+  kind: 'balloon' | 'bolt' | 'hammer' | 'sickle';
   x: number;
   y: number;
   vx: number;
@@ -97,11 +116,13 @@ export interface Pickup {
   pulled: boolean;
 }
 
-/** Red tape: slows you while you stand in it. */
-export interface Zone {
-  x: number;
-  y: number;
-  radius: number;
+/** A NIMBY's picket fence: a segment you can't walk through, for a while. */
+export interface Wall {
+  id: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
   life: number;
 }
 
@@ -112,6 +133,9 @@ export interface OwnedWeapon {
   /** The Invisible Hand's spin, and when each enemy was last slapped. */
   angle: number;
   lastHit: Record<number, number>;
+  /** NEIN NEIN NEIN: the waves still to come in this volley, and the time to the next. */
+  waves?: number;
+  waveT?: number;
 }
 
 export interface OwnedPassive {
@@ -122,21 +146,31 @@ export interface OwnedPassive {
 export type Offer =
   | { kind: 'weapon'; id: WeaponId; level: number }
   | { kind: 'passive'; id: PassiveId; level: number }
+  | { kind: 'evolve'; id: WeaponId; from: WeaponId }
+  | { kind: 'bomb' }
   | { kind: 'heal' }
   | { kind: 'gold' };
 
 /** Things that happened this step, for the screen and the speakers. */
 export type Fx =
-  | { kind: 'hit'; x: number; y: number; amount: number; from: WeaponId }
+  | { kind: 'hit'; x: number; y: number; amount: number; from: Source }
   | { kind: 'kill'; x: number; y: number; type: EnemyId }
   | { kind: 'hurt'; amount: number }
   | { kind: 'nein'; x: number; y: number; radius: number }
+  | { kind: 'boom'; x: number; y: number; radius: number }
+  | { kind: 'zap'; points: [number, number][] }
+  | { kind: 'evolve'; weapon: WeaponId }
   | { kind: 'shoot'; weapon: WeaponId }
   | { kind: 'pickup'; pickup: Pickup['kind'] }
   | { kind: 'level' }
-  | { kind: 'boss' }
+  | { kind: 'boss'; boss: 'bank' | 'marx'; second: boolean }
+  | { kind: 'printer' }
+  | { kind: 'summon'; x: number; y: number }
   | { kind: 'revolution' }
-  | { kind: 'wither' };
+  | { kind: 'warning' }
+  | { kind: 'bomb'; x: number; y: number; radius: number }
+  | { kind: 'wither' }
+  | { kind: 'overtime' };
 
 export interface Game {
   seed: number;
@@ -155,7 +189,6 @@ export interface Game {
   shots: Shot[];
   foeShots: FoeShot[];
   pickups: Pickup[];
-  zones: Zone[];
   /** Level-ups waiting, and the cards on offer for the first one (null: playing). */
   pending: number;
   offer: Offer[] | null;
@@ -163,22 +196,90 @@ export interface Game {
   fx: Fx[];
   nextId: number;
   spawnAcc: number;
-  events: { boss: boolean; revolution1: boolean; revolution2: boolean };
+  /** The next set piece in SCHEDULE, and whether its warning has gone up. */
+  nextEvent: number;
+  warned: boolean;
+  /** Bombs in hand, and Central Banks (and Marxes) brought down this run. */
+  bombs: number;
+  bankKills: number;
+  marxKills: number;
+  /** Where we are, the NIMBYs' fences, and when the vault opens its next money printer. */
+  map: MapId;
+  walls: Wall[];
+  printerAt: number;
   /** Damage dealt by each weapon, for the end screen. */
-  damageBy: Partial<Record<WeaponId, number>>;
+  damageBy: Partial<Record<Source, number>>;
+  /** What the shop bought before the run (and the difficulty chosen). */
+  mods: Mods;
+  /** Shop cards that may turn up on a level-up ('bomb' is the spare-bomb card). */
+  unlocked: Unlockable[];
+  /** Whether the shop's weapon upgrade for this character has been bought. */
+  canEvolve: boolean;
+  /** Endless mode: no end at 15:00. */
+  endless: boolean;
+  /** For the achievements: kills by kind, when you were first hurt (-1 = not yet), bombs set off. */
+  killsBy: Partial<Record<EnemyId, number>>;
+  firstHurt: number;
+  bombsUsed: number;
+  /** Level-up rerolls left. */
+  rerolls: number;
+}
+
+/**
+ * Everything the shop (and the difficulty) changes about a run, as multipliers and bonuses. The
+ * defaults change nothing.
+ */
+export interface Mods {
+  maxHp: number;
+  damage: number;
+  speed: number;
+  magnet: number;
+  xp: number;
+  armor: number;
+  rerolls: number;
+  /** Bitcoin multiplier (the shop's Gold Rush and the difficulty bonus together). */
+  gold: number;
+  enemyHp: number;
+  enemySpeed: number;
+  spawns: number;
+  /** How much harder statists hit you. */
+  hurt: number;
+  /** Extra bombs to start with. */
+  bombs: number;
+}
+
+export const NO_MODS: Mods = { maxHp: 0, damage: 1, speed: 1, magnet: 1, xp: 1, armor: 0, rerolls: 0, gold: 1, enemyHp: 1, enemySpeed: 1, spawns: 1, hurt: 1, bombs: 0 };
+
+export type Unlockable = WeaponId | PassiveId | 'bomb';
+/** What did the damage: a weapon, or a bomb. */
+export type Source = WeaponId | 'bomb';
+
+export interface Setup {
+  map?: MapId;
+  mods?: Partial<Mods>;
+  unlocked?: Unlockable[];
+  canEvolve?: boolean;
+  /** No withering at 15:00: it goes on until you fall. */
+  endless?: boolean;
 }
 
 /** XP for the next level. */
 export const xpFor = (level: number) => Math.round(4 + level * 3 + level * level * 0.3);
 
-export function newGame(seed: number, character: CharacterId): Game {
+export function newGame(seed: number, character: CharacterId, setup: Setup = {}): Game {
   const c = CHARACTERS[character];
+  const map = setup.map && MAPS[setup.map] ? setup.map : 'streets';
+  const mods: Mods = { ...NO_MODS, ...setup.mods };
+  mods.gold *= MAPS[map].gold;
+  const hp = c.hp + mods.maxHp;
   const g: Game = {
     seed,
     rng: makeRng(seed),
     character,
     time: 0,
-    player: { x: 0, y: 0, hp: c.hp, maxHp: c.hp, speed: c.speed, armor: c.armor, magnet: c.magnet, xpMult: c.xpMult, regen: 0, iframes: 0, facing: 1, aim: 0 },
+    player: {
+      x: 0, y: 0, hp, maxHp: hp, speed: c.speed * mods.speed, armor: c.armor + mods.armor, magnet: c.magnet * mods.magnet, xpMult: c.xpMult * mods.xp, regen: 0, iframes: 0, facing: 1, aim: 0, slowed: 0, mx: 1, my: 0,
+    },
     level: 1,
     xp: 0,
     next: xpFor(1),
@@ -190,15 +291,29 @@ export function newGame(seed: number, character: CharacterId): Game {
     shots: [],
     foeShots: [],
     pickups: [],
-    zones: [],
     pending: 0,
     offer: null,
     over: null,
     fx: [],
     nextId: 1,
     spawnAcc: 0,
-    events: { boss: false, revolution1: false, revolution2: false },
+    nextEvent: 0,
+    warned: false,
+    bombs: Math.min(BOMB.max, 1 + mods.bombs),
+    bankKills: 0,
+    marxKills: 0,
+    map,
+    walls: [],
+    printerAt: PRINTER.first,
     damageBy: {},
+    mods,
+    unlocked: [...(setup.unlocked ?? [])],
+    canEvolve: setup.canEvolve === true,
+    endless: setup.endless === true,
+    killsBy: {},
+    firstHurt: -1,
+    bombsUsed: 0,
+    rerolls: mods.rerolls,
   };
   addWeapon(g, c.weapon);
   return g;
@@ -223,10 +338,12 @@ function addPassive(g: Game, id: PassiveId) {
   else g.passives.push({ id, level: 1 });
   const p = g.player;
   const c = CHARACTERS[g.character];
+  const m = g.mods;
   const lv = passiveLevel(g, id);
-  if (id === 'property') p.armor = c.armor + lv;
-  if (id === 'freetrade') p.magnet = c.magnet * (1 + 0.25 * lv);
-  if (id === 'compound') p.xpMult = c.xpMult * (1 + 0.1 * lv);
+  if (id === 'property') p.armor = c.armor + m.armor + lv;
+  if (id === 'freetrade') p.magnet = c.magnet * m.magnet * (1 + 0.25 * lv);
+  if (id === 'compound') p.xpMult = c.xpMult * m.xp * (1 + 0.1 * lv);
+  if (id === 'exit') p.speed = c.speed * m.speed * (1 + 0.06 * lv);
   if (id === 'healthcare') {
     p.maxHp += 15;
     p.hp = Math.min(p.maxHp, p.hp + 15);
@@ -239,27 +356,36 @@ const extra = (g: Game) => Math.floor((passiveLevel(g, 'division') + 1) / 2);
 /** How many Invisible Hands are circling (for the screen). */
 export const handCount = (g: Game) => WEAPON_STATS.hand.count[weaponLevel(g, 'hand') - 1] + extra(g);
 const cooldownMult = (g: Game) => 1 - 0.08 * passiveLevel(g, 'timepref');
+/** Everything you hit, multiplied: the shop's Capital Accumulation and the Sound Money card. */
+const damageMult = (g: Game) => g.mods.damage * (1 + 0.08 * passiveLevel(g, 'sound'));
+const available = (g: Game, id: WeaponId | PassiveId) => !LOCKED_CARDS.includes(id) || g.unlocked.includes(id);
+
+/** The weapon upgrade, if it's been bought and the starting weapon is at its last level. */
+export function evolution(g: Game): Offer | null {
+  if (!g.canEvolve) return null;
+  const { from, to } = EVOLUTIONS[g.character];
+  return weaponLevel(g, from) >= MAX_LEVEL ? { kind: 'evolve', id: to, from } : null;
+}
 
 /** Three cards for a level-up: new things while there's room, and upgrades. */
 export function makeOffer(g: Game): Offer[] {
   const options: [Offer, number][] = [];
   for (const w of g.weapons) if (w.level < MAX_LEVEL) options.push([{ kind: 'weapon', id: w.id, level: w.level + 1 }, 3]);
-  if (g.weapons.length < WEAPON_SLOTS) {
-    for (const id of Object.keys(WEAPONS) as WeaponId[]) {
-      // Each character's starting weapon is theirs alone.
-      const startingElsewhere = (['coins', 'shotgun', 'ak', 'nein'] as WeaponId[]).includes(id) && id !== CHARACTERS[g.character].weapon;
-      if (!weaponLevel(g, id) && !startingElsewhere) options.push([{ kind: 'weapon', id, level: 1 }, 2]);
-    }
-  }
+  // New weapons come from the common pool: each character's starting weapon (and its upgrade) is theirs alone.
+  if (g.weapons.length < WEAPON_SLOTS) for (const id of POOL_WEAPONS) if (!weaponLevel(g, id) && available(g, id)) options.push([{ kind: 'weapon', id, level: 1 }, 2]);
   for (const p of g.passives) if (p.level < MAX_LEVEL) options.push([{ kind: 'passive', id: p.id, level: p.level + 1 }, 2]);
-  if (g.passives.length < PASSIVE_SLOTS) for (const id of Object.keys(PASSIVES) as PassiveId[]) if (!passiveLevel(g, id)) options.push([{ kind: 'passive', id, level: 1 }, 2]);
-  const picked: Offer[] = [];
+  if (g.passives.length < PASSIVE_SLOTS) for (const id of Object.keys(PASSIVES) as PassiveId[]) if (!passiveLevel(g, id) && available(g, id)) options.push([{ kind: 'passive', id, level: 1 }, 2]);
+  // A spare bomb instead of an upgrade (once the shop has sold you the card).
+  if (g.unlocked.includes('bomb') && g.bombs < BOMB.max) options.push([{ kind: 'bomb' }, 1.5]);
+  // The weapon upgrade, once it's ready, is always one of the three.
+  const evolve = evolution(g);
+  const picked: Offer[] = evolve ? [evolve] : [];
   while (picked.length < 3 && options.length) {
     const o = weighted(g.rng, options);
     picked.push(o);
     options.splice(options.findIndex(([x]) => x === o), 1);
   }
-  if (!picked.length) return [{ kind: 'heal' }, { kind: 'gold' }];
+  if (!picked.length) return [{ kind: 'heal' }, { kind: 'gold' }, ...(g.bombs < BOMB.max ? [{ kind: 'bomb' } as Offer] : [])];
   return picked;
 }
 
@@ -269,11 +395,35 @@ export function choose(g: Game, i: number): boolean {
   if (!o) return false;
   if (o.kind === 'weapon') addWeapon(g, o.id);
   else if (o.kind === 'passive') addPassive(g, o.id);
+  else if (o.kind === 'evolve') {
+    const w = g.weapons.find((x) => x.id === o.from);
+    if (w) {
+      w.id = o.id;
+      w.cooldown = 0;
+    }
+    g.fx.push({ kind: 'evolve', weapon: o.id });
+  }
+  else if (o.kind === 'bomb') g.bombs = Math.min(BOMB.max, g.bombs + 1);
   else if (o.kind === 'heal') g.player.hp = Math.min(g.player.maxHp, g.player.hp + g.player.maxHp * 0.3);
   else g.gold += 25;
   g.pending--;
   g.offer = g.pending > 0 ? makeOffer(g) : null;
   return true;
+}
+
+/** Swap the three cards for three others (the shop's Second Opinion). */
+export function reroll(g: Game): boolean {
+  if (!g.offer || g.rerolls <= 0) return false;
+  g.rerolls--;
+  g.offer = makeOffer(g);
+  return true;
+}
+
+/** Bitcoin for a run: what you picked up, plus 1 for every six seconds you lasted and a bonus for winning, all multiplied by the shop and the difficulty. */
+export function goldEarned(g: Game): { picked: number; survived: number; total: number } {
+  const picked = g.gold;
+  const survived = Math.floor((g.endless ? g.time : Math.min(RUN_LENGTH, g.time)) / 6) + (g.over === 'won' ? 100 : 0);
+  return { picked, survived, total: Math.round((picked + survived) * g.mods.gold) };
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +482,8 @@ export interface Input {
   /** Where the player is pushing, each from -1 to 1 (normalized here). */
   x: number;
   y: number;
+  /** Set for one step to set off a bomb. */
+  bomb?: boolean;
 }
 
 export function step(g: Game, input: Input, dt = DT) {
@@ -339,22 +491,26 @@ export function step(g: Game, input: Input, dt = DT) {
   if (g.over || g.offer) return;
   g.time += dt;
   const grid = buildGrid(g);
+  if (input.bomb) bomb(g, grid);
   movePlayer(g, input, dt);
   spawn(g, dt);
   fireWeapons(g, grid, dt);
   moveShots(g, grid, dt);
   moveEnemies(g, grid, dt);
   moveFoeShots(g, dt);
+  for (const w of g.walls) w.life -= dt;
+  if (g.walls.length) g.walls = g.walls.filter((w) => w.life > 0);
   collect(g, dt);
-  for (const z of g.zones) z.life -= dt;
-  g.zones = g.zones.filter((z) => z.life > 0);
   g.enemies = g.enemies.filter((e) => !e.dead);
   if (g.player.hp <= 0) {
     g.player.hp = 0;
     g.over = 'lost';
     return;
   }
-  if (g.time >= RUN_LENGTH) {
+  if (g.endless) {
+    // Past 15:00 in endless mode: it should have withered by now. It hasn't.
+    if (g.time >= RUN_LENGTH && g.time - dt < RUN_LENGTH) g.fx.push({ kind: 'overtime' });
+  } else if (g.time >= RUN_LENGTH) {
     // The state withers away, at last.
     for (const e of g.enemies) {
       e.dead = true;
@@ -376,36 +532,74 @@ function movePlayer(g: Game, input: Input, dt: number) {
     x /= len;
     y /= len;
   }
-  const slowed = g.zones.some((z) => (z.x - p.x) ** 2 + (z.y - p.y) ** 2 < z.radius ** 2);
-  const speed = p.speed * (slowed ? 0.55 : 1);
+  // Winded after a bomb.
+  const speed = p.speed * (p.slowed > 0 ? BOMB.slowBy : 1);
+  p.slowed = Math.max(0, p.slowed - dt);
   p.x += x * speed * dt;
   p.y += y * speed * dt;
+  if (Math.hypot(x, y) > 0.2) {
+    const l = Math.hypot(x, y);
+    p.mx = x / l;
+    p.my = y / l;
+  }
+  // The NIMBYs' fences: you can't walk through them.
+  for (const w of g.walls) pushOut(p, w, PLAYER_RADIUS + 4);
   if (x > 0.1) p.facing = 1;
   else if (x < -0.1) p.facing = -1;
   p.iframes = Math.max(0, p.iframes - dt);
   if (p.regen) p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
 }
 
+/** Nudges a circle out of a wall segment. */
+function pushOut(c: { x: number; y: number }, w: Wall, r: number) {
+  const vx = w.x2 - w.x1;
+  const vy = w.y2 - w.y1;
+  const len2 = vx * vx + vy * vy || 1;
+  const t = Math.max(0, Math.min(1, ((c.x - w.x1) * vx + (c.y - w.y1) * vy) / len2));
+  const qx = w.x1 + vx * t;
+  const qy = w.y1 + vy * t;
+  const dx = c.x - qx;
+  const dy = c.y - qy;
+  const d = Math.hypot(dx, dy);
+  if (d >= r) return;
+  if (d < 1e-6) {
+    // Right on the line: out along its normal.
+    const l = Math.sqrt(len2);
+    c.x += (-vy / l) * r;
+    c.y += (vx / l) * r;
+    return;
+  }
+  c.x += (dx / d) * (r - d);
+  c.y += (dy / d) * (r - d);
+}
+
 // --- Spawning ---
 
-/** How many statists a second, and how tough. */
-export const spawnRate = (t: number) => 0.6 + t / 30;
+/** How many statists a second, how tough, and how hard they hit. */
+export const spawnRate = (t: number) => 0.65 + t / 28;
 export const hpScale = (t: number) => 1 + t / 150;
+export const damageScale = (t: number) => 1 + t / 600;
 
-function spawnWeights(t: number): [EnemyId, number][] {
+export function spawnWeights(g: Game, t: number): [EnemyId, number][] {
+  const map = MAPS[g.map];
   const w: [EnemyId, number][] = [['communist', 10]];
   if (t > 50) w.push(['socialist', 3]);
   if (t > 110) w.push(['keynesian', 3]);
-  if (t > 170) w.push(['bureaucrat', 2.2]);
+  if (t > 170) w.push(['fascist', 2.2]);
+  if (t > map.technocratsFrom) w.push(['technocrat', 1.1]);
   if (t > 230) w.push(['taxman', 2]);
+  if (t > 260) w.push(['nimby', 1]);
+  for (const pair of w) pair[1] *= map.weights[pair[0]] ?? 1;
   if (t > BOSS_AT) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.6;
+  if (t > 600) for (const pair of w) if (pair[0] !== 'communist') pair[1] *= 1.4;
   return w;
 }
 
 export function spawnEnemy(g: Game, type: EnemyId, x: number, y: number): Enemy {
   const d = ENEMIES[type];
-  const hp = Math.round(d.hp * (type === 'bank' ? 1 : hpScale(g.time)));
-  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16), damage: d.damage, radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
+  const boss = BOSSES.includes(type);
+  const hp = Math.round(d.hp * (boss ? 1 : hpScale(g.time)) * g.mods.enemyHp);
+  const e: Enemy = { id: g.nextId++, type, x, y, hp, maxHp: hp, speed: d.speed * (0.92 + next(g.rng) * 0.16) * g.mods.enemySpeed, damage: Math.round(d.damage * (boss ? 1 : damageScale(g.time))), radius: d.radius, kx: 0, ky: 0, flash: 0, timer: next(g.rng) * 2, stolen: 0, dead: false };
   g.enemies.push(e);
   return e;
 }
@@ -415,50 +609,111 @@ function ringPoint(g: Game, dist: number): [number, number] {
   return [g.player.x + Math.cos(a) * dist, g.player.y + Math.sin(a) * dist];
 }
 
+/**
+ * The i-th set piece: the map's own schedule, then (in endless mode) a revolution or a boss every
+ * 75 seconds, each one bigger than the last, the bosses taking turns.
+ */
+export function scheduled(g: Game, i: number): ScheduledEvent | undefined {
+  const own = MAPS[g.map].schedule;
+  if (i < own.length) return own[i];
+  if (!g.endless) return undefined;
+  const n = i - own.length;
+  const at = RUN_LENGTH + 30 + n * 75;
+  if (n % 2 === 0) return { at, kind: 'revolution', count: Math.min(120, 64 + 8 * n) };
+  return { at, kind: 'boss', boss: (n - 1) % 4 === 0 ? 'bank' : 'marx', hp: 2 + 0.5 * n };
+}
+
 function spawn(g: Game, dt: number) {
   const t = g.time;
-  if (!g.events.boss && t >= BOSS_AT) {
-    g.events.boss = true;
-    const [x, y] = ringPoint(g, SPAWN_DISTANCE * 0.8);
-    spawnEnemy(g, 'bank', x, y);
-    g.fx.push({ kind: 'boss' });
-  }
-  // The revolution: a ring of communists closing in from every side.
-  for (const [flag, at] of [['revolution1', 150], ['revolution2', 450]] as const) {
-    if (!g.events[flag] && t >= at) {
-      g.events[flag] = true;
-      const n = flag === 'revolution1' ? 32 : 48;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        spawnEnemy(g, 'communist', g.player.x + Math.cos(a) * 560, g.player.y + Math.sin(a) * 560);
+  const ev = scheduled(g, g.nextEvent);
+  if (ev) {
+    // A few seconds' warning before a revolution closes in.
+    if (ev.kind === 'revolution' && !g.warned && t >= ev.at - WARNING_TIME) {
+      g.warned = true;
+      g.fx.push({ kind: 'warning' });
+    }
+    if (t >= ev.at) {
+      g.nextEvent++;
+      g.warned = false;
+      // Endless mode keeps sending bosses; never more than three at once.
+      if (ev.kind === 'boss' && g.enemies.filter((e) => BOSSES.includes(e.type)).length >= 3) {
+        // (skipped: the ones already here are plenty)
+      } else if (ev.kind === 'boss') {
+        const [x, y] = ringPoint(g, SPAWN_DISTANCE * 0.8);
+        const b = spawnEnemy(g, ev.boss, x, y);
+        b.hp = b.maxHp = Math.round(b.maxHp * ev.hp);
+        g.fx.push({ kind: 'boss', boss: ev.boss, second: ev.hp > 1 });
+      } else {
+        // The revolution: a ring of communists closing in from every side.
+        const count = Math.min(ev.count, Math.max(16, HARD_CAP - g.enemies.length));
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2;
+          spawnEnemy(g, 'communist', g.player.x + Math.cos(a) * 560, g.player.y + Math.sin(a) * 560);
+        }
+        g.fx.push({ kind: 'revolution' });
       }
-      g.fx.push({ kind: 'revolution' });
+    }
+  }
+  // The vault: a new money printer every so often, somewhere near you.
+  if (MAPS[g.map].printers && t >= g.printerAt) {
+    g.printerAt = t + PRINTER.every;
+    if (g.enemies.filter((e) => e.type === 'printer').length < PRINTER.max) {
+      const [x, y] = ringPoint(g, 420 + next(g.rng) * 120);
+      spawnEnemy(g, 'printer', x, y);
+      g.fx.push({ kind: 'printer' });
     }
   }
   if (g.enemies.length >= MAX_ENEMIES) return;
-  g.spawnAcc += spawnRate(t) * dt;
-  const weights = spawnWeights(t);
+  g.spawnAcc += spawnRate(t) * g.mods.spawns * dt;
+  const weights = spawnWeights(g, t);
   while (g.spawnAcc >= 1) {
     g.spawnAcc -= 1;
     const [x, y] = ringPoint(g, SPAWN_DISTANCE + next(g.rng) * 120);
-    spawnEnemy(g, weighted(g.rng, weights), x, y);
+    const type = weighted(g.rng, weights);
+    if (type === 'fascist') {
+      // They march in squads: four abreast, side by side across your line.
+      const a = Math.atan2(g.player.y - y, g.player.x - x) + Math.PI / 2;
+      for (let i = 0; i < 4; i++) spawnEnemy(g, 'fascist', x + Math.cos(a) * (i - 1.5) * 38, y + Math.sin(a) * (i - 1.5) * 38);
+      g.spawnAcc -= 3;
+    } else spawnEnemy(g, type, x, y);
   }
 }
 
 // --- Damage ---
 
-function damage(g: Game, e: Enemy, amount: number, from: WeaponId, kx = 0, ky = 0) {
+function damage(g: Game, e: Enemy, amount: number, from: Source, kx = 0, ky = 0) {
   if (e.dead) return;
-  const dealt = Math.round(amount);
+  const dealt = Math.round(amount * damageMult(g));
   e.hp -= dealt;
   e.flash = 0.12;
-  if (e.type !== 'bank') {
+  if (!BOSSES.includes(e.type) && !STATIONARY.includes(e.type)) {
     e.kx += kx;
     e.ky += ky;
   }
   g.damageBy[from] = (g.damageBy[from] ?? 0) + dealt;
   g.fx.push({ kind: 'hit', x: e.x, y: e.y - e.radius, amount: dealt, from });
   if (e.hp <= 0) kill(g, e);
+}
+
+/** The bomb: everyone near you takes a beating, the inflation balloons pop, and you're winded. */
+function bomb(g: Game, grid: Grid) {
+  if (g.bombs <= 0) return;
+  g.bombs--;
+  g.bombsUsed++;
+  const p = g.player;
+  const r = BOMB.radius;
+  for (const e of near(grid, p.x, p.y, r + 60)) {
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > r + e.radius) continue;
+    const k = BOMB.knockback / Math.max(1, d);
+    damage(g, e, BOSSES.includes(e.type) || e.type === 'printer' ? BOMB.bankDamage : BOMB.damage * hpScale(g.time) * g.mods.enemyHp, 'bomb', (e.x - p.x) * k, (e.y - p.y) * k);
+  }
+  g.foeShots = g.foeShots.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > r * r);
+  // And the fences come down.
+  g.walls = g.walls.filter((w) => ((w.x1 + w.x2) / 2 - p.x) ** 2 + ((w.y1 + w.y2) / 2 - p.y) ** 2 > r * r);
+  p.slowed = BOMB.slowFor;
+  p.iframes = Math.max(p.iframes, BOMB.iframes);
+  g.fx.push({ kind: 'bomb', x: p.x, y: p.y, radius: r });
 }
 
 function drop(g: Game, kind: Pickup['kind'], x: number, y: number, value: number) {
@@ -468,15 +723,19 @@ function drop(g: Game, kind: Pickup['kind'], x: number, y: number, value: number
 function kill(g: Game, e: Enemy) {
   e.dead = true;
   g.kills++;
+  g.killsBy[e.type] = (g.killsBy[e.type] ?? 0) + 1;
   g.fx.push({ kind: 'kill', x: e.x, y: e.y, type: e.type });
   const d = ENEMIES[e.type];
   drop(g, 'xp', e.x, e.y, d.xp + e.stolen);
   const roll = next(g.rng);
-  if (roll < 0.015) drop(g, 'gold', e.x, e.y, 5);
-  else if (roll < 0.021) drop(g, 'heal', e.x, e.y, 25);
-  else if (roll < 0.0235) drop(g, 'magnet', e.x, e.y, 0);
-  if (e.type === 'keynesian') for (let i = 0; i < 2; i++) spawnEnemy(g, 'stimulus', e.x + (i ? 12 : -12), e.y);
-  if (e.type === 'bank') {
+  if (roll < 0.025) drop(g, 'gold', e.x, e.y, 5);
+  else if (roll < 0.031) drop(g, 'heal', e.x, e.y, 25);
+  else if (roll < 0.0335) drop(g, 'magnet', e.x, e.y, 0);
+  if (e.type === 'keynesian' && g.enemies.length < HARD_CAP) for (let i = 0; i < 2; i++) spawnEnemy(g, 'stimulus', e.x + (i ? 12 : -12), e.y);
+  if (e.type === 'printer') for (let i = 0; i < 3; i++) drop(g, 'gold', e.x + (i - 1) * 14, e.y + 16, 10);
+  if (e.type === 'marx') g.marxKills++;
+  if (BOSSES.includes(e.type)) {
+    if (e.type === 'bank') g.bankKills++;
     drop(g, 'chest', e.x, e.y, 0);
     for (let i = 0; i < 6; i++) drop(g, 'gold', e.x + (i - 3) * 14, e.y + 20, 10);
   }
@@ -503,6 +762,15 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
       napTick(g, grid, w, dt);
       continue;
     }
+    if (w.waves) {
+      w.waveT = (w.waveT ?? 0) - dt;
+      if (w.waveT <= 0) {
+        const s = WEAPON_STATS.nein3;
+        w.waves--;
+        w.waveT = s.gap;
+        shockwave(g, grid, s.radius[s.radius.length - 1 - w.waves], s.damage, s.knockback, 'nein3');
+      }
+    }
     w.cooldown -= dt;
     if (w.cooldown > 0) continue;
     switch (w.id) {
@@ -512,41 +780,119 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
         const n = s.count[L] + extra(g);
         for (let i = 0; i < n; i++) {
           const a = p.aim + (i - (n - 1) / 2) * 0.16;
-          shoot(g, { kind: 'coin', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: s.pierce[L], radius: 7, life: 1.4, knockback: 40 });
+          shoot(g, { kind: 'coin', from: 'coins', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: s.pierce[L], radius: 7, life: 1.4, knockback: 40 });
         }
         w.cooldown = s.cooldown[L] * cdm;
         break;
       }
-      case 'shotgun': {
+      case 'goldbars': {
         if (!target) continue;
-        const s = WEAPON_STATS.shotgun;
-        const n = s.count[L] + extra(g) * 2;
+        const s = WEAPON_STATS.goldbars;
+        const n = s.count + extra(g);
         for (let i = 0; i < n; i++) {
-          const a = p.aim + (i / (n - 1) - 0.5) * s.spread + (next(g.rng) - 0.5) * 0.05;
-          const v = s.speed * (0.9 + next(g.rng) * 0.2);
-          shoot(g, { kind: 'pellet', x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, damage: s.damage[L], pierce: 0, radius: 5, life: s.life, knockback: s.knockback });
+          const a = p.aim + (i - (n - 1) / 2) * 0.14;
+          shoot(g, { kind: 'bar', from: 'goldbars', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage, pierce: s.pierce, radius: 10, life: 1.4, knockback: 90 });
         }
-        w.cooldown = s.cooldown[L] * cdm;
+        w.cooldown = s.cooldown * cdm;
         break;
       }
-      case 'ak': {
+      case 'shotgun':
+      case 'autoshotgun': {
         if (!target) continue;
-        const s = WEAPON_STATS.ak;
-        const a = p.aim + (next(g.rng) - 0.5) * s.jitter * 2;
-        shoot(g, { kind: 'bullet', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: s.pierce[L], radius: 4, life: 1.1, knockback: 18 });
-        w.cooldown = s.cooldown[L] * cdm;
+        const auto = w.id === 'autoshotgun';
+        const base = WEAPON_STATS.shotgun;
+        const up = WEAPON_STATS.autoshotgun;
+        const n = (auto ? up.count : base.count[L]) + extra(g) * 2;
+        const spread = auto ? up.spread : base.spread;
+        const speed = auto ? up.speed : base.speed;
+        for (let i = 0; i < n; i++) {
+          const a = p.aim + (i / (n - 1) - 0.5) * spread + (next(g.rng) - 0.5) * 0.05;
+          const v = speed * (0.9 + next(g.rng) * 0.2);
+          shoot(g, {
+            kind: 'pellet', from: w.id, x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, damage: auto ? up.damage : base.damage[L], pierce: 0, radius: 5,
+            life: auto ? up.life : base.life, knockback: auto ? up.knockback : base.knockback,
+          });
+        }
+        w.cooldown = (auto ? up.cooldown : base.cooldown[L]) * cdm;
+        break;
+      }
+      case 'ak':
+      case 'm249': {
+        if (!target) continue;
+        const big = w.id === 'm249';
+        const base = WEAPON_STATS.ak;
+        const up = WEAPON_STATS.m249;
+        const speed = big ? up.speed : base.speed;
+        const a = p.aim + (next(g.rng) - 0.5) * (big ? up.jitter : base.jitter) * 2;
+        shoot(g, {
+          kind: 'bullet', from: w.id, x: p.x, y: p.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, damage: big ? up.damage : base.damage[L], pierce: big ? up.pierce : base.pierce[L],
+          radius: big ? 5 : 4, life: 1.1, knockback: big ? 24 : 18,
+        });
+        w.cooldown = (big ? up.cooldown : base.cooldown[L]) * cdm;
         break;
       }
       case 'nein': {
         const s = WEAPON_STATS.nein;
-        const r = s.radius[L];
-        for (const e of near(grid, p.x, p.y, r + 50)) {
-          const d = Math.hypot(e.x - p.x, e.y - p.y);
-          if (d > r + e.radius) continue;
-          const k = s.knockback / Math.max(1, d);
-          damage(g, e, s.damage[L], 'nein', (e.x - p.x) * k, (e.y - p.y) * k);
+        shockwave(g, grid, s.radius[L], s.damage[L], s.knockback, 'nein');
+        w.cooldown = s.cooldown[L] * cdm;
+        break;
+      }
+      case 'nein3': {
+        // The first wave now; the other two follow (see neinTick).
+        const s = WEAPON_STATS.nein3;
+        shockwave(g, grid, s.radius[0], s.damage, s.knockback, 'nein3');
+        w.waves = s.radius.length - 1;
+        w.waveT = s.gap;
+        w.cooldown = s.cooldown * cdm;
+        break;
+      }
+      case 'destruction': {
+        // Statists near you blow up, and take their neighbours with them.
+        const s = WEAPON_STATS.destruction;
+        const close = g.enemies.filter((e) => !e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < s.range * s.range);
+        if (!close.length) continue;
+        const n = s.count[L] + extra(g);
+        for (let i = 0; i < n && close.length; i++) {
+          const at = close.splice(Math.floor(next(g.rng) * close.length), 1)[0];
+          const r = s.radius[L];
+          const bx = at.x;
+          const by = at.y;
+          for (const e of near(grid, bx, by, r + 50)) {
+            const d = Math.hypot(e.x - bx, e.y - by);
+            if (d > r + e.radius) continue;
+            const k = 120 / Math.max(1, d);
+            damage(g, e, s.damage[L], 'destruction', (e.x - bx) * k, (e.y - by) * k);
+          }
+          g.fx.push({ kind: 'boom', x: bx, y: by, radius: r });
         }
-        g.fx.push({ kind: 'nein', x: p.x, y: p.y, radius: r });
+        w.cooldown = s.cooldown[L] * cdm;
+        break;
+      }
+      case 'happening': {
+        // Lightning: the nearest statist, then whoever's nearest to him, and so on.
+        const s = WEAPON_STATS.happening;
+        const first = nearest(g, p.x, p.y, s.range);
+        if (!first) continue;
+        const points: [number, number][] = [[p.x, p.y]];
+        const hit = new Set<number>();
+        let at: Enemy | null = first;
+        for (let j = 0; at && j <= s.jumps[L]; j++) {
+          hit.add(at.id);
+          points.push([at.x, at.y]);
+          const from: Enemy = at;
+          damage(g, from, s.damage[L], 'happening');
+          at = null;
+          let bd = s.reach * s.reach;
+          for (const e of near(grid, from.x, from.y, s.reach)) {
+            if (e.dead || hit.has(e.id)) continue;
+            const d = (e.x - from.x) ** 2 + (e.y - from.y) ** 2;
+            if (d < bd) {
+              bd = d;
+              at = e;
+            }
+          }
+        }
+        g.fx.push({ kind: 'zap', points });
         w.cooldown = s.cooldown[L] * cdm;
         break;
       }
@@ -557,7 +903,7 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
         for (let i = 0; i < n; i++) {
           const a = next(g.rng) * Math.PI * 2;
           const pickT = g.enemies.length ? pickOne(g.rng, g.enemies) : target;
-          shoot(g, { kind: 'signal', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: 0, radius: 7, life: 3, knockback: 30, target: pickT.id });
+          shoot(g, { kind: 'signal', from: 'signal', x: p.x, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, damage: s.damage[L], pierce: 0, radius: 7, life: 3, knockback: 30, target: pickT.id });
         }
         w.cooldown = s.cooldown[L] * cdm;
         break;
@@ -567,7 +913,7 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
         const n = s.count[L] + extra(g);
         for (let i = 0; i < n; i++) {
           const a = p.aim + (i / Math.max(1, n)) * Math.PI * 2;
-          shoot(g, { kind: 'laffer', x: p.x, y: p.y, vx: 0, vy: 0, damage: s.damage[L], pierce: 999, radius: 14, life: s.time, knockback: 60, ox: p.x, oy: p.y, age: 0, angle: a });
+          shoot(g, { kind: 'laffer', from: 'laffer', x: p.x, y: p.y, vx: 0, vy: 0, damage: s.damage[L], pierce: 999, radius: 14, life: s.time, knockback: 60, ox: p.x, oy: p.y, age: 0, angle: a });
         }
         w.cooldown = s.cooldown[L] * cdm;
         break;
@@ -575,6 +921,18 @@ function fireWeapons(g: Game, grid: Grid, dt: number) {
     }
     g.fx.push({ kind: 'shoot', weapon: w.id });
   }
+}
+
+/** A ring of refusal around you: everyone inside is hurt and pushed back. */
+function shockwave(g: Game, grid: Grid, r: number, amount: number, knockback: number, from: WeaponId) {
+  const p = g.player;
+  for (const e of near(grid, p.x, p.y, r + 50)) {
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > r + e.radius) continue;
+    const k = knockback / Math.max(1, d);
+    damage(g, e, amount, from, (e.x - p.x) * k, (e.y - p.y) * k);
+  }
+  g.fx.push({ kind: 'nein', x: p.x, y: p.y, radius: r });
 }
 
 function handTick(g: Game, grid: Grid, w: OwnedWeapon, dt: number) {
@@ -610,8 +968,6 @@ function napTick(g: Game, grid: Grid, w: OwnedWeapon, dt: number) {
     damage(g, e, s.dps[L] * 0.25, 'nap');
   }
 }
-
-const kindToWeapon: Record<Shot['kind'], WeaponId> = { coin: 'coins', pellet: 'shotgun', bullet: 'ak', signal: 'signal', laffer: 'laffer' };
 
 function moveShots(g: Game, grid: Grid, dt: number) {
   const p = g.player;
@@ -662,7 +1018,7 @@ function moveShots(g: Game, grid: Grid, dt: number) {
       const kx = s.kind === 'laffer' ? (e.x - p.x) : (s.vx / sp) * s.knockback;
       const ky = s.kind === 'laffer' ? (e.y - p.y) : (s.vy / sp) * s.knockback;
       const norm = s.kind === 'laffer' ? s.knockback / Math.max(1, Math.hypot(kx, ky)) : 1;
-      damage(g, e, s.damage, kindToWeapon[s.kind], kx * norm, ky * norm);
+      damage(g, e, s.damage, s.from, kx * norm, ky * norm);
       s.pierce--;
     }
   }
@@ -678,8 +1034,42 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     if (e.dead) continue;
     e.flash = Math.max(0, e.flash - dt);
     e.timer += dt;
+    if (e.type === 'printer') {
+      printerTick(g, e, dt);
+      contact(g, e);
+      continue;
+    }
     let tx = p.x;
     let ty = p.y;
+    if (e.type === 'technocrat') {
+      // He keeps his distance: closer if too far, back if too near, otherwise sideways.
+      const d = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+      const ux = (p.x - e.x) / d;
+      const uy = (p.y - e.y) / d;
+      const side = e.id % 2 ? 1 : -1;
+      if (d > TECHNOCRAT.range + 40) {
+        tx = p.x;
+        ty = p.y;
+      } else if (d < TECHNOCRAT.range - 60) {
+        tx = e.x - ux * 100;
+        ty = e.y - uy * 100;
+      } else {
+        tx = e.x - uy * side * 100;
+        ty = e.y + ux * side * 100;
+      }
+      if (e.timer > TECHNOCRAT.every && d < TECHNOCRAT.range + 140) {
+        e.timer = 0;
+        g.foeShots.push({ kind: 'bolt', x: e.x, y: e.y, vx: ux * TECHNOCRAT.speed, vy: uy * TECHNOCRAT.speed, radius: TECHNOCRAT.radius, damage: Math.round(TECHNOCRAT.damage * damageScale(g.time)), life: 3 });
+      }
+    }
+    if (e.type === 'nimby' && e.timer > NIMBY.every && (p.x - e.x) ** 2 + (p.y - e.y) ** 2 < NIMBY.range ** 2 && g.walls.length < NIMBY.maxWalls) {
+      // A fence across the way you're going, a little ahead of you.
+      e.timer = 0;
+      const cx = p.x + p.mx * NIMBY.ahead;
+      const cy = p.y + p.my * NIMBY.ahead;
+      const half = NIMBY.length / 2;
+      g.walls.push({ id: g.nextId++, x1: cx - p.my * half, y1: cy + p.mx * half, x2: cx + p.my * half, y2: cy - p.mx * half, life: NIMBY.life });
+    }
     if (e.type === 'taxman') {
       // He'd rather take your XP than fight you.
       let best: Pickup | null = null;
@@ -704,8 +1094,30 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     const dx = tx - e.x;
     const dy = ty - e.y;
     const d = Math.hypot(dx, dy) || 1;
-    e.x += (dx / d) * e.speed * dt + e.kx * dt;
-    e.y += (dy / d) * e.speed * dt + e.ky * dt;
+    let vx = (dx / d) * e.speed;
+    let vy = (dy / d) * e.speed;
+    if (e.type === 'fascist') {
+      if (e.dash && e.dash > 0) {
+        // Charging, straight, wherever you were when he started.
+        e.dash -= dt;
+        vx = (e.dx ?? 0) * FASCIST_DASH;
+        vy = (e.dy ?? 0) * FASCIST_DASH;
+      } else if (e.windup && e.windup > 0) {
+        e.windup -= dt;
+        vx = 0;
+        vy = 0;
+        if (e.windup <= 0) {
+          e.dash = 0.6;
+          e.dx = dx / d;
+          e.dy = dy / d;
+        }
+      } else if (e.timer > 3.5 && d < 420) {
+        e.timer = 0;
+        e.windup = 0.75;
+      }
+    }
+    e.x += vx * dt + e.kx * dt;
+    e.y += vy * dt + e.ky * dt;
     const decay = Math.exp(-8 * dt);
     e.kx *= decay;
     e.ky *= decay;
@@ -724,36 +1136,79 @@ function moveEnemies(g: Game, grid: Grid, dt: number) {
     }
     // Their tricks.
     if (e.type === 'socialist') {
-      for (const o of near(grid, e.x, e.y, 90, scratch)) if (o !== e && !o.dead && o.type !== 'bank') o.hp = Math.min(o.maxHp, o.hp + 4 * dt);
+      for (const o of near(grid, e.x, e.y, 90, scratch)) if (o !== e && !o.dead && !BOSSES.includes(o.type)) o.hp = Math.min(o.maxHp, o.hp + 4 * dt);
     }
-    if (e.type === 'bureaucrat' && e.timer > 3) {
-      e.timer = 0;
-      g.zones.push({ x: e.x, y: e.y, radius: 44, life: 5 });
+    if (e.type === 'marx') {
+      if (e.timer > MARX.every) {
+        // A volley of hammers and sickles, fanned out at you.
+        e.timer = 0;
+        const a0 = Math.atan2(p.y - e.y, p.x - e.x);
+        for (let i = 0; i < MARX.volley; i++) {
+          const a = a0 + (i - (MARX.volley - 1) / 2) * MARX.spread;
+          g.foeShots.push({ kind: g.nextId % 2 ? 'hammer' : 'sickle', x: e.x, y: e.y, vx: Math.cos(a) * MARX.speed, vy: Math.sin(a) * MARX.speed, radius: 12, damage: MARX.damage, life: 4 });
+          g.nextId++;
+        }
+      }
+      e.summon = (e.summon ?? 0) + dt;
+      if (e.summon > MARX.summonEvery) {
+        // Workers of the world, unite!
+        e.summon = 0;
+        for (let i = 0; i < MARX.summon && g.enemies.length < HARD_CAP; i++) {
+          const a = (i / MARX.summon) * Math.PI * 2;
+          spawnEnemy(g, 'communist', e.x + Math.cos(a) * 70, e.y + Math.sin(a) * 70);
+        }
+        g.fx.push({ kind: 'summon', x: e.x, y: e.y });
+      }
     }
     if (e.type === 'bank') {
       if (e.timer > 3) {
         e.timer = 0;
         for (let i = 0; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2 + next(g.rng) * 0.3;
-          g.foeShots.push({ x: e.x, y: e.y, vx: Math.cos(a) * 115, vy: Math.sin(a) * 115, radius: 11, damage: 12, life: 4.5 });
+          g.foeShots.push({ kind: 'balloon', x: e.x, y: e.y, vx: Math.cos(a) * 115, vy: Math.sin(a) * 115, radius: 11, damage: 12, life: 4.5 });
         }
-        if (next(g.rng) < 0.5) for (let i = 0; i < 3; i++) spawnEnemy(g, 'keynesian', e.x + (i - 1) * 30, e.y + 40);
+        if (next(g.rng) < 0.5 && g.enemies.length < HARD_CAP) for (let i = 0; i < 3; i++) spawnEnemy(g, 'keynesian', e.x + (i - 1) * 30, e.y + 40);
       }
     }
-    // Contact.
-    const pd = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
-    if (pd < (e.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
-      const hurt = Math.max(1, e.damage - p.armor);
-      p.hp -= hurt;
-      p.iframes = 0.4;
-      g.fx.push({ kind: 'hurt', amount: hurt });
-    }
+    const pd = contact(g, e);
     // Far behind you? Bring it back round in front (so the pressure stays on).
-    if (pd > (SPAWN_DISTANCE * 1.6) ** 2 && e.type !== 'bank') {
+    if (pd > (SPAWN_DISTANCE * 1.6) ** 2 && !BOSSES.includes(e.type)) {
       const [x, y] = ringPoint(g, SPAWN_DISTANCE);
       e.x = x;
       e.y = y;
     }
+  }
+}
+
+/** Touching you hurts (less with armour). Returns the squared distance, which the caller wants anyway. */
+function contact(g: Game, e: Enemy): number {
+  const p = g.player;
+  const pd = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
+  if (pd < (e.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
+    const hurt = Math.max(1, Math.round(e.damage * g.mods.hurt) - p.armor);
+    p.hp -= hurt;
+    if (g.firstHurt < 0) g.firstHurt = g.time;
+    p.iframes = 0.4;
+    g.fx.push({ kind: 'hurt', amount: hurt });
+  }
+  return pd;
+}
+
+/** A money printer, printing statists while you're anywhere near. */
+function printerTick(g: Game, e: Enemy, dt: number) {
+  const p = g.player;
+  if ((e.x - p.x) ** 2 + (e.y - p.y) ** 2 > PRINTER.wakeRange ** 2 || g.enemies.length >= MAX_ENEMIES) {
+    e.timer = 0;
+    return;
+  }
+  e.summon = (e.summon ?? 0) + dt;
+  if (e.timer > PRINTER.stimulusEvery) {
+    e.timer = 0;
+    spawnEnemy(g, 'stimulus', e.x + (next(g.rng) - 0.5) * 30, e.y + e.radius + 6);
+  }
+  if (e.summon > PRINTER.keynesianEvery) {
+    e.summon = 0;
+    spawnEnemy(g, 'keynesian', e.x, e.y + e.radius + 10);
   }
 }
 
@@ -764,10 +1219,11 @@ function moveFoeShots(g: Game, dt: number) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     // Inflation: they grow.
-    b.radius = Math.min(26, b.radius + 3.5 * dt);
+    if (b.kind === 'balloon') b.radius = Math.min(26, b.radius + 3.5 * dt);
     if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (b.radius + PLAYER_RADIUS) ** 2 && p.iframes <= 0) {
-      const hurt = Math.max(1, b.damage - p.armor);
+      const hurt = Math.max(1, Math.round(b.damage * g.mods.hurt) - p.armor);
       p.hp -= hurt;
+      if (g.firstHurt < 0) g.firstHurt = g.time;
       p.iframes = 0.4;
       b.life = 0;
       g.fx.push({ kind: 'hurt', amount: hurt });

@@ -45,6 +45,21 @@ button {
     touch-action: none;
 }
 
+/* --- Sound buttons: always there, top right --- */
+.sound-buttons {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 24px);
+    right: 10px;
+    z-index: 25;
+    display: flex;
+    gap: 6px;
+}
+
+#music.off {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
 /* --- HUD --- */
 .hud {
     position: fixed;
@@ -93,6 +108,8 @@ button {
     display: flex;
     align-items: center;
     gap: 10px;
+    /* Room for the sound buttons on the right. */
+    padding-right: 100px;
 }
 
 .hpbar {
@@ -334,13 +351,6 @@ button {
     font-size: 14px;
 }
 
-.proto {
-    margin-top: 6px;
-    color: #66708a;
-    font-size: 12px;
-    letter-spacing: 2px;
-}
-
 .stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -442,6 +452,20 @@ button {
     line-height: 1.1;
 }
 
+.card-icon svg,
+.card-icon .btc {
+    display: block;
+    width: 46px;
+    height: 46px;
+}
+
+.slot svg,
+.damage svg {
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: -0.25em;
+}
+
 .card-tag {
     color: var(--gold);
     font-size: 12px;
@@ -530,6 +554,11 @@ kbd {
 
     .hud-row {
         gap: 6px;
+        padding-right: 84px;
+    }
+
+    .sound-buttons {
+        top: calc(env(safe-area-inset-top) + 22px);
     }
 
     .hpbar {
@@ -552,4 +581,576 @@ kbd {
     .level {
         font-size: 17px;
     }
+}
+
+/* --- The Free Market --- */
+.big .btc,
+.buy .btc,
+.bank .btc {
+    width: 1.1em;
+    height: 1.1em;
+    vertical-align: -0.2em;
+}
+
+.heat-line {
+    margin: 4px 0 0;
+    color: #ff8a65;
+    font-size: 14px;
+}
+
+.bank {
+    margin: 0 0 6px;
+    font-size: 20px;
+}
+
+.bank b {
+    color: var(--gold);
+    font: 400 26px var(--head);
+}
+
+.shop-section {
+    width: 100%;
+    margin-top: 14px;
+    text-align: left;
+}
+
+.shop-title {
+    margin: 0;
+    color: var(--gold);
+    font: 400 26px var(--head);
+    letter-spacing: 0.5px;
+    text-shadow: 2px 2px 0 #000;
+}
+
+.shop-section > .muted {
+    margin: 0 0 8px;
+}
+
+.wares {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.ware {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+}
+
+.ware.owned {
+    border-color: #4c6b3a;
+    background: #18231c;
+}
+
+.ware-icon {
+    display: grid;
+    place-items: center;
+    min-width: 46px;
+    font-size: 30px;
+    line-height: 1;
+}
+
+.ware-icon svg,
+.ware-icon img {
+    display: block;
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+}
+
+.evo-icons {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.evo-icons svg,
+.evo-icons img {
+    width: 38px;
+    height: 38px;
+}
+
+.evo-icons .arrow {
+    color: var(--gold);
+    font-size: 16px;
+}
+
+.ware-body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ware-name {
+    font: 400 17px var(--head);
+    letter-spacing: 0.3px;
+}
+
+.ware-text {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.pips {
+    display: flex;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.pips i {
+    width: 14px;
+    height: 6px;
+    border: 1px solid #000;
+    border-radius: 3px;
+    background: var(--panel-2);
+}
+
+.pips i.on {
+    background: var(--gold);
+}
+
+.buy,
+.toggle {
+    min-width: 76px;
+    padding: 7px 10px;
+    border: 2px solid #000;
+    border-radius: 10px;
+    background: var(--gold);
+    color: #000;
+    box-shadow: 2px 2px 0 #000;
+    font: 400 17px var(--head);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.buy:disabled {
+    background: var(--panel-2);
+    color: var(--muted);
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.toggle {
+    background: var(--panel-2);
+    color: var(--text);
+}
+
+.toggle.on {
+    background: #ff7043;
+    color: #000;
+}
+
+.ware-owned {
+    color: var(--green);
+    font-weight: 700;
+}
+
+/* The gun pictures on cards, and the weapon upgrade card. */
+.card-icon img.gun {
+    display: block;
+    width: 64px;
+    height: 46px;
+    object-fit: contain;
+}
+
+.slot img.gun,
+.damage img.gun {
+    width: 1.6em;
+    height: 1.2em;
+    object-fit: contain;
+    vertical-align: -0.25em;
+}
+
+.card.evolve {
+    border-color: var(--gold);
+    background: linear-gradient(160deg, #3a3113, var(--panel-2) 60%);
+    box-shadow: 0 0 0 3px rgb(255 213 79 / 0.3), 0 0 18px rgb(255 213 79 / 0.35);
+}
+
+.card.evolve .card-tag {
+    color: #ffecb3;
+}
+
+.reroll {
+    margin-bottom: 4px;
+    padding: 8px 16px;
+    font-size: 17px;
+}
+
+@media (max-width: 720px) {
+    .wares {
+        grid-template-columns: 1fr;
+    }
+
+    .ware {
+        padding: 8px 10px;
+    }
+}
+
+/* --- The bomb button: bottom right, thumb-sized --- */
+.bomb-button {
+    position: fixed;
+    right: calc(env(safe-area-inset-right) + 16px);
+    bottom: calc(env(safe-area-inset-bottom) + 16px);
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    padding: 0;
+    border: 3px solid #000;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffe082, #ff8f00);
+    box-shadow: 3px 3px 0 #000;
+    color: #000;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.bomb-icon {
+    font-size: 30px;
+    line-height: 1;
+}
+
+.bomb-button b {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 26px;
+    padding: 1px 6px;
+    border: 2px solid #000;
+    border-radius: 999px;
+    background: var(--text);
+    font: 400 16px var(--head);
+}
+
+.bomb-key {
+    position: absolute;
+    bottom: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.bomb-button:disabled {
+    background: var(--panel-2);
+    opacity: 0.55;
+    cursor: default;
+}
+
+.bomb-button.winded {
+    animation: winded 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes winded {
+    to {
+        transform: scale(0.92);
+    }
+}
+
+@media (hover: none) {
+    .bomb-key {
+        display: none;
+    }
+}
+
+/* --- Locked characters --- */
+.character.locked {
+    cursor: default;
+    opacity: 0.85;
+    border-style: dashed;
+}
+
+.character.locked .ball {
+    filter: grayscale(1) brightness(0.35);
+}
+
+.char-feat {
+    color: var(--gold);
+    font-size: 13px;
+}
+
+.feat-bar {
+    --fill: 0;
+    position: relative;
+    width: 80%;
+    height: 8px;
+    margin-top: 4px;
+    overflow: hidden;
+    border: 1px solid #000;
+    border-radius: 999px;
+    background: var(--panel-2);
+}
+
+.feat-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--gold);
+    transform: scaleX(var(--fill));
+    transform-origin: left;
+}
+
+.unlocked {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0;
+    padding: 8px 16px;
+    border: 3px solid var(--gold);
+    border-radius: 14px;
+    background: #2d2712;
+    text-align: left;
+    animation: pop 0.5s ease-out;
+}
+
+.unlocked .ball {
+    width: 64px;
+}
+
+.unlocked p {
+    margin: 0;
+}
+
+@keyframes pop {
+    from {
+        transform: scale(0.6);
+        opacity: 0;
+    }
+}
+
+/* --- Options --- */
+.option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: 420px;
+    margin: 14px auto;
+    text-align: left;
+}
+
+/* --- Gamepad and keyboard focus: a thick gold ring, so you can see where you are --- */
+button:focus-visible,
+body.pad button:focus {
+    outline: 4px solid var(--gold);
+    outline-offset: 3px;
+}
+
+body.pad .card:focus {
+    border-color: var(--gold);
+    transform: translateY(-3px);
+}
+
+/* --- Maps --- */
+.maps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.map {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    column-gap: 10px;
+    padding: 10px 12px;
+    border: 3px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    text-align: left;
+    cursor: pointer;
+}
+
+.map .map-icon {
+    grid-row: span 2;
+    font-size: 30px;
+}
+
+.map-name {
+    font: 400 17px var(--head);
+    letter-spacing: 0.3px;
+}
+
+.map-blurb {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.map .char-feat,
+.map .char-best {
+    grid-column: 2;
+}
+
+.map.picked {
+    border-color: var(--gold);
+    background: var(--panel-2);
+    box-shadow: 0 0 0 3px rgb(255 213 79 / 0.25);
+}
+
+.map-vienna.picked {
+    background: linear-gradient(160deg, #3a2f25, var(--panel-2) 70%);
+}
+
+.map-vault.picked {
+    background: linear-gradient(160deg, #1f3326, var(--panel-2) 70%);
+}
+
+.map.locked {
+    border-style: dashed;
+    cursor: default;
+    opacity: 0.85;
+}
+
+.unlocked .map-icon {
+    font-size: 44px;
+}
+
+@media (max-width: 720px) {
+    .maps {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --- Modes --- */
+.modes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.mode {
+    padding: 8px 16px;
+    border: 3px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+    font: 400 17px var(--head);
+    letter-spacing: 0.3px;
+    cursor: pointer;
+}
+
+.mode.picked {
+    border-color: var(--gold);
+    background: var(--panel-2);
+    color: var(--gold);
+}
+
+/* --- Achievements --- */
+.toasts {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 118px);
+    left: 50%;
+    z-index: 40;
+    display: grid;
+    gap: 6px;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 240px;
+    padding: 8px 14px;
+    border: 3px solid #000;
+    border-radius: 12px;
+    background: linear-gradient(160deg, #4a3c12, #20273a 70%);
+    box-shadow: 4px 4px 0 #000;
+    animation: toast 3.6s ease-out forwards;
+}
+
+.toast-icon {
+    font-size: 28px;
+}
+
+.toast small {
+    display: block;
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.toast b {
+    font: 400 18px var(--head);
+}
+
+@keyframes toast {
+    0% {
+        opacity: 0;
+        transform: translateY(-12px);
+    }
+
+    8%,
+    85% {
+        opacity: 1;
+        transform: none;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+.trophies {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: min(760px, 100%);
+    margin: 10px 0;
+    text-align: left;
+}
+
+.trophy {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    opacity: 0.6;
+}
+
+.trophy.got {
+    border-color: var(--gold);
+    background: #2b2614;
+    opacity: 1;
+}
+
+.trophy-icon {
+    min-width: 34px;
+    font-size: 26px;
+    text-align: center;
+}
+
+.trophy small {
+    color: var(--muted);
+}
+
+@media (max-width: 720px) {
+    .trophies {
+        grid-template-columns: 1fr;
+    }
+}
+
+.char-weapon img.gun,
+.char-weapon svg {
+    width: 2em;
+    height: 1.3em;
+    object-fit: contain;
+    vertical-align: -0.35em;
 }

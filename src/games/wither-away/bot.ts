@@ -9,6 +9,12 @@ const COMFORT: Record<Game['character'], number> = { ancap: 260, agorist: 260, m
 
 export function botInput(g: Game): Input {
   const p = g.player;
+  // In trouble (hurt and crowded)? Bomb.
+  if (g.bombs > 0 && p.hp < p.maxHp * 0.35) {
+    let close = 0;
+    for (const e of g.enemies) if ((e.x - p.x) ** 2 + (e.y - p.y) ** 2 < 160 * 160) close++;
+    if (close >= 6) return { x: 0, y: 0, bomb: true };
+  }
   let x = 0;
   let y = 0;
   const comfort = COMFORT[g.character];
