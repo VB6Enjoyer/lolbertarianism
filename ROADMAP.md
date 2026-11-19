@@ -932,7 +932,7 @@ every upgrade by day 7–9 of 25, the pile stuck at the 60-block cap from week
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage,
   with a new screenshot and link preview.
 
-### I THOUGHT I HIRED AUSTRIAN ECONOMISTS (prototype)
+### I THOUGHT I HIRED AUSTRIAN ECONOMISTS ✅
 
 A new game from the countryball meme: Austrian School economists (ancap flag, eagle) and economists
 who are merely from Austria keep getting hired by the wrong side. Single-player social deduction
@@ -956,7 +956,8 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
 - Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
   outcomes, slips and accusations ~69%, random clicking ~11%.
-- Next: from prototype to v1.0, once people have played it.
+- Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
+  screenshot and link preview.
 
 #### Mirror mode ✅
 
