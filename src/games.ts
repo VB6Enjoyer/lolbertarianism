@@ -84,6 +84,12 @@ export const games: Game[] = [
     blurb: 'Two of your five economists are just from Austria. Find the statists before they regulate everything.',
     status: 'released', // v1.0
   },
+  {
+    slug: 'wither-away',
+    title: 'Wither Away',
+    blurb: 'Marx promised the state would wither away. It didn’t. Survive the statist horde as an ancapball and make it.',
+    status: 'prototype',
+  },
 ];
 
 /** The games on the homepage and in the build (everything but the shelved ones). */
