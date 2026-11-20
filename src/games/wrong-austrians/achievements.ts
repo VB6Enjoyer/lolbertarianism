@@ -32,14 +32,14 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'gotcha-one', icon: '🕵️', name: 'Under the Paint', description: 'Fire an impostor.', done: (g) => !!g && fired(g, true) >= 1 },
   { id: 'purge', icon: '🧹', name: 'Purge', description: 'Fire both impostors.', done: (g) => !!g && fired(g, true) >= 2 },
   { id: 'clean-sweep', icon: '✨', name: 'Clean Sweep', description: 'Fire both impostors without firing anyone loyal.', done: (g) => !!g && g.ending === 'purged' && fired(g, false) === 0 },
-  { id: 'blitz', icon: '⚡', name: 'Blitz', description: 'Purge the council by the end of the third quarter.', done: (g) => !!g && g.ending === 'purged' && g.quarter <= 3 },
+  { id: 'blitz', icon: '⚡', name: 'Blitz', description: 'Purge the council by the end of the fourth quarter, as soon as the law allows.', done: (g) => !!g && g.ending === 'purged' && g.quarter <= 4 },
   { id: 'full-term', icon: '📅', name: 'Full Term', description: 'Serve all eight quarters.', done: (g) => !!g && g.ending === 'term' && g.twist !== 'snap-election' },
   { id: 'enemies-close', icon: '🤝', name: 'Keep Your Enemies Close', description: 'Serve the whole term with an impostor still on the council.', done: (g) => !!g && g.ending === 'term' && g.advisors.some((a) => a.impostor && !a.fired) },
 
   // --- Detective work ---
   { id: 'interrogator', icon: '❓', name: 'Interrogator', description: `Ask every question you’re allowed in a full term (${QUESTIONS_PER_QUARTER * QUARTERS} or more).`, done: (g) => !!g && g.answers.length >= QUESTIONS_PER_QUARTER * QUARTERS },
-  { id: 'slip-fire', icon: '🎯', name: 'Gotcha', description: 'Fire an impostor who slipped in one of your interviews.', done: (g) => !!g && g.advisors.some((a) => a.fired && a.impostor && g.answers.some((x) => x.advisor === a.id && x.tone === 'slip')) },
-  { id: 'paper-trail', icon: '🔍', name: 'Paper Trail', description: 'Unmask an impostor with a background check.', done: (g) => !!g && g.checked.some((id) => g.advisors[id]?.impostor) },
+  { id: 'slip-fire', icon: '🎯', name: 'Gotcha', description: 'Fire an impostor who got one of your interview questions wrong.', done: (g) => !!g && g.advisors.some((a) => a.fired && a.impostor && g.answers.some((x) => x.advisor === a.id && (x.tone === 'slip' || x.tone === 'near'))) },
+  { id: 'paper-trail', icon: '🔍', name: 'Paper Trail', description: 'Fire an impostor you’d investigated at least twice.', done: (g) => !!g && g.advisors.some((a) => a.fired && a.impostor && g.clues.filter((c) => c.advisor === a.id).length >= 2) },
   { id: 'judge', icon: '🧐', name: 'Good Judge of Character', description: 'End a term with at least three marks, every ✅ on someone loyal and every 🚩 on an impostor.', done: (g) => {
     if (!over(g)) return false;
     const marked = g.advisors.filter((a) => a.mark !== 'none');

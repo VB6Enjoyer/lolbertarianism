@@ -959,6 +959,50 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
   screenshot and link preview.
 
+#### The detective redesign ✅
+
+Players found it unclear how to fire anyone, and far too easy: the slips were obvious ("Keynes!"),
+the background check simply told you who was who, and two firings in quarter two won it. Now the
+Viennese actually try to blend in:
+
+- Interviews (`questions.ts`): 32 questions, each with right answers, near-misses and outright
+  slips. The near-misses sound free-market but anyone who has read Mises would object: Friedman or
+  David Friedman as a hero, "F.A. Kayak", "Murray Rothberd", "Ludwig von Misses", praxeology as "the
+  psychology of action", "a variety of causes, including money printing", "a fair price is whatever
+  the entrepreneur wants". Each one carries why it's wrong. The Viennese answer right about half
+  the time (near-miss 36%, slip 6%, dodge 8%); real Austrians miss about a fifth of the time.
+  Answers aren't coloured: telling them apart is the game. 3 questions a quarter, from 4 fresh ones.
+- Investigations (`clues.ts`) replace the background check: six one-time tools (their thesis, alma
+  mater, CV, bookshelf, who funds them, old op-eds), one a quarter. Everyone has a hidden past dealt
+  at the start, each item leaning Austrian, free-market-but-not-Austrian (Chicago, public choice),
+  mainstream or statist. The impostors' pasts are convincing (28% Austrian, 32% free-market), and
+  real Austrians often did a mainstream PhD first. Clues lean; they don't prove.
+- The impostors back sound policy 72% of the time; loyal advisors back a disguised one 18%.
+- Austrian labour law: nobody can be fired before quarter 3. Firing a real Austrian costs more
+  (−8 📈 −4 🗽), and two wrong firings still mean a takeover.
+- How to fire is now said everywhere: a hint under the portraits every quarter, a six-card
+  walkthrough the first time you sit the council (and from How to play), and the dossier's fire
+  button explains when it opens.
+- The end screen's case file: everyone unmasked, every answer marked (right, near-miss with the
+  explanation, slip, dodge), every clue with its lean, and what you never dug up.
+- The bots play detective: exact odds over the ten possible pairs of impostors from every answer,
+  clue, proposal and bill. One that knows its economics perfectly now wins about 82% (it was 99%),
+  usually firing late in the term; one that only spots the obvious wins 14%; random clicking 6%.
+  Mirror mode plays the same (the near-misses betray an ancap trying to sound Viennese).
+- Harder still: two more near-misses per question (162 in all), the hard kind where the slip is in a
+  technical detail (overinvestment for malinvestment, sticky prices for the Cantillon effect,
+  Böhm-Bawerk's productivity theory of interest, Lange's market socialism, Kirzner versus
+  Schumpeter, the "neutral rate", Coase, Ricardian equivalence, the savings glut...).
+- People stick to their story: ask someone the same question in a later quarter and you get the same
+  answer (a bluff that worked stays a bluff); only a dodge gets a real answer the second time. The
+  ask buttons mark a repeat with ↺, and repeats don't count as new evidence.
+- About a third of everyone's past is a false flag (the real Austrian who studied at Chicago or
+  worked at the National Bank first; the Viennese who advised a private city in Honduras), so you
+  have to pile clues up.
+- The title comic follows the meme: Ancapball faces three Austriaballs saying "Nationalize oil" and
+  "Regulate everything" ("Why are Austrian economists suddenly statists?"); in mirror mode Austria
+  faces three ancapballs saying "Cut all taxes to 0%" and "Privatize Vienna plz".
+
 #### Mirror mode ✅
 
 - The meme's top panel: you're Austria, who hired Austrian economists and got two from the

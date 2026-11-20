@@ -8,6 +8,7 @@
 // impostors are Austrian School ancaps who keep trying to privatize Vienna. Same rules; "sound"
 // always means sound for whoever's in charge.
 
+import { LEAN_ODDS, type Lean, TOOL_ORDER, type ToolId, TOOLS } from './clues.ts';
 import { type Crisis, CRISES, crisisById, type Effect, type Policy, policyById, type PolicyKind } from './crises.ts';
 
 import type { TwistId } from './daily.ts';
@@ -18,10 +19,35 @@ import { DODGES, type Face, FACES, FIRST_NAMES, type Hat, HATS, LINES, LINES_MIR
 export const QUARTERS = 8;
 export const COUNCIL = 5;
 export const IMPOSTORS = 2;
-export const QUESTIONS_PER_QUARTER = 2;
+export const QUESTIONS_PER_QUARTER = 3;
+/** Questions on offer each quarter (you pick from these). */
+export const QUESTIONS_OFFERED = 4;
 /** How often an impostor backs something sound to blend in, and how often a loyal advisor gets it wrong. */
-export const IMPOSTOR_BLEND = 0.45;
-export const HONEST_SLIP = 0.15;
+export const IMPOSTOR_BLEND = 0.72;
+export const HONEST_SLIP = 0.18;
+/** Austrian labour law: nobody can be fired in their first quarters. (Ironic, we know.) */
+export const FIRING_FROM = 3;
+/** What firing costs: a loyal advisor writes a book about your mistake; an impostor leaves quietly. */
+export const FIRE_LOYAL: Effect = { p: -8, l: -4 };
+export const FIRE_IMPOSTOR: Effect = { l: 4 };
+
+/**
+ * How each side answers interview questions. "sound" is the right answer for whoever's in charge;
+ * "near" sounds right but isn't (pro-market but not Austrian, in the ancap game); "slip" is the other
+ * side's answer outright. The impostors get it right half the time; the loyal ones a fifth wrong.
+ */
+export type Tone = 'sound' | 'near' | 'slip' | 'dodge';
+export const ANSWER_ODDS: Record<'normal' | 'loose-lips' | 'poker-face', Record<'loyal' | 'impostor', Record<Tone, number>>> = {
+  normal: { loyal: { sound: 0.75, near: 0.2, slip: 0, dodge: 0.05 }, impostor: { sound: 0.5, near: 0.36, slip: 0.06, dodge: 0.08 } },
+  'loose-lips': { loyal: { sound: 0.75, near: 0.2, slip: 0, dodge: 0.05 }, impostor: { sound: 0.4, near: 0.3, slip: 0.22, dodge: 0.08 } },
+  'poker-face': { loyal: { sound: 0.75, near: 0.2, slip: 0, dodge: 0.05 }, impostor: { sound: 0.5, near: 0.25, slip: 0, dodge: 0.25 } },
+};
+export const answerOdds = (g: Pick<Game, 'twist'>) => ANSWER_ODDS[g.twist === 'loose-lips' || g.twist === 'poker-face' ? g.twist : 'normal'];
+/** How each side's proposals go: the impostors back sound policy more often than not, to blend in. */
+export const PROPOSAL_ODDS: Record<'loyal' | 'impostor', Record<PolicyKind, number>> = {
+  loyal: { sound: 1 - HONEST_SLIP, disguised: HONEST_SLIP, blatant: 0 },
+  impostor: { sound: IMPOSTOR_BLEND, disguised: 0.25, blatant: 0.03 },
+};
 export const START_METER = 50;
 export const METER_MAX = 100;
 /** Crises cost more than their cards say, and bills land harder: being in charge is expensive. */
@@ -39,15 +65,23 @@ export type Mode = 'ancap' | 'mirror';
 
 export type Mark = 'none' | 'trust' | 'suspect';
 
+/** One item of someone's hidden past, and which way it leans. */
+export interface ProfileItem {
+  lean: Lean;
+  text: string;
+}
+
 export interface Advisor {
   id: number;
   name: string;
   hat: Hat;
   face: Face;
+  /** Their past, item by item: what the investigations dig up. */
+  profile: Record<ToolId, ProfileItem>;
   /** The secret: just from Austria, not of the Austrian School (or, in mirror mode, the other way round). */
   impostor: boolean;
   fired: boolean;
-  /** You know what they are (fired, or background-checked). */
+  /** You know what they are (they've been fired). */
   revealed: boolean;
   /** Your own note on them. */
   mark: Mark;
@@ -72,7 +106,20 @@ export interface Answer {
   advisor: number;
   question: string;
   text: string;
-  tone: 'sound' | 'slip' | 'dodge';
+  tone: Tone;
+  /** For a near-miss: what's wrong with it (shown in the case file at the end). */
+  why?: string;
+  /** Asked again in a later quarter: the same answer as before. */
+  repeat?: boolean;
+}
+
+/** What an investigation turned up. */
+export interface Clue {
+  quarter: number;
+  advisor: number;
+  tool: ToolId;
+  text: string;
+  lean: Lean;
 }
 
 /** A policy's later effect, waiting to land. */
@@ -124,9 +171,10 @@ export interface Game {
   offered: string[];
   questionsLeft: number;
   firedThisQuarter: number | null;
-  /** Background checks used (one a term, two on a Double Check day), and on whom. */
-  checksUsed: number;
-  checked: number[];
+  /** Investigations: how often each tool has been used, what turned up, and whether this quarter's is done. */
+  toolsUsed: Partial<Record<ToolId, number>>;
+  clues: Clue[];
+  investigated: boolean;
   enacted: Enacted[];
   /** Everything on the record, for the dossiers: what was proposed, said, and what landed. */
   tabled: (Proposal & { quarter: number })[];
@@ -149,11 +197,13 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
   const firsts = shuffleInPlace(rng, [...FIRST_NAMES]);
   const lasts = shuffleInPlace(rng, [...SURNAMES]);
   const impostors = shuffleInPlace(rng, [...Array(COUNCIL).keys()]).slice(0, IMPOSTORS);
+  const profiles = makeProfiles(rng, mode, impostors);
   const advisors: Advisor[] = Array.from({ length: COUNCIL }, (_, id) => ({
     id,
     name: `${firsts[id]} ${lasts[id]}`,
     hat: pickOne(rng, HATS),
     face: pickOne(rng, FACES),
+    profile: profiles[id],
     impostor: impostors.includes(id),
     fired: false,
     revealed: false,
@@ -177,8 +227,9 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     offered: [],
     questionsLeft: QUESTIONS_PER_QUARTER,
     firedThisQuarter: null,
-    checksUsed: 0,
-    checked: [],
+    toolsUsed: {},
+    clues: [],
+    investigated: false,
     enacted: [],
     tabled: [],
     said: [],
@@ -193,12 +244,39 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
   return g;
 }
 
+/**
+ * Everyone's hidden past: for each tool, a lean drawn from their side's odds, and an item with that
+ * lean (no two people share one). In mirror mode the schools swap: the loyal ones are statists.
+ */
+export function makeProfiles(rng: Rng, mode: Mode, impostors: number[]): Record<ToolId, ProfileItem>[] {
+  const [own, other]: Lean[] = mode === 'mirror' ? ['statist', 'austrian'] : ['austrian', 'statist'];
+  const leanOf = { own, freemarket: 'freemarket', mainstream: 'mainstream', other } as const;
+  const out: Record<ToolId, ProfileItem>[] = Array.from({ length: COUNCIL }, () => ({}) as Record<ToolId, ProfileItem>);
+  for (const tool of TOOL_ORDER) {
+    const left: Record<Lean, string[]> = Object.fromEntries(Object.entries(TOOLS[tool].items).map(([k, v]) => [k, shuffleInPlace(rng, [...v])])) as Record<Lean, string[]>;
+    for (let id = 0; id < COUNCIL; id++) {
+      const odds = LEAN_ODDS[impostors.includes(id) ? 'impostor' : 'loyal'];
+      let roll = next(rng);
+      let key: keyof typeof odds = 'own';
+      for (const k of ['own', 'freemarket', 'mainstream', 'other'] as const) {
+        key = k;
+        if ((roll -= odds[k]) < 0) break;
+      }
+      const lean = leanOf[key];
+      out[id][tool] = { lean, text: left[lean].pop() ?? TOOLS[tool].items[lean][0] };
+    }
+  }
+  return out;
+}
+
 export const active = (g: Game) => g.advisors.filter((a) => !a.fired);
-/** How long the term is, how many questions a quarter, how many background checks (the daily twists change them). */
+/** How long the term is, how many questions a quarter, how often each investigation can be used (the daily twists change them). */
 export const termLength = (g: Game) => (g.twist === 'snap-election' ? 6 : QUARTERS);
-export const questionsPer = (g: Game) => (g.twist === 'press-pass' ? 3 : QUESTIONS_PER_QUARTER);
-export const checksAllowed = (g: Game) => (g.twist === 'double-check' ? 2 : 1);
-export const canCheck = (g: Game) => g.phase === 'council' && g.checksUsed < checksAllowed(g);
+export const questionsPer = (g: Game) => (g.twist === 'press-pass' ? QUESTIONS_PER_QUARTER + 1 : QUESTIONS_PER_QUARTER);
+export const toolUses = (g: Game) => (g.twist === 'double-check' ? 2 : 1);
+export const toolsLeft = (g: Game, tool: ToolId) => toolUses(g) - (g.toolsUsed[tool] ?? 0);
+/** One investigation a quarter, with a tool that has uses left. */
+export const canInvestigate = (g: Game, tool?: ToolId) => g.phase === 'council' && !g.investigated && (tool ? toolsLeft(g, tool) > 0 : TOOL_ORDER.some((t) => toolsLeft(g, t) > 0));
 /** Any policy, either side's. */
 export function findPolicy(id: string): Policy | undefined {
   return policyById(id) ?? Object.values(MIRROR).flatMap((m) => m.policies).find((p) => p.id === id);
@@ -254,7 +332,12 @@ function startQuarter(g: Game) {
   g.news.push({ text: `${crisis.emoji} ${crisis.title}: ${crisis.text}`, effect: hit });
   g.questionsLeft = questionsPer(g);
   g.firedThisQuarter = null;
-  g.offered = shuffleInPlace(g.rng, QUESTIONS.map((q) => q.id)).slice(0, 3);
+  g.investigated = false;
+  // Fresh questions: ones not asked yet this term, while there are any.
+  const asked = new Set(g.answers.map((a) => a.question));
+  const fresh = QUESTIONS.filter((q) => !asked.has(q.id)).map((q) => q.id);
+  const pool = fresh.length >= QUESTIONS_OFFERED ? fresh : QUESTIONS.map((q) => q.id);
+  g.offered = shuffleInPlace(g.rng, pool).slice(0, QUESTIONS_OFFERED);
   g.phase = 'briefing';
   if (checkEnd(g)) return;
   propose(g);
@@ -274,8 +357,9 @@ function propose(g: Game) {
   const of = (kind: PolicyKind) => crisis.policies.filter((p) => p.kind === kind);
   const picks = new Map<string, number[]>();
   for (const a of active(g)) {
+    const odds = PROPOSAL_ODDS[a.impostor ? 'impostor' : 'loyal'];
     const roll = next(g.rng);
-    const kind: PolicyKind = a.impostor ? (roll < IMPOSTOR_BLEND ? 'sound' : roll < 0.92 ? 'disguised' : 'blatant') : roll < 1 - HONEST_SLIP ? 'sound' : 'disguised';
+    const kind: PolicyKind = roll < odds.sound ? 'sound' : roll < odds.sound + odds.disguised ? 'disguised' : 'blatant';
     const pol = pickOne(g.rng, of(kind));
     picks.set(pol.id, [...(picks.get(pol.id) ?? []), a.id]);
   }
@@ -302,9 +386,11 @@ export function evidence(g: Game, id: number): { score: number; backed?: string;
   for (const e of g.enacted) {
     if (e.quarter < g.quarter && e.backers.includes(id) && isBad(findPolicy(e.policy)!.kind)) score += 1;
   }
-  const slips = g.answers.filter((x) => x.advisor === id && x.tone === 'slip').length;
-  score += 2 * slips;
-  return { score, backed, bill, slip: slips > 0 };
+  const slips = g.answers.filter((x) => x.advisor === id && x.tone === 'slip' && !x.repeat).length;
+  // A near-miss gets noticed too, by people who know their economics (but anyone can fumble one).
+  const nears = g.answers.filter((x) => x.advisor === id && x.tone === 'near' && !x.repeat).length;
+  score += 2 * slips + nears;
+  return { score, backed, bill, slip: slips + nears > 0 };
 }
 
 const fill = (template: string, g: Game, about: number | null, policy?: string) =>
@@ -318,7 +404,7 @@ function debate(g: Game) {
   for (const a of here.filter((x) => !x.impostor)) {
     // Each of them notices some of the evidence, not all of it.
     const others = here.filter((x) => x.id !== a.id).map((x) => ({ x, ev: evidence(g, x.id), seen: 0 }));
-    for (const o of others) o.seen = o.ev.score * (next(g.rng) < 0.7 ? 1 : 0) + next(g.rng) * 1.5;
+    for (const o of others) o.seen = o.ev.score * (next(g.rng) < 0.6 ? 1 : 0) + next(g.rng) * 2.5;
     others.sort((p, q) => q.seen - p.seen);
     const top = others[0];
     if (top && top.ev.score >= 2 && top.seen >= 2 && next(g.rng) < 0.7) {
@@ -365,21 +451,38 @@ export function ask(g: Game, advisor: number, question: string): Answer | null {
   const a = g.advisors[advisor];
   const q = QUESTIONS.find((x) => x.id === question);
   if (g.phase !== 'council' || !a || a.fired || !q || g.questionsLeft <= 0 || !g.offered.includes(question)) return null;
-  if (g.answers.some((x) => x.advisor === advisor && x.question === question)) return null;
-  const roll = next(g.rng);
-  // Impostors bluff half the time; Loose Lips makes them slip more, Poker Face never.
-  const [bluff, dodge] = g.twist === 'loose-lips' ? [0.3, 0.45] : g.twist === 'poker-face' ? [0.5, 1] : [0.5, 0.73];
-  const tone: Answer['tone'] = a.impostor ? (roll < bluff ? 'sound' : roll < dodge ? 'dodge' : 'slip') : roll < 0.87 ? 'sound' : 'dodge';
-  // "Sound" means sound for whoever's in charge: in mirror mode, the statist answer.
+  // Once a quarter per person and question.
+  if (g.answers.some((x) => x.advisor === advisor && x.question === question && x.quarter === g.quarter)) return null;
+  // Asked before, in an earlier quarter: they stick to their story (a bluff that worked stays a bluff).
+  // Only a dodge gets a real answer the second time: they got back to you after lunch.
+  const before = g.answers.find((x) => x.advisor === advisor && x.question === question && x.tone !== 'dodge');
+  if (before) {
+    const again: Answer = { ...before, quarter: g.quarter, repeat: true };
+    g.answers.push(again);
+    g.questionsLeft--;
+    return again;
+  }
+  const dodgedBefore = g.answers.some((x) => x.advisor === advisor && x.question === question);
+  const base = answerOdds(g)[a.impostor ? 'impostor' : 'loyal'];
+  const odds = dodgedBefore ? { ...base, dodge: 0 } : base;
+  let roll = next(g.rng) * (odds.sound + odds.near + odds.slip + odds.dodge);
+  let tone: Tone = 'dodge';
+  for (const k of ['sound', 'near', 'slip', 'dodge'] as const) {
+    tone = k;
+    if ((roll -= odds[k]) < 0) break;
+  }
+  // "Sound" means sound for whoever's in charge: in mirror mode, the statist answer. The near-misses
+  // (free-market, not Austrian) give an ancap away in Vienna just as they give a statist away here.
   const [loyal, slips] = g.mode === 'mirror' ? [q.slips, q.sound] : [q.sound, q.slips];
-  const text = tone === 'sound' ? pickOne(g.rng, loyal) : tone === 'slip' ? pickOne(g.rng, slips) : pickOne(g.rng, DODGES);
-  const answer: Answer = { quarter: g.quarter, advisor, question, text, tone };
+  const near = tone === 'near' ? pickOne(g.rng, q.near) : null;
+  const text = tone === 'sound' ? pickOne(g.rng, loyal) : tone === 'slip' ? pickOne(g.rng, slips) : near ? near.text : pickOne(g.rng, DODGES);
+  const answer: Answer = { quarter: g.quarter, advisor, question, text, tone, ...(near ? { why: near.why } : {}) };
   g.answers.push(answer);
   g.questionsLeft--;
   return answer;
 }
 
-export const canFire = (g: Game) => g.phase === 'council' && g.firedThisQuarter === null;
+export const canFire = (g: Game) => g.phase === 'council' && g.firedThisQuarter === null && g.quarter >= FIRING_FROM;
 
 /** Fire an advisor (one a quarter). Everyone finds out what they were. */
 export function fire(g: Game, id: number): boolean {
@@ -389,8 +492,7 @@ export function fire(g: Game, id: number): boolean {
   a.revealed = true;
   g.firedThisQuarter = id;
   // A loyal advisor leaves to write a book about your mistake; an impostor leaves quietly.
-  if (a.impostor) apply(g, { l: 4 });
-  else apply(g, { p: -6, l: -2 });
+  apply(g, a.impostor ? FIRE_IMPOSTOR : FIRE_LOYAL);
   // Their backing goes with them; a proposal nobody backs is gone, unless it's the last one.
   for (const p of g.proposals) p.backers = p.backers.filter((b) => b !== id);
   const left = g.proposals.filter((p) => p.backers.length);
@@ -400,14 +502,36 @@ export function fire(g: Game, id: number): boolean {
   return true;
 }
 
-/** The term's one background check: you learn what someone is. They don't know you looked. */
-export function backgroundCheck(g: Game, id: number): boolean {
+/** This quarter's investigation: one tool, on one advisor. They don't know you looked. */
+export function investigate(g: Game, tool: ToolId, id: number): Clue | null {
   const a = g.advisors[id];
-  if (!canCheck(g) || !a || a.fired || a.revealed) return false;
-  g.checksUsed++;
-  g.checked.push(id);
-  a.revealed = true;
-  return true;
+  if (!canInvestigate(g, tool) || !a || a.fired) return null;
+  g.toolsUsed[tool] = (g.toolsUsed[tool] ?? 0) + 1;
+  g.investigated = true;
+  const clue: Clue = { quarter: g.quarter, advisor: id, tool, text: a.profile[tool].text, lean: a.profile[tool].lean };
+  g.clues.push(clue);
+  return clue;
+}
+
+/**
+ * Brings a term saved by an older version up to date: hidden pasts for everyone (dealt from a
+ * separate stream, so the term's own dice are untouched), and the investigations in place of the old
+ * background check.
+ */
+export function upgradeGame(g: Game) {
+  const old = g as Game & { checksUsed?: number; checked?: number[]; checkUsed?: boolean };
+  if (!g.advisors.every((a) => a.profile)) {
+    const profiles = makeProfiles(makeRng((g.seed ^ 0x2545f491) >>> 0), g.mode, g.advisors.filter((a) => a.impostor).map((a) => a.id));
+    g.advisors.forEach((a, i) => (a.profile ??= profiles[i]));
+  }
+  // A background check used to reveal someone without firing them: that's no longer a thing.
+  for (const a of g.advisors) if (!a.fired) a.revealed = false;
+  g.toolsUsed ??= {};
+  g.clues ??= [];
+  g.investigated ??= false;
+  delete old.checksUsed;
+  delete old.checked;
+  delete old.checkUsed;
 }
 
 export function setMark(g: Game, id: number, mark: Mark) {

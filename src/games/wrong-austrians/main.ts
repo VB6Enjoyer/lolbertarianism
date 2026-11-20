@@ -7,8 +7,8 @@ import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, type BallLook, type Eyes } from './ball.ts';
 import {
-  active, type Advisor, advisorName, ask, backgroundCheck, beginCouncil, canFire, COUNCIL, crisisOf, enact, findPolicy, fire, type Game, IMPOSTORS, type Mark,
-  type Mode, newGame, nextQuarter, policyOf, QUARTERS, score, setMark, won, canCheck, checksAllowed, termLength,
+  active, type Advisor, advisorName, ask, beginCouncil, canFire, canInvestigate, COUNCIL, crisisOf, enact, findPolicy, fire, FIRING_FROM, type Game, IMPOSTORS,
+  investigate, type Mark, type Mode, newGame, nextQuarter, policyOf, QUARTERS, score, setMark, termLength, toolsLeft, upgradeGame, won,
 } from './council.ts';
 import { crisisById, type Effect } from './crises.ts';
 import { type Side, sideOf } from './sides.ts';
@@ -20,6 +20,7 @@ import {
   activePlayers, beginProposals, callVote, castVote, chairEnacts, fellowImpostors, loyalWins, MAX_PLAYERS, MIN_PLAYERS, newParty, nextPartyQuarter,
   partyCrisis, type PartyGame, propose, roleSeen, TABLES,
 } from './party.ts';
+import { LEAN_LABEL, TOOL_ORDER, type ToolId, TOOLS } from './clues.ts';
 import { QUESTIONS } from './talk.ts';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,8 @@ interface Save {
   partyRecorded: number | null;
   /** The best daily score, per date. */
   dailyBests: Record<string, number>;
+  /** The first-term walkthrough has been shown. */
+  walkthroughSeen: boolean;
 }
 
 const slot = createSaveSlot<Save>({ game: 'wrong-austrians', version: 1 });
@@ -71,11 +74,8 @@ function gameFrom(raw: unknown): Game | null {
     if (!g || typeof g.seed !== 'number' || !g.rng || !Array.isArray(g.advisors) || g.advisors.length !== COUNCIL) return null;
     if (!Array.isArray(g.crises) || g.crises.some((id) => !crisisById(id))) return null;
     g.mode = g.mode === 'mirror' ? 'mirror' : 'ancap';
-    // Saves from before the daily term had one background check, as a yes/no.
-    const old = g as Game & { checkUsed?: boolean };
-    if (typeof g.checksUsed !== 'number') g.checksUsed = old.checkUsed ? 1 : 0;
-    delete old.checkUsed;
-    g.checked ??= [];
+    // Saves from before the investigations had a background check instead, and no hidden pasts.
+    upgradeGame(g);
     g.twist = twistById(g.twist)?.id ?? null;
     if ([...g.proposals, ...g.tabled].some((p) => !findPolicy(p.policy)) || g.pending.some((p) => !findPolicy(p.policy))) return null;
     // Saves from before mirror mode called the impostors "viennese".
@@ -127,6 +127,7 @@ const save: Save = {
   achievements: normalizeUnlocked(saved?.achievements),
   dailyBests: normalizeDailyBests(saved?.dailyBests),
   mirrorUnlocked: saved?.mirrorUnlocked === true || count(saved?.meta?.wins) > 0,
+  walkthroughSeen: saved?.walkthroughSeen === true,
   mode: 'ancap',
 };
 save.mode = saved?.mode === 'mirror' && save.mirrorUnlocked ? 'mirror' : 'ancap';
@@ -269,8 +270,9 @@ const names = (g: Game, ids: number[]) => (ids.length ? ids.map((id) => advisorN
 // ---------------------------------------------------------------------------
 
 let view: 'title' | 'game' | 'party' = 'title';
-/** The question picked, waiting for someone to ask it. */
+/** The question picked, waiting for someone to ask it; the investigation picked, waiting for a target. */
 let picking: string | null = null;
+let pickingTool: ToolId | null = null;
 
 function render() {
   els.screen.replaceChildren();
@@ -282,6 +284,8 @@ function render() {
   if (view === 'title' || !g) return renderTitle();
   if (g.phase === 'over') return renderEnd(g);
   els.screen.append(councilRow(g));
+  // How to fire someone was the thing nobody could find: say it every time.
+  els.screen.append(h('p', 'council-hint', g.phase === 'council' && canFire(g) ? '👆 Tap a portrait to open their file: everything on the record, your notes, and <b>🔥 Fire</b>.' : g.quarter < FIRING_FROM ? `👆 Tap a portrait for their file. Firing opens in quarter ${FIRING_FROM} (labour law): use the time to dig.` : '👆 Tap a portrait for their file and your notes.'));
   if (g.phase === 'briefing') renderBriefing(g);
   else if (g.phase === 'council') renderCouncil(g);
   else renderResult(g);
@@ -304,10 +308,11 @@ function renderHud() {
     meter(meters.p[0], meters.p[1], g.prosperity),
     meter(meters.l[0], meters.l[1], g.liberty),
   );
-  const checks = checksAllowed(g) - g.checksUsed;
-  if (checks > 0 && g.phase !== 'over') {
-    const chk = t('span', 'hud-check', `🔍 ${checks}`);
-    chk.title = `Background check${checks === 1 ? '' : 's'} left this term (tap an advisor)`;
+  const tools = TOOL_ORDER.reduce((n, id) => n + Math.max(0, toolsLeft(g, id)), 0);
+  if (tools > 0 && g.phase !== 'over') {
+    const chk = t('span', 'hud-check', `🔎 ${tools}`);
+    chk.title = `${tools} investigation${tools === 1 ? '' : 's'} left this term (one a quarter)`;
+    chk.setAttribute('aria-label', chk.title);
     els.hud.append(chk);
   }
   const twist = twistById(g.twist);
@@ -324,15 +329,17 @@ function renderTitle() {
   const panel = h('div', 'comic');
   const say = (text: string, look: BallLook, cls = '') => {
     const c = h('div', `comic-ball ${cls}`);
-    c.append(t('div', 'bubble', text), ball(look));
+    // A silent ball keeps an invisible bubble, so the row stays lined up.
+    c.append(t('div', `bubble${text ? '' : ' silent'}`, text || '…'), ball(look));
     return c;
   };
   const sd = side();
   const [l1, l2, l3, you] = sd.comic;
   panel.append(
-    say(l1, { flag: sd.council, eyes: 'normal', hat: 'top', face: 'monocle' }),
-    say(l2, { flag: sd.council, eyes: 'normal', face: 'glasses' }),
-    say(l3, { flag: sd.council, eyes: 'shifty', hat: 'tyrolean' }, 'sus'),
+    // What you hired, as it turned out: the other side's flag, the other side's policy.
+    say(l1, { flag: sd.impostorFlag, eyes: 'normal', hat: 'top', face: 'monocle' }),
+    say(l2, { flag: sd.impostorFlag, eyes: 'normal', face: 'glasses' }),
+    say(l3, { flag: sd.impostorFlag, eyes: 'normal', hat: 'tyrolean' }),
     say(you, { flag: sd.player, eyes: 'happy', flip: true }, 'you'),
   );
   s.append(t('h1', 'title', 'I THOUGHT I HIRED AUSTRIAN ECONOMISTS'));
@@ -402,6 +409,7 @@ function showHowTo() {
   openOverlay('How to play', (box) => {
     box.append(
       h('ul', 'how', side().how(COUNCIL, IMPOSTORS, QUARTERS)),
+      button('▶ The walkthrough', 'big secondary', () => showWalkthrough(0)),
       button('Got it', 'big', closeOverlay),
     );
   });
@@ -509,9 +517,12 @@ function renderCouncil(g: Game) {
       const who = h('div', 'ask-who');
       who.append(t('span', '', 'Ask whom?'));
       for (const a of active(g)) {
-        const already = g.answers.some((x) => x.advisor === a.id && x.question === picking);
-        who.append(button('', 'ask', () => doAsk(a.id), already));
-        who.lastElementChild!.textContent = a.name.split(' ')[1];
+        const now = g.answers.some((x) => x.advisor === a.id && x.question === picking && x.quarter === g.quarter);
+        const before = !now && g.answers.some((x) => x.advisor === a.id && x.question === picking && x.tone !== 'dodge');
+        who.append(button('', 'ask', () => doAsk(a.id), now));
+        who.lastElementChild!.textContent = `${a.name.split(' ')[1]}${before ? ' ↺' : ''}`;
+        // Asking again gets the same answer: worth knowing before you spend a question on it.
+        if (before) (who.lastElementChild as HTMLElement).title = 'Asked before: they’ll give the same answer';
       }
       qs.append(who);
     }
@@ -525,14 +536,88 @@ function renderCouncil(g: Game) {
       const row = h('div', 'answer');
       row.append(ball(lookOf(g.advisors[ans.advisor]), 'mini'));
       const said = h('div', 'said');
-      said.append(t('small', 'asked', `You: ${q.q}`), t('b', '', advisorName(g, ans.advisor)), t('span', '', ans.text));
+      said.append(t('small', 'asked', `You: ${q.q}${ans.repeat ? ' (again: same answer as before)' : ''}`), t('b', '', advisorName(g, ans.advisor)), t('span', '', ans.text));
       row.append(said);
       log.append(row);
     }
     s.append(log);
   }
-  s.append(t('p', 'hint', canFire(g) ? 'Tap an advisor up top for their record, to fire them, or for the background check. Then enact one proposal.' : 'You’ve fired someone this quarter. Enact one proposal to carry on.'));
+  // This quarter's investigation.
+  s.append(t('h3', 'section', `🔎 Investigate · ${g.investigated ? 'done this quarter' : 'one a quarter'}`));
+  const inv = h('div', 'questions tools');
+  if (canInvestigate(g)) {
+    for (const id of TOOL_ORDER) {
+      const tool = TOOLS[id];
+      const left = toolsLeft(g, id);
+      const b = button(`${tool.icon} ${tool.name}${left > 1 ? ` <small>×${left}</small>` : ''}`, `question tool${pickingTool === id ? ' picked' : ''}`, () => {
+        pickingTool = pickingTool === id ? null : id;
+        play('click');
+        render();
+      }, left <= 0);
+      if (left <= 0) b.title = 'Used this term';
+      inv.append(b);
+    }
+    if (pickingTool) {
+      const who = h('div', 'ask-who');
+      who.append(t('span', '', 'Investigate whom?'));
+      for (const a of active(g)) {
+        who.append(button('', 'ask', () => doInvestigate(pickingTool!, a.id)));
+        who.lastElementChild!.textContent = a.name.split(' ')[1];
+      }
+      inv.append(who);
+    }
+  }
+  s.append(inv);
+  const found = g.clues.filter((c) => c.quarter === g.quarter);
+  if (found.length) {
+    const log = h('div', 'answers');
+    for (const c of found) log.append(clueRow(g, c));
+    s.append(log);
+  }
+  s.append(t('p', 'hint', g.firedThisQuarter !== null ? 'You’ve fired someone this quarter. Enact one proposal to carry on.' : 'Clues lean; they don’t prove. Then enact one proposal to end the quarter.'));
   els.screen.append(s);
+  if (!save.walkthroughSeen && !walkthroughOpen) showWalkthrough(0);
+}
+
+let walkthroughOpen = false;
+
+/** An investigation's result, as a row: who, which tool, what turned up. */
+function clueRow(g: Game, c: Game['clues'][number]): HTMLElement {
+  const tool = TOOLS[c.tool];
+  const row = h('div', 'answer clue');
+  row.append(ball(lookOf(g.advisors[c.advisor]), 'mini'));
+  const said = h('div', 'said');
+  said.append(t('small', 'asked', `${tool.icon} ${tool.heading}`), t('b', '', advisorName(g, c.advisor)), t('span', '', c.text));
+  row.append(said);
+  return row;
+}
+
+function doInvestigate(tool: ToolId, advisor: number) {
+  const g = save.game!;
+  pickingTool = null;
+  if (investigate(g, tool, advisor)) play('click');
+  persist();
+  render();
+}
+
+/** The first-term walkthrough: a few short cards, then it gets out of the way. */
+function showWalkthrough(step: number) {
+  const steps = side().walkthrough(COUNCIL, IMPOSTORS);
+  const [title, body] = steps[step];
+  walkthroughOpen = true;
+  const done = () => {
+    save.walkthroughSeen = true;
+    walkthroughOpen = false;
+    persist();
+    closeOverlay();
+  };
+  openOverlay(`${step + 1}/${steps.length} · ${title}`, (box) => {
+    box.append(h('p', 'walkthrough', body));
+    const nav = h('div', 'menu');
+    if (step < steps.length - 1) nav.append(button('Next ▶', 'big', () => showWalkthrough(step + 1)), button('Skip', 'big secondary', done));
+    else nav.append(button('Got it: let’s govern', 'big', done));
+    box.append(nav);
+  }, false);
 }
 
 function doAsk(advisor: number) {
@@ -618,7 +703,12 @@ function openDossier(id: number) {
     for (const ans of g.answers.filter((x) => x.advisor === id)) {
       const q = QUESTIONS.find((x) => x.id === ans.question)!;
       const li = h('li', 'answer-li');
-      li.textContent = `Q${ans.quarter}: asked “${q.q}” → “${ans.text}”`;
+      li.textContent = `Q${ans.quarter}: asked “${q.q}”${ans.repeat ? ' (again)' : ''} → “${ans.text}”`;
+      items.push(li);
+    }
+    for (const c of g.clues.filter((x) => x.advisor === id)) {
+      const li = h('li', 'clue-li');
+      li.textContent = `Q${c.quarter}: ${TOOLS[c.tool].icon} ${TOOLS[c.tool].heading}: ${c.text}`;
       items.push(li);
     }
     for (const line of g.said.filter((x) => x.from === id)) {
@@ -634,10 +724,9 @@ function openDossier(id: number) {
     box.append(rec);
     const actions = h('div', 'actions');
     if (!a.fired && g.phase === 'council') {
-      actions.append(button(canFire(g) ? '🔥 Fire' : '🔥 Fire <small>(one a quarter)</small>', 'big danger', () => confirmFire(id), !canFire(g)));
-      const left = checksAllowed(g) - g.checksUsed;
-      if (canCheck(g) && !a.revealed) actions.append(button(`🔍 Background check <small>${left === 1 ? 'one left this term' : `${left} left this term`}</small>`, 'big secondary', () => doCheck(id)));
-    } else if (!a.fired && g.phase !== 'council') actions.append(t('p', 'muted', 'Firing and background checks happen in the council session.'));
+      const why = g.quarter < FIRING_FROM ? `(from quarter ${FIRING_FROM}: labour law)` : '(one a quarter)';
+      actions.append(button(canFire(g) ? '🔥 Fire' : `🔥 Fire <small>${why}</small>`, 'big danger', () => confirmFire(id), !canFire(g)));
+    } else if (!a.fired && g.phase !== 'council') actions.append(t('p', 'muted', 'Firing happens in the council session.'));
     box.append(actions);
   });
 }
@@ -675,29 +764,6 @@ function reveal(a: Advisor) {
       button('Carry on', 'big', () => {
         closeOverlay();
         if (g.phase === 'over') endSounds(g);
-        render();
-      }),
-    );
-  }, false);
-}
-
-function doCheck(id: number) {
-  const g = save.game!;
-  const a = g.advisors[id];
-  if (!backgroundCheck(g, id)) return;
-  persist();
-  play(a.impostor ? 'caught' : 'click');
-  openOverlay('🔍 Background check', (box) => {
-    box.append(ball(lookOf(a), 'big-ball'));
-    box.append(
-      t(
-        'p',
-        'reveal-text',
-        a.impostor ? side().check.impostor(a.name) : side().check.loyal(a.name),
-      ),
-      t('p', 'muted', 'They don’t know you checked. Nobody else does either.'),
-      button('Close', 'big', () => {
-        closeOverlay();
         render();
       }),
     );
@@ -1239,6 +1305,7 @@ function renderEnd(g: Game) {
     grid.append(card);
   }
   s.append(grid);
+  s.append(caseFile(g));
   const buttons = h('div', 'menu');
   const status = h('p', 'share-status');
   const share = h('div', 'menu');
@@ -1250,6 +1317,53 @@ function renderEnd(g: Game) {
   buttons.append(button('▶ New term', 'big', startGame), button('Title screen', 'big secondary', () => go('title')));
   s.append(buttons);
   els.screen.append(s);
+}
+
+/**
+ * The case file: everyone unmasked, and every answer and clue weighed. The near-misses come with
+ * what was wrong with them, so the next term goes better.
+ */
+function caseFile(g: Game): HTMLElement {
+  const sd = sideOf(g.mode);
+  const wrap = h('details', 'case-file');
+  wrap.open = true;
+  wrap.append(h('summary', '', '🗂️ <b>The case file</b> <small>every answer and clue, weighed</small>'));
+  const mark = { sound: '✅', near: '⚠️', slip: '🚩', dodge: '🤷' } as const;
+  const toneLabel = { sound: 'right', near: 'near-miss', slip: g.mode === 'mirror' ? 'pure Mises' : 'statist', dodge: 'dodged' } as const;
+  for (const a of g.advisors) {
+    const answers = g.answers.filter((x) => x.advisor === a.id && !x.repeat);
+    const clues = g.clues.filter((x) => x.advisor === a.id);
+    const sec = h('section', `case ${a.impostor ? 'impostor' : 'real'}`);
+    sec.append(h('h4', '', `${a.impostor ? sd.role.impostor : sd.role.loyal} · <span></span>`));
+    sec.querySelector('h4 span')!.textContent = a.name;
+    const ul = h('ul');
+    for (const ans of answers) {
+      const q = QUESTIONS.find((x) => x.id === ans.question)!;
+      const li = h('li', `tone-${ans.tone}`);
+      li.append(t('span', 'tone', `${mark[ans.tone]} ${toneLabel[ans.tone]}`), t('span', '', ` “${q.q}” → “${ans.text}”`));
+      if (ans.tone === 'near' && ans.why) li.append(t('small', 'why', g.mode === 'mirror' ? 'Too market-friendly for a Viennese.' : ans.why));
+      ul.append(li);
+    }
+    for (const c of clues) {
+      const li = h('li', `lean-${c.lean}`);
+      li.append(t('span', 'tone', LEAN_LABEL[c.lean]), t('span', '', ` ${TOOLS[c.tool].icon} ${c.text}`));
+      ul.append(li);
+    }
+    // What you never dug up.
+    const hidden = TOOL_ORDER.filter((tool) => !clues.some((c) => c.tool === tool)).map((tool) => `${TOOLS[tool].icon} ${a.profile[tool].text} (${LEAN_LABEL[a.profile[tool].lean]})`);
+    if (!answers.length && !clues.length) ul.append(t('li', 'muted', 'You never asked them anything or looked into them.'));
+    sec.append(ul);
+    if (hidden.length) {
+      const more = h('details', 'unseen');
+      more.append(t('summary', '', 'What you didn’t dig up'));
+      const list = h('ul');
+      for (const line of hidden) list.append(t('li', '', line));
+      more.append(list);
+      sec.append(more);
+    }
+    wrap.append(sec);
+  }
+  return wrap;
 }
 
 // --- Sharing ---

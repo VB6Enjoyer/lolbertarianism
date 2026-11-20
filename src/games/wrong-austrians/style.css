@@ -1143,3 +1143,117 @@ q.pitch {
         font-size: 16px;
     }
 }
+
+/* --- How to fire, always in view --- */
+.council-hint {
+    margin: -4px 0 10px;
+    padding: 6px 10px;
+    border: 2px dashed var(--ink);
+    border-radius: 10px;
+    background: #fff8c4;
+    font-size: 14px;
+    text-align: center;
+}
+
+/* --- Investigations --- */
+.question.tool:disabled {
+    opacity: 0.4;
+    text-decoration: line-through;
+    cursor: default;
+}
+
+.answer.clue {
+    background: #eef5ff;
+}
+
+.walkthrough {
+    font-size: 17px;
+    line-height: 1.5;
+}
+
+/* --- The case file at the end --- */
+.case-file {
+    margin: 14px 0;
+    padding: 10px 14px;
+    border: var(--line);
+    border-radius: 14px;
+    background: #fff;
+    text-align: left;
+}
+
+.case-file > summary {
+    font: 700 20px var(--head);
+    cursor: pointer;
+}
+
+.case-file > summary small {
+    color: var(--muted);
+    font: 400 14px var(--body);
+}
+
+.case {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 2px dashed #ccc;
+}
+
+.case h4 {
+    margin: 0 0 4px;
+    font: 700 17px var(--head);
+}
+
+.case.impostor h4 {
+    color: var(--red);
+}
+
+.case.real h4 {
+    color: var(--green);
+}
+
+.case ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 14px;
+}
+
+.case li {
+    margin: 4px 0;
+}
+
+.case .tone {
+    font-weight: 700;
+}
+
+.case .why {
+    display: block;
+    margin: 2px 0 0;
+    padding: 2px 8px;
+    border-left: 3px solid #f5a623;
+    background: #fff4dc;
+    color: #4a3b12;
+}
+
+.case .tone-slip .tone,
+.case .lean-statist .tone {
+    color: var(--red);
+}
+
+.case .tone-near .tone {
+    color: #b8860b;
+}
+
+.case .tone-sound .tone,
+.case .lean-austrian .tone {
+    color: var(--green);
+}
+
+.case .unseen {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* A silent ball in the comic keeps its (invisible) bubble so the row stays lined up. */
+.bubble.silent {
+    visibility: hidden;
+}

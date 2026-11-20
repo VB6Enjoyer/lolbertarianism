@@ -526,7 +526,8 @@ button {
 
 .foe-emoji {
     font-size: 84px;
-    line-height: 1;
+    /* Emoji glyphs reach past a 1em line box (the printer, the folders…): give them room. */
+    line-height: 1.2;
     filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.7)) saturate(1.4);
 }
 
@@ -534,7 +535,17 @@ button {
     font-size: 116px;
 }
 
+/* The emoji's filter puts it on its own layer, which would paint over the name and the bar below
+   it; lift those above it, and outline the name so it reads over any glow. */
+.foe-name,
+.foe .hp,
+.foe .statuses {
+    position: relative;
+    z-index: 1;
+}
+
 .foe-name {
+    text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
     font: 20px/1 var(--meme);
     letter-spacing: 0.5px;
     text-transform: uppercase;
