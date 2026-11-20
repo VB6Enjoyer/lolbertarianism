@@ -1034,13 +1034,13 @@ function showPartyRules() {
         'ul',
         'how',
         `<li>🤫 <b>Secret roles.</b> Pass the phone round: everyone sees their role in private. Impostors also see who the other impostors are.</li>
-        <li>📰 <b>Each quarter</b> a crisis hits. The phone goes round again: everyone is dealt <b>two policies</b> and proposes one. Only you see what your cards really are (sound, or not). Loyal players get bad hands too: that’s your cover, or theirs.</li>
-        <li>🗣️ The proposals go on the table with names on them. <b>Argue.</b> Then the <b>Chair</b> (it rotates) enacts one.</li>
+        <li>📰 <b>Each quarter</b> a crisis hits. The phone goes round again: everyone except the <b>Chair</b> (it rotates) is dealt <b>two policies</b> and proposes one. Only you see what your cards really are (sound, or not). Loyal players get bad hands too: that’s your cover, or theirs.</li>
+        <li>🗣️ The proposals go on the table with names on them. <b>Argue.</b> Then the Chair, who has no card of their own in play, enacts one: they have to judge who to trust.</li>
         <li>⏳ Bad policy looks fine now and sends the bill later, with the proposer’s name on it.</li>
         <li>🔥 After each quarter you can hold a <b>firing vote</b>: secret ballots, and a majority of the table fires someone. Their role is revealed.</li>
         <li>📋 Every quarter, each impostor still at the table quietly costs you a little.</li>
         <li>🏁 The loyal side wins by firing every impostor, or by surviving all ${QUARTERS} quarters. The impostors win if a meter hits 0, or if they ever match the loyal players in number.</li>
-        <li>🌐 <b>Online</b>, it’s the same game without passing anything: everyone proposes and votes on their own device at the same time, and the Chair (or the host, if the Chair wanders off) moves things along.</li>`,
+        <li>🌐 <b>Online</b>, it’s the same game without passing anything: everyone proposes (except the Chair) and votes on their own device at the same time, and the Chair (or the host, if the Chair wanders off) moves things along.</li>`,
       ),
       button('Got it', 'big', closeOverlay),
     );
@@ -1096,7 +1096,7 @@ function partyBriefing(s: HTMLElement, g: PartyGame) {
   const c = partyCrisis(g);
   const card = h('div', 'crisis');
   card.append(t('span', 'crisis-emoji', c.emoji), t('h3', '', c.title), t('p', '', c.text));
-  s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${g.players[g.chair].name}`));
+  s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${g.players[g.chair].name}. They don’t propose: they pick one of everyone else’s.`));
   s.append(
     button('Deal the policies ▶', 'big', () => {
       beginProposals(g);

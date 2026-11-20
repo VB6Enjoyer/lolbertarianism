@@ -451,7 +451,7 @@ function table(s: HTMLElement, v: PublicView, mine: PrivateView | null, isHost: 
       const c = crisisFor(v.crisis!, v.mode);
       const card = h('div', 'crisis');
       card.append(t('span', 'crisis-emoji', c.emoji), t('h3', '', c.title), t('p', '', c.text));
-      s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${chairName}`));
+      s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${chairName}. They don’t propose: they pick one of everyone else’s.`));
       s.append(iChair ? chairAction('Deal the policies ▶', { type: 'deal' }) : waitLine(`Waiting for ${chairName} (the Chair) to deal`));
       break;
     }
@@ -472,6 +472,7 @@ function table(s: HTMLElement, v: PublicView, mine: PrivateView | null, isHost: 
       } else {
         s.append(t('h2', 'screen-title', `${c.emoji} ${c.title}`));
         if (mine?.proposed) s.append(t('p', 'pitch', `You proposed “${policyOf(mine.proposed).title}”.`));
+        else if (mine?.seat === v.chair) s.append(t('p', 'pitch', '🪑 You’re the Chair: you don’t propose this quarter. Once the proposals are in, you pick one of them, so listen to the pitches.'));
         s.append(waitLine('Waiting for proposals'));
       }
       break;

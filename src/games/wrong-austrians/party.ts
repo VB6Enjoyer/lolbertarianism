@@ -1,6 +1,7 @@
 // Party mode: 4 to 8 people round one phone. The app deals secret roles, hands of policies and
-// votes; the arguing happens out loud. Each quarter a crisis hits, everyone secretly proposes one of
-// the two policies they were dealt (and knows what it really is), the rotating Chair enacts one, and
+// votes; the arguing happens out loud. Each quarter a crisis hits, everyone but the Chair secretly
+// proposes one of the two policies they were dealt (and knows what it really is), the rotating Chair
+// enacts one of theirs (never having proposed one, they have to judge the others), and
 // the table may vote to fire someone. Bills land later with the proposer's name on them. Plain data,
 // seeded, so a party saves mid-round.
 
@@ -18,14 +19,15 @@ export const PARTY_SNEAK: Effect = { p: -1, l: -2 };
 /**
  * Each table size's impostors and starting meters, tuned with simulated tables so the loyal side
  * wins a bit over half the time (people talk, so it's a guide): a lone impostor at four needs the
- * meters lower; two at five need them higher.
+ * meters lower; two at five need them higher. (Raised when the Chair stopped proposing: a loyal Chair
+ * can no longer just enact their own sound card.)
  */
 export const TABLES: Record<number, { impostors: number; start: number }> = {
-  4: { impostors: 1, start: 38 },
-  5: { impostors: 2, start: 55 },
-  6: { impostors: 2, start: 51 },
-  7: { impostors: 2, start: 48 },
-  8: { impostors: 2, start: 46 },
+  4: { impostors: 1, start: 46 },
+  5: { impostors: 2, start: 69 },
+  6: { impostors: 2, start: 65 },
+  7: { impostors: 2, start: 61 },
+  8: { impostors: 2, start: 59 },
 };
 export const impostorsFor = (players: number) => TABLES[players]?.impostors ?? 2;
 
@@ -114,6 +116,12 @@ function nextActive(g: PartyGame, from: number, wrap: boolean): number {
   return -1;
 }
 const firstActive = (g: PartyGame) => g.players.findIndex((p) => !p.fired);
+/** Who proposes this quarter: everyone still in, except the Chair (who judges the proposals). */
+export const proposers = (g: PartyGame) => activePlayers(g).filter(({ i }) => i !== g.chair);
+/** The next proposer after `from` (in seat order), or -1. */
+function nextProposer(g: PartyGame, from: number): number {
+  return proposers(g).find(({ i }) => i > from)?.i ?? -1;
+}
 
 /** A player has seen their role; on to the next, then the first quarter. */
 export function roleSeen(g: PartyGame) {
@@ -149,10 +157,10 @@ function startQuarter(g: PartyGame) {
   g.proposals = [];
   g.votes = {};
   g.lastVote = null;
-  // Deal everyone two different policies from the crisis's six (a fresh deck when it runs out).
+  // Deal everyone but the Chair two different policies from the crisis's six (a fresh deck when it runs out).
   g.hands = {};
   let deck: string[] = [];
-  for (const { i } of activePlayers(g)) {
+  for (const { i } of proposers(g)) {
     const hand: string[] = [];
     while (hand.length < HAND) {
       if (!deck.length) deck = shuffleInPlace(g.rng, crisis.policies.map((p) => p.id));
@@ -168,23 +176,23 @@ function startQuarter(g: PartyGame) {
 export function beginProposals(g: PartyGame) {
   if (g.phase !== 'briefing') return;
   g.phase = 'propose';
-  g.turn = firstActive(g);
+  g.turn = nextProposer(g, -1);
 }
 
 /** The player whose turn it is proposes one of their two policies. */
 export function propose(g: PartyGame, policy: string): boolean {
-  if (g.phase !== 'propose' || !g.hands[g.turn]?.includes(policy)) return false;
+  if (g.phase !== 'propose' || g.turn === g.chair || !g.hands[g.turn]?.includes(policy)) return false;
   g.proposals.push({ player: g.turn, policy });
-  const n = nextActive(g, g.turn, false);
+  const n = nextProposer(g, g.turn);
   if (n === -1) g.phase = 'table';
   else g.turn = n;
   return true;
 }
 
-/** The Chair enacts one of the proposals. */
+/** The Chair enacts one of the proposals (never their own: they don't propose). */
 export function chairEnacts(g: PartyGame, proposalIndex: number): boolean {
   const prop = g.proposals[proposalIndex];
-  if (g.phase !== 'table' || !prop) return false;
+  if (g.phase !== 'table' || !prop || prop.player === g.chair) return false;
   const pol = findPolicy(prop.policy)!;
   apply(g, pol.now);
   g.pending.push({ policy: prop.policy, due: g.quarter + pol.later.in, proposer: prop.player });

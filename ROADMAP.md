@@ -987,6 +987,13 @@ win. Now there are three levels, picked on the title screen:
 - New achievements: Beyond Reasonable Doubt, Squeaky Clean, Hard Money, Praxeologist, Wake Up; the
   purge ones no longer rely on an early win.
 
+#### Party mode: the Chair judges ✅
+
+The Chair used to propose like everyone else and could then enact their own card, which a loyal
+Chair (who knows their card is sound) always did, so the choice meant nothing. Now the Chair sits
+out the proposals and picks one of everyone else's, on trust. Starting meters were raised to keep
+tables roughly even (4–8 players: 46, 69, 65, 61, 59).
+
 #### Online party mode ✅
 
 Party mode needed everyone round one phone, so it couldn't be played over Discord. Now one person
