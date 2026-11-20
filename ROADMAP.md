@@ -959,6 +959,27 @@ against bot advisors (`src/games/wrong-austrians/`).
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
   screenshot and link preview.
 
+#### Online party mode ✅
+
+Party mode needed everyone round one phone, so it couldn't be played over Discord. Now one person
+hosts and everyone joins on their own device:
+
+- Rooms on Supabase Realtime (the lolbertarianism project; only Realtime, no tables). A five-letter
+  room code (no 0/O or 1/I), and an invite link that also carries the host's key fingerprint.
+- The host's browser runs the party engine unchanged (`online.ts`): moves that arrive in parallel
+  (everyone proposing, everyone voting) are buffered and fed to it in seat order. The Chair deals,
+  enacts and moves on; the host can step in for an absent Chair, on purpose.
+- Nobody sees anyone else's secrets. Every device makes an ECDH key pair; the host and each player
+  share an AES-GCM key (`net.ts`), and everything the host sends a player, and every move a player
+  sends, is sealed with it. A live test with an eavesdropper on the channel heard only ciphertext.
+  Seats are pinned to the key that took them, so nobody can hijack one. (The host's browser does
+  hold every role; a host who doesn't play, on a shared screen, avoids even that.)
+- Lobby: who's connected, bots for empty seats (so you can try it alone), the side, kicks. Late
+  joiners watch. Reloads drop you back into the room (host or player); the network code only
+  loads when someone goes online.
+- Tested live: three browsers and two bots through whole games, a player's and the host's reload
+  mid-game, and the eavesdropper.
+
 #### The detective redesign ✅
 
 Players found it unclear how to fire anyone, and far too easy: the slips were obvious ("Keynes!"),

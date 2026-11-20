@@ -22,6 +22,7 @@ import {
 } from './party.ts';
 import { LEAN_LABEL, TOOL_ORDER, type ToolId, TOOLS } from './clues.ts';
 import { QUESTIONS } from './talk.ts';
+import { type Kit, onlineHud, onlineMode, openFromHash, renderOnline, resumeRecent } from './online-ui.ts';
 
 // ---------------------------------------------------------------------------
 // Save
@@ -233,7 +234,8 @@ renderMusic();
 // ---------------------------------------------------------------------------
 
 /** The side being played: the current term's, or the one picked for new terms. */
-const side = (): Side => sideOf(view === 'game' && save.game ? save.game.mode : view === 'party' && save.party ? save.party.mode : save.mode);
+const side = (): Side =>
+  sideOf(view === 'game' && save.game ? save.game.mode : view === 'party' && save.party ? save.party.mode : view === 'online' ? (onlineMode() ?? save.mode) : save.mode);
 
 /** How an advisor looks right now: the council's colours until you know better. */
 function lookOf(a: Advisor, eyes: Eyes = 'normal'): BallLook {
@@ -269,7 +271,24 @@ const names = (g: Game, ids: number[]) => (ids.length ? ids.map((id) => advisorN
 // Screens
 // ---------------------------------------------------------------------------
 
-let view: 'title' | 'game' | 'party' = 'title';
+let view: 'title' | 'game' | 'party' | 'online' = 'title';
+
+/** What the online screens borrow from here, to look like the rest of the game. */
+const kit = (): Kit => ({
+  h,
+  t,
+  button,
+  ball,
+  effectChips,
+  play,
+  openOverlay,
+  closeOverlay,
+  quarterLabel,
+  render,
+  leave: () => go('party'),
+  screen: els.screen,
+  hud: els.hud,
+});
 /** The question picked, waiting for someone to ask it; the investigation picked, waiting for a target. */
 let picking: string | null = null;
 let pickingTool: ToolId | null = null;
@@ -281,6 +300,7 @@ function render() {
   updateMusic();
   renderHud();
   if (view === 'party') return renderParty();
+  if (view === 'online') return renderOnline(kit());
   if (view === 'title' || !g) return renderTitle();
   if (g.phase === 'over') return renderEnd(g);
   els.screen.append(councilRow(g));
@@ -294,6 +314,7 @@ function render() {
 function renderHud() {
   els.hud.replaceChildren();
   if (view === 'party') return partyHud();
+  if (view === 'online') return onlineHud(kit());
   const g = save.game;
   if (view !== 'game' || !g) return;
   const meter = (icon: string, label: string, v: number) => {
@@ -368,7 +389,7 @@ function renderTitle() {
   const d = dailyFor(new Date());
   buttons.append(button(`📅 Daily term <small>${d.twist.icon} ${d.twist.name}</small>`, 'big secondary', showDaily));
   buttons.append(button(`🏅 Achievements <small>${save.achievements.length}/${ACHIEVEMENTS.length}</small>`, 'big secondary', showAchievements));
-  buttons.append(button(`🎉 Party mode <small>${save.party && save.party.phase !== 'over' ? 'continue the party' : `${MIN_PLAYERS}–${MAX_PLAYERS} players, one phone`}</small>`, 'big secondary', () => go('party')));
+  buttons.append(button(`🎉 Party mode <small>${save.party && save.party.phase !== 'over' ? 'continue the party' : `${MIN_PLAYERS}–${MAX_PLAYERS} players, one phone or online`}</small>`, 'big secondary', () => go('party')));
   buttons.append(button('📖 How to play', 'big secondary', showHowTo));
   buttons.append(button('💾 Save &amp; load', 'big secondary', () => openSaveTransfer('wrong-austrians')));
   s.append(buttons);
@@ -378,7 +399,7 @@ function renderTitle() {
   els.screen.append(s);
 }
 
-function go(to: 'title' | 'game' | 'party') {
+function go(to: 'title' | 'game' | 'party' | 'online') {
   view = to;
   picking = null;
   render();
@@ -904,6 +925,9 @@ function partySetup() {
     }),
     button('📖 Party rules', 'big secondary', showPartyRules),
   );
+  s.append(t('h3', 'section', '🌐 Not in the same room?'));
+  s.append(t('p', 'muted', 'Play online instead: one person hosts, everyone joins on their own phone or computer (great over Discord voice), and each screen shows only its own player’s secrets. Bots can fill empty seats.'));
+  s.append(button('🌐 Play online', 'big', () => go('online')));
   els.screen.append(s);
 }
 
@@ -919,7 +943,8 @@ function showPartyRules() {
         <li>⏳ Bad policy looks fine now and sends the bill later, with the proposer’s name on it.</li>
         <li>🔥 After each quarter you can hold a <b>firing vote</b>: secret ballots, and a majority of the table fires someone. Their role is revealed.</li>
         <li>📋 Every quarter, each impostor still at the table quietly costs you a little.</li>
-        <li>🏁 The loyal side wins by firing every impostor, or by surviving all ${QUARTERS} quarters. The impostors win if a meter hits 0, or if they ever match the loyal players in number.</li>`,
+        <li>🏁 The loyal side wins by firing every impostor, or by surviving all ${QUARTERS} quarters. The impostors win if a meter hits 0, or if they ever match the loyal players in number.</li>
+        <li>🌐 <b>Online</b>, it’s the same game without passing anything: everyone proposes and votes on their own device at the same time, and the Chair (or the host, if the Chair wanders off) moves things along.</li>`,
       ),
       button('Got it', 'big', closeOverlay),
     );
@@ -1517,6 +1542,10 @@ document.addEventListener('keydown', (e) => {
 });
 els.home.addEventListener('click', () => go('title'));
 
+// An invite link (#join=CODE) opens straight on the online join screen.
+if (openFromHash()) view = 'online';
+// A reload in the middle of an online game drops you straight back into the room.
+else if (resumeRecent()) view = 'online';
 render();
 
 if (new URLSearchParams(location.search).has('debug')) {
