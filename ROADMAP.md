@@ -979,6 +979,9 @@ hosts and everyone joins on their own device:
   loads when someone goes online.
 - Tested live: three browsers and two bots through whole games, a player's and the host's reload
   mid-game, and the eavesdropper.
+- Free Supabase projects pause after a week idle and don't wake by themselves, so a scheduled
+  workflow (`.github/workflows/supabase-keepalive.yml`) reads a one-row, read-only `keepalive`
+  table every three days (`supabase/keepalive.sql`). It fails loudly if the project is paused.
 
 #### The detective redesign ✅
 
