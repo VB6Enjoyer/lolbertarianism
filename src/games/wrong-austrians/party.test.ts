@@ -7,6 +7,10 @@ import {
 import { makeRng, next } from './rng.ts';
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => `P${i}`);
+/** Everyone whose turn it is proposes the card at `k` in their hand, until the table's full. */
+const proposeAll = (g: PartyGame, k = 0) => {
+  for (let guard = 0; guard < 10 && g.phase === 'propose'; guard++) propose(g, g.hands[g.turn][k]);
+};
 
 /** Simulated people: the loyal go on the bills; the impostors push bad policy and dodge. */
 function play(g: PartyGame, rng = makeRng(g.seed ^ 77), voting = true) {
@@ -33,10 +37,9 @@ function play(g: PartyGame, rng = makeRng(g.seed ^ 77), voting = true) {
           const bad = g.proposals.findIndex((p) => kind(p.policy) !== 'sound');
           pick = bad >= 0 && next(rng) < 0.7 ? bad : 0;
         } else {
-          // Trust whoever's least suspicious (and themselves).
-          const own = g.proposals.findIndex((p) => p.player === g.chair && kind(p.policy) === 'sound');
+          // Trust whoever's least suspicious.
           const ranked = g.proposals.map((p, i) => ({ i, s: sus[p.player] + next(rng) * 1.5 })).sort((a, b) => a.s - b.s);
-          pick = own >= 0 ? own : ranked[0].i;
+          pick = ranked[0].i;
         }
         chairEnacts(g, pick);
         break;
@@ -76,7 +79,7 @@ describe('party mode', () => {
     expect(() => newParty(1, names(9))).toThrow();
   });
 
-  it('passes the phone for roles, then deals two different policies of the crisis to everyone', () => {
+  it('passes the phone for roles, then deals two different policies of the crisis to everyone but the Chair', () => {
     const g = newParty(4, names(5));
     for (let i = 0; i < 5; i++) {
       expect(g.phase).toBe('roles');
@@ -85,26 +88,29 @@ describe('party mode', () => {
     }
     expect(g.phase).toBe('briefing');
     const ids = partyCrisis(g).policies.map((p) => p.id);
+    expect(g.hands[g.chair]).toBeUndefined();
     for (let i = 0; i < 5; i++) {
+      if (i === g.chair) continue;
       expect(g.hands[i]).toHaveLength(2);
       expect(new Set(g.hands[i]).size).toBe(2);
       for (const id of g.hands[i]) expect(ids).toContain(id);
     }
   });
 
-  it('takes one proposal from each player, from their own hand, then the Chair enacts one', () => {
+  it('takes one proposal from each player but the Chair, from their own hand, then the Chair enacts one', () => {
     const g = newParty(5, names(4));
     for (let i = 0; i < 4; i++) roleSeen(g);
     beginProposals(g);
     expect(propose(g, 'not-a-card')).toBe(false);
-    for (let i = 0; i < 4; i++) {
+    const order = [0, 1, 2, 3].filter((i) => i !== g.chair);
+    for (const i of order) {
       expect(g.turn).toBe(i);
       expect(propose(g, g.hands[i][1])).toBe(true);
     }
     expect(g.phase).toBe('table');
-    expect(g.proposals.map((p) => p.player)).toEqual([0, 1, 2, 3]);
+    expect(g.proposals.map((p) => p.player)).toEqual(order);
     expect(chairEnacts(g, 2)).toBe(true);
-    expect(g.pending).toEqual([expect.objectContaining({ policy: g.proposals[2].policy, proposer: 2 })]);
+    expect(g.pending).toEqual([expect.objectContaining({ policy: g.proposals[2].policy, proposer: order[2] })]);
   });
 
   it('fires on a strict majority, never on a tie, and you can’t vote for yourself', () => {
@@ -112,7 +118,7 @@ describe('party mode', () => {
       const g = newParty(6, names(5));
       for (let i = 0; i < 5; i++) roleSeen(g);
       beginProposals(g);
-      for (let i = 0; i < 5; i++) propose(g, g.hands[i][0]);
+      proposeAll(g);
       chairEnacts(g, 0);
       callVote(g);
       return g;
@@ -133,19 +139,20 @@ describe('party mode', () => {
     for (let i = 0; i < 6; i++) roleSeen(g);
     const chair = g.chair;
     beginProposals(g);
-    for (let i = 0; i < 6; i++) propose(g, g.hands[i][0]);
+    proposeAll(g);
     chairEnacts(g, 1);
+    const proposer = g.proposals[1].player;
     const pol = findPolicy(g.proposals[1].policy)!;
     for (let q = 0; q < pol.later.in; q++) {
       nextPartyQuarter(g);
       if (g.phase === ('over' as string)) return;
       if (q < pol.later.in - 1) {
         beginProposals(g);
-        for (const { i } of activePlayers(g)) propose(g, g.hands[i][0]);
+        proposeAll(g);
         chairEnacts(g, 0);
       }
     }
-    expect(g.news.find((n) => n.policy === pol.id)?.proposer).toBe(1);
+    expect(g.news.find((n) => n.policy === pol.id)?.proposer).toBe(proposer);
     expect(g.chair).not.toBe(chair);
   });
 
@@ -153,7 +160,7 @@ describe('party mode', () => {
     const g = newParty(8, names(4));
     for (let i = 0; i < 4; i++) roleSeen(g);
     beginProposals(g);
-    for (let i = 0; i < 4; i++) propose(g, g.hands[i][0]);
+    proposeAll(g);
     chairEnacts(g, 0);
     callVote(g);
     const imp = g.players.findIndex((p) => p.impostor);
@@ -164,7 +171,7 @@ describe('party mode', () => {
     const h = newParty(9, names(4));
     for (let i = 0; i < 4; i++) roleSeen(h);
     beginProposals(h);
-    for (let i = 0; i < 4; i++) propose(h, h.hands[i][0]);
+    proposeAll(h);
     chairEnacts(h, 0);
     callVote(h);
     const loyal = h.players.findIndex((p) => !p.impostor);
@@ -173,13 +180,25 @@ describe('party mode', () => {
     expect(h.ending).toBeNull();
   });
 
+  it('the Chair never proposes, so can never enact their own policy', () => {
+    for (let s = 1; s <= 30; s++) {
+      const g = newParty(s, names(4 + (s % 5)));
+      for (let i = 0; i < g.players.length; i++) roleSeen(g);
+      beginProposals(g);
+      expect(propose(g, g.hands[g.turn][0])).toBe(true);
+      const chairCard = partyCrisis(g).policies[0].id;
+      g.turn = g.chair;
+      expect(propose(g, chairCard)).toBe(false);
+    }
+  });
+
   it('saves and loads mid-round', () => {
     const g = newParty(10, names(5));
     for (let i = 0; i < 5; i++) roleSeen(g);
     beginProposals(g);
-    propose(g, g.hands[0][0]);
+    propose(g, g.hands[g.turn][0]);
     const copy: PartyGame = JSON.parse(JSON.stringify(g));
-    for (const x of [g, copy]) for (let i = 1; i < 5; i++) propose(x, x.hands[i][0]);
+    for (const x of [g, copy]) proposeAll(x);
     expect(JSON.stringify(copy)).toBe(JSON.stringify(g));
   });
 

@@ -1,6 +1,6 @@
 // Online party mode, the game side: a room the host's browser runs. Players join a lobby, the host
 // starts, and the party engine (party.ts) runs unchanged; moves that arrive in parallel over the
-// network (everyone proposing, everyone voting) are buffered and fed to it in seat order. Each
+// network (everyone but the Chair proposing, everyone voting) are buffered and fed to it in seat order. Each
 // device only ever gets the public table plus its own private view: roles, hands and votes never
 // leave the host except to their owner. Plain data and pure functions, so it's testable without a
 // network; the transport lives in net.ts.
@@ -122,7 +122,7 @@ export function act(r: Room, id: string, intent: Intent): boolean {
       }
       break;
     case 'propose':
-      if (g.phase === 'propose' && playing && r.proposed[seat] === undefined && g.hands[seat]?.includes(intent.policy)) {
+      if (g.phase === 'propose' && playing && seat !== g.chair && r.proposed[seat] === undefined && g.hands[seat]?.includes(intent.policy)) {
         r.proposed[seat] = intent.policy;
         ok = true;
       }
@@ -181,7 +181,7 @@ export function waitingOn(r: Room): number[] {
     case 'roles':
       return g.players.map((_, i) => i).filter((i) => !r.seen.includes(i));
     case 'propose':
-      return here.filter((i) => r.proposed[i] === undefined);
+      return here.filter((i) => i !== g.chair && r.proposed[i] === undefined);
     case 'vote':
       return here.filter((i) => r.voted[i] === undefined);
     case 'briefing':
@@ -334,7 +334,7 @@ export function botMoves(r: Room, rand: () => number = Math.random): { id: strin
     const me = g.players[seat];
     if (g.phase === 'roles' && !r.seen.includes(seat)) out.push({ id: m.id, intent: { type: 'seen' } });
     if (me.fired) return;
-    if (g.phase === 'propose' && r.proposed[seat] === undefined && g.hands[seat]) {
+    if (g.phase === 'propose' && seat !== g.chair && r.proposed[seat] === undefined && g.hands[seat]) {
       const hand = g.hands[seat];
       const sound = hand.filter((p) => findPolicy(p)!.kind === 'sound');
       const bad = hand.filter((p) => findPolicy(p)!.kind !== 'sound');

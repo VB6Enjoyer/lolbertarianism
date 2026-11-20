@@ -987,6 +987,20 @@ win. Now there are three levels, picked on the title screen:
 - New achievements: Beyond Reasonable Doubt, Squeaky Clean, Hard Money, Praxeologist, Wake Up; the
   purge ones no longer rely on an early win.
 
+#### Party mode: the Chair judges ✅
+
+The Chair used to propose like everyone else and could then enact their own card, which a loyal
+Chair (who knows their card is sound) always did, so the choice meant nothing. Now the Chair sits
+out the proposals and picks one of everyone else's, on trust. Starting meters were raised to keep
+tables roughly even (4–8 players: 46, 69, 65, 61, 59).
+
+An eight-card guide, "How online play works", walks through a game in plain terms: get on voice,
+your secret role, the crisis, proposing in secret, arguing while the Chair picks, the bill coming
+due, the firing vote, and who wins. It opens by itself the first time someone visits online play,
+and from buttons on the online menu, both lobbies, the table, the party setup screen and the party
+rules. The homepage thumbnail and link preview now show the current title screen (difficulty tabs,
+online party mode).
+
 #### Online party mode ✅
 
 Party mode needed everyone round one phone, so it couldn't be played over Discord. Now one person

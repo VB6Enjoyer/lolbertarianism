@@ -201,6 +201,43 @@ export function renderOnline(k: Kit) {
   k.screen.append(s);
 }
 
+// ---------------------------------------------------------------------------
+// The guide: how a game goes, in a few short cards
+// ---------------------------------------------------------------------------
+
+const GUIDE_SEEN = 'wrong-austrians:online-guide-seen';
+
+/** [icon, title, body] for each card. */
+export const ONLINE_GUIDE: [string, string, string][] = [
+  ['🎧', 'Get on voice', 'Everyone joins a voice call (Discord, or anything). One person <b>hosts</b> and gets a room code and an invite link; everyone else opens the link, or types the code, on their own phone or computer. Short of people? The host can add bots.'],
+  ['🤫', 'Your secret role', 'The game starts and your screen shows your role: <b>loyal</b>, or an <b>impostor</b> who wants the country to fail. Impostors also see who the other impostors are. Keep your screen to yourself.'],
+  ['📰', 'A crisis hits', 'Every quarter brings a crisis. One player is the <b>Chair</b> (🪑), and it rotates each quarter. The Chair taps <b>Deal</b>.'],
+  ['🃏', 'Propose, in secret', 'Everyone except the Chair gets <b>two policies</b>, and only you can see what they really are: sound, or bad policy in disguise. Pick one to propose. Loyal players want sound policy; impostors sneak bad policy in, but not so often they get caught.'],
+  ['🗣️', 'Argue, then the Chair picks', 'The proposals go up with everyone’s names on them, but not what they really are. <b>Argue it out on voice.</b> Then the Chair enacts one. The Chair doesn’t propose, so they have to decide who to trust.'],
+  ['⏳', 'The bill comes due', 'Bad policy looks fine at first. A quarter or two later its real effect lands, <b>with the proposer’s name on it</b>, and everyone sees it. That’s your evidence. (Loyal players get bad cards too, so one bad bill isn’t proof.)'],
+  ['🔥', 'Fire someone?', 'After each quarter the Chair can call a <b>firing vote</b>. Everyone votes in secret; if more than half pick the same person, they’re fired and their role is revealed. Then a new Chair, and the next quarter.'],
+  ['🏁', 'Who wins', `The loyal side wins by firing every impostor, or by getting through all ${QUARTERS} quarters. The impostors win if either meter on top hits zero, or if they ever match the loyal players in number.`],
+];
+
+/** Shows the guide, one card at a time. */
+export function showOnlineGuide(k: Kit, step = 0) {
+  const { h, t, button } = k;
+  const [icon, title, body] = ONLINE_GUIDE[step];
+  keep(GUIDE_SEEN, true);
+  k.openOverlay(`${step + 1}/${ONLINE_GUIDE.length} · ${title}`, (box) => {
+    box.append(t('div', 'guide-icon', icon), h('p', 'walkthrough', body));
+    const dots = h('div', 'guide-dots');
+    ONLINE_GUIDE.forEach((_, i) => dots.append(h('span', i === step ? 'on' : '')));
+    const nav = h('div', 'menu');
+    if (step > 0) nav.append(button('◀ Back', 'big secondary', () => showOnlineGuide(k, step - 1)));
+    if (step < ONLINE_GUIDE.length - 1) nav.append(button('Next ▶', 'big', () => showOnlineGuide(k, step + 1)));
+    else nav.append(button('Got it', 'big', k.closeOverlay));
+    box.append(dots, nav);
+  });
+}
+
+const guideButton = () => kit.button('❓ How online play works', 'big secondary guide-btn', () => showOnlineGuide(kit));
+
 function nameInput(): HTMLInputElement {
   const { h } = kit;
   const input = h('input', 'online-name');
@@ -226,7 +263,9 @@ function menu(s: HTMLElement) {
       'For Discord (or anywhere): one person hosts, everyone else joins on their own phone or computer with the room code. Talk it out on voice. Each screen only ever shows its own player’s role, hand and vote.',
     ),
   );
-  s.append(nameInput());
+  s.append(guideButton(), nameInput());
+  // The first time anyone opens online play, walk them through it.
+  if (!load<boolean>(GUIDE_SEEN)) queueMicrotask(() => showOnlineGuide(kit));
   const resumeHost = load<HostSave>(STORE.host);
   const resumePlayer = load<PlayerSave>(STORE.player);
   if (resumeHost || resumePlayer) {
@@ -342,6 +381,7 @@ function hostScreen(s: HTMLElement) {
     );
   }
   s.append(row, sides);
+  s.append(guideButton());
   const n = r.members.length;
   s.append(t('p', 'muted', n >= MIN_PLAYERS ? `${TABLES[n].impostors} impostor${TABLES[n].impostors === 1 ? '' : 's'} at a table of ${n}.` : `You need ${MIN_PLAYERS} to ${MAX_PLAYERS} at the table (bots count).`));
   s.append(
@@ -372,6 +412,7 @@ function playerScreen(s: HTMLElement) {
     for (const m of v.lobby) list.append(t('li', m.bot ? 'bot' : '', `${m.bot ? '🤖 ' : ''}${m.name}${m.host ? ' (host)' : ''}`));
     s.append(list);
     if (p.mine?.seat === null) s.append(t('p', 'muted', 'The table is full: you’re watching.'));
+    s.append(guideButton());
   } else table(s, v, p.mine, false);
   s.append(
     button('🚪 Leave the room', 'big secondary', () => {
@@ -451,7 +492,7 @@ function table(s: HTMLElement, v: PublicView, mine: PrivateView | null, isHost: 
       const c = crisisFor(v.crisis!, v.mode);
       const card = h('div', 'crisis');
       card.append(t('span', 'crisis-emoji', c.emoji), t('h3', '', c.title), t('p', '', c.text));
-      s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${chairName}`));
+      s.append(list, card, t('p', 'chair', `🪑 Chair this quarter: ${chairName}. They don’t propose: they pick one of everyone else’s.`));
       s.append(iChair ? chairAction('Deal the policies ▶', { type: 'deal' }) : waitLine(`Waiting for ${chairName} (the Chair) to deal`));
       break;
     }
@@ -472,6 +513,7 @@ function table(s: HTMLElement, v: PublicView, mine: PrivateView | null, isHost: 
       } else {
         s.append(t('h2', 'screen-title', `${c.emoji} ${c.title}`));
         if (mine?.proposed) s.append(t('p', 'pitch', `You proposed “${policyOf(mine.proposed).title}”.`));
+        else if (mine?.seat === v.chair) s.append(t('p', 'pitch', '🪑 You’re the Chair: you don’t propose this quarter. Once the proposals are in, you pick one of them, so listen to the pitches.'));
         s.append(waitLine('Waiting for proposals'));
       }
       break;
@@ -578,4 +620,5 @@ function table(s: HTMLElement, v: PublicView, mine: PrivateView | null, isHost: 
   }
   if (v.phase !== 'over') s.append(roster);
   if (roleBtn && v.phase !== 'roles' && v.phase !== 'over') s.append(roleBtn);
+  if (v.phase !== 'over') s.append(kit.button('❓ How it works', 'mode-tab guide-link', () => showOnlineGuide(kit)));
 }

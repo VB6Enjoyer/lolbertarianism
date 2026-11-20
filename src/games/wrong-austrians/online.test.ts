@@ -58,8 +58,11 @@ describe('online rooms: playing', () => {
     expect(act(r, someoneElse, { type: 'deal' })).toBe(false);
     expect(act(r, chairId, { type: 'deal' })).toBe(true);
     expect(g.phase).toBe('propose');
+    // The Chair doesn't propose: they pick from everyone else's.
+    expect(privateView(r, chairId).hand).toBeNull();
+    expect(act(r, chairId, { type: 'propose', policy: 'anything' })).toBe(false);
     // Proposals arrive back to front; nothing is tabled until everyone's in.
-    const order = [...ids(r)].reverse();
+    const order = [...ids(r)].reverse().filter((id) => id !== chairId);
     for (const [k, id] of order.entries()) {
       const seat = seatOf(r, id);
       expect(act(r, id, { type: 'propose', policy: 'not-in-hand' })).toBe(false);
@@ -68,12 +71,12 @@ describe('online rooms: playing', () => {
       if (k < order.length - 1) expect(publicView(r).proposals).toEqual([]);
     }
     expect(g.phase).toBe('table');
-    expect(publicView(r).proposals.map((p) => p.player)).toEqual([0, 1, 2, 3, 4]);
+    expect(publicView(r).proposals.map((p) => p.player)).toEqual([0, 1, 2, 3, 4].filter((i) => i !== g.chair));
     expect(act(r, chairId, { type: 'enact', index: 0 })).toBe(true);
     expect(act(r, chairId, { type: 'callVote' })).toBe(true);
     // Votes: you can't vote for yourself; the result waits for everyone.
     expect(act(r, 'p1', { type: 'vote', target: 1 })).toBe(false);
-    for (const id of order) act(r, id, { type: 'vote', target: seatOf(r, id) === 2 ? 3 : 2 });
+    for (const id of ids(r)) act(r, id, { type: 'vote', target: seatOf(r, id) === 2 ? 3 : 2 });
     expect(g.phase === 'voted' || g.phase === 'over').toBe(true);
     expect(g.players[2].fired).toBe(true);
     expect(publicView(r).players[2].impostor).toBe(g.players[2].impostor); // revealed once fired
@@ -88,16 +91,17 @@ describe('online rooms: playing', () => {
     for (const id of ids(r)) act(r, id, { type: 'seen' });
     act(r, r.members[r.game!.chair].id, { type: 'deal' });
     const g = r.game!;
-    const p1 = privateView(r, 'p1');
-    expect(p1.hand).toEqual(g.hands[1]);
-    expect(JSON.stringify(publicView(r))).not.toContain(g.hands[1][0]);
+    const seat = g.chair === 1 ? 2 : 1;
+    const p1 = privateView(r, `p${seat}`);
+    expect(p1.hand).toEqual(g.hands[seat]);
+    expect(JSON.stringify(publicView(r))).not.toContain(g.hands[seat][0]);
     // Only impostors learn who their friends are.
     for (const id of ids(r)) {
       const v = privateView(r, id);
       if (!v.impostor) expect(v.fellows).toEqual([]);
       else expect(v.fellows.length).toBe(g.players.filter((p) => p.impostor).length - 1);
     }
-    expect(waitingOn(r)).toHaveLength(6);
+    expect(waitingOn(r)).toHaveLength(5); // everyone but the Chair
   });
 
   it('bots fill the empty seats and can play whole games with you', () => {
