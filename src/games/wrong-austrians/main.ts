@@ -23,7 +23,7 @@ import {
 } from './party.ts';
 import { LEAN_LABEL, TOOL_ORDER, type ToolId, TOOLS } from './clues.ts';
 import { QUESTIONS } from './talk.ts';
-import { type Kit, onlineHud, onlineMode, openFromHash, renderOnline, resumeRecent } from './online-ui.ts';
+import { type Kit, onlineHud, onlineMode, openFromHash, renderOnline, resumeRecent, showOnlineGuide } from './online-ui.ts';
 
 // ---------------------------------------------------------------------------
 // Save
@@ -1023,7 +1023,9 @@ function partySetup() {
   );
   s.append(t('h3', 'section', '🌐 Not in the same room?'));
   s.append(t('p', 'muted', 'Play online instead: one person hosts, everyone joins on their own phone or computer (great over Discord voice), and each screen shows only its own player’s secrets. Bots can fill empty seats.'));
-  s.append(button('🌐 Play online', 'big', () => go('online')));
+  const online = h('div', 'menu');
+  online.append(button('🌐 Play online', 'big', () => go('online')), button('❓ How online play works', 'big secondary', () => showOnlineGuide(kit())));
+  s.append(online);
   els.screen.append(s);
 }
 
@@ -1043,6 +1045,7 @@ function showPartyRules() {
         <li>🌐 <b>Online</b>, it’s the same game without passing anything: everyone proposes (except the Chair) and votes on their own device at the same time, and the Chair (or the host, if the Chair wanders off) moves things along.</li>`,
       ),
       button('Got it', 'big', closeOverlay),
+      button('🌐 How online play works', 'big secondary', () => showOnlineGuide(kit())),
     );
   });
 }

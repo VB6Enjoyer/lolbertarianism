@@ -994,6 +994,13 @@ Chair (who knows their card is sound) always did, so the choice meant nothing. N
 out the proposals and picks one of everyone else's, on trust. Starting meters were raised to keep
 tables roughly even (4–8 players: 46, 69, 65, 61, 59).
 
+An eight-card guide, "How online play works", walks through a game in plain terms: get on voice,
+your secret role, the crisis, proposing in secret, arguing while the Chair picks, the bill coming
+due, the firing vote, and who wins. It opens by itself the first time someone visits online play,
+and from buttons on the online menu, both lobbies, the table, the party setup screen and the party
+rules. The homepage thumbnail and link preview now show the current title screen (difficulty tabs,
+online party mode).
+
 #### Online party mode ✅
 
 Party mode needed everyone round one phone, so it couldn't be played over Discord. Now one person
