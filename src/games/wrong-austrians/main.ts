@@ -7,8 +7,9 @@ import { openSaveTransfer } from '../../shared/save-transfer.ts';
 import { createSaveSlot } from '../../shared/storage.ts';
 import { ballSvg, type BallLook, type Eyes } from './ball.ts';
 import {
-  active, type Advisor, advisorName, ask, beginCouncil, canFire, canInvestigate, COUNCIL, crisisOf, enact, findPolicy, fire, FIRING_FROM, type Game, IMPOSTORS,
-  investigate, type Mark, type Mode, newGame, nextQuarter, policyOf, QUARTERS, score, setMark, termLength, toolsLeft, upgradeGame, won,
+  active, type Advisor, advisorName, ask, backersShown, beginCouncil, budgetLeft, canFire, canInvestigate, crisisOf, DIFFICULTIES, DIFFICULTY_ORDER, difficultyOf,
+  type DifficultyId, enact, findPolicy, fire, FIRING_FROM, type Game, impostorText, investigate, type Mark, type Mode, newGame, nextQuarter, policyOf, QUARTERS, score,
+  setMark, submitVerdict, termLength, toolsLeft, upgradeGame, won,
 } from './council.ts';
 import { crisisById, type Effect } from './crises.ts';
 import { type Side, sideOf } from './sides.ts';
@@ -62,6 +63,8 @@ interface Save {
   dailyBests: Record<string, number>;
   /** The first-term walkthrough has been shown. */
   walkthroughSeen: boolean;
+  /** The difficulty new terms are played on. */
+  difficulty: DifficultyId;
 }
 
 const slot = createSaveSlot<Save>({ game: 'wrong-austrians', version: 1 });
@@ -72,7 +75,7 @@ const count = (x: unknown) => Math.max(0, Math.floor(Number(x) || 0));
 function gameFrom(raw: unknown): Game | null {
   try {
     const g = raw as Game;
-    if (!g || typeof g.seed !== 'number' || !g.rng || !Array.isArray(g.advisors) || g.advisors.length !== COUNCIL) return null;
+    if (!g || typeof g.seed !== 'number' || !g.rng || !Array.isArray(g.advisors) || g.advisors.length < 5 || g.advisors.length > 6) return null;
     if (!Array.isArray(g.crises) || g.crises.some((id) => !crisisById(id))) return null;
     g.mode = g.mode === 'mirror' ? 'mirror' : 'ancap';
     // Saves from before the investigations had a background check instead, and no hidden pasts.
@@ -129,6 +132,7 @@ const save: Save = {
   dailyBests: normalizeDailyBests(saved?.dailyBests),
   mirrorUnlocked: saved?.mirrorUnlocked === true || count(saved?.meta?.wins) > 0,
   walkthroughSeen: saved?.walkthroughSeen === true,
+  difficulty: DIFFICULTY_ORDER.includes(saved?.difficulty as DifficultyId) ? (saved!.difficulty as DifficultyId) : 'normal',
   mode: 'ancap',
 };
 save.mode = saved?.mode === 'mirror' && save.mirrorUnlocked ? 'mirror' : 'ancap';
@@ -303,6 +307,7 @@ function render() {
   if (view === 'online') return renderOnline(kit());
   if (view === 'title' || !g) return renderTitle();
   if (g.phase === 'over') return renderEnd(g);
+  if (g.phase === 'verdict') return renderVerdict(g);
   els.screen.append(councilRow(g));
   // How to fire someone was the thing nobody could find: say it every time.
   els.screen.append(h('p', 'council-hint', g.phase === 'council' && canFire(g) ? '👆 Tap a portrait to open their file: everything on the record, your notes, and <b>🔥 Fire</b>.' : g.quarter < FIRING_FROM ? `👆 Tap a portrait for their file. Firing opens in quarter ${FIRING_FROM} (labour law): use the time to dig.` : '👆 Tap a portrait for their file and your notes.'));
@@ -325,16 +330,23 @@ function renderHud() {
   };
   const { meters } = side();
   els.hud.append(
-    t('span', 'hud-q', `${g.mode === 'mirror' ? '🪞 ' : ''}${quarterLabel(Math.min(g.quarter, termLength(g)))} · ${Math.min(g.quarter, termLength(g))}/${termLength(g)}`),
+    t('span', 'hud-q', `${difficultyOf(g).icon} ${g.mode === 'mirror' ? '🪞 ' : ''}${quarterLabel(Math.min(g.quarter, termLength(g)))} · ${Math.min(g.quarter, termLength(g))}/${termLength(g)}`),
     meter(meters.p[0], meters.p[1], g.prosperity),
     meter(meters.l[0], meters.l[1], g.liberty),
   );
   const tools = TOOL_ORDER.reduce((n, id) => n + Math.max(0, toolsLeft(g, id)), 0);
   if (tools > 0 && g.phase !== 'over') {
     const chk = t('span', 'hud-check', `🔎 ${tools}`);
-    chk.title = `${tools} investigation${tools === 1 ? '' : 's'} left this term (one a quarter)`;
+    chk.title = `${tools} investigation${tools === 1 ? '' : 's'} left this term (${difficultyOf(g).investigationsPer > 1 ? `${difficultyOf(g).investigationsPer} a quarter` : 'one a quarter'})`;
     chk.setAttribute('aria-label', chk.title);
     els.hud.append(chk);
+  }
+  const budget = budgetLeft(g);
+  if (budget !== Infinity && g.phase !== 'over') {
+    const q = t('span', 'hud-check', `❓ ${budget}`);
+    q.title = `${budget} question${budget === 1 ? '' : 's'} left this term`;
+    q.setAttribute('aria-label', q.title);
+    els.hud.append(q);
   }
   const twist = twistById(g.twist);
   if (twist) {
@@ -378,12 +390,27 @@ function renderTitle() {
     }
     s.append(tabs);
   }
-  s.append(panel, t('p', 'pitch', sd.pitch(COUNCIL, IMPOSTORS)));
+  const dd = DIFFICULTIES[save.difficulty];
+  s.append(panel, t('p', 'pitch', sd.pitch(dd.council, impostorText(dd))));
+  // How hard: Normal, Hard, Expert.
+  const levels = h('div', 'mode-tabs difficulty-tabs');
+  for (const id of DIFFICULTY_ORDER) {
+    const d = DIFFICULTIES[id];
+    const b = button(`${d.icon} ${d.name}`, `mode-tab${save.difficulty === id ? ' picked' : ''}`, () => {
+      save.difficulty = id;
+      persist();
+      play('click');
+      render();
+    });
+    b.setAttribute('aria-pressed', String(save.difficulty === id));
+    levels.append(b);
+  }
+  s.append(levels, t('p', 'difficulty-blurb', dd.blurb));
   const buttons = h('div', 'menu');
   const g = save.game;
   if (g && g.phase !== 'over') {
     const gs = sideOf(g.mode);
-    buttons.append(button(`▶ Continue <small>${g.mode === 'mirror' ? '🪞 Mirror · ' : ''}${quarterLabel(g.quarter)} · ${gs.meters.p[0]}${g.prosperity} ${gs.meters.l[0]}${g.liberty}</small>`, 'big', () => go('game')));
+    buttons.append(button(`▶ Continue <small>${difficultyOf(g).icon} ${g.mode === 'mirror' ? '🪞 Mirror · ' : ''}${quarterLabel(g.quarter)} · ${gs.meters.p[0]}${g.prosperity} ${gs.meters.l[0]}${g.liberty}</small>`, 'big', () => go('game')));
     buttons.append(button(`New term <small>${save.mode === 'mirror' ? 'as Austria' : 'as Ancapball'}</small>`, 'big secondary', confirmNew));
   } else buttons.append(button(save.mode === 'mirror' ? '▶ Start a term as Austria' : '▶ Start a term', 'big', startGame));
   const d = dailyFor(new Date());
@@ -407,7 +434,7 @@ function go(to: 'title' | 'game' | 'party' | 'online') {
 }
 
 function startGame() {
-  save.game = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, null, save.mode);
+  save.game = newGame((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0, null, save.mode, null, save.difficulty);
   persist();
   go('game');
 }
@@ -429,7 +456,12 @@ function confirmNew() {
 function showHowTo() {
   openOverlay('How to play', (box) => {
     box.append(
-      h('ul', 'how', side().how(COUNCIL, IMPOSTORS, QUARTERS)),
+      h('ul', 'how', side().how(DIFFICULTIES[save.difficulty].council, impostorText(DIFFICULTIES[save.difficulty]), QUARTERS)),
+      h(
+        'ul',
+        'how levels',
+        DIFFICULTY_ORDER.map((id) => `<li>${DIFFICULTIES[id].icon} <b>${DIFFICULTIES[id].name}</b>: ${DIFFICULTIES[id].blurb}</li>`).join(''),
+      ),
       button('▶ The walkthrough', 'big secondary', () => showWalkthrough(0)),
       button('Got it', 'big', closeOverlay),
     );
@@ -439,7 +471,7 @@ function showHowTo() {
 // --- The council strip ---
 
 function councilRow(g: Game): HTMLElement {
-  const row = h('div', 'council');
+  const row = h('div', `council${g.advisors.length === 6 ? ' six' : ''}`);
   for (const a of g.advisors) {
     const card = button('', `advisor${a.fired ? ' fired' : ''}${a.revealed ? (a.impostor ? ' is-impostor' : ' is-real') : ''} mark-${a.mark}`, () => openDossier(a.id));
     card.append(ball(lookOf(a)), t('b', 'name', a.name));
@@ -465,6 +497,11 @@ function renderBriefing(g: Game) {
       const pol = policyOf(n.policy);
       li.append(t('small', 'news-who', `“${pol.title}”, backed by ${names(g, n.backers)}`));
     }
+    list.append(li);
+  }
+  for (const r of g.rumours.filter((x) => x.quarter === g.quarter)) {
+    const li = h('li', 'news-item rumour');
+    li.append(t('span', 'news-text', `🗞️ Rumour about ${advisorName(g, r.advisor)} (${TOOLS[r.tool].heading.toLowerCase()}): ${r.text}. Unconfirmed: the papers are right only some of the time.`));
     list.append(li);
   }
   s.append(list);
@@ -495,12 +532,14 @@ function renderCouncil(g: Game) {
     const card = h('div', 'proposal');
     card.append(t('b', 'proposal-title', pol.title), t('q', 'pitch', pol.pitch));
     const who = h('div', 'backers');
-    for (const id of p.backers) {
-      const a = g.advisors[id];
-      const chip = h('span', 'backer');
-      chip.append(ball(lookOf(a), 'mini'), t('span', '', a.name.split(' ')[1]));
-      who.append(chip);
-    }
+    if (backersShown(g, g.quarter, p.policy)) {
+      for (const id of p.backers) {
+        const a = g.advisors[id];
+        const chip = h('span', 'backer');
+        chip.append(ball(lookOf(a), 'mini'), t('span', '', a.name.split(' ')[1]));
+        who.append(chip);
+      }
+    } else who.append(t('small', 'muted', '🙈 Backers stay secret until it’s enacted'));
     card.append(who, button('Enact', 'enact', () => doEnact(p.policy)));
     props.append(card);
   }
@@ -521,7 +560,8 @@ function renderCouncil(g: Game) {
     s.append(talk);
   }
 
-  s.append(t('h3', 'section', `❓ Questions · ${g.questionsLeft} left`));
+  const budget = budgetLeft(g);
+  s.append(t('h3', 'section', `❓ Questions · ${g.questionsLeft} left${budget !== Infinity ? ` (${budget} for the rest of the term)` : ''}`));
   const qs = h('div', 'questions');
   if (g.questionsLeft > 0) {
     for (const id of g.offered) {
@@ -564,7 +604,9 @@ function renderCouncil(g: Game) {
     s.append(log);
   }
   // This quarter's investigation.
-  s.append(t('h3', 'section', `🔎 Investigate · ${g.investigated ? 'done this quarter' : 'one a quarter'}`));
+  const dc = difficultyOf(g);
+  const cost = dc.investigationCost ? ` · each costs ${-(dc.investigationCost.p ?? 0)} ${side().meters.p[0]}` : '';
+  s.append(t('h3', 'section', `🔎 Investigate · ${g.investigated ? 'done this quarter' : dc.investigationsPer > 1 ? `${g.investigationsLeft} left this quarter` : 'one a quarter'}${cost}`));
   const inv = h('div', 'questions tools');
   if (canInvestigate(g)) {
     for (const id of TOOL_ORDER) {
@@ -623,7 +665,8 @@ function doInvestigate(tool: ToolId, advisor: number) {
 
 /** The first-term walkthrough: a few short cards, then it gets out of the way. */
 function showWalkthrough(step: number) {
-  const steps = side().walkthrough(COUNCIL, IMPOSTORS);
+  const wd = save.game ? difficultyOf(save.game) : DIFFICULTIES[save.difficulty];
+  const steps = side().walkthrough(wd.council, impostorText(wd));
   const [title, body] = steps[step];
   walkthroughOpen = true;
   const done = () => {
@@ -668,13 +711,13 @@ function renderResult(g: Game) {
   s.append(t('h2', 'screen-title', '✍️ Enacted'));
   const card = h('div', 'enacted');
   card.append(t('b', '', pol.title), t('q', 'pitch', pol.pitch), effectChips(pol.now));
-  card.append(t('p', 'later', `Backed by ${names(g, last.backers)}. Its real effect lands ${pol.later.in === 1 ? 'next quarter' : 'in two quarters'}${g.quarter + pol.later.in > termLength(g) ? ', after your term (it still counts)' : ''}.`));
+  card.append(t('p', 'later', `${backersShown(g, last.quarter, last.policy) ? `Backed by ${names(g, last.backers)}` : 'Its backers stay secret until it lands'}. Its real effect lands ${pol.later.in === 1 ? 'next quarter' : 'in two quarters'}${g.quarter + pol.later.in > termLength(g) ? ', after your term (it still counts)' : ''}.`));
   s.append(card);
   if (g.firedThisQuarter !== null) {
     const a = g.advisors[g.firedThisQuarter];
     s.append(t('p', `fired-note ${a.impostor ? 'good' : 'bad'}`, `🔥 You fired ${a.name}. ${a.impostor ? side().firedNote.impostor : side().firedNote.loyal}`));
   }
-  s.append(button(g.quarter >= termLength(g) ? 'End the term ▶' : 'Next quarter ▶', 'big', () => {
+  s.append(button(g.quarter >= termLength(g) ? 'To the verdict ▶' : 'Next quarter ▶', 'big', () => {
     nextQuarter(g);
     if (g.news.some((n) => n.good === false)) play('bill');
     persist();
@@ -682,6 +725,54 @@ function renderResult(g: Game) {
     render();
     window.scrollTo(0, 0);
   }));
+  els.screen.append(s);
+}
+
+// --- The closing verdict ---
+
+/** Who you're naming as statists at the end (advisor ids). */
+let accused = new Set<number>();
+
+function renderVerdict(g: Game) {
+  const d = difficultyOf(g);
+  const sd = side();
+  const s = h('section', 'panel verdict');
+  s.append(t('h2', 'screen-title', '⚖️ The verdict'));
+  s.append(
+    t(
+      'p',
+      'pitch',
+      d.verdictExact
+        ? `The term is over. Name everyone on the council you think is still ${g.mode === 'mirror' ? 'an ancap' : 'a statist'}, or nobody, to declare the council clean. You weren’t told how many there were. One mistake either way and you lose.`
+        : `The term is over. Name everyone on the council you think is still ${g.mode === 'mirror' ? 'an ancap' : 'a statist'} (or nobody). +30 for each one you catch, −25 for each loyal one you name, −20 for each you miss.`,
+    ),
+  );
+  const grid = h('div', `council verdict-pick${g.advisors.length === 6 ? ' six' : ''}`);
+  for (const a of active(g)) {
+    const on = accused.has(a.id);
+    const card = button('', `advisor${on ? ' accused' : ''} mark-${a.mark}`, () => {
+      if (on) accused.delete(a.id);
+      else accused.add(a.id);
+      play('click');
+      render();
+    });
+    card.append(ball(lookOf(a, on ? 'shifty' : 'normal')), t('b', 'name', a.name), t('small', 'tag', on ? `🚩 ${g.mode === 'mirror' ? 'Ancap' : 'Statist'}` : '✅ Clean'));
+    card.setAttribute('aria-pressed', String(on));
+    grid.append(card);
+  }
+  s.append(grid);
+  const fired = g.advisors.filter((a) => a.fired);
+  if (fired.length) s.append(t('p', 'muted', `Already fired: ${fired.map((a) => `${a.name} (${a.impostor ? sd.impostor : sd.loyal})`).join(', ')}.`));
+  s.append(
+    button(accused.size ? `⚖️ Name ${accused.size} as ${g.mode === 'mirror' ? 'ancap' : 'statist'}${accused.size === 1 ? '' : 's'}` : '✨ Declare the council clean', 'big', () => {
+      submitVerdict(g, [...accused]);
+      accused = new Set();
+      persist();
+      endSounds(g);
+      render();
+      window.scrollTo(0, 0);
+    }),
+  );
   els.screen.append(s);
 }
 
@@ -713,7 +804,12 @@ function openDossier(id: number) {
     }
     const rec = h('div', 'record');
     const items: HTMLElement[] = [];
-    for (const p of g.tabled.filter((x) => x.backers.includes(id))) {
+    for (const r of g.rumours.filter((x) => x.advisor === id)) {
+      const li = h('li', 'clue-li');
+      li.textContent = `Q${r.quarter}: 🗞️ Rumour (unconfirmed): ${r.text}`;
+      items.push(li);
+    }
+    for (const p of g.tabled.filter((x) => x.backers.includes(id) && backersShown(g, x.quarter, x.policy))) {
       const pol = policyOf(p.policy);
       const enacted = g.enacted.some((e) => e.quarter === p.quarter && e.policy === p.policy);
       const landed = g.landed.find((l) => l.policy === p.policy && l.backers?.includes(id));
@@ -1301,7 +1397,22 @@ function renderEnd(g: Game) {
   const [title, line] = sd.endings[g.ending!];
   const s = h('section', `panel end ${won(g) ? 'won' : 'lost'}`);
   s.append(t('h2', 'end-title', title), t('p', 'pitch', line));
-  s.append(h('p', 'score-line', `🏆 <b>${score(g)}</b> points <small>· ${sd.meters.p[0]} ${g.prosperity} · ${sd.meters.l[0]} ${g.liberty}</small>`));
+  const dd = difficultyOf(g);
+  s.append(h('p', 'score-line', `🏆 <b>${score(g)}</b> points <small>· ${dd.icon} ${dd.name} · ${sd.meters.p[0]} ${g.prosperity} · ${sd.meters.l[0]} ${g.liberty}</small>`));
+  if (g.verdict) {
+    const v = g.verdict;
+    const nm = (ids: number[]) => ids.map((id) => g.advisors[id].name).join(', ');
+    const lines: string[] = [];
+    lines.push(v.named.length ? `You named ${nm(v.named)}.` : 'You declared the council clean.');
+    if (v.correct.length) lines.push(`✅ Caught: ${nm(v.correct)}.`);
+    if (v.wrong.length) lines.push(`❌ Loyal, wrongly named: ${nm(v.wrong)}.`);
+    if (v.missed.length) lines.push(`🙈 Missed: ${nm(v.missed)}.`);
+    if (!v.wrong.length && !v.missed.length) lines.push('A perfect verdict.');
+    const total = g.advisors.filter((a) => a.impostor).length;
+    const word = g.mode === 'mirror' ? 'ancap' : 'statist';
+    lines.push(`There ${total === 1 ? `was 1 ${word}` : `were ${total} ${word}s`} on the council in all.`);
+    s.append(t('p', `verdict-line ${v.wrong.length || v.missed.length ? 'bad' : 'good'}`, `⚖️ ${lines.join(' ')}`));
+  }
   const twist = twistById(g.twist);
   if (g.daily && twist) s.append(t('p', 'meta', `📅 Daily term ${g.daily} · ${twist.icon} ${twist.name} · your best today: ${Math.max(save.dailyBests[g.daily] ?? 0, score(g))}`));
   if (unlockedMirror) s.append(h('p', 'unlocked', '🪞 <b>Mirror mode unlocked.</b> Play as Austria, who hired Austrian economists and got the Austrian School. Pick it on the title screen.'));
@@ -1324,7 +1435,7 @@ function renderEnd(g: Game) {
     card.append(ball({ flag: a.impostor ? sd.impostorFlag : sd.council, hat: a.hat, face: a.face, eyes: a.impostor ? 'shifty' : 'happy' }));
     card.append(
       t('b', '', a.name),
-      t('small', 'role', a.impostor ? sd.role.impostor : sd.role.loyal),
+      t('small', 'role', `${a.impostor ? sd.role.impostor : sd.role.loyal}${a.sleeper ? ' · 🛌 sleeper' : ''}`),
       t('small', '', `${a.fired ? (a.impostor ? '🔥 Fired, rightly' : '🔥 Fired, wrongly') : 'Stayed'} · backed ${backed.length - bad} sound, ${bad} ${g.mode === 'mirror' ? 'ancap' : 'statist'}`),
     );
     grid.append(card);
@@ -1359,7 +1470,7 @@ function caseFile(g: Game): HTMLElement {
     const answers = g.answers.filter((x) => x.advisor === a.id && !x.repeat);
     const clues = g.clues.filter((x) => x.advisor === a.id);
     const sec = h('section', `case ${a.impostor ? 'impostor' : 'real'}`);
-    sec.append(h('h4', '', `${a.impostor ? sd.role.impostor : sd.role.loyal} · <span></span>`));
+    sec.append(h('h4', '', `${a.impostor ? sd.role.impostor : sd.role.loyal}${a.sleeper ? ' (🛌 sleeper, in deep cover)' : ''} · <span></span>`));
     sec.querySelector('h4 span')!.textContent = a.name;
     const ul = h('ul');
     for (const ans of answers) {
@@ -1374,9 +1485,14 @@ function caseFile(g: Game): HTMLElement {
       li.append(t('span', 'tone', LEAN_LABEL[c.lean]), t('span', '', ` ${TOOLS[c.tool].icon} ${c.text}`));
       ul.append(li);
     }
+    for (const r of g.rumours.filter((x) => x.advisor === a.id)) {
+      const li = h('li', `lean-${r.lean}`);
+      li.append(t('span', 'tone', r.true ? '🗞️ true rumour' : '🗞️ false rumour'), t('span', '', ` ${TOOLS[r.tool].icon} ${r.text}`));
+      ul.append(li);
+    }
     // What you never dug up.
     const hidden = TOOL_ORDER.filter((tool) => !clues.some((c) => c.tool === tool)).map((tool) => `${TOOLS[tool].icon} ${a.profile[tool].text} (${LEAN_LABEL[a.profile[tool].lean]})`);
-    if (!answers.length && !clues.length) ul.append(t('li', 'muted', 'You never asked them anything or looked into them.'));
+    if (!answers.length && !clues.length && !g.rumours.some((x) => x.advisor === a.id)) ul.append(t('li', 'muted', 'You never asked them anything or looked into them.'));
     sec.append(ul);
     if (hidden.length) {
       const more = h('details', 'unseen');

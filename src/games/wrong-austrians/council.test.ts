@@ -3,7 +3,7 @@ import { botPlay } from './bot.ts';
 import { TOOL_ORDER, TOOLS } from './clues.ts';
 import {
   active, ANSWER_ODDS, ask, beginCouncil, canFire, canInvestigate, COUNCIL, crisisOf, enact, findPolicy, fire, FIRING_FROM, type Game, IMPOSTORS, investigate,
-  newGame, nextQuarter, policyOf, QUARTERS, QUESTIONS_PER_QUARTER, score, upgradeGame, won,
+  newGame, nextQuarter, policyOf, QUARTERS, QUESTIONS_PER_QUARTER, score, submitVerdict, upgradeGame, won,
 } from './council.ts';
 import { CRISES } from './crises.ts';
 import { MIRROR } from './mirror.ts';
@@ -235,7 +235,7 @@ describe('a term', () => {
     expect(g.liberty).toBeLessThan(liberty + 20);
   });
 
-  it('wins early once both Viennese are fired', () => {
+  it('no early win: firing both Viennese doesn’t end the term; the closing verdict does', () => {
     const g = atFiring(10);
     const [v1, v2] = g.advisors.filter((a) => a.impostor);
     fire(g, v1.id);
@@ -244,8 +244,20 @@ describe('a term', () => {
     if (g.phase === 'over') return;
     beginCouncil(g);
     fire(g, v2.id);
-    expect(g.ending).toBe('purged');
+    expect(g.ending).toBeNull();
+    expect(g.phase).toBe('council');
+    const phase = (x: Game): string => x.phase;
+    while (phase(g) !== 'verdict' && phase(g) !== 'over') {
+      if (g.phase === 'briefing') beginCouncil(g);
+      else if (g.phase === 'council') enact(g, (g.proposals.find((p) => policyOf(p.policy).kind === 'sound') ?? g.proposals[0]).policy);
+      else nextQuarter(g);
+    }
+    if (phase(g) === 'over') return;
+    expect(g.quarter).toBe(QUARTERS);
+    submitVerdict(g, []);
+    expect(g.ending).toBe('term');
     expect(won(g)).toBe(true);
+    expect(g.verdict).toMatchObject({ named: [], correct: [], wrong: [], missed: [] });
     expect(score(g)).toBeGreaterThan(100);
   });
 

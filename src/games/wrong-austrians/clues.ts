@@ -246,7 +246,10 @@ export const TOOL_ORDER: ToolId[] = ['thesis', 'alma', 'cv', 'shelf', 'funding',
  * statist in mirror mode); "other" is the opposite one. The impostors' camouflage is mostly
  * free-market-but-not-quite.
  */
-export const LEAN_ODDS: Record<'loyal' | 'impostor', Record<'own' | 'freemarket' | 'mainstream' | 'other', number>> = {
+export const LEAN_ODDS: Record<'loyal' | 'impostor' | 'sleeper', Record<'own' | 'freemarket' | 'mainstream' | 'other', number>> = {
+  // The impostor in deep cover (Hard and Expert) talks and votes like the real thing; their past is
+  // where they can be caught, if you dig.
+  sleeper: { own: 0.38, freemarket: 0.2, mainstream: 0.1, other: 0.32 },
   // A third false flags (free-market-not-Austrian, or outright statist), a little mainstream.
   loyal: { own: 0.58, freemarket: 0.15, mainstream: 0.1, other: 0.17 },
   // A third false flags (a convincingly Austrian past), the rest statist or free-market camouflage.

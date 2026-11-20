@@ -48,6 +48,86 @@ export const PROPOSAL_ODDS: Record<'loyal' | 'impostor', Record<PolicyKind, numb
   loyal: { sound: 1 - HONEST_SLIP, disguised: HONEST_SLIP, blatant: 0 },
   impostor: { sound: IMPOSTOR_BLEND, disguised: 0.25, blatant: 0.03 },
 };
+
+// ---------------------------------------------------------------------------
+// Difficulty
+// ---------------------------------------------------------------------------
+
+export type DifficultyId = 'normal' | 'hard' | 'expert';
+
+export interface Difficulty {
+  id: DifficultyId;
+  icon: string;
+  name: string;
+  /** What's different, in a line, for the picker. */
+  blurb: string;
+  council: number;
+  /** How many impostors, and how likely each count is (one count = it's known). */
+  impostors: Partial<Record<1 | 2 | 3, number>>;
+  questionsPer: number;
+  /** A cap on questions for the whole term (null: none). */
+  questionBudget: number | null;
+  /** Who backs what stays secret until a policy is enacted. */
+  anonymous: boolean;
+  /**
+   * One impostor in deep cover: how often they answer right and back sound policy. Hard and
+   * Expert also make the rest go quiet for a while after one of them is fired, and copy whoever
+   * you trust.
+   */
+  sleeper: { sound: number; policy: number } | null;
+  /** The easy near-misses (misspelled names and the like) still turn up. */
+  easyNearMisses: boolean;
+  /** A newspaper rumour each quarter, true or not. */
+  rumours: boolean;
+  /** What an investigation costs, how many a quarter, and how often each tool can be used. */
+  investigationCost: Effect | null;
+  investigationsPer: number;
+  toolUses: number;
+  /** The impostors' unsigned regulations make the news (and so say how many are left). */
+  sneakNews: boolean;
+  /** The closing verdict must be exactly right, or you lose. */
+  verdictExact: boolean;
+  /** Points are worth more on harder levels. */
+  scoreScale: number;
+  /**
+   * Where the meters start, and how hard the impostors' quiet regulations bite: with no early win
+   * they run all term, and the harder levels shouldn't be lost to attrition, only to being fooled.
+   */
+  start: number;
+  sneakScale: number;
+}
+
+export const DIFFICULTIES: Record<DifficultyId, Difficulty> = {
+  normal: {
+    id: 'normal', icon: '🦅', name: 'Normal', blurb: 'Two impostors among five. You see who backs what, and 3 questions a quarter.',
+    council: 5, impostors: { 2: 1 }, questionsPer: 3, questionBudget: null, anonymous: false, sleeper: null, easyNearMisses: true, rumours: false, investigationCost: null, investigationsPer: 1, toolUses: 1,
+    sneakNews: true, verdictExact: false, scoreScale: 1, start: 50, sneakScale: 1,
+  },
+  hard: {
+    id: 'hard', icon: '🕵️', name: 'Hard', blurb: 'Proposals are anonymous until enacted, 2 questions a quarter, one impostor in deep cover, rumours, and only the technical slips.',
+    council: 5, impostors: { 2: 1 }, questionsPer: 2, questionBudget: null, anonymous: true, sleeper: { sound: 0.6, policy: 0.8 }, easyNearMisses: false, rumours: true,
+    investigationCost: { p: -1 }, investigationsPer: 1, toolUses: 1, sneakNews: false, verdictExact: false, scoreScale: 1.3, start: 55, sneakScale: 1,
+  },
+  expert: {
+    id: 'expert', icon: '🧠', name: 'Expert', blurb: 'One to three impostors among six (you’re not told how many), 10 questions for the whole term, and the closing verdict must be exactly right.',
+    council: 6, impostors: { 1: 1, 2: 2, 3: 1.4 }, questionsPer: 2, questionBudget: 10, anonymous: true, sleeper: { sound: 0.75, policy: 0.9 }, easyNearMisses: false,
+    rumours: true, investigationCost: { p: -2 }, investigationsPer: 2, toolUses: 2, sneakNews: false, verdictExact: true, scoreScale: 1.6, start: 62, sneakScale: 0.6,
+  },
+};
+export const DIFFICULTY_ORDER: DifficultyId[] = ['normal', 'hard', 'expert'];
+export const difficultyOf = (g: Pick<Game, 'difficulty'>) => DIFFICULTIES[g.difficulty ?? 'normal'];
+/** "2", or "one to three" when you aren't told. */
+export function impostorText(d: Difficulty): string {
+  const counts = Object.keys(d.impostors).map(Number).sort();
+  const words = ['none', 'one', 'two', 'three'];
+  return counts.length === 1 ? String(counts[0]) : `${words[counts[0]]} to ${words[counts[counts.length - 1]]}`;
+}
+/** How long an impostor stays quiet after one of them is fired (Hard and Expert). */
+export const QUIET_FOR = 2;
+/** How often an impostor copies whoever you've marked as trusted (Hard and Expert). */
+export const MIMIC = 0.35;
+/** How often a rumour is true. */
+export const RUMOUR_TRUE = 0.6;
 export const START_METER = 50;
 export const METER_MAX = 100;
 /** Crises cost more than their cards say, and bills land harder: being in charge is expensive. */
@@ -80,6 +160,8 @@ export interface Advisor {
   profile: Record<ToolId, ProfileItem>;
   /** The secret: just from Austria, not of the Austrian School (or, in mirror mode, the other way round). */
   impostor: boolean;
+  /** An impostor in deep cover (Hard and Expert). */
+  sleeper?: boolean;
   fired: boolean;
   /** You know what they are (they've been fired). */
   revealed: boolean;
@@ -111,6 +193,24 @@ export interface Answer {
   why?: string;
   /** Asked again in a later quarter: the same answer as before. */
   repeat?: boolean;
+}
+
+/** A newspaper rumour about someone's past: true, or not (you find out at the end). */
+export interface Rumour {
+  quarter: number;
+  advisor: number;
+  tool: ToolId;
+  text: string;
+  lean: Lean;
+  true: boolean;
+}
+
+/** The closing verdict: who you named as statists, and how that went. */
+export interface Verdict {
+  named: number[];
+  correct: number[];
+  wrong: number[];
+  missed: number[];
 }
 
 /** What an investigation turned up. */
@@ -147,8 +247,9 @@ export interface Enacted {
   backers: number[];
 }
 
-export type Phase = 'briefing' | 'council' | 'result' | 'over';
-export type Ending = 'term' | 'purged' | 'broke' | 'chained' | 'takeover';
+export type Phase = 'briefing' | 'council' | 'result' | 'verdict' | 'over';
+/** 'purged' was the old early win (older saves may still have it); 'unclean' is a wrong Expert verdict. */
+export type Ending = 'term' | 'purged' | 'broke' | 'chained' | 'takeover' | 'unclean';
 
 export interface Game {
   seed: number;
@@ -171,10 +272,11 @@ export interface Game {
   offered: string[];
   questionsLeft: number;
   firedThisQuarter: number | null;
-  /** Investigations: how often each tool has been used, what turned up, and whether this quarter's is done. */
+  /** Investigations: how often each tool has been used, what turned up, and whether this quarter's are done (and how many are left). */
   toolsUsed: Partial<Record<ToolId, number>>;
   clues: Clue[];
   investigated: boolean;
+  investigationsLeft: number;
   enacted: Enacted[];
   /** Everything on the record, for the dossiers: what was proposed, said, and what landed. */
   tabled: (Proposal & { quarter: number })[];
@@ -186,25 +288,36 @@ export interface Game {
   /** The daily term's date and twist, if it is one. */
   daily: string | null;
   twist: TwistId | null;
+  difficulty: DifficultyId;
+  /** The impostors lie low until this quarter (after one of them is fired, on Hard and Expert). */
+  quietUntil: number;
+  rumours: Rumour[];
+  verdict: Verdict | null;
 }
 
 // ---------------------------------------------------------------------------
 // Setting up
 // ---------------------------------------------------------------------------
 
-export function newGame(seed: number, daily: string | null = null, mode: Mode = 'ancap', twist: TwistId | null = null): Game {
+export function newGame(seed: number, daily: string | null = null, mode: Mode = 'ancap', twist: TwistId | null = null, difficulty: DifficultyId = 'normal'): Game {
+  const d = DIFFICULTIES[difficulty] ?? DIFFICULTIES.normal;
   const rng = makeRng(seed);
   const firsts = shuffleInPlace(rng, [...FIRST_NAMES]);
   const lasts = shuffleInPlace(rng, [...SURNAMES]);
-  const impostors = shuffleInPlace(rng, [...Array(COUNCIL).keys()]).slice(0, IMPOSTORS);
-  const profiles = makeProfiles(rng, mode, impostors);
-  const advisors: Advisor[] = Array.from({ length: COUNCIL }, (_, id) => ({
+  const counts = Object.entries(d.impostors).map(([k, w]) => [Number(k), w!] as [number, number]);
+  const count = counts.length === 1 ? counts[0][0] : weightedPick(rng, counts);
+  const impostors = shuffleInPlace(rng, [...Array(d.council).keys()]).slice(0, count);
+  // One impostor in deep cover (when there's more than one to hide behind).
+  const sleeper = d.sleeper && impostors.length >= 2 ? impostors[0] : -1;
+  const profiles = makeProfiles(rng, mode, impostors, d.council, sleeper);
+  const advisors: Advisor[] = Array.from({ length: d.council }, (_, id) => ({
     id,
     name: `${firsts[id]} ${lasts[id]}`,
     hat: pickOne(rng, HATS),
     face: pickOne(rng, FACES),
     profile: profiles[id],
     impostor: impostors.includes(id),
+    ...(id === sleeper ? { sleeper: true } : {}),
     fired: false,
     revealed: false,
     mark: 'none',
@@ -215,8 +328,8 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     rng,
     quarter: 1,
     phase: 'briefing',
-    prosperity: twist === 'lean-times' ? 40 : START_METER,
-    liberty: twist === 'lean-times' ? 40 : START_METER,
+    prosperity: twist === 'lean-times' ? 40 : d.start,
+    liberty: twist === 'lean-times' ? 40 : d.start,
     advisors,
     crises: shuffleInPlace(rng, CRISES.map((c) => c.id)).slice(0, QUARTERS),
     proposals: [],
@@ -230,6 +343,7 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     toolsUsed: {},
     clues: [],
     investigated: false,
+    investigationsLeft: d.investigationsPer,
     enacted: [],
     tabled: [],
     said: [],
@@ -238,6 +352,10 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
     ending: null,
     daily,
     twist,
+    difficulty: d.id,
+    quietUntil: 0,
+    rumours: [],
+    verdict: null,
   };
   g.questionsLeft = questionsPer(g);
   startQuarter(g);
@@ -248,14 +366,14 @@ export function newGame(seed: number, daily: string | null = null, mode: Mode = 
  * Everyone's hidden past: for each tool, a lean drawn from their side's odds, and an item with that
  * lean (no two people share one). In mirror mode the schools swap: the loyal ones are statists.
  */
-export function makeProfiles(rng: Rng, mode: Mode, impostors: number[]): Record<ToolId, ProfileItem>[] {
+export function makeProfiles(rng: Rng, mode: Mode, impostors: number[], council = COUNCIL, sleeper = -1): Record<ToolId, ProfileItem>[] {
   const [own, other]: Lean[] = mode === 'mirror' ? ['statist', 'austrian'] : ['austrian', 'statist'];
   const leanOf = { own, freemarket: 'freemarket', mainstream: 'mainstream', other } as const;
-  const out: Record<ToolId, ProfileItem>[] = Array.from({ length: COUNCIL }, () => ({}) as Record<ToolId, ProfileItem>);
+  const out: Record<ToolId, ProfileItem>[] = Array.from({ length: council }, () => ({}) as Record<ToolId, ProfileItem>);
   for (const tool of TOOL_ORDER) {
     const left: Record<Lean, string[]> = Object.fromEntries(Object.entries(TOOLS[tool].items).map(([k, v]) => [k, shuffleInPlace(rng, [...v])])) as Record<Lean, string[]>;
-    for (let id = 0; id < COUNCIL; id++) {
-      const odds = LEAN_ODDS[impostors.includes(id) ? 'impostor' : 'loyal'];
+    for (let id = 0; id < council; id++) {
+      const odds = LEAN_ODDS[id === sleeper ? 'sleeper' : impostors.includes(id) ? 'impostor' : 'loyal'];
       let roll = next(rng);
       let key: keyof typeof odds = 'own';
       for (const k of ['own', 'freemarket', 'mainstream', 'other'] as const) {
@@ -269,11 +387,54 @@ export function makeProfiles(rng: Rng, mode: Mode, impostors: number[]): Record<
   return out;
 }
 
+function weightedPick(rng: Rng, options: [number, number][]): number {
+  let roll = next(rng) * options.reduce((t, [, w]) => t + w, 0);
+  for (const [v, w] of options) if ((roll -= w) < 0) return v;
+  return options[options.length - 1][0];
+}
+
 export const active = (g: Game) => g.advisors.filter((a) => !a.fired);
+
+/** How someone behaves right now: loyal, an impostor, or an impostor lying low (the sleeper, or after a firing). */
+export function behaviour(g: Game, a: Advisor): 'loyal' | 'impostor' | 'deep' {
+  if (!a.impostor) return 'loyal';
+  const d = difficultyOf(g);
+  if (d.sleeper && (a.sleeper || g.quarter < g.quietUntil)) return 'deep';
+  return 'impostor';
+}
+
+/** The interview odds for someone right now. */
+export function answerOddsFor(g: Game, a: Advisor): Record<Tone, number> {
+  const odds = answerOdds(g);
+  const b = behaviour(g, a);
+  if (b !== 'deep') return odds[b];
+  const s = difficultyOf(g).sleeper!.sound;
+  return { sound: s, near: Math.max(0, 0.95 - s), slip: 0, dodge: 0.05 };
+}
+
+/** The proposal odds for someone right now. */
+export function proposalOddsFor(g: Game, a: Advisor): Record<PolicyKind, number> {
+  const b = behaviour(g, a);
+  if (b !== 'deep') return PROPOSAL_ODDS[b];
+  const s = difficultyOf(g).sleeper!.policy;
+  return { sound: s, disguised: 1 - s, blatant: 0 };
+}
+
+/** Whether you can see who backs a proposal (Hard and Expert: only once it's enacted). */
+export const backersShown = (g: Game, quarter: number, policy: string) => !difficultyOf(g).anonymous || g.enacted.some((e) => e.quarter === quarter && e.policy === policy);
+
+/** Questions left this term (Expert has a cap). */
+export const budgetLeft = (g: Game) => {
+  const cap = difficultyOf(g).questionBudget;
+  return cap === null ? Infinity : Math.max(0, cap - g.answers.length);
+};
 /** How long the term is, how many questions a quarter, how often each investigation can be used (the daily twists change them). */
 export const termLength = (g: Game) => (g.twist === 'snap-election' ? 6 : QUARTERS);
-export const questionsPer = (g: Game) => (g.twist === 'press-pass' ? QUESTIONS_PER_QUARTER + 1 : QUESTIONS_PER_QUARTER);
-export const toolUses = (g: Game) => (g.twist === 'double-check' ? 2 : 1);
+export const questionsPer = (g: Game) => {
+  const per = difficultyOf(g).questionsPer + (g.twist === 'press-pass' ? 1 : 0);
+  return Math.min(per, budgetLeft(g));
+};
+export const toolUses = (g: Game) => difficultyOf(g).toolUses + (g.twist === 'double-check' ? 1 : 0);
 export const toolsLeft = (g: Game, tool: ToolId) => toolUses(g) - (g.toolsUsed[tool] ?? 0);
 /** One investigation a quarter, with a tool that has uses left. */
 export const canInvestigate = (g: Game, tool?: ToolId) => g.phase === 'council' && !g.investigated && (tool ? toolsLeft(g, tool) > 0 : TOOL_ORDER.some((t) => toolsLeft(g, t) > 0));
@@ -319,20 +480,26 @@ function startQuarter(g: Game) {
     g.landed.push({ ...g.news[g.news.length - 1], quarter: g.quarter });
   }
   g.pending = g.pending.filter((p) => p.due !== g.quarter);
-  // The impostors still on the council slip something through. Nobody signs it.
+  // The impostors still on the council slip something through. Nobody signs it. On Normal it makes
+  // the news (which says roughly how many are left); on Hard and Expert it's folded into the
+  // crisis's cost, which wobbles, so you can't count them off the meters.
+  const d = difficultyOf(g);
   const sneaky = active(g).filter((a) => a.impostor).length;
-  if (g.quarter > 1 && sneaky) {
-    const effect = scaled(SNEAK[g.mode], sneaky);
-    apply(g, effect);
-    g.news.push({ text: pickOne(g.rng, SNEAK_NEWS[g.mode]).replace('{n}', String(sneaky * 40 + int(g.rng, 1, 39))), effect, good: false });
+  const sneak = g.quarter > 1 && sneaky ? scaled(SNEAK[g.mode], sneaky * d.sneakScale) : { p: 0, l: 0 };
+  if (d.sneakNews && sneaky && g.quarter > 1) {
+    apply(g, sneak);
+    g.news.push({ text: pickOne(g.rng, SNEAK_NEWS[g.mode]).replace('{n}', String(sneaky * 40 + int(g.rng, 1, 39))), effect: sneak, good: false });
   }
   const crisis = crisisOf(g);
-  const hit = scaled(crisis.hit, HIT_SCALE);
+  const base = scaled(crisis.hit, HIT_SCALE);
+  const hit = d.sneakNews ? base : { p: (base.p ?? 0) + (sneak.p ?? 0) + int(g.rng, -3, 3), l: (base.l ?? 0) + (sneak.l ?? 0) + int(g.rng, -3, 3) };
   apply(g, hit);
   g.news.push({ text: `${crisis.emoji} ${crisis.title}: ${crisis.text}`, effect: hit });
+  if (d.rumours && g.quarter > 1) rumour(g);
   g.questionsLeft = questionsPer(g);
   g.firedThisQuarter = null;
   g.investigated = false;
+  g.investigationsLeft = d.investigationsPer;
   // Fresh questions: ones not asked yet this term, while there are any.
   const asked = new Set(g.answers.map((a) => a.question));
   const fresh = QUESTIONS.filter((q) => !asked.has(q.id)).map((q) => q.id);
@@ -351,92 +518,138 @@ function jitter(g: Game, e: Effect): Effect {
   return { p: e.p ? e.p + int(g.rng, -2, 2) : 0, l: e.l ? e.l + int(g.rng, -1, 1) : 0 };
 }
 
-/** Loyal advisors nearly always propose something sound; the impostors mostly dress up something else. */
+/** A rumour in the papers about someone still on the council: their real past, or not. */
+function rumour(g: Game) {
+  const who = active(g).filter((a) => !a.revealed);
+  if (!who.length) return;
+  // A fresh story: never the same person and subject twice.
+  const pairs = who.flatMap((a) => TOOL_ORDER.filter((t) => !g.rumours.some((r) => r.advisor === a.id && r.tool === t)).map((t) => [a, t] as const));
+  if (!pairs.length) return;
+  const [a, tool] = pickOne(g.rng, pairs);
+  const real = a.profile[tool];
+  const truth = next(g.rng) < RUMOUR_TRUE;
+  const lean: Lean = truth ? real.lean : pickOne(g.rng, ['austrian', 'freemarket', 'mainstream', 'statist'] as Lean[]);
+  const text = truth ? real.text : pickOne(g.rng, TOOLS[tool].items[lean]);
+  // A made-up story can land on the truth by accident.
+  g.rumours.push({ quarter: g.quarter, advisor: a.id, tool, text, lean, true: truth || text === real.text });
+}
+
+/**
+ * Loyal advisors nearly always propose something sound; the impostors mostly dress up something
+ * else. On Hard and Expert, an impostor sometimes backs whatever someone you trust backs, to look
+ * like them.
+ */
 function propose(g: Game) {
   const crisis = crisisOf(g);
   const of = (kind: PolicyKind) => crisis.policies.filter((p) => p.kind === kind);
   const picks = new Map<string, number[]>();
-  for (const a of active(g)) {
-    const odds = PROPOSAL_ODDS[a.impostor ? 'impostor' : 'loyal'];
-    const roll = next(g.rng);
-    const kind: PolicyKind = roll < odds.sound ? 'sound' : roll < odds.sound + odds.disguised ? 'disguised' : 'blatant';
-    const pol = pickOne(g.rng, of(kind));
-    picks.set(pol.id, [...(picks.get(pol.id) ?? []), a.id]);
+  const choice = new Map<number, string>();
+  const order = [...active(g)].sort((a, b) => Number(a.impostor) - Number(b.impostor));
+  for (const a of order) {
+    const trusted = active(g).find((x) => x.mark === 'trust' && !x.impostor && choice.has(x.id));
+    let policy: string;
+    if (a.impostor && difficultyOf(g).sleeper && trusted && next(g.rng) < MIMIC) policy = choice.get(trusted.id)!;
+    else {
+      const odds = proposalOddsFor(g, a);
+      const roll = next(g.rng);
+      const kind: PolicyKind = roll < odds.sound ? 'sound' : roll < odds.sound + odds.disguised ? 'disguised' : 'blatant';
+      policy = pickOne(g.rng, of(kind)).id;
+    }
+    choice.set(a.id, policy);
+    picks.set(policy, [...(picks.get(policy) ?? []), a.id]);
   }
   g.proposals = shuffleInPlace(g.rng, [...picks].map(([policy, backers]) => ({ policy, backers })));
   g.tabled.push(...g.proposals.map((p) => ({ ...p, backers: [...p.backers], quarter: g.quarter })));
 }
 
-/** What the loyal advisors (who know their side's economics) can hold against someone. */
-export function evidence(g: Game, id: number): { score: number; backed?: string; bill?: string; slip?: boolean } {
-  let score = 0;
-  let backed: string | undefined;
-  let bill: string | undefined;
-  const now = g.proposals.find((p) => p.backers.includes(id));
-  if (now && isBad(findPolicy(now.policy)!.kind)) {
-    score += 3;
-    backed = now.policy;
-  }
-  for (const n of [...g.news]) {
-    if (n.backers?.includes(id) && n.good === false) {
-      score += 2;
-      bill = n.policy;
-    }
-  }
-  for (const e of g.enacted) {
-    if (e.quarter < g.quarter && e.backers.includes(id) && isBad(findPolicy(e.policy)!.kind)) score += 1;
-  }
-  const slips = g.answers.filter((x) => x.advisor === id && x.tone === 'slip' && !x.repeat).length;
-  // A near-miss gets noticed too, by people who know their economics (but anyone can fumble one).
-  const nears = g.answers.filter((x) => x.advisor === id && x.tone === 'near' && !x.repeat).length;
-  score += 2 * slips + nears;
-  return { score, backed, bill, slip: slips + nears > 0 };
+/** One thing that could be held against someone, as an advisor would put it in the debate. */
+export interface Evidence {
+  kind: 'answer' | 'clue' | 'rumour' | 'backed' | 'bill';
+  weight: number;
+  /** The question, the clue's item, or the policy. */
+  q?: string;
+  item?: string;
+  tool?: ToolId;
+  policy?: string;
 }
 
-const fill = (template: string, g: Game, about: number | null, policy?: string) =>
-  template.replace(/\{x\}/g, about === null ? 'someone' : advisorName(g, about)).replace(/\{p\}/g, policy ? findPolicy(policy)!.title : 'that');
+/**
+ * Everything on the record against someone that the council (and you) can see: their fumbled
+ * answers, the clues and rumours that point the wrong way, the bills from what they backed, and
+ * (on Normal) a statist policy they're backing right now. Real Austrians have some of this too: a
+ * near-miss, a Chicago degree, an unlucky bill.
+ */
+export function evidenceOn(g: Game, id: number): Evidence[] {
+  const out: Evidence[] = [];
+  const bad: Lean = g.mode === 'mirror' ? 'austrian' : 'statist';
+  for (const a of g.answers) {
+    if (a.advisor !== id || a.repeat) continue;
+    if (a.tone === 'near' || a.tone === 'slip') out.push({ kind: 'answer', weight: a.tone === 'slip' ? 3 : 1.5, q: QUESTIONS.find((x) => x.id === a.question)!.q });
+  }
+  for (const c of g.clues) if (c.advisor === id && (c.lean === bad || c.lean === 'freemarket')) out.push({ kind: 'clue', weight: c.lean === bad ? 2 : 1, item: c.text, tool: c.tool });
+  for (const r of g.rumours) if (r.advisor === id && (r.lean === bad || r.lean === 'freemarket')) out.push({ kind: 'rumour', weight: 0.8, item: r.text, tool: r.tool });
+  for (const n of g.landed) if (n.backers?.includes(id) && n.good === false && n.policy) out.push({ kind: 'bill', weight: 2, policy: n.policy });
+  if (!difficultyOf(g).anonymous) {
+    const now = g.proposals.find((p) => p.backers.includes(id));
+    if (now && isBad(findPolicy(now.policy)!.kind)) out.push({ kind: 'backed', weight: 2.5, policy: now.policy });
+  }
+  return out;
+}
+const weightOf = (ev: Evidence[]) => ev.reduce((t, e) => t + e.weight, 0);
 
-/** Everyone has their say: the loyal ones accuse on the evidence; the impostors frame them and cover for each other. */
+/** The council's words for a piece of evidence. Everyone uses the same lines, so the wording gives nobody away. */
+function accusation(g: Game, about: number, ev: Evidence | null): string {
+  const L = linesFor(g);
+  const name = advisorName(g, about);
+  const fill = (tpl: string) =>
+    tpl
+      .replace(/\{x\}/g, name)
+      .replace(/\{q\}/g, ev?.q ?? '')
+      .replace(/\{item\}/g, (ev?.item ?? '').replace(/^“|”$/g, ''))
+      .replace(/\{tool\}/g, ev?.tool ? TOOLS[ev.tool].name.toLowerCase() : '')
+      .replace(/\{p\}/g, ev?.policy ? findPolicy(ev.policy)!.title : '');
+  if (!ev) return fill(pickOne(g.rng, L.hunch));
+  const lines = ev.kind === 'answer' ? L.accuseAnswer : ev.kind === 'clue' ? L.accuseClue : ev.kind === 'rumour' ? L.accuseRumour : ev.kind === 'bill' ? L.accuseBill : L.accuseBacked;
+  return fill(pickOne(g.rng, lines));
+}
+
+/** Kept for older callers and tests: how much the record holds against someone. */
+export function evidence(g: Game, id: number): { score: number } {
+  return { score: weightOf(evidenceOn(g, id)) };
+}
+
+/**
+ * Everyone has their say, from the same record, in the same words. The loyal ones go after whoever
+ * looks worst to them (sometimes another loyal one, in good faith); the impostors go after loyal
+ * ones, picking on their honest fumbles, and only rarely stick up for each other.
+ */
 function debate(g: Game) {
-  const LINES = linesFor(g);
+  const L = linesFor(g);
   const talk: Talk[] = [];
   const here = active(g);
-  for (const a of here.filter((x) => !x.impostor)) {
-    // Each of them notices some of the evidence, not all of it.
-    const others = here.filter((x) => x.id !== a.id).map((x) => ({ x, ev: evidence(g, x.id), seen: 0 }));
-    for (const o of others) o.seen = o.ev.score * (next(g.rng) < 0.6 ? 1 : 0) + next(g.rng) * 2.5;
-    others.sort((p, q) => q.seen - p.seen);
-    const top = others[0];
-    if (top && top.ev.score >= 2 && top.seen >= 2 && next(g.rng) < 0.7) {
-      const { ev } = top;
-      const [lines, policy] = ev.backed ? [LINES.accuseBacked, ev.backed] : ev.bill ? [LINES.accuseBill, ev.bill] : [LINES.accuseSlip, undefined];
-      talk.push({ from: a.id, about: top.x.id, kind: 'accuse', text: fill(pickOne(g.rng, lines), g, top.x.id, policy) });
-    } else if (others.length && next(g.rng) < 0.5) {
-      // Vouch for whoever looks cleanest (which may be an impostor keeping their head down).
-      const clean = others[others.length - 1];
-      talk.push({ from: a.id, about: clean.x.id, kind: 'defend', text: fill(pickOne(g.rng, LINES.vouch), g, clean.x.id) });
-    } else {
-      const about = others.length ? pickOne(g.rng, others).x.id : null;
-      talk.push({ from: a.id, about, kind: 'unsure', text: fill(pickOne(g.rng, LINES.unsure), g, about) });
-    }
-  }
-  // The impostors agree on whom to frame this quarter (usually).
-  const reals0 = here.filter((x) => !x.impostor);
-  const shared = reals0.length ? pickOne(g.rng, reals0).id : null;
-  for (const a of here.filter((x) => x.impostor)) {
-    const friends = here.filter((x) => x.impostor && x.id !== a.id);
-    const reals = here.filter((x) => !x.impostor);
-    const friendInTrouble = friends.find((f) => talk.some((t) => t.kind === 'accuse' && t.about === f.id));
-    if (friendInTrouble && next(g.rng) < 0.6) {
-      const policy = g.proposals.find((p) => p.backers.includes(friendInTrouble.id))?.policy;
-      talk.push({ from: a.id, about: friendInTrouble.id, kind: 'defend', text: fill(pickOne(g.rng, LINES.defendFriend), g, friendInTrouble.id, policy) });
-      continue;
-    }
-    if (!reals.length) continue;
-    // Go after whoever accused them (or a friend); otherwise anyone real.
-    const accusers = reals.filter((r) => talk.some((t) => t.from === r.id && t.kind === 'accuse' && (t.about === a.id || friends.some((f) => f.id === t.about))));
-    const target = accusers.length && next(g.rng) < 0.5 ? pickOne(g.rng, accusers) : shared !== null && next(g.rng) < 0.7 ? g.advisors[shared] : pickOne(g.rng, reals);
-    talk.push({ from: a.id, about: target.id, kind: 'accuse', text: fill(pickOne(g.rng, LINES.frame), g, target.id) });
+  for (const a of here) {
+    const others = here.filter((x) => x.id !== a.id);
+    if (!others.length) continue;
+    // Who they'd go after: the loyal look at everyone; the impostors at the loyal ones only.
+    const pool = a.impostor ? others.filter((x) => !x.impostor) : others;
+    const scored = (pool.length ? pool : others).map((x) => ({ x, ev: evidenceOn(g, x.id), seen: 0 }));
+    for (const o of scored) o.seen = weightOf(o.ev) * (next(g.rng) < 0.65 ? 1 : 0.3) + next(g.rng) * 2;
+    scored.sort((p, q) => q.seen - p.seen);
+    const top = scored[0];
+    const roll = next(g.rng);
+    if (roll < 0.6) {
+      const ev = top.ev.length ? [...top.ev].sort((p, q) => q.weight - p.weight)[Math.floor(next(g.rng) * Math.min(2, top.ev.length))] : null;
+      talk.push({ from: a.id, about: top.x.id, kind: 'accuse', text: accusation(g, top.x.id, ev) });
+    } else if (roll < 0.82) {
+      // Vouch: the loyal for whoever looks cleanest; an impostor for a loyal one (cover), or now and then a friend.
+      const friends = others.filter((x) => x.impostor);
+      const clean = a.impostor
+        ? friends.length && next(g.rng) < 0.15
+          ? pickOne(g.rng, friends)
+          : pickOne(g.rng, pool.length ? pool : others)
+        : [...others].sort((p, q) => weightOf(evidenceOn(g, p.id)) - weightOf(evidenceOn(g, q.id)))[0];
+      talk.push({ from: a.id, about: clean.id, kind: 'defend', text: pickOne(g.rng, L.vouch).replace(/\{x\}/g, clean.name) });
+    } else talk.push({ from: a.id, about: null, kind: 'unsure', text: pickOne(g.rng, L.unsure) });
   }
   g.talk = shuffleInPlace(g.rng, talk);
   g.said.push(...g.talk.map((t) => ({ ...t, quarter: g.quarter })));
@@ -463,7 +676,7 @@ export function ask(g: Game, advisor: number, question: string): Answer | null {
     return again;
   }
   const dodgedBefore = g.answers.some((x) => x.advisor === advisor && x.question === question);
-  const base = answerOdds(g)[a.impostor ? 'impostor' : 'loyal'];
+  const base = answerOddsFor(g, a);
   const odds = dodgedBefore ? { ...base, dodge: 0 } : base;
   let roll = next(g.rng) * (odds.sound + odds.near + odds.slip + odds.dodge);
   let tone: Tone = 'dodge';
@@ -474,7 +687,9 @@ export function ask(g: Game, advisor: number, question: string): Answer | null {
   // "Sound" means sound for whoever's in charge: in mirror mode, the statist answer. The near-misses
   // (free-market, not Austrian) give an ancap away in Vienna just as they give a statist away here.
   const [loyal, slips] = g.mode === 'mirror' ? [q.slips, q.sound] : [q.sound, q.slips];
-  const near = tone === 'near' ? pickOne(g.rng, q.near) : null;
+  // On Hard and Expert, only the technical near-misses: no misspelled names to give anyone away.
+  const nearPool = difficultyOf(g).easyNearMisses ? q.near : q.near.filter((x) => x.hard);
+  const near = tone === 'near' ? pickOne(g.rng, nearPool.length ? nearPool : q.near) : null;
   const text = tone === 'sound' ? pickOne(g.rng, loyal) : tone === 'slip' ? pickOne(g.rng, slips) : near ? near.text : pickOne(g.rng, DODGES);
   const answer: Answer = { quarter: g.quarter, advisor, question, text, tone, ...(near ? { why: near.why } : {}) };
   g.answers.push(answer);
@@ -491,8 +706,10 @@ export function fire(g: Game, id: number): boolean {
   a.fired = true;
   a.revealed = true;
   g.firedThisQuarter = id;
-  // A loyal advisor leaves to write a book about your mistake; an impostor leaves quietly.
+  // A loyal advisor leaves to write a book about your mistake; an impostor leaves quietly, and on
+  // Hard and Expert the others lie low for a while.
   apply(g, a.impostor ? FIRE_IMPOSTOR : FIRE_LOYAL);
+  if (a.impostor) g.quietUntil = g.quarter + 1 + QUIET_FOR;
   // Their backing goes with them; a proposal nobody backs is gone, unless it's the last one.
   for (const p of g.proposals) p.backers = p.backers.filter((b) => b !== id);
   const left = g.proposals.filter((p) => p.backers.length);
@@ -507,9 +724,14 @@ export function investigate(g: Game, tool: ToolId, id: number): Clue | null {
   const a = g.advisors[id];
   if (!canInvestigate(g, tool) || !a || a.fired) return null;
   g.toolsUsed[tool] = (g.toolsUsed[tool] ?? 0) + 1;
-  g.investigated = true;
+  g.investigationsLeft = Math.max(0, (g.investigationsLeft ?? 1) - 1);
+  g.investigated = g.investigationsLeft === 0;
+  // Detectives aren't free (Hard and Expert).
+  const cost = difficultyOf(g).investigationCost;
+  if (cost) apply(g, cost);
   const clue: Clue = { quarter: g.quarter, advisor: id, tool, text: a.profile[tool].text, lean: a.profile[tool].lean };
   g.clues.push(clue);
+  checkEnd(g);
   return clue;
 }
 
@@ -529,6 +751,12 @@ export function upgradeGame(g: Game) {
   g.toolsUsed ??= {};
   g.clues ??= [];
   g.investigated ??= false;
+  g.investigationsLeft ??= g.investigated ? 0 : 1;
+  // Saves from before the difficulty levels: Normal, no rumours, no verdict yet.
+  g.difficulty = DIFFICULTIES[g.difficulty] ? g.difficulty : 'normal';
+  g.quietUntil ??= 0;
+  g.rumours ??= [];
+  g.verdict ??= null;
   delete old.checksUsed;
   delete old.checked;
   delete old.checkUsed;
@@ -551,12 +779,35 @@ export function enact(g: Game, policy: string): boolean {
   return true;
 }
 
-/** On to the next quarter (or the end of the term). */
+/** On to the next quarter (or, after the last one, the closing verdict). */
 export function nextQuarter(g: Game) {
   if (g.phase !== 'result') return;
-  if (g.quarter >= termLength(g)) return endTerm(g, 'term');
+  if (g.quarter >= termLength(g)) {
+    g.phase = 'verdict';
+    return;
+  }
   g.quarter++;
   startQuarter(g);
+}
+
+/**
+ * The closing verdict: name who's still a statist on the council (possibly nobody: "the council is
+ * clean"). On Normal and Hard it's scored; on Expert it has to be exactly right, or you lose.
+ */
+export function submitVerdict(g: Game, named: number[]): boolean {
+  if (g.phase !== 'verdict') return false;
+  const here = active(g);
+  const pick = [...new Set(named)].filter((id) => here.some((a) => a.id === id));
+  const verdict: Verdict = {
+    named: pick,
+    correct: pick.filter((id) => g.advisors[id].impostor),
+    wrong: pick.filter((id) => !g.advisors[id].impostor),
+    missed: here.filter((a) => a.impostor && !pick.includes(a.id)).map((a) => a.id),
+  };
+  g.verdict = verdict;
+  const exactWrong = difficultyOf(g).verdictExact && (verdict.wrong.length > 0 || verdict.missed.length > 0);
+  endTerm(g, exactWrong ? 'unclean' : 'term');
+  return true;
 }
 
 /** Whatever's still pending lands after you leave office (it counts for the score). */
@@ -578,17 +829,14 @@ function checkEnd(g: Game): boolean {
   const impostors = here.filter((a) => a.impostor).length;
   const real = here.length - impostors;
   let ending: Ending | null = null;
+  // No early win: firing the last impostor doesn't end the term (and nothing tells you it was the last).
   if (g.prosperity <= 0) ending = 'broke';
   else if (g.liberty <= 0) ending = 'chained';
   else if (impostors > real) ending = 'takeover';
-  else if (impostors === 0) ending = 'purged';
   if (!ending) return false;
-  // Lose mid-quarter and nothing more lands; purge the council and the bills still come in.
-  if (ending === 'purged') endTerm(g, ending);
-  else {
-    g.ending = ending;
-    g.phase = 'over';
-  }
+  // Lose mid-quarter and nothing more lands.
+  g.ending = ending;
+  g.phase = 'over';
   return true;
 }
 
@@ -601,7 +849,11 @@ export function score(g: Game): number {
   const wrong = fired.length - caught;
   const early = g.ending === 'purged' ? 15 * (termLength(g) - g.quarter) : 0;
   const base = won(g) ? 100 : 10 * (g.quarter - 1);
-  return Math.max(0, Math.round(base + g.prosperity + g.liberty + 40 * caught - 25 * wrong + early));
+  // The closing verdict: points for every statist named, less for the loyal ones named or the statists missed.
+  const v = g.verdict;
+  const verdict = v ? 30 * v.correct.length - 25 * v.wrong.length - 20 * v.missed.length : 0;
+  const raw = base + g.prosperity + g.liberty + 40 * caught - 25 * wrong + early + verdict;
+  return Math.max(0, Math.round(raw * difficultyOf(g).scoreScale));
 }
 
 export function policyOf(id: string): Policy {

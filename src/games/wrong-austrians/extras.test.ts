@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENTS, earnedNow, normalizeUnlocked } from './achievements.ts';
 import { botPlay } from './bot.ts';
-import { ask, beginCouncil, canInvestigate, enact, fire, FIRING_FROM, type Game, investigate, newGame, nextQuarter, policyOf, questionsPer, QUESTIONS_PER_QUARTER, termLength } from './council.ts';
+import { ask, beginCouncil, canInvestigate, enact, fire, FIRING_FROM, type Game, investigate, newGame, nextQuarter, policyOf, questionsPer, QUESTIONS_PER_QUARTER, submitVerdict, termLength } from './council.ts';
 import { dailyFor, normalizeDailyBests, TWISTS } from './daily.ts';
 import { tuneFor } from './music.ts';
 import { councilEmoji, shareText, type TermSummary } from './share.ts';
@@ -113,8 +113,11 @@ describe('achievements', () => {
     beginCouncil(g);
     fire(g, i2.id);
     const got = earnedNow(g, none);
-    expect(got).toEqual(expect.arrayContaining(['purge', 'sworn-in', 'stateless']));
+    expect(got).toEqual(expect.arrayContaining(['purge']));
     expect(got).not.toContain('clean-sweep');
+    expect(got).not.toContain('blitz');
+    // No early win: the term goes on to the verdict.
+    expect(g.phase).toBe('council');
   });
 
   it('a clean, quick purge', () => {
@@ -126,7 +129,16 @@ describe('achievements', () => {
     if (isOver(g)) return;
     beginCouncil(g);
     fire(g, i2.id);
-    expect(earnedNow(g, none)).toEqual(expect.arrayContaining(['clean-sweep', 'blitz', 'purge']));
+    expect(earnedNow(g, none)).toEqual(expect.arrayContaining(['blitz', 'purge']));
+    // Serve the rest of the term, then declare the council clean (rightly).
+    while (g.phase !== 'verdict' && !isOver(g)) {
+      if (g.phase === 'briefing') beginCouncil(g);
+      else if (g.phase === 'council') enact(g, (g.proposals.find((p) => policyOf(p.policy).kind === 'sound') ?? g.proposals[0]).policy);
+      else nextQuarter(g);
+    }
+    if (isOver(g)) return;
+    submitVerdict(g, []);
+    expect(earnedNow(g, none)).toEqual(expect.arrayContaining(['clean-sweep', 'clean-call', 'purge', 'sworn-in']));
   });
 
   it('the records count too, and the takeover is its own (secret) achievement', () => {

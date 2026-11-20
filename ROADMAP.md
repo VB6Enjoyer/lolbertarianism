@@ -952,12 +952,40 @@ against bot advisors (`src/games/wrong-austrians/`).
   check a term, ✅/🚩 marks and a record for each advisor. Each Viennese left on the council slips
   an unsigned regulation through every quarter (−5 🗽 −2 📈).
 - Lose at 0 Prosperity or Liberty, or when the Viennese outnumber the real Austrians ("I thought I
-  hired Austrian economists"). Win by firing both Viennese, or by surviving the term.
+  hired Austrian economists"). Win by surviving the term (the early win by firing both was later
+  dropped, see Difficulty levels).
 - Countryballs drawn as SVG (`ball.ts`): the eagle, red-white-red once unmasked, hats and monocles.
 - Bots (`bot.ts`) for balance: one that knows its economics wins ~99%, one that goes only by
   outcomes, slips and accusations ~69%, random clicking ~11%.
 - Declared finished (v1.0): the "Prototype" badge is gone from the homepage, with a new
   screenshot and link preview.
+
+#### Difficulty levels ✅
+
+Testers still caught every statist at the first chance: comic statist accusations ("one of us"),
+five proposals a quarter with their backers on show, misspelled names, a known count and an early
+win. Now there are three levels, picked on the title screen:
+
+- **Normal** 🦅: as before (two impostors among five, backers on show, 3 questions a quarter), but
+  no early win: you serve all eight quarters and end with a closing verdict, naming whoever you
+  think is still a statist (+30 each caught, −25 each loyal one named, −20 each missed).
+- **Hard** 🕵️: proposals are anonymous until enacted; 2 questions a quarter; only the technical
+  near-misses (ABCT and the Ricardo effect, the regression theorem, imputation, Böhm-Bawerk on
+  interest, and so on: three new ones per question); one impostor is a sleeper in deep cover (right
+  60% of the time, sound proposals 80%); after a firing the others lie low for two quarters; an
+  impostor sometimes copies whoever you've marked ✅; a newspaper rumour a quarter from Q2 (true 60%
+  of the time); investigations cost 1 📈; the quiet damage is folded, with noise, into the crisis
+  hit instead of being its own news item.
+- **Expert** 🧠: six advisors and one to three impostors (you're not told how many); 2 questions a
+  quarter but only 10 for the whole term; a stronger sleeper (75% / 90%); two investigations a
+  quarter at 2 📈 each, every tool usable twice; and the verdict must be exactly right, or you lose
+  (declaring the council clean included).
+- Everyone speaks in the debate, with the same lines, citing real evidence (a fumbled answer, a
+  clue, a rumour, a bill that went bad); impostors only rarely vouch for each other.
+- The bots now work out the odds of every possible set of impostors. Win rates (200 terms):
+  Normal 84% / 13% / 8% (savvy / naive / random), Hard ~50% / 8% / 12%, Expert ~17% / 3% / 3%.
+- New achievements: Beyond Reasonable Doubt, Squeaky Clean, Hard Money, Praxeologist, Wake Up; the
+  purge ones no longer rely on an early win.
 
 #### Online party mode ✅
 

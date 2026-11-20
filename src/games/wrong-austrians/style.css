@@ -394,6 +394,8 @@ button {
 
 .effects {
     display: inline-flex;
+    align-self: start;
+    align-items: center;
     gap: 4px;
     white-space: nowrap;
 }
@@ -611,6 +613,49 @@ q.pitch {
 .later {
     margin: 0;
     color: var(--muted);
+}
+
+/* --- Difficulty, the six-seat council, the verdict --- */
+.difficulty-tabs {
+    flex-wrap: wrap;
+    margin: 0 0 6px;
+}
+
+.difficulty-blurb {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.council.six {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.verdict-pick .advisor {
+    color: var(--ink);
+    background: var(--paper);
+    cursor: pointer;
+}
+
+.verdict-pick .advisor.accused {
+    background: #ffd2d2;
+    border-color: #b3261e;
+    box-shadow: 0 0 0 2px #b3261e inset;
+}
+
+.verdict-line {
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-weight: 700;
+    background: #c9f2d8;
+}
+
+.verdict-line.bad {
+    background: #ffd2d2;
+}
+
+.news-item.rumour {
+    font-style: italic;
 }
 
 .fired-note {
@@ -1108,6 +1153,10 @@ q.pitch {
     .council,
     .reveal-grid {
         gap: 4px;
+    }
+
+    .council.six {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .advisor,
