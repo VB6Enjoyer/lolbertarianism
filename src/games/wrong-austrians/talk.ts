@@ -15,49 +15,51 @@ export const DODGES = [
   'Economists disagree about that. I disagree with all of them.',
 ];
 
-/** {x} is who they're talking about, {p} a policy. */
-export const LINES = {
-  /** A real Austrian accusing, with evidence. */
-  accuseBacked: [
-    'I don’t trust {x}. Nobody who has read Mises proposes “{p}”.',
-    '“{p}”? {x} said that with a straight face. Think about it.',
-    '{x} backed “{p}”. That’s straight out of a ministry brochure.',
+/**
+ * What the council says in the debate. Everyone (loyal or not) uses the same lines, built from the
+ * same record, so the wording never gives anyone away: only whom they pick on does. {x} is who
+ * they're talking about, {q} a question they fumbled, {item} a clue or rumour, {tool} where it came
+ * from, {p} a policy.
+ */
+export interface Lines {
+  accuseAnswer: string[];
+  accuseClue: string[];
+  accuseRumour: string[];
+  accuseBill: string[];
+  /** Backing a statist policy right now (only when you can see who backs what). */
+  accuseBacked: string[];
+  /** Nothing on the record, just a feeling. */
+  hunch: string[];
+  vouch: string[];
+  unsure: string[];
+}
+
+export const LINES: Lines = {
+  accuseAnswer: [
+    'Did you hear {x} on “{q}”? That wasn’t an Austrian answer.',
+    'Read {x}’s answer to “{q}” again. Slowly.',
+    'I’d ask {x} about “{q}” once more, if I were you. Something was off.',
   ],
-  accuseBill: ['Remember “{p}”? {x} pushed it, and we’re still paying for it.', '{x} sold us “{p}”. Look how that turned out.'],
-  accuseSlip: ['{x} answered your question like someone from the Finance Ministry.', 'Did you hear {x} earlier? That was not an Austrian School answer.'],
-  /** A real Austrian with nothing to go on. */
-  unsure: ['No idea yet. Watch who backs what.', 'Hard to say. Ask them some questions.', 'Something about {x} feels… state-issued. But that’s just a hunch.'],
-  /** Someone from Vienna, framing a real Austrian. */
-  frame: [
-    '{x} is awfully extreme, don’t you think? That’s suspicious.',
-    'I’d keep an eye on {x}. Very quiet lately.',
-    '{x} keeps saying “abolish the state”. Who even talks like that?',
-    'Between us, I saw {x} reading Keynes on the tram.',
-  ],
-  /** Someone from Vienna, sticking up for a fellow Viennese. */
-  defendFriend: ['Leave {x} alone. {x} is one of us. A real Austrian, I mean.', '{x}? Solid. Very solid. We go way back. To… university.', 'Let’s not be hasty about {x}. Reasonable people can propose “{p}”.'],
-  /** A real Austrian vouching for someone. */
-  vouch: ['{x} has given sound advice every quarter. I’d keep them.', 'Whatever else happens, {x} is the real thing.'],
+  accuseClue: ['Have you looked at {x}’s past? {item}. Make of that what you will.', '{x}: {item}. Just saying.'],
+  accuseRumour: ['Did you see the papers about {x}? “{item}”. If that’s true…', 'There’s talk about {x}: “{item}”. Nobody’s denied it.'],
+  accuseBill: ['Remember “{p}”? {x} backed it, and we’re still paying for it.', '{x} sold us “{p}”. Look how that turned out.'],
+  accuseBacked: ['{x} is backing “{p}”. Nobody who has read Mises proposes that.', '“{p}”? {x} said that with a straight face.'],
+  hunch: ['Something about {x} doesn’t add up. I can’t say what yet.', 'I’d keep an eye on {x}. Call it a hunch.'],
+  vouch: ['{x} has given sound advice every quarter. I’d keep them.', 'Whatever else happens, {x} is the real thing.', 'I’ve worked with {x} for years. I trust them.'],
+  unsure: ['No idea yet. Watch what everyone backs.', 'Hard to say. Ask them some questions.', 'Too early to accuse anyone. Keep digging.'],
 };
 
 /** Mirror mode: you're Austria, the loyal ones are Viennese, and the impostors are ancaps. */
-export const LINES_MIRROR: typeof LINES = {
-  accuseBacked: [
-    'I don’t trust {x}. Nobody who loves Vienna proposes “{p}”.',
-    '“{p}”? {x} said that with a straight face. Think about it.',
-    '{x} backed “{p}”. That’s straight out of a Mises Institute pamphlet.',
+export const LINES_MIRROR: Lines = {
+  ...LINES,
+  accuseAnswer: [
+    'Did you hear {x} on “{q}”? That wasn’t a Viennese answer.',
+    'Read {x}’s answer to “{q}” again. Slowly.',
+    'I’d ask {x} about “{q}” once more, if I were you. Something was off.',
   ],
-  accuseBill: LINES.accuseBill,
-  accuseSlip: ['{x} answered your question like someone from the Mises Institute.', 'Did you hear {x} earlier? That was not a Viennese answer.'],
-  unsure: ['No idea yet. Watch who backs what.', 'Hard to say. Ask them some questions.', 'Something about {x} feels… privately funded. But that’s just a hunch.'],
-  frame: [
-    '{x} is awfully keen on markets lately, don’t you think?',
-    'I’d keep an eye on {x}. Very quiet lately.',
-    '{x} keeps saying “privatize”. Who even talks like that?',
-    'Between us, I saw {x} reading Hayek on the tram.',
-  ],
-  defendFriend: ['Leave {x} alone. {x} is one of us. A real Viennese, I mean.', '{x}? Solid. Very solid. We go way back. To… summer school.', 'Let’s not be hasty about {x}. Reasonable people can propose “{p}”.'],
-  vouch: LINES.vouch,
+  accuseBacked: ['{x} is backing “{p}”. Nobody who loves Vienna proposes that.', '“{p}”? {x} said that with a straight face.'],
+  vouch: ['{x} has served the Republic every quarter. I’d keep them.', 'Whatever else happens, {x} has been straight with me.', 'I’ve worked with {x} for years. I trust them.'],
+  unsure: ['No idea yet. Watch what everyone backs.', 'Hard to say. Ask them some questions.', 'Too early to accuse anyone. Fill in the forms first.'],
 };
 
 /** What an impostor still on the council quietly does every quarter (nobody signs it). */

@@ -1,7 +1,7 @@
 // Achievements: checked against the term in progress (or just finished) and the lifetime records,
 // after every move. A few are secret until earned.
 
-import { findPolicy, type Game, QUARTERS, QUESTIONS_PER_QUARTER, score, won } from './council.ts';
+import { difficultyOf, findPolicy, type Game, QUARTERS, score, won } from './council.ts';
 
 export interface Records {
   wins: number;
@@ -24,20 +24,30 @@ export interface Achievement {
 const over = (g: Game | null): g is Game => !!g && g.phase === 'over';
 const fired = (g: Game, impostor: boolean) => g.advisors.filter((a) => a.fired && a.impostor === impostor).length;
 const kindOf = (id: string) => findPolicy(id)?.kind;
+const impostors = (g: Game) => g.advisors.filter((a) => a.impostor).length;
+/** Every impostor on the council fired. */
+const purged = (g: Game) => g.ending === 'purged' || fired(g, true) === impostors(g);
+/** Every impostor caught (fired, or named in the verdict), and nobody loyal fired or named. */
+const clean = (g: Game) => g.ending === 'purged' || (!!g.verdict && !g.verdict.wrong.length && !g.verdict.missed.length && fired(g, false) === 0);
+/** The most questions a full term allows on this difficulty. */
+const questionCap = (g: Game) => {
+  const d = difficultyOf(g);
+  return Math.min(d.questionBudget ?? Infinity, d.questionsPer * QUARTERS);
+};
 
 export const ACHIEVEMENTS: Achievement[] = [
   // --- Getting started ---
   { id: 'sworn-in', icon: '🎖️', name: 'Sworn In', description: 'Finish a term, however it ends.', done: (g) => over(g) },
   { id: 'stateless', icon: '😎', name: 'Still Stateless', description: 'Win a term as Ancapball.', done: (g, r) => (over(g) && won(g) && g.mode === 'ancap') || r.wins - r.mirrorWins > 0 },
   { id: 'gotcha-one', icon: '🕵️', name: 'Under the Paint', description: 'Fire an impostor.', done: (g) => !!g && fired(g, true) >= 1 },
-  { id: 'purge', icon: '🧹', name: 'Purge', description: 'Fire both impostors.', done: (g) => !!g && fired(g, true) >= 2 },
-  { id: 'clean-sweep', icon: '✨', name: 'Clean Sweep', description: 'Fire both impostors without firing anyone loyal.', done: (g) => !!g && g.ending === 'purged' && fired(g, false) === 0 },
-  { id: 'blitz', icon: '⚡', name: 'Blitz', description: 'Purge the council by the end of the fourth quarter, as soon as the law allows.', done: (g) => !!g && g.ending === 'purged' && g.quarter <= 4 },
+  { id: 'purge', icon: '🧹', name: 'Purge', description: 'Fire every impostor on the council, at least two of them.', done: (g) => !!g && fired(g, true) >= 2 && purged(g) },
+  { id: 'clean-sweep', icon: '✨', name: 'Clean Sweep', description: 'Catch every impostor (fired, or named in the verdict) without firing or naming anyone loyal.', done: (g) => over(g) && clean(g) },
+  { id: 'blitz', icon: '⚡', name: 'Blitz', description: 'Fire every impostor, at least two of them, by the end of the fourth quarter.', done: (g) => !!g && fired(g, true) >= 2 && purged(g) && g.quarter <= 4 },
   { id: 'full-term', icon: '📅', name: 'Full Term', description: 'Serve all eight quarters.', done: (g) => !!g && g.ending === 'term' && g.twist !== 'snap-election' },
   { id: 'enemies-close', icon: '🤝', name: 'Keep Your Enemies Close', description: 'Serve the whole term with an impostor still on the council.', done: (g) => !!g && g.ending === 'term' && g.advisors.some((a) => a.impostor && !a.fired) },
 
   // --- Detective work ---
-  { id: 'interrogator', icon: '❓', name: 'Interrogator', description: `Ask every question you’re allowed in a full term (${QUESTIONS_PER_QUARTER * QUARTERS} or more).`, done: (g) => !!g && g.answers.length >= QUESTIONS_PER_QUARTER * QUARTERS },
+  { id: 'interrogator', icon: '❓', name: 'Interrogator', description: 'Ask every question you’re allowed in a full term.', done: (g) => !!g && g.answers.length >= questionCap(g) },
   { id: 'slip-fire', icon: '🎯', name: 'Gotcha', description: 'Fire an impostor who got one of your interview questions wrong.', done: (g) => !!g && g.advisors.some((a) => a.fired && a.impostor && g.answers.some((x) => x.advisor === a.id && (x.tone === 'slip' || x.tone === 'near'))) },
   { id: 'paper-trail', icon: '🔍', name: 'Paper Trail', description: 'Fire an impostor you’d investigated at least twice.', done: (g) => !!g && g.advisors.some((a) => a.fired && a.impostor && g.clues.filter((c) => c.advisor === a.id).length >= 2) },
   { id: 'judge', icon: '🧐', name: 'Good Judge of Character', description: 'End a term with at least three marks, every ✅ on someone loyal and every 🚩 on an impostor.', done: (g) => {
@@ -45,6 +55,13 @@ export const ACHIEVEMENTS: Achievement[] = [
     const marked = g.advisors.filter((a) => a.mark !== 'none');
     return marked.length >= 3 && marked.every((a) => (a.mark === 'trust') === !a.impostor);
   } },
+
+  // --- The verdict, and the harder levels ---
+  { id: 'perfect-verdict', icon: '⚖️', name: 'Beyond Reasonable Doubt', description: 'Name every impostor left on the council in the closing verdict, and nobody else (at least one).', done: (g) => !!g?.verdict && g.verdict.correct.length > 0 && !g.verdict.wrong.length && !g.verdict.missed.length },
+  { id: 'clean-call', icon: '🫧', name: 'Squeaky Clean', description: 'Declare the council clean at the end, and be right.', done: (g) => !!g?.verdict && !g.verdict.named.length && !g.verdict.missed.length },
+  { id: 'hard-win', icon: '🔥', name: 'Hard Money', description: 'Win a term on Hard.', done: (g) => over(g) && won(g) && g.difficulty === 'hard' },
+  { id: 'expert-win', icon: '💀', name: 'Praxeologist', description: 'Win a term on Expert.', done: (g) => over(g) && won(g) && g.difficulty === 'expert' },
+  { id: 'sleeper-caught', icon: '🛌', name: 'Wake Up', description: 'Fire an impostor in deep cover.', done: (g) => !!g && g.advisors.some((a) => a.sleeper && a.fired) },
 
   // --- Running the country ---
   { id: 'sound-money', icon: '🪙', name: 'Sound Money', description: 'Serve a full term enacting nothing but sound policy.', done: (g) => !!g && g.ending === 'term' && g.enacted.length >= 6 && g.enacted.every((e) => kindOf(e.policy) === 'sound') },

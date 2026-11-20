@@ -394,6 +394,8 @@ button {
 
 .effects {
     display: inline-flex;
+    align-self: start;
+    align-items: center;
     gap: 4px;
     white-space: nowrap;
 }
@@ -611,6 +613,49 @@ q.pitch {
 .later {
     margin: 0;
     color: var(--muted);
+}
+
+/* --- Difficulty, the six-seat council, the verdict --- */
+.difficulty-tabs {
+    flex-wrap: wrap;
+    margin: 0 0 6px;
+}
+
+.difficulty-blurb {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.council.six {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.verdict-pick .advisor {
+    color: var(--ink);
+    background: var(--paper);
+    cursor: pointer;
+}
+
+.verdict-pick .advisor.accused {
+    background: #ffd2d2;
+    border-color: #b3261e;
+    box-shadow: 0 0 0 2px #b3261e inset;
+}
+
+.verdict-line {
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-weight: 700;
+    background: #c9f2d8;
+}
+
+.verdict-line.bad {
+    background: #ffd2d2;
+}
+
+.news-item.rumour {
+    font-style: italic;
 }
 
 .fired-note {
@@ -1110,6 +1155,10 @@ q.pitch {
         gap: 4px;
     }
 
+    .council.six {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .advisor,
     .reveal-card {
         padding: 6px 2px;
@@ -1256,4 +1305,114 @@ q.pitch {
 /* A silent ball in the comic keeps its (invisible) bubble so the row stays lined up. */
 .bubble.silent {
     visibility: hidden;
+}
+
+/* --- Online party --- */
+.online-boxes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.online-box {
+    padding: 12px 14px;
+    border: var(--line);
+    border-radius: 14px;
+    background: #fff;
+}
+
+.online-box .section {
+    margin-top: 0;
+}
+
+.online-name,
+.online-code {
+    display: block;
+    width: 100%;
+    max-width: 320px;
+    margin: 8px auto;
+    padding: 10px 12px;
+    border: var(--line);
+    border-radius: 10px;
+    font: 18px var(--body);
+    text-align: center;
+}
+
+.online-code {
+    font: 700 28px var(--head);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+}
+
+.online-check {
+    display: block;
+    margin: 8px 0;
+    font-size: 14px;
+}
+
+.room-code {
+    display: grid;
+    justify-items: center;
+    margin: 6px auto;
+}
+
+.room-code b {
+    font: 700 52px var(--head);
+    letter-spacing: 10px;
+}
+
+.online-members {
+    margin: 6px 0 10px;
+    padding: 0;
+    list-style: none;
+}
+
+.online-members li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0;
+    padding: 6px 10px;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.online-members li.bot {
+    background: #f4f1ea;
+}
+
+.kick {
+    padding: 2px 8px;
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.online-wait {
+    margin: 10px 0;
+    padding: 8px 12px;
+    border: 2px dashed var(--ink);
+    border-radius: 10px;
+    background: #fff8c4;
+}
+
+.roster-chip.me {
+    outline: 3px solid var(--yellow);
+}
+
+.roster-chip.waiting {
+    border-style: dashed;
+}
+
+.my-role {
+    margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+    .online-boxes {
+        grid-template-columns: 1fr;
+    }
 }

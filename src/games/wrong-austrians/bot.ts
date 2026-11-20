@@ -1,86 +1,130 @@
 // Bots that play whole terms, for the tests and for balancing. They play detective: every interview
-// answer, investigation, proposal and bill is evidence, weighed by how likely it is from a loyal
-// advisor and from an impostor, and they work out the odds of each pair of advisors being the two
-// impostors. A savvy bot knows its economics (it can tell a near-miss from the real thing, a Chicago
-// thesis from an Austrian one, a disguised policy on sight); a naive one only spots the obvious (the
-// blatant slips, openly statist pasts, the bills when they land). A random one just clicks.
+// answer, investigation, rumour, proposal and bill is evidence, weighed by how likely it is from a
+// loyal advisor and from an impostor (who may be in deep cover), and they work out the odds of every
+// possible set of impostors (with however many the difficulty allows). A savvy bot knows its
+// economics (it can tell a near-miss from the real thing, a Chicago thesis from an Austrian one, a
+// disguised policy on sight); a naive one only spots the obvious (outright slips, openly statist
+// pasts, the bills when they land). A random one just clicks. The debate is ignored: everyone uses
+// the same lines, so it carries next to nothing.
 
 import { LEAN_ODDS, type Lean, TOOL_ORDER } from './clues.ts';
 import {
-  active, answerOdds, ask, beginCouncil, canFire, canInvestigate, COUNCIL, enact, fire, FIRING_FROM, type Game, IMPOSTORS, investigate, nextQuarter, policyOf,
-  PROPOSAL_ODDS, termLength,
+  active, answerOdds, ask, backersShown, beginCouncil, budgetLeft, canFire, canInvestigate, difficultyOf, enact, fire, FIRING_FROM, type Game, investigate, nextQuarter,
+  policyOf, PROPOSAL_ODDS, RUMOUR_TRUE, submitVerdict, termLength, type Tone,
 } from './council.ts';
 import { next, pickOne } from './rng.ts';
 
 export type BotStyle = 'savvy' | 'naive' | 'random';
 
-/** How likely the evidence on one advisor is, if they're loyal and if they're an impostor (as log odds: impostor over loyal). */
-function evidenceFor(g: Game, id: number, style: BotStyle): number {
-  let log = 0;
+/** Log-likelihoods of everything on the record about one advisor, if loyal, an ordinary impostor, or one in deep cover. */
+function likelihoods(g: Game, id: number, style: BotStyle): { loyal: number; impostor: number; deep: number } {
+  const d = difficultyOf(g);
   const odds = answerOdds(g);
-  const lr = (pImp: number, pLoyal: number) => Math.log(Math.max(1e-6, pImp) / Math.max(1e-6, pLoyal));
+  const deepAnswer: Record<Tone, number> = d.sleeper ? { sound: d.sleeper.sound, near: Math.max(0, 0.95 - d.sleeper.sound), slip: 0, dodge: 0.05 } : odds.impostor;
+  const deepPolicy = d.sleeper ? { sound: d.sleeper.policy, disguised: 1 - d.sleeper.policy, blatant: 0 } : PROPOSAL_ODDS.impostor;
+  const L = { loyal: 0, impostor: 0, deep: 0 };
+  const add = (pl: number, pi: number, pd: number) => {
+    L.loyal += Math.log(Math.max(1e-4, pl));
+    L.impostor += Math.log(Math.max(1e-4, pi));
+    L.deep += Math.log(Math.max(1e-4, pd));
+  };
   for (const a of g.answers) {
-    // A repeat is the same answer again: no new evidence.
     if (a.advisor !== id || a.repeat) continue;
-    if (style === 'savvy') log += lr(odds.impostor[a.tone], odds.loyal[a.tone]);
+    if (style === 'savvy') add(odds.loyal[a.tone], odds.impostor[a.tone], deepAnswer[a.tone]);
     else {
       // The naive can't tell a near-miss from the real thing: only an outright slip, or a dodge.
-      const ok = (t: typeof odds.loyal) => t.sound + t.near;
-      if (a.tone === 'slip' || a.tone === 'dodge') log += lr(odds.impostor[a.tone], odds.loyal[a.tone]);
-      else log += lr(ok(odds.impostor), ok(odds.loyal));
+      const ok = (t: Record<Tone, number>) => t.sound + t.near;
+      if (a.tone === 'slip' || a.tone === 'dodge') add(odds.loyal[a.tone], odds.impostor[a.tone], deepAnswer[a.tone]);
+      else add(ok(odds.loyal), ok(odds.impostor), ok(deepAnswer));
     }
   }
   const own: Lean = g.mode === 'mirror' ? 'statist' : 'austrian';
   const other: Lean = g.mode === 'mirror' ? 'austrian' : 'statist';
-  const leanP = (side: 'loyal' | 'impostor', lean: Lean) => {
+  const leanP = (side: 'loyal' | 'impostor' | 'sleeper', lean: Lean) => {
     const o = LEAN_ODDS[side];
     return lean === own ? o.own : lean === other ? o.other : lean === 'freemarket' ? o.freemarket : o.mainstream;
   };
-  for (const c of g.clues) {
-    if (c.advisor !== id) continue;
-    if (style === 'savvy') log += lr(leanP('impostor', c.lean), leanP('loyal', c.lean));
-    else if (c.lean === other) log += lr(leanP('impostor', other), leanP('loyal', other));
-    else log += lr(1 - leanP('impostor', other), 1 - leanP('loyal', other));
-  }
+  const seen = (side: 'loyal' | 'impostor' | 'sleeper', lean: Lean) => (style === 'savvy' ? leanP(side, lean) : lean === other ? leanP(side, other) : 1 - leanP(side, other));
+  for (const c of g.clues) if (c.advisor === id) add(seen('loyal', c.lean), seen('impostor', c.lean), seen('sleeper', c.lean));
+  // A rumour is their real past only some of the time; otherwise any lean, at random.
+  const rumourP = (side: 'loyal' | 'impostor' | 'sleeper', lean: Lean) => RUMOUR_TRUE * seen(side, lean) + (1 - RUMOUR_TRUE) * (style === 'savvy' ? 0.25 : lean === other ? 0.25 : 0.75);
+  for (const r of g.rumours) if (r.advisor === id) add(rumourP('loyal', r.lean), rumourP('impostor', r.lean), rumourP('sleeper', r.lean));
   for (const p of g.tabled) {
-    if (!p.backers.includes(id)) continue;
+    if (!p.backers.includes(id) || !backersShown(g, p.quarter, p.policy)) continue;
     const kind = policyOf(p.policy).kind;
-    if (style === 'savvy') log += lr(PROPOSAL_ODDS.impostor[kind], PROPOSAL_ODDS.loyal[kind]);
-    else if (kind === 'blatant') log += lr(PROPOSAL_ODDS.impostor.blatant, 0.02);
+    if (style === 'savvy') add(PROPOSAL_ODDS.loyal[kind], PROPOSAL_ODDS.impostor[kind], deepPolicy[kind]);
+    else if (kind === 'blatant') add(0.02, PROPOSAL_ODDS.impostor.blatant, 0.02);
   }
-  // Bills and payoffs, when they land, tell everyone (and the naive) what a policy really was.
-  for (const n of g.landed) {
-    if (!n.backers?.includes(id) || n.good === undefined || style === 'savvy') continue;
-    log += n.good ? lr(PROPOSAL_ODDS.impostor.sound, PROPOSAL_ODDS.loyal.sound) : lr(1 - PROPOSAL_ODDS.impostor.sound, 1 - PROPOSAL_ODDS.loyal.sound);
-  }
-  return log;
-}
-
-/** The chance each advisor is an impostor, from every pair that fits what's known. */
-export function odds(g: Game, style: BotStyle): Map<number, number> {
-  const ev = g.advisors.map((a) => evidenceFor(g, a.id, style));
-  const weight = new Map<number, number>();
-  let total = 0;
-  for (let i = 0; i < COUNCIL; i++) {
-    for (let j = i + 1; j < COUNCIL; j++) {
-      // A pair has to agree with whoever's been fired (and so revealed).
-      const fits = g.advisors.every((a) => !a.revealed || a.impostor === (a.id === i || a.id === j));
-      if (!fits) continue;
-      const w = Math.exp(ev[i] + ev[j]);
-      total += w;
-      weight.set(i, (weight.get(i) ?? 0) + w);
-      weight.set(j, (weight.get(j) ?? 0) + w);
+  // Bills and payoffs, when they land, tell everyone (even the naive) what a policy really was.
+  if (style !== 'savvy') {
+    for (const n of g.landed) {
+      if (!n.backers?.includes(id) || n.good === undefined) continue;
+      if (n.good) add(PROPOSAL_ODDS.loyal.sound, PROPOSAL_ODDS.impostor.sound, deepPolicy.sound);
+      else add(1 - PROPOSAL_ODDS.loyal.sound, 1 - PROPOSAL_ODDS.impostor.sound, 1 - deepPolicy.sound);
     }
   }
-  const out = new Map<number, number>();
-  for (const a of g.advisors) out.set(a.id, total ? (weight.get(a.id) ?? 0) / total : IMPOSTORS / COUNCIL);
-  return out;
+  return L;
 }
 
-/** Kept for the UI and older callers: higher is more suspicious. */
-export function suspicion(g: Game, style: BotStyle): Map<number, number> {
-  return odds(g, style);
+const logSumExp = (a: number, b: number) => (a > b ? a + Math.log1p(Math.exp(b - a)) : b + Math.log1p(Math.exp(a - b)));
+
+/**
+ * The odds that each advisor is an impostor, and of the most likely set, from every set that fits
+ * what's known (whoever's been fired is revealed) and the difficulty's possible counts.
+ */
+export function analyse(g: Game, style: BotStyle): { odds: Map<number, number>; best: number[] } {
+  const d = difficultyOf(g);
+  const n = g.advisors.length;
+  const deepShare = d.sleeper ? 0.4 : 0;
+  const ll = g.advisors.map((a) => likelihoods(g, a.id, style));
+  const impLL = ll.map((l) => (deepShare ? logSumExp(Math.log(deepShare) + l.deep, Math.log(1 - deepShare) + l.impostor) : l.impostor));
+  const choose = (k: number) => {
+    let c = 1;
+    for (let i = 0; i < k; i++) c = (c * (n - i)) / (i + 1);
+    return c;
+  };
+  const prior = d.impostors;
+  const totalW = Object.values(prior).reduce((t, w) => t + (w ?? 0), 0);
+  const weight = new Array<number>(n).fill(0);
+  let total = 0;
+  let best: number[] = [];
+  let bestW = -1;
+  const logs: { mask: number; lw: number }[] = [];
+  for (let mask = 0; mask < 1 << n; mask++) {
+    const k = popcount(mask);
+    const w = prior[k as 1 | 2 | 3];
+    if (!w) continue;
+    if (!g.advisors.every((a) => !a.revealed || a.impostor === Boolean(mask & (1 << a.id)))) continue;
+    let lw = Math.log(w / totalW / choose(k));
+    for (let i = 0; i < n; i++) lw += mask & (1 << i) ? impLL[i] : ll[i].loyal;
+    logs.push({ mask, lw });
+  }
+  const top = Math.max(...logs.map((x) => x.lw));
+  for (const { mask, lw } of logs) {
+    const w = Math.exp(lw - top);
+    total += w;
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) weight[i] += w;
+    if (w > bestW) {
+      bestW = w;
+      best = [...Array(n).keys()].filter((i) => mask & (1 << i));
+    }
+  }
+  const odds = new Map<number, number>();
+  for (let i = 0; i < n; i++) odds.set(i, total ? weight[i] / total : 0);
+  return { odds, best };
 }
+const popcount = (x: number) => {
+  let c = 0;
+  for (; x; x &= x - 1) c++;
+  return c;
+};
+
+/** The chance each advisor is an impostor. */
+export function odds(g: Game, style: BotStyle): Map<number, number> {
+  return analyse(g, style).odds;
+}
+/** Kept for older callers: higher is more suspicious. */
+export const suspicion = odds;
 
 function councilTurn(g: Game, style: BotStyle) {
   if (style === 'random') {
@@ -88,14 +132,16 @@ function councilTurn(g: Game, style: BotStyle) {
     if (g.phase === 'council') enact(g, pickOne(g.rng, g.proposals).policy);
     return;
   }
-  // Question whoever's most uncertain.
   const uncertain = () => {
     const o = odds(g, style);
     return active(g)
       .filter((a) => !a.revealed)
       .sort((a, b) => Math.abs((o.get(a.id) ?? 0) - 0.5) - Math.abs((o.get(b.id) ?? 0) - 0.5));
   };
-  for (let k = 0; k < 6 && g.questionsLeft > 0; k++) {
+  // Questions for whoever's most uncertain (sparingly, when there's a cap for the whole term).
+  const quartersLeft = termLength(g) - g.quarter + 1;
+  const cap = budgetLeft(g) === Infinity ? 99 : Math.max(1, Math.ceil(budgetLeft(g) / quartersLeft));
+  for (let k = 0; k < Math.min(6, cap) && g.questionsLeft > 0; k++) {
     let asked = false;
     for (const target of uncertain()) {
       const q = g.offered.find((id) => !g.answers.some((x) => x.advisor === target.id && x.question === id));
@@ -106,11 +152,16 @@ function councilTurn(g: Game, style: BotStyle) {
     }
     if (!asked) break;
   }
-  // This quarter's investigation, on the most uncertain.
-  const tool = TOOL_ORDER.find((t) => canInvestigate(g, t));
-  const target = uncertain()[0];
-  if (tool && target) investigate(g, tool, target.id);
-  // Fire the likeliest impostor once the odds are good enough (the last quarter, a little sooner).
+  // This quarter's investigation, on the most uncertain (unless it would cost the last of the economy).
+  for (let k = 0; k < 3; k++) {
+    // Dig into whoever's most uncertain, with a tool not yet used on them.
+    const target = uncertain().find((t) => TOOL_ORDER.some((tool) => canInvestigate(g, tool) && !g.clues.some((c) => c.advisor === t.id && c.tool === tool)));
+    const tool = target && TOOL_ORDER.find((t) => canInvestigate(g, t) && !g.clues.some((c) => c.advisor === target.id && c.tool === t));
+    if (!tool || !target || g.prosperity <= 12) break;
+    investigate(g, tool, target.id);
+  }
+  if (g.phase !== 'council') return;
+  // Fire the likeliest impostor once the odds are good enough.
   const o = odds(g, style);
   const ranked = active(g)
     .filter((a) => !a.revealed)
@@ -121,15 +172,25 @@ function councilTurn(g: Game, style: BotStyle) {
   if (g.phase !== 'council') return;
   const o2 = odds(g, style);
   const trust = (backers: number[]) => -backers.reduce((t, b) => t + (o2.get(b) ?? 0), 0);
+  const anonymous = difficultyOf(g).anonymous;
   const options = [...g.proposals].sort((a, b) => {
     if (style === 'savvy') {
       const sa = policyOf(a.policy).kind === 'sound' ? 1 : 0;
       const sb = policyOf(b.policy).kind === 'sound' ? 1 : 0;
       if (sa !== sb) return sb - sa;
     }
+    // On Hard and Expert you can't see backers, so the naive bot can only guess.
+    if (anonymous) return 0;
     return trust(b.backers) - trust(a.backers) || b.backers.length - a.backers.length;
   });
-  enact(g, options[0].policy);
+  enact(g, (anonymous && style !== 'savvy' ? pickOne(g.rng, options) : options[0]).policy);
+}
+
+/** The closing verdict: the most likely set of statists still on the council. */
+function verdict(g: Game, style: BotStyle) {
+  if (style === 'random') return submitVerdict(g, active(g).filter(() => next(g.rng) < 0.3).map((a) => a.id));
+  const { best } = analyse(g, style);
+  return submitVerdict(g, best.filter((id) => !g.advisors[id].fired));
 }
 
 /** Plays a whole term. */
@@ -138,6 +199,7 @@ export function botPlay(g: Game, style: BotStyle): Game {
     if (g.phase === 'briefing') beginCouncil(g);
     else if (g.phase === 'council') councilTurn(g, style);
     else if (g.phase === 'result') nextQuarter(g);
+    else if (g.phase === 'verdict') verdict(g, style);
   }
   return g;
 }

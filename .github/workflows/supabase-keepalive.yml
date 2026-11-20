@@ -1,0 +1,36 @@
+name: Keep Supabase awake
+
+# Free Supabase projects pause after a week without activity, and a paused project doesn't wake by
+# itself (online party mode in "I Thought I Hired Austrian Economists" would just say "Connecting…").
+# Every three days this reads the one-row keepalive table, which counts as activity. It only uses
+# the project URL and the publishable key, which are public anyway (they're in the site's code).
+
+on:
+  schedule:
+    # 14:23 UTC on days 1, 4, 7… of the month: never more than three days apart.
+    - cron: '23 14 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the keepalive row
+        env:
+          SUPABASE_URL: https://wrzqgzxcuncnfegkikhr.supabase.co
+          SUPABASE_KEY: sb_publishable_xaiTIXVVyakDE6bYKrTf2A_azVD9Dm5
+        run: |
+          for attempt in 1 2 3; do
+            if curl -fsS --max-time 30 "$SUPABASE_URL/rest/v1/keepalive?select=id" -H "apikey: $SUPABASE_KEY"; then
+              echo
+              echo "Supabase is awake."
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 20 seconds."
+            sleep 20
+          done
+          echo "::error::Couldn't reach Supabase. The project may be paused: restore it from the Supabase dashboard."
+          exit 1
