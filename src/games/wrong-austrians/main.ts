@@ -329,15 +329,17 @@ function renderTitle() {
   const panel = h('div', 'comic');
   const say = (text: string, look: BallLook, cls = '') => {
     const c = h('div', `comic-ball ${cls}`);
-    c.append(t('div', 'bubble', text), ball(look));
+    // A silent ball keeps an invisible bubble, so the row stays lined up.
+    c.append(t('div', `bubble${text ? '' : ' silent'}`, text || '…'), ball(look));
     return c;
   };
   const sd = side();
   const [l1, l2, l3, you] = sd.comic;
   panel.append(
-    say(l1, { flag: sd.council, eyes: 'normal', hat: 'top', face: 'monocle' }),
-    say(l2, { flag: sd.council, eyes: 'normal', face: 'glasses' }),
-    say(l3, { flag: sd.council, eyes: 'shifty', hat: 'tyrolean' }, 'sus'),
+    // What you hired, as it turned out: the other side's flag, the other side's policy.
+    say(l1, { flag: sd.impostorFlag, eyes: 'normal', hat: 'top', face: 'monocle' }),
+    say(l2, { flag: sd.impostorFlag, eyes: 'normal', face: 'glasses' }),
+    say(l3, { flag: sd.impostorFlag, eyes: 'normal', hat: 'tyrolean' }),
     say(you, { flag: sd.player, eyes: 'happy', flip: true }, 'you'),
   );
   s.append(t('h1', 'title', 'I THOUGHT I HIRED AUSTRIAN ECONOMISTS'));
@@ -515,9 +517,12 @@ function renderCouncil(g: Game) {
       const who = h('div', 'ask-who');
       who.append(t('span', '', 'Ask whom?'));
       for (const a of active(g)) {
-        const already = g.answers.some((x) => x.advisor === a.id && x.question === picking);
-        who.append(button('', 'ask', () => doAsk(a.id), already));
-        who.lastElementChild!.textContent = a.name.split(' ')[1];
+        const now = g.answers.some((x) => x.advisor === a.id && x.question === picking && x.quarter === g.quarter);
+        const before = !now && g.answers.some((x) => x.advisor === a.id && x.question === picking && x.tone !== 'dodge');
+        who.append(button('', 'ask', () => doAsk(a.id), now));
+        who.lastElementChild!.textContent = `${a.name.split(' ')[1]}${before ? ' ↺' : ''}`;
+        // Asking again gets the same answer: worth knowing before you spend a question on it.
+        if (before) (who.lastElementChild as HTMLElement).title = 'Asked before: they’ll give the same answer';
       }
       qs.append(who);
     }
@@ -531,7 +536,7 @@ function renderCouncil(g: Game) {
       const row = h('div', 'answer');
       row.append(ball(lookOf(g.advisors[ans.advisor]), 'mini'));
       const said = h('div', 'said');
-      said.append(t('small', 'asked', `You: ${q.q}`), t('b', '', advisorName(g, ans.advisor)), t('span', '', ans.text));
+      said.append(t('small', 'asked', `You: ${q.q}${ans.repeat ? ' (again: same answer as before)' : ''}`), t('b', '', advisorName(g, ans.advisor)), t('span', '', ans.text));
       row.append(said);
       log.append(row);
     }
@@ -698,7 +703,7 @@ function openDossier(id: number) {
     for (const ans of g.answers.filter((x) => x.advisor === id)) {
       const q = QUESTIONS.find((x) => x.id === ans.question)!;
       const li = h('li', 'answer-li');
-      li.textContent = `Q${ans.quarter}: asked “${q.q}” → “${ans.text}”`;
+      li.textContent = `Q${ans.quarter}: asked “${q.q}”${ans.repeat ? ' (again)' : ''} → “${ans.text}”`;
       items.push(li);
     }
     for (const c of g.clues.filter((x) => x.advisor === id)) {
@@ -1326,7 +1331,7 @@ function caseFile(g: Game): HTMLElement {
   const mark = { sound: '✅', near: '⚠️', slip: '🚩', dodge: '🤷' } as const;
   const toneLabel = { sound: 'right', near: 'near-miss', slip: g.mode === 'mirror' ? 'pure Mises' : 'statist', dodge: 'dodged' } as const;
   for (const a of g.advisors) {
-    const answers = g.answers.filter((x) => x.advisor === a.id);
+    const answers = g.answers.filter((x) => x.advisor === a.id && !x.repeat);
     const clues = g.clues.filter((x) => x.advisor === a.id);
     const sec = h('section', `case ${a.impostor ? 'impostor' : 'real'}`);
     sec.append(h('h4', '', `${a.impostor ? sd.role.impostor : sd.role.loyal} · <span></span>`));

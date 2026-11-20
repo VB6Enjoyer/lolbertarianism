@@ -22,7 +22,10 @@ export interface Side {
   reveal: { impostorTitle: string; loyalTitle: string; impostor: (name: string) => string; loyal: (name: string) => string };
   /** The first-term walkthrough: a title and a few lines per step. */
   walkthrough: (council: number, impostors: number) => [string, string][];
-  /** The title screen: the comic's lines (three advisors, then you), and the pitch. */
+  /**
+   * The title screen: the comic's lines (three advisors, then you; an empty line is a silent ball),
+   * and the pitch. Like the meme, the three are what you got instead of what you hired.
+   */
   comic: [string, string, string, string];
   pitch: (council: number, impostors: number) => string;
   how: (council: number, impostors: number, quarters: number) => string;
@@ -64,7 +67,7 @@ const SIDES: Record<Mode, Side> = {
       impostor: (n) => `Under the ancap paint: red, white, red. ${n} goes back to the Finance Ministry, muttering about the social partnership.`,
       loyal: (n) => `${n} was the real thing. They leave to write a book about your mistake. It’s footnoted.`,
     },
-    comic: ['Cut all taxes to 0%', 'Privatize Vienna plz', 'Nationalize oil', 'Wait. Why are Austrian economists suddenly statists?'],
+    comic: ['Nationalize oil', '', 'Regulate everything', 'Why are Austrian economists suddenly statists?'],
     pitch: (c, i) =>
       `You’re Ancapball, two years in office, with a council of ${c} economists. ${i} of them aren’t from the Austrian School at all: they’re just from Austria, and they want the state to grow. Find them before they regulate everything.`,
     how: (c, i, q) => `<li>🏛️ Your council has <b>${c} economists</b>. <b>${i}</b> are secretly <b>from Vienna</b>: Austrian, but not the Austrian School. They want the state to grow.</li>
@@ -119,7 +122,7 @@ const SIDES: Record<Mode, Side> = {
       impostor: (n) => `Under the red, white and red: yellow, black, and an eagle. ${n} leaves to found a seastead, muttering about praxeology.`,
       loyal: (n) => `${n} was loyal to the last form. They leave to file a grievance, in triplicate.`,
     },
-    comic: ['Regulate everything', 'Nationalize oil', 'Privatize Vienna plz', 'I thought I hired Austrian economists'],
+    comic: ['Cut all taxes to 0%', '', 'Privatize Vienna plz', 'I thought I hired Austrian economists'],
     pitch: (c, i) =>
       `Mirror mode. You’re Austria, two years in office, with a council of ${c} economists. You asked for Austrian economists, and got ${i} from the Austrian School: ancaps who want to privatize Vienna. Find them before they sell the Hofburg.`,
     how: (c, i, q) => `<li>🇦🇹 You’re <b>Austria</b> now. Your council has <b>${c} economists</b>. <b>${i}</b> are secretly <b>Austrian School ancaps</b>. They want the state to shrink, preferably to nothing.</li>

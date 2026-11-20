@@ -109,6 +109,8 @@ export interface Answer {
   tone: Tone;
   /** For a near-miss: what's wrong with it (shown in the case file at the end). */
   why?: string;
+  /** Asked again in a later quarter: the same answer as before. */
+  repeat?: boolean;
 }
 
 /** What an investigation turned up. */
@@ -384,9 +386,9 @@ export function evidence(g: Game, id: number): { score: number; backed?: string;
   for (const e of g.enacted) {
     if (e.quarter < g.quarter && e.backers.includes(id) && isBad(findPolicy(e.policy)!.kind)) score += 1;
   }
-  const slips = g.answers.filter((x) => x.advisor === id && x.tone === 'slip').length;
+  const slips = g.answers.filter((x) => x.advisor === id && x.tone === 'slip' && !x.repeat).length;
   // A near-miss gets noticed too, by people who know their economics (but anyone can fumble one).
-  const nears = g.answers.filter((x) => x.advisor === id && x.tone === 'near').length;
+  const nears = g.answers.filter((x) => x.advisor === id && x.tone === 'near' && !x.repeat).length;
   score += 2 * slips + nears;
   return { score, backed, bill, slip: slips + nears > 0 };
 }
@@ -449,9 +451,21 @@ export function ask(g: Game, advisor: number, question: string): Answer | null {
   const a = g.advisors[advisor];
   const q = QUESTIONS.find((x) => x.id === question);
   if (g.phase !== 'council' || !a || a.fired || !q || g.questionsLeft <= 0 || !g.offered.includes(question)) return null;
-  if (g.answers.some((x) => x.advisor === advisor && x.question === question)) return null;
-  const odds = answerOdds(g)[a.impostor ? 'impostor' : 'loyal'];
-  let roll = next(g.rng);
+  // Once a quarter per person and question.
+  if (g.answers.some((x) => x.advisor === advisor && x.question === question && x.quarter === g.quarter)) return null;
+  // Asked before, in an earlier quarter: they stick to their story (a bluff that worked stays a bluff).
+  // Only a dodge gets a real answer the second time: they got back to you after lunch.
+  const before = g.answers.find((x) => x.advisor === advisor && x.question === question && x.tone !== 'dodge');
+  if (before) {
+    const again: Answer = { ...before, quarter: g.quarter, repeat: true };
+    g.answers.push(again);
+    g.questionsLeft--;
+    return again;
+  }
+  const dodgedBefore = g.answers.some((x) => x.advisor === advisor && x.question === question);
+  const base = answerOdds(g)[a.impostor ? 'impostor' : 'loyal'];
+  const odds = dodgedBefore ? { ...base, dodge: 0 } : base;
+  let roll = next(g.rng) * (odds.sound + odds.near + odds.slip + odds.dodge);
   let tone: Tone = 'dodge';
   for (const k of ['sound', 'near', 'slip', 'dodge'] as const) {
     tone = k;

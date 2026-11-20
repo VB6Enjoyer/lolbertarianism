@@ -20,7 +20,8 @@ function evidenceFor(g: Game, id: number, style: BotStyle): number {
   const odds = answerOdds(g);
   const lr = (pImp: number, pLoyal: number) => Math.log(Math.max(1e-6, pImp) / Math.max(1e-6, pLoyal));
   for (const a of g.answers) {
-    if (a.advisor !== id) continue;
+    // A repeat is the same answer again: no new evidence.
+    if (a.advisor !== id || a.repeat) continue;
     if (style === 'savvy') log += lr(odds.impostor[a.tone], odds.loyal[a.tone]);
     else {
       // The naive can't tell a near-miss from the real thing: only an outright slip, or a dodge.

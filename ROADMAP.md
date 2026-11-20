@@ -989,6 +989,19 @@ Viennese actually try to blend in:
   clue, proposal and bill. One that knows its economics perfectly now wins about 82% (it was 99%),
   usually firing late in the term; one that only spots the obvious wins 14%; random clicking 6%.
   Mirror mode plays the same (the near-misses betray an ancap trying to sound Viennese).
+- Harder still: two more near-misses per question (162 in all), the hard kind where the slip is in a
+  technical detail (overinvestment for malinvestment, sticky prices for the Cantillon effect,
+  Böhm-Bawerk's productivity theory of interest, Lange's market socialism, Kirzner versus
+  Schumpeter, the "neutral rate", Coase, Ricardian equivalence, the savings glut...).
+- People stick to their story: ask someone the same question in a later quarter and you get the same
+  answer (a bluff that worked stays a bluff); only a dodge gets a real answer the second time. The
+  ask buttons mark a repeat with ↺, and repeats don't count as new evidence.
+- About a third of everyone's past is a false flag (the real Austrian who studied at Chicago or
+  worked at the National Bank first; the Viennese who advised a private city in Honduras), so you
+  have to pile clues up.
+- The title comic follows the meme: Ancapball faces three Austriaballs saying "Nationalize oil" and
+  "Regulate everything" ("Why are Austrian economists suddenly statists?"); in mirror mode Austria
+  faces three ancapballs saying "Cut all taxes to 0%" and "Privatize Vienna plz".
 
 #### Mirror mode ✅
 

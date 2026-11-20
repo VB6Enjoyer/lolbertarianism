@@ -1252,3 +1252,8 @@ q.pitch {
     color: var(--muted);
     font-size: 13px;
 }
+
+/* A silent ball in the comic keeps its (invisible) bubble so the row stays lined up. */
+.bubble.silent {
+    visibility: hidden;
+}

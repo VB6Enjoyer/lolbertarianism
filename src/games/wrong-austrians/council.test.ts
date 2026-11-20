@@ -124,6 +124,31 @@ describe('a term', () => {
     expect(share('impostor', 'near')).toBeGreaterThan(share('impostor', 'slip') * 3);
   });
 
+  it('asking the same person the same question again gets the same answer (only a dodge gets a second try)', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const g = council(seed);
+      const q = g.offered[0];
+      const first = ask(g, 1, q)!;
+      enact(g, g.proposals[0].policy);
+      nextQuarter(g);
+      if (g.phase === 'over') continue;
+      beginCouncil(g);
+      g.offered[0] = q;
+      const again = ask(g, 1, q)!;
+      if (first.tone === 'dodge') expect(again.tone).not.toBe('dodge');
+      else {
+        expect(again.text).toBe(first.text);
+        expect(again.tone).toBe(first.tone);
+        expect(again.repeat).toBe(true);
+      }
+      expect(ask(g, 1, q)).toBeNull(); // not twice in one quarter
+    }
+  });
+
+  it('every question has hard near-misses too: at least five per question', () => {
+    for (const q of QUESTIONS) expect(q.near.length, q.id).toBeGreaterThanOrEqual(5);
+  });
+
   it('investigations: one a quarter, each tool once a term, from a hidden past that leans but doesn’t prove', () => {
     const g = council(12);
     const clue = investigate(g, 'thesis', 0)!;
@@ -375,6 +400,6 @@ describe('mirror mode', () => {
     let statist = 0;
     let austrian = 0;
     for (let seed = 1; seed <= 100; seed++) for (const a of newGame(seed, null, 'mirror').advisors.filter((x) => !x.impostor)) for (const t of TOOL_ORDER) a.profile[t].lean === 'statist' ? statist++ : a.profile[t].lean === 'austrian' && austrian++;
-    expect(statist).toBeGreaterThan(austrian * 4);
+    expect(statist).toBeGreaterThan(austrian * 2.5);
   });
 });

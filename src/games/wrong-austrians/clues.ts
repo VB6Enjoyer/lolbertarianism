@@ -239,12 +239,16 @@ export const TOOLS: Record<ToolId, Tool> = {
 export const TOOL_ORDER: ToolId[] = ['thesis', 'alma', 'cv', 'shelf', 'funding', 'oped'];
 
 /**
- * How each side's pasts lean. The loyal ones mostly look the part; the impostors have built
- * themselves convincing pasts (a lot of free-market-but-not-quite), and only sometimes leave a
- * statist trace. "own" is the side's own school (Austrian for Ancapball's council, statist in
- * mirror mode); "other" is the opposite one.
+ * How each side's pasts lean. About a third of anyone's past is a false flag: the real Austrian who
+ * studied at Chicago (or wrote a Keynesian thesis, or worked at the National Bank) before they read
+ * Mises; the Viennese who once advised a private city in Honduras. So no single clue settles it:
+ * you have to pile them up. "own" is the side's own school (Austrian for Ancapball's council,
+ * statist in mirror mode); "other" is the opposite one. The impostors' camouflage is mostly
+ * free-market-but-not-quite.
  */
 export const LEAN_ODDS: Record<'loyal' | 'impostor', Record<'own' | 'freemarket' | 'mainstream' | 'other', number>> = {
-  loyal: { own: 0.55, freemarket: 0.15, mainstream: 0.22, other: 0.08 },
-  impostor: { own: 0.28, freemarket: 0.32, mainstream: 0.25, other: 0.15 },
+  // A third false flags (free-market-not-Austrian, or outright statist), a little mainstream.
+  loyal: { own: 0.58, freemarket: 0.15, mainstream: 0.1, other: 0.17 },
+  // A third false flags (a convincingly Austrian past), the rest statist or free-market camouflage.
+  impostor: { own: 0.32, freemarket: 0.25, mainstream: 0.1, other: 0.33 },
 };
